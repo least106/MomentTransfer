@@ -31,6 +31,8 @@ class AeroCalculator:
         self.basis_source = geometry.construct_basis_matrix(src.x_axis, src.y_axis, src.z_axis)
         self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
 
+        # TODO: 检查 basis 矩阵是否奇异或非正交（例如行列式接近零），并在初始化阶段报告/抛出错误以避免后续计算不稳定。
+
         # 计算旋转矩阵 R (Source -> Target)
         self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
 
@@ -78,6 +80,7 @@ class AeroCalculator:
 
         if denom_force == 0:
             # 防止除以零崩溃，返回全零
+            # TODO: 当前实现静默返回零系数；考虑改为记录警告或抛出异常以便调用方处理（并为此行为添加单元测试）。
             return AeroResult(
                 force_transformed=F_final.tolist(),
                 moment_transformed=M_final.tolist(),

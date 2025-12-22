@@ -13,7 +13,12 @@ class CoordSystemDefinition:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        """从字典创建对象的工厂方法"""
+        """从字典创建对象的工厂方法
+
+        TODO: 验证字段存在且为长度为 3 的数值列表；若缺失或类型不匹配，应抛出 ValueError 并给出明确错误信息。
+        建议添加单元测试覆盖缺失字段、维度不对和非法类型的场景。
+        """
+        # TODO: 验证字段和维度（例如：len == 3 且元素为数值）
         return cls(
             origin=data["Orig"],
             x_axis=data["X"],
@@ -34,6 +39,8 @@ class TargetDefinition:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
+        # TODO: 验证 Target 字段完整性（PartName, TargetCoordSystem, TargetMomentCenter）
+        # 对数值字段（q, s_ref, c_ref, b_ref）添加合理性检查（例如非负）并抛出有意义的错误信息。
         return cls(
             part_name=data["PartName"],
             coord_system=CoordSystemDefinition.from_dict(data["TargetCoordSystem"]),

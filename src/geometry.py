@@ -13,6 +13,8 @@ def normalize(vec: np.ndarray) -> np.ndarray:
     """
     norm = np.linalg.norm(vec)
     if norm == 0:
+        # TODO: 当前实现对零向量静默返回零向量。考虑抛出 ValueError 或记录警告以便上层调用知晓此异常情况。
+        # 建议：添加单元测试覆盖归一化零向量场景并明确期望行为（抛出或返回）。
         return vec
     return vec / norm
 
@@ -22,6 +24,8 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
     构建基向量矩阵 (3x3)。
     输入：三个轴的方向向量
     输出：Numpy矩阵，每一行是一个基向量
+
+    TODO: 验证输入轴向量非零并尽量检测是否近似正交；遇到无效输入应抛出错误并补充测试用例。
     """
     vx = normalize(to_numpy_vec(x))
     vy = normalize(to_numpy_vec(y))

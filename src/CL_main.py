@@ -4,6 +4,8 @@ import json
 
 # 为了确保能导入同级模块，把父目录加入路径 (处理 Python 导入路径问题)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# TODO: 考虑改用 package 运行方式（`python -m src.CL_main`）或调整项目的安装/入口点以避免修改 sys.path。
+# TODO: 增加 argparse 支持以允许从命令行传入 input/output 文件路径与日志级别，并添加集成测试覆盖。
 
 from src.data_loader import load_data
 from src.physics import AeroCalculator
@@ -36,6 +38,7 @@ def main():
     # Force: 100N 阻力, 0N 侧力, 1000N 升力
     # Moment: 0, 50, 0
     # ---------------------------------------------------------
+    # TODO: 现在这里使用了硬编码的示例输入。后续应改为从文件、STDIN 或测试钩子读取输入数据，并添加可重复的集成测试。
     raw_forces = [100.0, 0.0, 1000.0]
     raw_moments = [0.0, 50.0, 0.0]
 

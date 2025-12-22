@@ -16,6 +16,8 @@ except ImportError:
     # 简单的fallback，防止直接运行此文件时找不到包
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    # TODO: 避免在运行时修改 sys.path，建议保持包结构或使用 package 运行方式（`python -m src.gui_main`）。
+    # TODO: 在 CI/测试环境中确保导入路径一致，减少运行时导入差异导致的问题。
     from src.data_loader import load_data, ProjectData
     from src.physics import AeroCalculator
 
@@ -157,6 +159,9 @@ class AeroTransformWindow(QMainWindow):
             
             # 2. 调用 physics 模块进行核心计算
             # 这一步就是我们之前费劲写的核心逻辑在发挥作用
+            # TODO: 注意：`AeroCalculator` 当前实现提供 `process_frame()` 并返回 `AeroResult` dataclass，
+            # 而这里调用 `process_single_point()` 并期望得到 dict。需要统一 GUI 与 core 的 API（添加适配器或修改调用方），
+            # 并为此添加单元/集成测试以保证端到端行为一致。
             result = self.processor.process_single_point(f_raw, m_raw)
             
             # 3. 格式化输出
