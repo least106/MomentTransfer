@@ -38,7 +38,7 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
     xy_dot = abs(np.dot(vx, vy))
     yz_dot = abs(np.dot(vy, vz))
     zx_dot = abs(np.dot(vz, vx))
-    
+
     orthogonality_threshold = 0.1  # 允许一定误差
     if xy_dot > orthogonality_threshold or yz_dot > orthogonality_threshold or zx_dot > orthogonality_threshold:
         import warnings
@@ -47,8 +47,15 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
             f"这可能导致坐标变换不准确。",
             UserWarning
         )
-    
-    return np.array([vx, vy, vz])
+
+    basis = np.array([vx, vy, vz])
+
+    # 进一步检查基矩阵的线性相关性（行列式接近零表示基向量线性相关 -> 奇异矩阵）
+    det = np.linalg.det(basis)
+    if abs(det) < 1e-6:
+        raise ValueError(f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。")
+
+    return basis
 
 def compute_rotation_matrix(source_basis: np.ndarray, target_basis: np.ndarray) -> np.ndarray:
     """

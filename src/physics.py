@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 from dataclasses import dataclass
 from typing import List, Dict, Union
 
@@ -77,7 +78,8 @@ class AeroCalculator:
         c = self.cfg.target_config.c_ref
         denom_force = q * s
 
-        if denom_force == 0:
+        if np.isclose(denom_force, 0.0):
+            warnings.warn("动压(q) 或 参考面积 s_ref 为零，无法计算系数，已将力和力矩系数设为零。", UserWarning)
             C_F = np.zeros_like(F_final)
             C_M = np.zeros_like(M_final)
         else:
