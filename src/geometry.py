@@ -90,3 +90,53 @@ def project_vector_to_frame(vec_global: np.ndarray, frame_basis: np.ndarray) -> 
     必须先把 r 投影到目标坐标系 (Target Frame)，才能进行叉乘。
     """
     return np.dot(frame_basis, vec_global)
+
+def euler_angles_to_basis(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:
+    """
+    将欧拉角转换为 3x3 基向量矩阵 (X, Y, Z 轴向量)。
+    旋转顺序假设为: Yaw (Z) -> Pitch (Y) -> Roll (X) (航空常用顺序)
+    
+    :param roll_deg: 滚转角 (如上反角)
+    :param pitch_deg: 俯仰角 (如安装角)
+    :param yaw_deg: 偏航角 (如后掠角)
+    :return: 3x3 矩阵，行0=X轴向量, 行1=Y轴向量, 行2=Z轴向量
+    """
+    r = np.radians(roll_deg)
+    p = np.radians(pitch_deg)
+    y = np.radians(yaw_deg)
+
+    # 旋转矩阵构建
+    # Rz (Yaw)
+    Rz = np.array([
+        [np.cos(y), -np.sin(y), 0],
+        [np.sin(y),  np.cos(y), 0],
+        [0,          0,         1]
+    ])
+    
+    # Ry (Pitch)
+    Ry = np.array([
+        [np.cos(p),  0, np.sin(p)],
+        [0,          1, 0],
+        [-np.sin(p), 0, np.cos(p)]
+    ])
+    
+    # Rx (Roll)
+    Rx = np.array([
+        [1, 0,          0],
+        [0, np.cos(r), -np.sin(r)],
+        [0, np.sin(r),  np.cos(r)]
+    ])
+
+    # 复合旋转 R = Rz * Ry * Rx
+    # 注意：这里的基向量是列向量概念，或者是将全局坐标转到局部。
+    # 我们需要的是：在全局坐标系下，局部坐标轴指向哪里。
+    # 这等同于旋转矩阵的 列 (Columns)。
+    R = Rz @ Ry @ Rx
+    
+    # R 的第一列是 X轴，第二列是 Y轴，第三列是 Z轴
+    x_axis = R[:, 0]
+    y_axis = R[:, 1]
+    z_axis = R[:, 2]
+    
+    return np.array([x_axis, y_axis, z_axis])
+

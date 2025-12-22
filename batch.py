@@ -3,6 +3,7 @@ import os
 import argparse
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 # 假设我们在项目根目录运行，使用标准包导入
 from src.data_loader import load_data
@@ -73,7 +74,35 @@ def run_batch_processing(config_path, input_csv, output_csv):
     results = calculator.process_batch(forces_in, moments_in)
 
     # 5. 合并结果
+    # 处理输出路径：如果用户传入的是目录，则在该目录下使用源文件名+时间戳作为输出文件名
+    # 如果用户传入的是文件，则直接使用该文件，但仅接受 .csv 或 .xlsx
     print(f"[4/4] 写入结果: {output_csv}")
+
+    # 判定输出目标是目录的几种情况
+    is_dir = False
+    if os.path.isdir(output_csv) or output_csv.endswith(os.sep) or output_csv.endswith('/') or output_csv.endswith('\\'):
+        is_dir = True
+    # 如果是目录但不存在，尝试创建目录
+    if is_dir and not os.path.exists(output_csv):
+        try:
+            os.makedirs(output_csv, exist_ok=True)
+        except Exception as e:
+            print(f"[错误] 无法创建输出目录: {e}")
+            return
+
+    if is_dir:
+        src_basename = os.path.splitext(os.path.basename(input_csv))[0]
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_file = os.path.join(output_csv, f"{src_basename}_{timestamp}.csv")
+        out_ext = '.csv'
+    else:
+        output_file = output_csv
+        out_ext = os.path.splitext(output_file)[1].lower()
+
+    # 仅支持 csv 和 excel 输出
+    if out_ext not in ['.csv', '.xls', '.xlsx']:
+        print("[错误] 不支持的输出格式。仅支持 .csv 或 .xlsx，请提供正确的文件名或目录。")
+        return
 
     # 添加新列
     suffix = "_new"
@@ -93,13 +122,18 @@ def run_batch_processing(config_path, input_csv, output_csv):
     df['Cm'] = results['coeff_moment'][:, 1]
     df['Cn'] = results['coeff_moment'][:, 2]
 
-    # 保存
-    if output_csv.endswith('.csv'):
-        df.to_csv(output_csv, index=False)
-    else:
-        df.to_excel(output_csv, index=False)
+    # 保存文件，捕获并以简洁信息提示异常
+    try:
+        if out_ext == '.csv':
+            df.to_csv(output_file, index=False)
+        else:
+            # 对于 excel，使用 to_excel
+            df.to_excel(output_file, index=False)
+    except Exception as e:
+        print(f"[错误] 写入输出文件失败：{e}")
+        return
 
-    print("--- 完成 ---")
+    print(f"--- 完成: {output_file} ---")
 
 
 if __name__ == "__main__":
