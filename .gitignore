@@ -4,6 +4,7 @@ tmp/
 *.bak
 *.tmp
 .vscode/
+.github/
 *.log
 .pytest_cache/
 env/
