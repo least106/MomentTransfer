@@ -31,7 +31,14 @@ class AeroCalculator:
         self.basis_source = geometry.construct_basis_matrix(src.x_axis, src.y_axis, src.z_axis)
         self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
 
-        # TODO: 检查 basis 矩阵是否奇异或非正交（例如行列式接近零），并在初始化阶段报告/抛出错误以避免后续计算不稳定。
+        # 检查基矩阵的行列式，确保不奇异
+        det_source = np.linalg.det(self.basis_source)
+        det_target = np.linalg.det(self.basis_target)
+        
+        if abs(det_source) < 1e-6:
+            raise ValueError(f"源坐标系基矩阵接近奇异，行列式: {det_source}。请检查坐标轴定义。")
+        if abs(det_target) < 1e-6:
+            raise ValueError(f"目标坐标系基矩阵接近奇异，行列式: {det_target}。请检查坐标轴定义。")
 
         # 计算旋转矩阵 R (Source -> Target)
         self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
@@ -79,8 +86,13 @@ class AeroCalculator:
         denom_force = q * s
 
         if denom_force == 0:
-            # 防止除以零崩溃，返回全零
-            # TODO: 当前实现静默返回零系数；考虑改为记录警告或抛出异常以便调用方处理（并为此行为添加单元测试）。
+            # 防止除以零崩溃，返回全零系数
+            import warnings
+            warnings.warn(
+                f"动压 Q={q} 或参考面积 S={s} 为零，无法计算无量纲系数。"
+                f"返回零系数，但力和力矩的变换值仍然有效。",
+                UserWarning
+            )
             return AeroResult(
                 force_transformed=F_final.tolist(),
                 moment_transformed=M_final.tolist(),

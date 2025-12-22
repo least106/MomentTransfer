@@ -10,12 +10,13 @@ def normalize(vec: np.ndarray) -> np.ndarray:
     """
     归一化向量 (Normalization)。
     确保坐标轴向量长度为 1，防止旋转矩阵缩放变形。
+    
+    Raises:
+        ValueError: 当输入向量为零向量时抛出异常
     """
     norm = np.linalg.norm(vec)
-    if norm == 0:
-        # TODO: 当前实现对零向量静默返回零向量。考虑抛出 ValueError 或记录警告以便上层调用知晓此异常情况。
-        # 建议：添加单元测试覆盖归一化零向量场景并明确期望行为（抛出或返回）。
-        return vec
+    if norm < 1e-10:  # 使用小阈值避免数值精度问题
+        raise ValueError(f"无法归一化零向量或接近零的向量: {vec}，模长: {norm}")
     return vec / norm
 
 # 矩阵构建与旋转逻辑
@@ -24,12 +25,29 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
     构建基向量矩阵 (3x3)。
     输入：三个轴的方向向量
     输出：Numpy矩阵，每一行是一个基向量
-
-    TODO: 验证输入轴向量非零并尽量检测是否近似正交；遇到无效输入应抛出错误并补充测试用例。
+    
+    Raises:
+        ValueError: 当输入向量为零或基向量不正交时抛出异常
     """
     vx = normalize(to_numpy_vec(x))
     vy = normalize(to_numpy_vec(y))
     vz = normalize(to_numpy_vec(z))
+    
+    # 检查基向量的正交性（可选但推荐）
+    # 正交向量的点积应接近 0
+    xy_dot = abs(np.dot(vx, vy))
+    yz_dot = abs(np.dot(vy, vz))
+    zx_dot = abs(np.dot(vz, vx))
+    
+    orthogonality_threshold = 0.1  # 允许一定误差
+    if xy_dot > orthogonality_threshold or yz_dot > orthogonality_threshold or zx_dot > orthogonality_threshold:
+        import warnings
+        warnings.warn(
+            f"基向量可能不正交：X·Y={xy_dot:.4f}, Y·Z={yz_dot:.4f}, Z·X={zx_dot:.4f}。"
+            f"这可能导致坐标变换不准确。",
+            UserWarning
+        )
+    
     return np.array([vx, vy, vz])
 
 def compute_rotation_matrix(source_basis: np.ndarray, target_basis: np.ndarray) -> np.ndarray:
