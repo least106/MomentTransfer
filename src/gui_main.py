@@ -159,10 +159,7 @@ class AeroTransformWindow(QMainWindow):
             
             # 2. 调用 physics 模块进行核心计算
             # 这一步就是我们之前费劲写的核心逻辑在发挥作用
-            # TODO: 注意：`AeroCalculator` 当前实现提供 `process_frame()` 并返回 `AeroResult` dataclass，
-            # 而这里调用 `process_single_point()` 并期望得到 dict。需要统一 GUI 与 core 的 API（添加适配器或修改调用方），
-            # 并为此添加单元/集成测试以保证端到端行为一致。
-            result = self.processor.process_single_point(f_raw, m_raw)
+            result = self.processor.process_frame(f_raw, m_raw)
             
             # 3. 格式化输出
             self.display_results(f_raw, m_raw, result)
@@ -174,9 +171,11 @@ class AeroTransformWindow(QMainWindow):
 
     def display_results(self, f_raw, m_raw, result):
         """美化输出结果到文本框"""
-        f_new = result['Force_TargetFrame']
-        m_new = result['Moment_TargetFrame']
-        c = result['Coefficients']
+        # result 是 AeroResult dataclass
+        f_new = result.force_transformed
+        m_new = result.moment_transformed
+        c_force = result.coeff_force
+        c_moment = result.coeff_moment
         
         text = "========================================\n"
         text += f"   计算报告 (Part: {self.current_config.target_config.part_name})\n"
@@ -193,9 +192,9 @@ class AeroTransformWindow(QMainWindow):
         
         text += "[3] 无量纲气动系数 (Coefficients):\n"
         text += "    -----------------------------\n"
-        text += f"    Cx: {c['Cx']:.6f}   Cl: {c['Cl']:.6f}\n"
-        text += f"    Cy: {c['Cy']:.6f}   Cm: {c['Cm']:.6f}\n"
-        text += f"    Cz: {c['Cz']:.6f}   Cn: {c['Cn']:.6f}\n"
+        text += f"    Cx: {c_force[0]:.6f}   Cl: {c_moment[0]:.6f}\n"
+        text += f"    Cy: {c_force[1]:.6f}   Cm: {c_moment[1]:.6f}\n"
+        text += f"    Cz: {c_force[2]:.6f}   Cn: {c_moment[2]:.6f}\n"
         text += "    -----------------------------\n"
         
         self.result_display.setText(text)

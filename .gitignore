@@ -4,7 +4,7 @@ tmp/
 *.bak
 *.tmp
 .vscode/
-.github/
+.github/copilot-instructions.md
 *.log
 .pytest_cache/
 env/
