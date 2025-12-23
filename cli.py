@@ -60,6 +60,7 @@ def main():
         calculator = AeroCalculator(project_data)
     except Exception as e:
         print(f"[致命错误] 无法加载配置: {e}")
+        print("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或至少包含旧格式的 'SourceCoordSystem' 与 'Target'。可使用 creator.py 生成兼容配置。")
         return
 
     print("[2] 执行计算...")
