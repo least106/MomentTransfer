@@ -7,7 +7,7 @@ matplotlib.use('Qt5Agg') # 兼容 PySide6
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton, 
                                QGroupBox, QFormLayout, QComboBox, QFileDialog, QMessageBox)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
