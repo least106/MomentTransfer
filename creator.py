@@ -225,23 +225,31 @@ class ConfigCreator(QMainWindow):
         )
         
         # 2. 构建字典 (符合 input.json 结构)
+        # 构造对等的 Source / Target 配置
         data = {
-            "SourceCoordSystem": {
-                "Orig": [0.0, 0.0, 0.0],
-                "X": [1.0, 0.0, 0.0],
-                "Y": [0.0, 1.0, 0.0],
-                "Z": [0.0, 0.0, 1.0]
+            "Source": {
+                "PartName": "Global",
+                "CoordSystem": {
+                    "Orig": [0.0, 0.0, 0.0],
+                    "X": [1.0, 0.0, 0.0],
+                    "Y": [0.0, 1.0, 0.0],
+                    "Z": [0.0, 0.0, 1.0]
+                },
+                "MomentCenter": [0.0, 0.0, 0.0],
+                "Cref": 1.0,
+                "Bref": 1.0,
+                "Q": 1000.0,
+                "S": 10.0
             },
             "Target": {
                 "PartName": self.combo_template.currentText(),
-                "TargetCoordSystem": {
+                "CoordSystem": {
                     "Orig": [self.spin_ox.value(), self.spin_oy.value(), self.spin_oz.value()],
-                    # 注意：Numpy数组转List以便JSON序列化
                     "X": basis[0].tolist(),
                     "Y": basis[1].tolist(),
                     "Z": basis[2].tolist()
                 },
-                "TargetMomentCenter": [
+                "MomentCenter": [
                     self.spin_mcx.value(), self.spin_mcy.value(), self.spin_mcz.value()
                 ],
                 "Cref": self.spin_cref.value(),
