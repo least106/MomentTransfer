@@ -202,10 +202,38 @@ class BatchProcessThread(QThread):
             df = pd.read_excel(file_path, header=None, skiprows=self.data_config['skip_rows'])
         
         cols = self.data_config['columns']
-        
-        # 提取力和力矩
-        forces = df[[cols['fx'], cols['fy'], cols['fz']]].values
-        moments = df[[cols['mx'], cols['my'], cols['mz']]].values
+
+        # 提取力和力矩（逐列转换为数值以防原始 CSV 为字符串）
+        def _col_to_numeric(df, col_idx, name):
+            if col_idx is None:
+                raise ValueError(f"缺失必需的列映射: {name}")
+            if not (0 <= col_idx < len(df.columns)):
+                raise IndexError(f"列索引越界: {name} -> {col_idx}")
+            ser = pd.to_numeric(df.iloc[:, col_idx], errors='coerce')
+            if ser.isna().any():
+                try:
+                    self.log_message.emit(f"列 {name} 存在无法解析为数值的项，已将其设为 NaN。")
+                except Exception:
+                    pass
+            return ser.values.astype(float)
+
+        try:
+            fx = _col_to_numeric(df, cols['fx'], 'Fx')
+            fy = _col_to_numeric(df, cols['fy'], 'Fy')
+            fz = _col_to_numeric(df, cols['fz'], 'Fz')
+
+            mx = _col_to_numeric(df, cols['mx'], 'Mx')
+            my = _col_to_numeric(df, cols['my'], 'My')
+            mz = _col_to_numeric(df, cols['mz'], 'Mz')
+
+            forces = np.vstack([fx, fy, fz]).T
+            moments = np.vstack([mx, my, mz]).T
+        except Exception as e:
+            try:
+                self.log_message.emit(f"数据列提取或转换失败: {e}")
+            except Exception:
+                pass
+            raise
         
         # 计算
         results = self.calculator.process_batch(forces, moments)
