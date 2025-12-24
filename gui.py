@@ -17,10 +17,10 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox, QFormLayout, QFileDialog,
     QTextEdit, QMessageBox, QProgressBar, QSplitter, QCheckBox, QSpinBox,
-    QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout
 )
 from PySide6.QtGui import QFont
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 
@@ -48,9 +48,19 @@ class Mpl3DCanvas(FigureCanvas):
                           c='m', marker='o', s=80, label='Moment Center', edgecolors='black', linewidths=1)
 
         # 自动调整显示范围
-        all_points = np.array([source_orig, target_orig, moment_center])
-        max_range = max(np.ptp(all_points[:, 0]), np.ptp(all_points[:, 1]), np.ptp(all_points[:, 2])) * 0.6
-        max_range = max(max_range, 2.0)
+        all_points = np.array([source_orig, target_orig, moment_center], dtype=float)
+        # 计算每个轴的范围，并检测坐标是否几乎重合，避免数值问题
+        ranges = np.ptp(all_points, axis=0)
+        max_span = float(np.max(ranges)) if ranges.size > 0 else 0.0
+        eps = 1e-6  # 判断“几乎重合”的数值阈值
+        if max_span < eps:
+            # 所有点几乎在同一位置：使用默认可视化范围
+            max_range = 2.0
+            # 可根据需要改为日志记录或 GUI 提示，这里仅简单输出到控制台
+            print("Warning: coordinate systems are nearly coincident; using default visualization range.")
+        else:
+            max_range = max_span * 0.6
+            max_range = max(max_range, 2.0)
 
         center = np.mean(all_points, axis=0)
         self.axes.set_xlim([center[0] - max_range, center[0] + max_range])
@@ -84,10 +94,10 @@ class ColumnMappingDialog(QDialog):
         self.setWindowTitle("数据格式配置")
         self.resize(500, 600)
         self.init_ui()
-    
+
     def init_ui(self):
         layout = QVBoxLayout(self)
-        
+
         # 跳过行数
         grp_skip = QGroupBox("表头设置")
         form_skip = QFormLayout()
@@ -96,28 +106,28 @@ class ColumnMappingDialog(QDialog):
         self.spin_skip_rows.setValue(0)
         form_skip.addRow("跳过行数:", self.spin_skip_rows)
         grp_skip.setLayout(form_skip)
-        
+
         # 列映射
         grp_columns = QGroupBox("数据列映射 (列号从0开始)")
         form_cols = QFormLayout()
-        
+
         self.col_alpha = QSpinBox()
         self.col_alpha.setRange(-1, 1000)
         self.col_alpha.setValue(-1)
         self.col_alpha.setSpecialValueText("不存在")
-        
+
         self.col_fx = QSpinBox()
         self.col_fy = QSpinBox()
         self.col_fz = QSpinBox()
         self.col_mx = QSpinBox()
         self.col_my = QSpinBox()
         self.col_mz = QSpinBox()
-        
-        for spin in [self.col_fx, self.col_fy, self.col_fz, 
+
+        for spin in [self.col_fx, self.col_fy, self.col_fz,
                      self.col_mx, self.col_my, self.col_mz]:
             spin.setRange(0, 1000)
             spin.setValue(0)
-        
+
         form_cols.addRow("迎角 Alpha (可选):", self.col_alpha)
         form_cols.addRow("轴向力 Fx:", self.col_fx)
         form_cols.addRow("侧向力 Fy:", self.col_fy)
@@ -125,9 +135,9 @@ class ColumnMappingDialog(QDialog):
         form_cols.addRow("滚转力矩 Mx:", self.col_mx)
         form_cols.addRow("俯仰力矩 My:", self.col_my)
         form_cols.addRow("偏航力矩 Mz:", self.col_mz)
-        
+
         grp_columns.setLayout(form_cols)
-        
+
         # 保留列
         grp_pass = QGroupBox("需要保留输出的其他列")
         layout_pass = QVBoxLayout()
@@ -136,29 +146,32 @@ class ColumnMappingDialog(QDialog):
         layout_pass.addWidget(QLabel("列号:"))
         layout_pass.addWidget(self.txt_passthrough)
         grp_pass.setLayout(layout_pass)
-        
+
         # 按钮
-        btn_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btn_box.accepted.connect(self.accept)
         btn_box.rejected.connect(self.reject)
-        
+
         layout.addWidget(grp_skip)
         layout.addWidget(grp_columns)
         layout.addWidget(grp_pass)
         layout.addWidget(btn_box)
-    
+
     def get_config(self):
-        """获取配置"""
+        """获取并返回配置字典"""
         passthrough = []
         text = self.txt_passthrough.text().strip()
         if text:
-            try:
-                passthrough = [int(x.strip()) for x in text.split(',') if x.strip()]
-            except ValueError:
-                # 如果存在无法解析的列索引，则忽略并返回空的透传列
-                passthrough = []
+            toks = [t.strip() for t in text.split(',') if t.strip()]
+            invalid = []
+            for tok in toks:
+                try:
+                    passthrough.append(int(tok))
+                except ValueError:
+                    invalid.append(tok)
+            if invalid:
+                QMessageBox.warning(self, "透传列解析警告",
+                                    f"以下透传列索引无法解析，已被忽略：{', '.join(invalid)}")
 
         return {
             'skip_rows': self.spin_skip_rows.value(),
@@ -176,7 +189,7 @@ class ColumnMappingDialog(QDialog):
 
 
 class BatchProcessThread(QThread):
-    """批处理后台线程"""
+    """在后台线程中执行批量处理，发出进度与日志信号"""
     progress = Signal(int)
     log_message = Signal(str)
     finished = Signal(str)
@@ -190,37 +203,41 @@ class BatchProcessThread(QThread):
         self.data_config = data_config
 
     def process_file(self, file_path):
-        """处理单个文件"""
-        # 读取数据
-        if file_path.suffix == '.csv':
-            df = pd.read_csv(file_path, header=None, skiprows=self.data_config['skip_rows'])
+        """处理单个文件并返回输出路径"""
+        if file_path.suffix.lower() == '.csv':
+            df = pd.read_csv(file_path, header=None, skiprows=self.data_config.get('skip_rows', 0))
         else:
-            df = pd.read_excel(file_path, header=None, skiprows=self.data_config['skip_rows'])
-        
-        cols = self.data_config['columns']
+            df = pd.read_excel(file_path, header=None, skiprows=self.data_config.get('skip_rows', 0))
 
-        # 提取力和力矩（逐列转换为数值以防原始 CSV 为字符串）
-        def _col_to_numeric(df, col_idx, name):
+        cols = self.data_config.get('columns', {})
+
+        def _col_to_numeric(df_local, col_idx, name):
             if col_idx is None:
                 raise ValueError(f"缺失必需的列映射: {name}")
-            if not (0 <= col_idx < len(df.columns)):
+            if not (0 <= col_idx < len(df_local.columns)):
                 raise IndexError(f"列索引越界: {name} -> {col_idx}")
-            ser = pd.to_numeric(df.iloc[:, col_idx], errors='coerce')
-            if ser.isna().any():
+            orig_col = df_local.iloc[:, col_idx]
+            ser = pd.to_numeric(orig_col, errors='coerce')
+            bad_mask = ser.isna() & orig_col.notna()
+            if bad_mask.any():
                 try:
-                    self.log_message.emit(f"列 {name} 存在无法解析为数值的项，已将其设为 NaN。")
+                    bad_indices = orig_col.index[bad_mask].tolist()
+                    sample_indices = bad_indices[:5]
+                    sample_values = [str(v) for v in orig_col[bad_mask].head(5).tolist()]
+                    self.log_message.emit(
+                        f"列 {name} 有 {bad_mask.sum()} 个值无法解析为数值，示例索引: {sample_indices}，示例值: {sample_values}")
                 except Exception:
                     pass
             return ser.values.astype(float)
 
         try:
-            fx = _col_to_numeric(df, cols['fx'], 'Fx')
-            fy = _col_to_numeric(df, cols['fy'], 'Fy')
-            fz = _col_to_numeric(df, cols['fz'], 'Fz')
+            fx = _col_to_numeric(df, cols.get('fx'), 'Fx')
+            fy = _col_to_numeric(df, cols.get('fy'), 'Fy')
+            fz = _col_to_numeric(df, cols.get('fz'), 'Fz')
 
-            mx = _col_to_numeric(df, cols['mx'], 'Mx')
-            my = _col_to_numeric(df, cols['my'], 'My')
-            mz = _col_to_numeric(df, cols['mz'], 'Mz')
+            mx = _col_to_numeric(df, cols.get('mx'), 'Mx')
+            my = _col_to_numeric(df, cols.get('my'), 'My')
+            mz = _col_to_numeric(df, cols.get('mz'), 'Mz')
 
             forces = np.vstack([fx, fy, fz]).T
             moments = np.vstack([mx, my, mz]).T
@@ -230,25 +247,20 @@ class BatchProcessThread(QThread):
             except Exception:
                 pass
             raise
-        
-        # 计算
+
         results = self.calculator.process_batch(forces, moments)
-        
-        # 构建输出
+
         output_df = pd.DataFrame()
-        
-        # 保留列 - 校验索引类型与范围，避免负数或越界导致异常
+
         for col_idx in self.data_config.get('passthrough', []):
             try:
                 idx = int(col_idx)
             except Exception:
-                # 记录无效的索引并跳过
                 try:
                     self.log_message.emit(f"透传列索引无效（非整数）：{col_idx}")
                 except Exception:
                     pass
                 continue
-
             if 0 <= idx < len(df.columns):
                 output_df[f'Col_{idx}'] = df.iloc[:, idx]
             else:
@@ -256,12 +268,10 @@ class BatchProcessThread(QThread):
                     self.log_message.emit(f"透传列索引越界: {idx}")
                 except Exception:
                     pass
-        
-        # 迎角
-        if cols['alpha'] is not None and cols['alpha'] < len(df.columns):
+
+        if cols.get('alpha') is not None and cols.get('alpha') < len(df.columns):
             output_df['Alpha'] = df.iloc[:, cols['alpha']]
-        
-        # 结果
+
         output_df['Fx_new'] = results['force_transformed'][:, 0]
         output_df['Fy_new'] = results['force_transformed'][:, 1]
         output_df['Fz_new'] = results['force_transformed'][:, 2]
@@ -274,12 +284,10 @@ class BatchProcessThread(QThread):
         output_df['Cl'] = results['coeff_moment'][:, 0]
         output_df['Cm'] = results['coeff_moment'][:, 1]
         output_df['Cn'] = results['coeff_moment'][:, 2]
-        
-        # 保存
+
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_file = self.output_dir / f"{file_path.stem}_result_{timestamp}.csv"
         output_df.to_csv(output_file, index=False)
-        
         return output_file
 
     def run(self):
@@ -334,6 +342,13 @@ class IntegratedAeroGUI(QMainWindow):
         main_layout.addWidget(splitter)
         self.statusBar().showMessage("就绪 - 请加载或创建配置")
 
+        # 根据当前窗口宽度设置按钮初始布局
+        try:
+            self.update_button_layout()
+        except Exception:
+            # 若方法尚未定义或出现异常，静默忽略，避免启动失败
+            pass
+
     def create_config_panel(self):
         """创建左侧配置编辑面板"""
         panel = QWidget()
@@ -365,6 +380,8 @@ class IntegratedAeroGUI(QMainWindow):
 
         self.grp_source = QGroupBox("Source Coordinate System")
         self.grp_source.setStyleSheet("QGroupBox { font-weight: bold; }")
+        # 允许在垂直方向扩展以填充空间，使底部按钮保持在窗口底部
+        self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_source = QFormLayout()
 
         self.src_ox = self._create_input("0.0")
@@ -416,6 +433,7 @@ class IntegratedAeroGUI(QMainWindow):
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
         grp_target.setStyleSheet("QGroupBox { font-weight: bold; }")
+        grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_target = QFormLayout()
 
         # Part Name
@@ -465,24 +483,37 @@ class IntegratedAeroGUI(QMainWindow):
         # === 配置操作按钮 ===
         btn_layout = QHBoxLayout()
 
-        btn_load = QPushButton("加载配置")
-        btn_load.clicked.connect(self.load_config)
+        self.btn_load = QPushButton("加载配置")
+        self.btn_load.setFixedHeight(34)
+        self.btn_load.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_load.clicked.connect(self.load_config)
 
-        btn_save = QPushButton("保存配置")
-        btn_save.clicked.connect(self.save_config)
+        self.btn_save = QPushButton("保存配置")
+        self.btn_save.setFixedHeight(34)
+        self.btn_save.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_save.clicked.connect(self.save_config)
 
-        btn_apply = QPushButton("应用配置")
-        btn_apply.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold;")
-        btn_apply.clicked.connect(self.apply_config)
+        self.btn_apply = QPushButton("应用配置")
+        self.btn_apply.setFixedHeight(34)
+        self.btn_apply.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold;")
+        self.btn_apply.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_apply.clicked.connect(self.apply_config)
 
-        btn_layout.addWidget(btn_load)
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_apply)
+        btn_layout.addWidget(self.btn_load)
+        btn_layout.addWidget(self.btn_save)
+        btn_layout.addWidget(self.btn_apply)
 
         # 添加到主布局
         layout.addWidget(grp_target)
         # layout.addWidget(grp_global)  # 删除未定义的grp_global，避免报错
         layout.addLayout(btn_layout)
+        # 设置伸缩：让 Source/Target 在垂直方向扩展以填充空间
+        # header_layout index 0, chk_show_source index 1, grp_source index 2, grp_target index 3, btn_layout index 4
+        try:
+            layout.setStretch(2, 1)
+            layout.setStretch(3, 1)
+        except Exception:
+            pass
         layout.addStretch()
 
         return panel
@@ -505,6 +536,7 @@ class IntegratedAeroGUI(QMainWindow):
         # === 批量处理区 ===
         grp_batch = QGroupBox("批量处理 (Batch Processing)")
         grp_batch.setStyleSheet("QGroupBox { font-weight: bold; }")
+        grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout_batch = QVBoxLayout()
 
         # 文件选择
@@ -546,40 +578,74 @@ class IntegratedAeroGUI(QMainWindow):
         self._file_check_items = []
 
 
-        # 数据格式配置按钮
-        btn_config_format = QPushButton("⚙ 配置数据格式")
-        btn_config_format.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
-        btn_config_format.setToolTip("设置跳过行数、列映射等")
-        btn_config_format.clicked.connect(self.configure_data_format)
+        # 数据格式配置按钮（并作为实例属性，放入可切换的容器）
+        self.btn_config_format = QPushButton("⚙ 配置数据格式")
+        self.btn_config_format.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        self.btn_config_format.setToolTip("设置跳过行数、列映射等")
+        self.btn_config_format.clicked.connect(self.configure_data_format)
 
-        # 进度条
+        # 进度条（隐藏，运行时显示）
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
 
-        # 执行按钮
-        btn_batch = QPushButton("开始批量处理")
-        btn_batch.setMinimumHeight(40)
-        btn_batch.setStyleSheet("background-color: #ff6b6b; color: white; font-weight: bold;")
-        btn_batch.clicked.connect(self.run_batch_processing)
+        # 执行按钮（作为实例属性）
+        self.btn_batch = QPushButton("开始批量处理")
+        self.btn_batch.setFixedHeight(34)
+        self.btn_batch.setStyleSheet("background-color: #ff6b6b; color: white; font-weight: bold;")
+        self.btn_batch.clicked.connect(self.run_batch_processing)
 
         # 日志
         self.txt_batch_log = QTextEdit()
         self.txt_batch_log.setReadOnly(True)
         self.txt_batch_log.setFont(QFont("Consolas", 9))
-        self.txt_batch_log.setMaximumHeight(300)
+        self.txt_batch_log.setMinimumHeight(160)
+        self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # 按钮容器（使用 QGridLayout，后续由 update_button_layout 切换位置）
+        self.btn_widget = QWidget()
+        # 确保按钮区域在布局收缩时仍可见，允许在垂直方向上保留最小高度但可在必要时伸缩
+        self.btn_widget.setMinimumHeight(44)
+        self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        grid = QGridLayout(self.btn_widget)
+        grid.setSpacing(8)
+        grid.setContentsMargins(0, 0, 0, 0)
+        # 平分列的伸缩因子，避免第二列在窗口恢复时被挤出可见区域
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        self.btn_config_format.setFixedHeight(34)
+        self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # 初始放置为一行两列
+        grid.addWidget(self.btn_config_format, 0, 0)
+        grid.addWidget(self.btn_batch, 0, 1)
+        # 固定并复用这个 grid，避免后续替换 layout 导致 Qt 布局对象延迟删除出现几何错误
+        self.btn_grid = grid
 
         layout_batch.addLayout(file_form)
         layout_batch.addWidget(self.grp_file_list)
-        layout_batch.addWidget(btn_config_format)
         layout_batch.addWidget(self.progress_bar)
-        layout_batch.addWidget(btn_batch)
+        layout_batch.addWidget(self.btn_widget)
         layout_batch.addWidget(QLabel("处理日志:"))
         layout_batch.addWidget(self.txt_batch_log)
+        # 让日志框占据剩余垂直空间，从而使外部 groupbox 底部贴近窗口底部
+        # 对应索引: 0=file_form,1=grp_file_list,2=progress_bar,3=btn_widget,4=Label,5=txt_batch_log
+        try:
+            layout_batch.setStretch(5, 1)
+        except Exception:
+            pass
 
         grp_batch.setLayout(layout_batch)
 
         layout.addWidget(status_group)
         layout.addWidget(grp_batch)
+        # 为了让右侧的 grp_batch 在垂直方向上拉伸并触底，设置 layout 的 stretch
+        try:
+            # status_group 在顶部不拉伸，grp_batch 占据剩余空间
+            layout.setStretch(0, 0)
+            layout.setStretch(1, 1)
+        except Exception:
+            pass
+        # 保留一个小的伸缩因子以兼容不同平台的行为
         layout.addStretch()
 
         return panel
@@ -611,6 +677,14 @@ class IntegratedAeroGUI(QMainWindow):
     def toggle_source_visibility(self, state):
         """切换 Source 坐标系的显示/隐藏"""
         self.grp_source.setVisible(state == Qt.Checked)
+        # 切换后刷新布局以确保组框填满高度并使右侧底部元素可见
+        try:
+            QTimer.singleShot(30, self._refresh_layouts)
+        except Exception:
+            try:
+                self._refresh_layouts()
+            except Exception:
+                pass
 
     def toggle_visualization(self):
         """切换3D可视化窗口"""
@@ -668,66 +742,63 @@ class IntegratedAeroGUI(QMainWindow):
 
     def load_config(self):
         """加载配置文件"""
-        fname, _ = QFileDialog.getOpenFileName(self, '打开配置', '.', 'JSON Files (*.json)')
-        if not fname:
-            return
-
         try:
+            fname, _ = QFileDialog.getOpenFileName(self, '打开配置', '.', 'JSON Files (*.json)')
             with open(fname, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # 填充 Source（兼容旧/新格式）
-            src_section = data.get('Source')
-            if src_section and 'CoordSystem' in src_section:
-                src = src_section['CoordSystem']
-                part_name = src_section.get('PartName', 'Global')
-            else:
-                # 兼容旧版仅包含 SourceCoordSystem 的情况
-                src = data.get('SourceCoordSystem')
-                part_name = 'Global'
+                # 填充 Source（兼容旧/新格式）
+                src_section = data.get('Source')
+                if src_section and 'CoordSystem' in src_section:
+                    src = src_section['CoordSystem']
+                    part_name = src_section.get('PartName', 'Global')
+                else:
+                    # 兼容旧版仅包含 SourceCoordSystem 的情况
+                    src = data.get('SourceCoordSystem')
+                    part_name = 'Global'
 
-            if src:
-                if hasattr(self, 'src_part_name'):
-                    self.src_part_name.setText(str(part_name))
+                if src:
+                    if hasattr(self, 'src_part_name'):
+                        self.src_part_name.setText(str(part_name))
 
-                self.src_ox.setText(str(src['Orig'][0]))
-                self.src_oy.setText(str(src['Orig'][1]))
-                self.src_oz.setText(str(src['Orig'][2]))
+                    self.src_ox.setText(str(src['Orig'][0]))
+                    self.src_oy.setText(str(src['Orig'][1]))
+                    self.src_oz.setText(str(src['Orig'][2]))
 
-                self.src_xx.setText(str(src['X'][0]))
-                self.src_xy.setText(str(src['X'][1]))
-                self.src_xz.setText(str(src['X'][2]))
+                    self.src_xx.setText(str(src['X'][0]))
+                    self.src_xy.setText(str(src['X'][1]))
+                    self.src_xz.setText(str(src['X'][2]))
 
-                self.src_yx.setText(str(src['Y'][0]))
-                self.src_yy.setText(str(src['Y'][1]))
-                self.src_yz.setText(str(src['Y'][2]))
+                    self.src_yx.setText(str(src['Y'][0]))
+                    self.src_yy.setText(str(src['Y'][1]))
+                    self.src_yz.setText(str(src['Y'][2]))
 
-                self.src_zx.setText(str(src['Z'][0]))
-                self.src_zy.setText(str(src['Z'][1]))
-                self.src_zz.setText(str(src['Z'][2]))
-                # Source 的力矩中心与参考量（若存在），稳健解析并容错
-                mc_src = None
-                if src_section and isinstance(src_section, dict):
-                    try:
-                        mc_src = src_section.get('SourceMomentCenter') or src_section.get('MomentCenter')
-                    except (IndexError, TypeError, ValueError):
-                        mc_src = None
+                    self.src_zx.setText(str(src['Z'][0]))
+                    self.src_zy.setText(str(src['Z'][1]))
+                    self.src_zz.setText(str(src['Z'][2]))
+                    # Source 的力矩中心与参考量（若存在），稳健解析并容错
+                    mc_src = None
+                    if src_section and isinstance(src_section, dict):
+                        try:
+                            mc_src = src_section.get('SourceMomentCenter') or src_section.get('MomentCenter')
+                        except (IndexError, TypeError, ValueError):
+                            mc_src = None
 
-                if mc_src and hasattr(self, 'src_mcx'):
-                    try:
-                        self.src_mcx.setText(str(mc_src[0]))
-                        self.src_mcy.setText(str(mc_src[1]))
-                        self.src_mcz.setText(str(mc_src[2]))
-                    except Exception:
-                        # 格式异常则跳过，不中断加载流程
-                        pass
+                    if mc_src and hasattr(self, 'src_mcx'):
+                        try:
+                            self.src_mcx.setText(str(mc_src[0]))
+                            self.src_mcy.setText(str(mc_src[1]))
+                            self.src_mcz.setText(str(mc_src[2]))
+                        except Exception:
+                            # 格式异常则跳过，不中断加载流程
+                            pass
 
-                if hasattr(self, 'src_cref') and src_section and isinstance(src_section, dict):
-                    # 使用 get 并提供默认值以防缺失
-                    self.src_cref.setText(str(src_section.get('Cref', 1.0)))
-                    self.src_bref.setText(str(src_section.get('Bref', 1.0)))
-                    self.src_sref.setText(str(src_section.get('S', 10.0)))
-                    self.src_q.setText(str(src_section.get('Q', 1000.0)))
+                    if hasattr(self, 'src_cref') and src_section and isinstance(src_section, dict):
+                        # 使用 get 并提供默认值以防缺失
+                        self.src_cref.setText(str(src_section.get('Cref', 1.0)))
+                        self.src_bref.setText(str(src_section.get('Bref', 1.0)))
+                        self.src_sref.setText(str(src_section.get('S', 10.0)))
+                        self.src_q.setText(str(src_section.get('Q', 1000.0)))
 
             # 填充 Target
             tgt = data['Target']
@@ -1055,6 +1126,175 @@ class IntegratedAeroGUI(QMainWindow):
         self.progress_bar.setVisible(False)
         self.statusBar().showMessage("批量处理失败")
         QMessageBox.critical(self, "错误", f"批处理失败:\n{error_msg}")
+
+    def update_button_layout(self, threshold=720):
+        """根据窗口宽度在网格中切换按钮位置。
+
+        参数 `threshold` 的单位为像素（px）。当窗口宽度大于或等于阈值时，
+        按钮按一行两列排列；当宽度小于阈值时，按钮按两行单列排列（便于窄屏显示）。
+
+        选择 720px 作为默认值是经验值：在常见桌面窗口与侧栏宽度下能保持两按钮在一行。
+        可根据实际布局和用户屏幕密度微调该值。
+        """
+        if not hasattr(self, 'btn_widget'):
+            return
+        try:
+            w = self.width()
+        except Exception:
+            w = threshold
+
+        # 取出已有按钮实例
+        btns = [getattr(self, 'btn_config_format', None), getattr(self, 'btn_batch', None)]
+
+        # 安全地移除旧布局但保留按钮 widget 本身，避免双重删除或内存泄漏。
+        # 我们会从旧布局中取出 widget 引用并在最后调用 deleteLater() 删除旧布局对象。
+        # 我们不再替换已有的 layout 对象（self.btn_grid），而是复用并清空它的内容
+        extracted_widgets = []
+        grid = getattr(self, 'btn_grid', None)
+        if grid is None:
+            grid = QGridLayout()
+            grid.setSpacing(8)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 1)
+            self.btn_grid = grid
+        else:
+            # 从现有 grid 中提取 widget（不删除 layout 本身）
+            while grid.count():
+                item = grid.takeAt(0)
+                wdg = item.widget()
+                if wdg:
+                    try:
+                        grid.removeWidget(wdg)
+                    except Exception:
+                        pass
+                    extracted_widgets.append(wdg)
+            # 重新确保列伸缩
+            try:
+                grid.setColumnStretch(0, 1)
+                grid.setColumnStretch(1, 1)
+            except Exception:
+                pass
+
+        if w >= threshold:
+            # 宽窗口：一行两列
+            # 如果我们刚才从旧布局提取了 widgets，优先使用它们以保持实例不变
+            if extracted_widgets:
+                if len(extracted_widgets) >= 1 and extracted_widgets[0]:
+                    grid.addWidget(extracted_widgets[0], 0, 0)
+                if len(extracted_widgets) >= 2 and extracted_widgets[1]:
+                    grid.addWidget(extracted_widgets[1], 0, 1)
+            else:
+                if btns[0]:
+                    grid.addWidget(btns[0], 0, 0)
+                if btns[1]:
+                    grid.addWidget(btns[1], 0, 1)
+            self._btn_orientation = 'horizontal'
+        else:
+            # 窄窗口：两行布局（第一列靠左）
+            if extracted_widgets:
+                if len(extracted_widgets) >= 1 and extracted_widgets[0]:
+                    grid.addWidget(extracted_widgets[0], 0, 0)
+                if len(extracted_widgets) >= 2 and extracted_widgets[1]:
+                    grid.addWidget(extracted_widgets[1], 1, 0)
+            else:
+                if btns[0]:
+                    grid.addWidget(btns[0], 0, 0)
+                if btns[1]:
+                    grid.addWidget(btns[1], 1, 0)
+            self._btn_orientation = 'vertical'
+
+        # 将清理后的 grid 重新应用到 btn_widget（若尚未设置）
+        if self.btn_widget.layout() is not grid:
+            try:
+                self.btn_widget.setLayout(grid)
+            except Exception:
+                pass
+        # 确保按钮容器在布局更改后更新尺寸与几何，以免在窗口状态切换时被临时挤出视口
+        try:
+            self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+            # 尝试通过标准方式强制刷新布局：使布局失效并激活布局，更新几何信息
+            cw = self.centralWidget()
+            if cw:
+                layout = cw.layout()
+                if layout:
+                    layout.invalidate()
+                    layout.activate()
+                cw.updateGeometry()
+                for child in cw.findChildren(QWidget):
+                    child.updateGeometry()
+            try:
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def resizeEvent(self, event):
+        try:
+            self.update_button_layout()
+        except Exception:
+            pass
+        return super().resizeEvent(event)
+
+    def showEvent(self, event):
+        """在窗口首次显示后延迟触发一次布局更新以确保初始可见性。"""
+        try:
+            QTimer.singleShot(50, self.update_button_layout)
+            QTimer.singleShot(120, self._force_layout_refresh)
+        except Exception:
+            pass
+        return super().showEvent(event)
+
+    def _force_layout_refresh(self):
+        """尝试强制刷新布局：激活布局并做一个极小的像素级尺寸微调以触发布局重算。"""
+        try:
+            cw = self.centralWidget()
+            if cw and cw.layout():
+                cw.layout().activate()
+            try:
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
+            except Exception:
+                pass
+
+            # 微调窗口宽度 (+2 然后恢复) 以触发底层布局引擎重新布局。
+            w = self.width()
+            h = self.height()
+            # 如果主窗口是可调整大小的，做一次非常小的尺寸变动并回滚
+            self.resize(w + 2, h)
+            QTimer.singleShot(20, lambda: self.resize(w, h))
+        except Exception:
+            pass
+
+    def _refresh_layouts(self):
+        """激活并刷新主要布局与 splitter，以保证子控件正确伸缩。"""
+        try:
+            cw = self.centralWidget()
+            if cw and cw.layout():
+                cw.layout().activate()
+            # 激活左右 splitter 的布局
+            try:
+                # 触发按钮布局更新和一次强制刷新
+                self.update_button_layout()
+            except Exception:
+                pass
+            try:
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
+            except Exception:
+                pass
+            # 轻微调整 splitter 大小以促使 Qt 重新布局（仅在必要时）
+            try:
+                s = self.findChild(QSplitter)
+                if s:
+                    sizes = s.sizes()
+                    s.setSizes(sizes)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 def main():
