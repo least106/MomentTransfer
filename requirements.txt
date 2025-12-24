@@ -4,3 +4,4 @@ pandas
 pyside6==6.1.3
 openpyxl
 matplotlib
+click
