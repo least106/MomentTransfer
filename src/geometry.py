@@ -1,5 +1,6 @@
 import numpy as np
 from typing import List
+import warnings
 
 # 基础向量工具
 def to_numpy_vec(vec: List[float]) -> np.ndarray:
@@ -27,7 +28,7 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
     输出：Numpy矩阵，每一行是一个基向量
     
     Raises:
-        ValueError: 当输入向量为零或基向量不正交时抛出异常
+        ValueError: 当输入向量为零或基矩阵接近奇异时抛出异常
     """
     vx = normalize(to_numpy_vec(x))
     vy = normalize(to_numpy_vec(y))
@@ -39,9 +40,8 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
     yz_dot = abs(np.dot(vy, vz))
     zx_dot = abs(np.dot(vz, vx))
 
-    orthogonality_threshold = 0.1  # 允许一定误差
+    orthogonality_threshold = 0.05  # 允许一定误差（更严格的正交性阈值）
     if xy_dot > orthogonality_threshold or yz_dot > orthogonality_threshold or zx_dot > orthogonality_threshold:
-        import warnings
         warnings.warn(
             f"基向量可能不正交：X·Y={xy_dot:.4f}, Y·Z={yz_dot:.4f}, Z·X={zx_dot:.4f}。"
             f"这可能导致坐标变换不准确。",
