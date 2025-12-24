@@ -7,11 +7,11 @@ matplotlib.use('Qt5Agg') # 兼容 PySide6
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton, 
                                QGroupBox, QFormLayout, QComboBox, QFileDialog, QMessageBox)
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from mpl_toolkits.mplot3d import Axes3D
+
 
 # 引入刚才添加的几何算法
 from src.geometry import euler_angles_to_basis
@@ -173,30 +173,36 @@ class ConfigCreator(QMainWindow):
     def apply_template(self):
         """根据下拉框选择，预设一些经验值"""
         idx = self.combo_template.currentIndex()
-        
-        # 暂停信号以避免重复刷新
-        self.blockSignals(True)
-        
-        if idx == 0: # Generic
-            pass # 保持当前不变
-        elif idx == 1: # Right Wing
+        # 仅暂停会触发 redraw 的旋转控件信号，避免全窗口屏蔽
+        self.spin_yaw.blockSignals(True)
+        self.spin_pitch.blockSignals(True)
+        self.spin_roll.blockSignals(True)
+
+        if idx == 0:  # Generic
+            pass
+        elif idx == 1:  # Right Wing
             self.spin_yaw.setValue(30)   # 后掠
             self.spin_pitch.setValue(2)  # 安装角
             self.spin_roll.setValue(5)   # 上反
-        elif idx == 2: # Left Wing
+        elif idx == 2:  # Left Wing
             self.spin_yaw.setValue(-30)
             self.spin_pitch.setValue(2)
             self.spin_roll.setValue(-5)
-        elif idx == 3: # Vertical Tail
+        elif idx == 3:  # Vertical Tail
             self.spin_yaw.setValue(0)
             self.spin_pitch.setValue(0)
             self.spin_roll.setValue(90)  # 竖起来
-        elif idx == 4: # Horizontal Stabilizer
+        elif idx == 4:  # Horizontal Stabilizer
             self.spin_yaw.setValue(15)
             self.spin_pitch.setValue(-2)
             self.spin_roll.setValue(0)
 
-        self.blockSignals(False)
+        # 解除仅针对上面控件的信号屏蔽
+        self.spin_yaw.blockSignals(False)
+        self.spin_pitch.blockSignals(False)
+        self.spin_roll.blockSignals(False)
+
+        # 手动触发一次可视化刷新
         self.update_visualization()
 
     def update_visualization(self):
@@ -217,15 +223,29 @@ class ConfigCreator(QMainWindow):
         self.canvas3d.plot_systems(origin, basis, mc)
 
     def save_json(self):
-        # 1. 计算最终向量
+        data = self.build_config_dict()
+
+        # 3. 保存文件
+        fname, _ = QFileDialog.getSaveFileName(self, '保存配置', 'custom_part.json', 'JSON Files (*.json)')
+        if fname:
+            try:
+                with open(fname, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2)
+                QMessageBox.information(self, "成功", f"配置文件已生成：\n{fname}")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", str(e))
+
+    def build_config_dict(self) -> dict:
+        """构建符合项目 `input.json` 结构的字典并返回。
+
+        抽取为独立方法以避免与其他位置重复定义结构。
+        """
         basis = euler_angles_to_basis(
             self.spin_roll.value(),
             self.spin_pitch.value(),
             self.spin_yaw.value()
         )
-        
-        # 2. 构建字典 (符合 input.json 结构)
-        # 构造对等的 Source / Target 配置
+
         data = {
             "Source": {
                 "PartName": "Global",
@@ -259,15 +279,7 @@ class ConfigCreator(QMainWindow):
             }
         }
 
-        # 3. 保存文件
-        fname, _ = QFileDialog.getSaveFileName(self, '保存配置', 'custom_part.json', 'JSON Files (*.json)')
-        if fname:
-            try:
-                with open(fname, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2)
-                QMessageBox.information(self, "成功", f"配置文件已生成：\n{fname}")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", str(e))
+        return data
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
