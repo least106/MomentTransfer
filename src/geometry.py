@@ -2,6 +2,10 @@ import numpy as np
 from typing import List
 import warnings
 
+# 模块级常量：可根据不同应用场景调整
+ORTHOGONALITY_THRESHOLD = 0.05  # 允许基向量之间一定误差
+SINGULARITY_THRESHOLD = 1e-6    # 判断基矩阵是否接近奇异的阈值
+
 # 基础向量工具
 def to_numpy_vec(vec: List[float]) -> np.ndarray:
     """辅助函数：将列表转换为 Numpy 数组"""
@@ -21,12 +25,22 @@ def normalize(vec: np.ndarray) -> np.ndarray:
     return vec / norm
 
 # 矩阵构建与旋转逻辑
-def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np.ndarray:
+def construct_basis_matrix(
+    x: List[float],
+    y: List[float],
+    z: List[float],
+    orthogonality_threshold: float = ORTHOGONALITY_THRESHOLD,
+    singularity_threshold: float = SINGULARITY_THRESHOLD,
+) -> np.ndarray:
     """
     构建基向量矩阵 (3x3)。
     输入：三个轴的方向向量
     输出：Numpy矩阵，每一行是一个基向量
     
+    可选参数:
+        orthogonality_threshold: 正交性判定阈值，点积超过此值会触发警告。
+        singularity_threshold: 行列式绝对值低于此值会被视为接近奇异并抛出异常。
+
     Raises:
         ValueError: 当输入向量为零或基矩阵接近奇异时抛出异常
     """
@@ -40,7 +54,6 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
     yz_dot = abs(np.dot(vy, vz))
     zx_dot = abs(np.dot(vz, vx))
 
-    orthogonality_threshold = 0.05  # 允许一定误差（更严格的正交性阈值）
     if xy_dot > orthogonality_threshold or yz_dot > orthogonality_threshold or zx_dot > orthogonality_threshold:
         warnings.warn(
             f"基向量可能不正交：X·Y={xy_dot:.4f}, Y·Z={yz_dot:.4f}, Z·X={zx_dot:.4f}。"
@@ -52,8 +65,10 @@ def construct_basis_matrix(x: List[float], y: List[float], z: List[float]) -> np
 
     # 进一步检查基矩阵的线性相关性（行列式接近零表示基向量线性相关 -> 奇异矩阵）
     det = np.linalg.det(basis)
-    if abs(det) < 1e-6:
-        raise ValueError(f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。")
+    if abs(det) < singularity_threshold:
+        raise ValueError(
+            f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。"
+        )
 
     return basis
 
