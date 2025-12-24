@@ -1,6 +1,7 @@
 import os
 import argparse
-import sys
+import json
+
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
 from src import load_data, AeroCalculator
@@ -58,7 +59,7 @@ def main():
     try:
         project_data = load_data(args.input)
         calculator = AeroCalculator(project_data)
-    except Exception as e:
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
         print(f"[致命错误] 无法加载配置: {e}")
         print("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或至少包含旧格式的 'SourceCoordSystem' 与 'Target'。可使用 creator.py 生成兼容配置。")
         return
@@ -73,19 +74,37 @@ def main():
     print("-" * 40)
     print(f"转换结果 (Target: {project_data.target_config.part_name})")
 
-    def fmt(lst):
-        return [round(x, 4) for x in lst]
+    def round_values(values):
+        return [round(x, 4) for x in values]
 
-    print(f"Force (N)    : {fmt(result.force_transformed)}")
-    print(f"Moment (N*m) : {fmt(result.moment_transformed)}")
+    print(f"Force (N)    : {round_values(result.force_transformed)}")
+    print(f"Moment (N*m) : {round_values(result.moment_transformed)}")
     print("-" * 40)
     print(f"气动系数:")
-    print(f"Force [Cx,Cy,Cz] : {fmt(result.coeff_force)}")
-    print(f"Moment [Cl,Cm,Cn]: {fmt(result.coeff_moment)}")
+    print(f"Force [Cx,Cy,Cz] : {round_values(result.coeff_force)}")
+    print(f"Moment [Cl,Cm,Cn]: {round_values(result.coeff_moment)}")
     print("-" * 40)
 
     # (可选) 这里可以添加将单点结果写入 output.json 的逻辑
-    # 为了保持代码简洁，这里仅做打印演示
+    # 如果用户提供了 --output，则将结果序列化并写入指定文件
+    if args.output:
+        out_data = {
+            "input": {"force": raw_forces, "moment": raw_moments},
+            "target": getattr(project_data.target_config, "part_name", None),
+            "result": {
+                "force_transformed": result.force_transformed,
+                "moment_transformed": result.moment_transformed,
+                "coeff_force": result.coeff_force,
+                "coeff_moment": result.coeff_moment,
+            },
+        }
+
+        try:
+            with open(args.output, "w", encoding="utf-8") as fh:
+                json.dump(out_data, fh, ensure_ascii=False, indent=2)
+            print(f"已将结果写入: {args.output}")
+        except OSError as e:
+            print(f"[警告] 无法将结果写入 {args.output}: {e}")
 
 
 if __name__ == "__main__":
