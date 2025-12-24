@@ -202,7 +202,7 @@ class TestLoadData:
             temp_path = f.name
         
         try:
-            with pytest.raises(KeyError, match="缺少关键字段"):
+            with pytest.raises(ValueError, match="配置文件缺少"):
                 load_data(temp_path)
         finally:
             os.unlink(temp_path)
