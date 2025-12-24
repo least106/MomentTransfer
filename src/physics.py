@@ -35,6 +35,51 @@ class AeroCalculator:
         )
         self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
+    def _safe_divide(self, numerator: np.ndarray, denominator, warn_msg: str = None) -> np.ndarray:
+        """安全除法，处理标量或按轴数组的分母。
+
+        - numerator: (N, M) 或 (M,) 的数组
+        - denominator: 标量或 1D 数组（长度为 M）
+        当分母接近零时：发出警告并将对应结果置为 0，避免除以零或 NaN。
+        """
+        denom_arr = np.array(denominator, dtype=float)
+
+        # 标量分母情况
+        if denom_arr.ndim == 0:
+            if np.isclose(denom_arr, 0.0):
+                if warn_msg is None:
+                    warnings.warn("分母为零，已将结果设为 0。", UserWarning)
+                else:
+                    warnings.warn(warn_msg, UserWarning)
+                return np.zeros_like(numerator)
+            return numerator / denom_arr
+
+        # 数组分母情况（按轴分母，例如 moment_length_vector）
+        zero_mask = np.isclose(denom_arr, 0.0)
+        if np.any(zero_mask):
+            if warn_msg is None:
+                warnings.warn(
+                    "分母向量中存在零或未定义值，相关轴的结果将被设为 0。",
+                    UserWarning,
+                )
+            else:
+                warnings.warn(warn_msg, UserWarning)
+
+        safe_denom = np.where(zero_mask, 1.0, denom_arr)
+        result = numerator / safe_denom
+
+        # 如果 numerator 是 (N, M) 而 denom_arr 是 (M,), 则按列屏蔽
+        try:
+            if result.ndim == 2 and denom_arr.ndim == 1:
+                result[:, zero_mask] = 0.0
+            elif result.ndim == 1 and denom_arr.ndim == 1:
+                result[zero_mask] = 0.0
+        except Exception:
+            # 若形状不匹配，回退为原始结果
+            pass
+
+        return result
+
     def process_frame(self, force_raw: List[float], moment_raw: List[float]) -> AeroResult:
         """保持原有单点方法，用于 GUI 或简单测试"""
         # 调用下面的批量方法，但传入单行数据
@@ -79,42 +124,25 @@ class AeroCalculator:
         b = self.cfg.target_config.b_ref
         c = self.cfg.target_config.c_ref
         denom_force = q * s
+        # 使用统一的安全除法处理标量/按轴分母的各种场景
+        C_F = self._safe_divide(
+            F_final,
+            denom_force,
+            warn_msg="动压(q) 或 参考面积 s_ref 为零，无法计算力系数，已将力系数设为 0。",
+        )
 
-        # 如果动压或面积为零，则无法计算任何系数
-        if np.isclose(denom_force, 0.0):
-            warnings.warn("动压(q) 或 参考面积 s_ref 为零，无法计算系数，已将力和力矩系数设为零。", UserWarning)
-            C_F = np.zeros_like(F_final)
-            C_M = np.zeros_like(M_final)
-        else:
-            C_F = F_final / denom_force
+        # 为不同轴创建参考长度系数向量（Roll->b, Pitch->c, Yaw->b）
+        b_val = float(b) if (b is not None) else 0.0
+        c_val = float(c) if (c is not None) else 0.0
+        moment_length_vector = np.array([b_val, c_val, b_val], dtype=float)
 
-            # 创建并缓存不同轴参考长度系数向量（Roll->b, Pitch->c, Yaw->b）
-            if not hasattr(self, "_moment_length_vector"):
-                # 对可能的 None 值提供退路，避免创建包含 None 的数组
-                b_val = float(b) if (b is not None) else 0.0
-                c_val = float(c) if (c is not None) else 0.0
-                self._moment_length_vector = np.array([b_val, c_val, b_val], dtype=float)
+        denom_moment = denom_force * moment_length_vector
 
-            # 根据当前的动压与参考长度计算力矩系数分母
-            denom_moment = denom_force * self._moment_length_vector
-
-            # 防止 denom_moment 中存在 0 导致除零，定位这些分量并对其单独处理
-            zero_mask = np.isclose(denom_moment, 0.0)
-            if np.any(zero_mask):
-                warnings.warn(
-                    "参考长度向量 (b_ref/c_ref) 中存在 0 或未定义值，相关轴向的力矩系数将被设为 0 以避免除以零。",
-                    UserWarning
-                )
-
-            # 计算时使用安全分母（将为 0 的位置暂时设为 1 避免除零），随后将对应系数置为 0
-            safe_denom = denom_moment.copy()
-            safe_denom[zero_mask] = 1.0
-
-            C_M = M_final / safe_denom
-
-            if np.any(zero_mask):
-                # zero_mask 是长度为3的布尔数组，按列屏蔽
-                C_M[:, zero_mask] = 0.0
+        C_M = self._safe_divide(
+            M_final,
+            denom_moment,
+            warn_msg="动压(q) 或 参考长度 b_ref/c_ref 为零，相关轴的力矩系数已设为0。",
+        )
 
         return {
             "force_transformed": F_final,
