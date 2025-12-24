@@ -215,14 +215,45 @@ def run_batch_processing_v2(config_path: str, input_path: str):
         pattern = input("  文件名匹配模式 (如 *.csv, data_*.xlsx): ").strip()
         if not pattern:
             pattern = "*.csv"
-        
-        files_to_process = find_matching_files(str(input_path), pattern)
-        print(f"  找到 {len(files_to_process)} 个匹配文件")
-        
-        if not files_to_process:
+        files = find_matching_files(str(input_path), pattern)
+        print(f"  找到 {len(files)} 个匹配文件:")
+        for i, fp in enumerate(files, start=1):
+            print(f"    {i}. {fp.name}")
+
+        if not files:
             print("  [错误] 未找到匹配的文件")
             return
-        
+
+        # 让用户从命令行选择要处理的文件（支持: all / 1,3,5 / 2-4）
+        sel = input("  选择要处理的文件（默认 all）: ").strip().lower()
+        def parse_selection(sel_str, n):
+            if not sel_str or sel_str in ('all', 'a'):
+                return list(range(n))
+            parts = [s.strip() for s in sel_str.split(',') if s.strip()]
+            idxs = []
+            for part in parts:
+                if '-' in part:
+                    a, b = part.split('-', 1)
+                    try:
+                        a_i = int(a) - 1
+                        b_i = int(b) - 1
+                        idxs.extend(range(a_i, b_i + 1))
+                    except Exception:
+                        continue
+                else:
+                    try:
+                        idxs.append(int(part) - 1)
+                    except Exception:
+                        continue
+            # 过滤有效索引
+            return sorted(set(i for i in idxs if 0 <= i < n))
+
+        chosen_idxs = parse_selection(sel, len(files))
+        if not chosen_idxs:
+            print("  未选择有效文件，已取消")
+            return
+
+        files_to_process = [files[i] for i in chosen_idxs]
         # 输出目录默认为输入目录
         output_dir = input_path
     else:
