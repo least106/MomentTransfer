@@ -152,18 +152,17 @@ class ColumnMappingDialog(QDialog):
     def get_config(self):
         """获取配置"""
         passthrough = []
-        if self.txt_passthrough.text().strip():
+        text = self.txt_passthrough.text().strip()
+        if text:
             try:
-                passthrough = [int(x.strip()) for x in self.txt_passthrough.text().split(',')]
-        # 从界面上的复选框列表获取用户选择的文件
-        selected_files = [p for (chk, p) in self._file_check_items if chk.isChecked()]
-        if not selected_files:
-            # 将警告写入日志而非弹窗
-            self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 未选择任何文件，已取消批处理。")
-            self.progress_bar.setVisible(False)
-            return
+                passthrough = [int(x.strip()) for x in text.split(',') if x.strip()]
+            except ValueError:
+                # 如果存在无法解析的列索引，则忽略并返回空的透传列
+                passthrough = []
 
-        files_to_process = selected_files
+        return {
+            'skip_rows': self.spin_skip_rows.value(),
+            'columns': {
                 'alpha': self.col_alpha.value() if self.col_alpha.value() >= 0 else None,
                 'fx': self.col_fx.value(),
                 'fy': self.col_fy.value(),
@@ -193,7 +192,7 @@ class BatchProcessThread(QThread):
     def process_file(self, file_path):
         """处理单个文件"""
         # 读取数据
-        if str(file_path).endswith('.csv'):
+        if file_path.suffix == '.csv':
             df = pd.read_csv(file_path, header=None, skiprows=self.data_config['skip_rows'])
         else:
             df = pd.read_excel(file_path, header=None, skiprows=self.data_config['skip_rows'])
@@ -831,8 +830,7 @@ class IntegratedAeroGUI(QMainWindow):
                         "X": [float(self.src_xx.text()), float(self.src_xy.text()), float(self.src_xz.text())],
                         "Y": [float(self.src_yx.text()), float(self.src_yy.text()), float(self.src_yz.text())],
                         "Z": [float(self.src_zx.text()), float(self.src_zy.text()), float(self.src_zz.text())]
-                    }
-                    ,
+                    },
                     "SourceMomentCenter": [float(self.src_mcx.text()), float(self.src_mcy.text()), float(self.src_mcz.text())],
                     "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
                     "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
@@ -882,27 +880,48 @@ class IntegratedAeroGUI(QMainWindow):
                 f"- 保留列: {self.data_config['passthrough']}")
 
     def browse_batch_input(self):
-        """选择输入文件或目录"""
-        # 允许用户先尝试选文件（单文件），若未选则尝试选目录；选中后自动扫描并填充文件列表
-        fname, _ = QFileDialog.getOpenFileName(
-            self, '选择输入文件（或取消以选择目录）', '.',
-            'Data Files (*.csv *.xlsx *.xls);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls)'
-        )
-        chosen_path = None
-        if fname:
-            chosen_path = fname
-        else:
-            dirname = QFileDialog.getExistingDirectory(self, '选择输入目录')
-            if dirname:
-                chosen_path = dirname
+        """选择输入文件或目录（单一对话框，支持切换文件/目录模式）。"""
+        dlg = QFileDialog(self, '选择输入文件或目录')
+        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+        # 默认允许选择单个文件
+        dlg.setFileMode(QFileDialog.ExistingFile)
+        dlg.setNameFilter('Data Files (*.csv *.xlsx *.xls);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls)')
 
-        if chosen_path:
-            self.inp_batch_input.setText(chosen_path)
-            # 扫描并在界面上列出文件，用户可勾选要处理的文件
-            try:
-                self._scan_and_populate_files(chosen_path)
-            except Exception as e:
-                QMessageBox.warning(self, "扫描失败", f"扫描文件失败: {e}")
+        # 添加切换目录选择的复选框（仅在非原生对话框时可用）
+        chk_dir = QCheckBox('选择目录（切换到目录选择模式）')
+        chk_dir.setToolTip('勾选后可以直接选择文件夹；不勾选则选择单个数据文件。')
+
+        layout = dlg.layout()
+        try:
+            layout.addWidget(chk_dir)
+        except Exception:
+            # 若布局操作失败，忽略并继续（兼容不同平台）
+            pass
+
+        def on_toggle_dir(checked):
+            if checked:
+                dlg.setFileMode(QFileDialog.Directory)
+                dlg.setOption(QFileDialog.ShowDirsOnly, True)
+            else:
+                dlg.setFileMode(QFileDialog.ExistingFile)
+                dlg.setOption(QFileDialog.ShowDirsOnly, False)
+
+        chk_dir.toggled.connect(on_toggle_dir)
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        selected = dlg.selectedFiles()
+        if not selected:
+            return
+
+        chosen_path = selected[0]
+        self.inp_batch_input.setText(chosen_path)
+        # 扫描并在界面上列出文件，用户可勾选要处理的文件
+        try:
+            self._scan_and_populate_files(chosen_path)
+        except Exception as e:
+            QMessageBox.warning(self, "扫描失败", f"扫描文件失败: {e}")
 
     def _scan_and_populate_files(self, chosen_path):
         """扫描所选路径并在滚动区域中生成复选框列表（默认全选）。"""
@@ -910,16 +929,14 @@ class IntegratedAeroGUI(QMainWindow):
         files = []
         if p.is_file():
             files = [p]
-            output_dir = p.parent
+
+            self.output_dir = p.parent
         elif p.is_dir():
             pattern = self.inp_pattern.text() if hasattr(self, 'inp_pattern') else "*.csv"
             for file_path in p.rglob('*'):
                 if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
                     files.append(file_path)
-            output_dir = p
-        else:
-            raise ValueError("无效的输入路径")
-
+            self.output_dir = p
         # 清空旧的复选框
         for i in reversed(range(self.file_list_layout_inner.count())):
             w = self.file_list_layout_inner.itemAt(i).widget()
@@ -973,16 +990,23 @@ class IntegratedAeroGUI(QMainWindow):
         files_to_process = []
         if input_path.is_file():
             files_to_process = [input_path]
-            output_dir = input_path.parent
+            # 优先使用由浏览操作设置的 output_dir（self.output_dir），否则使用文件所在目录
+            output_dir = getattr(self, 'output_dir', input_path.parent)
+
         elif input_path.is_dir():
-            pattern = self.inp_pattern.text()
-            for file_path in input_path.rglob('*'):
-                if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
-                    files_to_process.append(file_path)
-            output_dir = input_path
-            
+            # 若界面上存在由 _scan_and_populate_files 填充的复选框列表，则以复选框选择为准
+            if getattr(self, '_file_check_items', None):
+                files_to_process = [fp for cb, fp in self._file_check_items if cb.isChecked()]
+                output_dir = getattr(self, 'output_dir', input_path)
+            else:
+                pattern = self.inp_pattern.text()
+                for file_path in input_path.rglob('*'):
+                    if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
+                        files_to_process.append(file_path)
+                output_dir = input_path
+
             if not files_to_process:
-                QMessageBox.warning(self, "警告", f"未找到匹配 '{pattern}' 的文件")
+                QMessageBox.warning(self, "警告", f"未找到匹配 '{self.inp_pattern.text()}' 的文件或未选择任何文件")
                 return
         else:
             QMessageBox.warning(self, "错误", "无效的输入路径")

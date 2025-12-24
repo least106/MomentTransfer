@@ -1,8 +1,6 @@
-import sys
-import os
 import argparse
 import pandas as pd
-import numpy as np
+
 from datetime import datetime
 from pathlib import Path
 import fnmatch
@@ -98,13 +96,45 @@ def find_matching_files(directory: str, pattern: str) -> list:
     return sorted(matched_files)
 
 
+def parse_selection(sel_str: str, n: int) -> list:
+    """解析用户选择的文件索引字符串，支持 all、逗号分隔和区间（如 2-4）。
+
+    返回有效的 0-based 索引列表（已排序且去重）。
+    """
+    if not sel_str or sel_str in ('all', 'a'):
+        return list(range(n))
+    parts = [s.strip() for s in sel_str.split(',') if s.strip()]
+    idxs = []
+    for part in parts:
+        if '-' in part:
+            try:
+                a, b = part.split('-', 1)
+                a_i = int(a) - 1
+                b_i = int(b) - 1
+                idxs.extend(range(a_i, b_i + 1))
+            except Exception:
+                continue
+        else:
+            try:
+                idxs.append(int(part) - 1)
+            except Exception:
+                continue
+    return sorted(set(i for i in idxs if 0 <= i < n))
+
+
 def read_data_with_config(file_path: str, config: BatchConfig) -> pd.DataFrame:
     """根据配置读取数据文件"""
     # 读取文件（跳过指定行数）
-    if file_path.endswith('.csv'):
+    ext = Path(file_path).suffix.lower()
+    if ext == '.csv':
         df = pd.read_csv(file_path, header=None, skiprows=config.skip_rows)
-    else:
+    elif ext in {'.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt'}:
         df = pd.read_excel(file_path, header=None, skiprows=config.skip_rows)
+    else:
+        raise ValueError(
+            f"不支持的文件类型: '{file_path}'. 仅支持 CSV (.csv) 和 Excel "
+            f"(.xls, .xlsx, .xlsm, .xlsb, .odf, .ods, .odt) 文件。"
+        )
     
     return df
 
@@ -113,25 +143,41 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
                        config: BatchConfig, output_dir: Path) -> bool:
     """处理单个文件"""
     try:
-        print(f"\n处理文件: {file_path.name}")
+        # 先根据配置读取数据文件
+        df = read_data_with_config(file_path, config)
+        # 校验列索引是否在有效范围内
+        num_cols = len(df.columns)
+        required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
+        for key in required_keys:
+            col_idx = config.column_mappings.get(key)
+            if col_idx is None:
+                raise ValueError(f"列映射缺失: '{key}' 未配置")
+            if not (0 <= col_idx < num_cols):
+                raise ValueError(
+                    f"列索引越界: column_mappings['{key}'] = {col_idx}, "
+                    f"但当前数据仅有 {num_cols} 列"
+                )
         
-        # 读取数据
-        df = read_data_with_config(str(file_path), config)
-        print(f"  读取到 {len(df)} 行数据")
-        
-        # 提取力和力矩数据
-        forces = df[[
-            config.column_mappings['fx'],
-            config.column_mappings['fy'],
-            config.column_mappings['fz']
-        ]].values
-        
-        moments = df[[
-            config.column_mappings['mx'],
-            config.column_mappings['my'],
-            config.column_mappings['mz']
-        ]].values
-        
+        # 提取力和力矩数据（按列位置索引），并转换为数值数组
+        fx_i = config.column_mappings['fx']
+        fy_i = config.column_mappings['fy']
+        fz_i = config.column_mappings['fz']
+        mx_i = config.column_mappings['mx']
+        my_i = config.column_mappings['my']
+        mz_i = config.column_mappings['mz']
+
+        forces_df = df.iloc[:, [fx_i, fy_i, fz_i]].apply(pd.to_numeric, errors='coerce')
+        moments_df = df.iloc[:, [mx_i, my_i, mz_i]].apply(pd.to_numeric, errors='coerce')
+
+        # 检测并提示非数值行数量，然后以0.0替代
+        nans_forces = forces_df.isna().any(axis=1).sum()
+        nans_moments = moments_df.isna().any(axis=1).sum()
+        if nans_forces or nans_moments:
+            print(f"  [警告] 在文件 {Path(file_path).name} 中检测到 {nans_forces} 行力数据和 {nans_moments} 行力矩数据包含非数值，已将其替换为0.0。")
+
+        forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+        moments = moments_df.fillna(0.0).to_numpy(dtype=float)
+
         # 执行计算
         print("  执行坐标变换...")
         results = calculator.process_batch(forces, moments)
@@ -169,6 +215,10 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         output_df['Cn'] = results['coeff_moment'][:, 2]
         
         # 保存结果
+        # 确保输出目录存在
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_file = output_dir / f"{file_path.stem}_result_{timestamp}.csv"
         output_df.to_csv(output_file, index=False)
@@ -220,34 +270,7 @@ def run_batch_processing_v2(config_path: str, input_path: str):
         for i, fp in enumerate(files, start=1):
             print(f"    {i}. {fp.name}")
 
-        if not files:
-            print("  [错误] 未找到匹配的文件")
-            return
-
-        # 让用户从命令行选择要处理的文件（支持: all / 1,3,5 / 2-4）
         sel = input("  选择要处理的文件（默认 all）: ").strip().lower()
-        def parse_selection(sel_str, n):
-            if not sel_str or sel_str in ('all', 'a'):
-                return list(range(n))
-            parts = [s.strip() for s in sel_str.split(',') if s.strip()]
-            idxs = []
-            for part in parts:
-                if '-' in part:
-                    a, b = part.split('-', 1)
-                    try:
-                        a_i = int(a) - 1
-                        b_i = int(b) - 1
-                        idxs.extend(range(a_i, b_i + 1))
-                    except Exception:
-                        continue
-                else:
-                    try:
-                        idxs.append(int(part) - 1)
-                    except Exception:
-                        continue
-            # 过滤有效索引
-            return sorted(set(i for i in idxs if 0 <= i < n))
-
         chosen_idxs = parse_selection(sel, len(files))
         if not chosen_idxs:
             print("  未选择有效文件，已取消")
@@ -287,7 +310,7 @@ def run_batch_processing_v2(config_path: str, input_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="气动载荷批处理工具 v2.0 - 支持灵活的数据格式",
+        description="MomentTransfer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
