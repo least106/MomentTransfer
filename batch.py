@@ -176,6 +176,92 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
     return out_path
 
 
+def process_df_chunk(chunk_df: pd.DataFrame,
+                     fx_i: int, fy_i: int, fz_i: int,
+                     mx_i: int, my_i: int, mz_i: int,
+                     calculator: AeroCalculator,
+                     cfg: BatchConfig,
+                     out_path: Path,
+                     first_chunk: bool,
+                     logger) -> tuple:
+    """模块级函数：处理单个数据块并将结果写入 out_path。
+
+    返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
+    """
+    # 解析力/力矩列并检测非数值
+    forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]].apply(pd.to_numeric, errors='coerce')
+    moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]].apply(pd.to_numeric, errors='coerce')
+
+    mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
+    n_non = int(mask_non_numeric.sum())
+    dropped = 0
+
+    if n_non:
+        # 记录示例行用于诊断
+        samp_n = min(cfg.sample_rows, n_non)
+        if samp_n > 0:
+            idxs = list(np.where(mask_non_numeric)[0][:samp_n])
+            for idx in idxs:
+                logger.warning(f"文件 {out_path.name} 非数值示例（chunk 内行 {idx}）: {chunk_df.iloc[idx].to_dict()}")
+
+    if cfg.treat_non_numeric == 'drop':
+        valid_idx = ~mask_non_numeric
+        if valid_idx.sum() == 0:
+            # 全部丢弃
+            dropped = len(chunk_df)
+            return 0, dropped, n_non, first_chunk
+        forces = forces_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
+        moments = moments_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
+        data_df = chunk_df[valid_idx].reset_index(drop=True)
+    else:
+        forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+        moments = moments_df.fillna(0.0).to_numpy(dtype=float)
+        data_df = chunk_df.reset_index(drop=True)
+
+    logger.info(f"  执行坐标变换... 行数={len(forces)}")
+    results = calculator.process_batch(forces, moments)
+
+    # 构建输出 DataFrame，与 data_df 行对齐
+    out_df = pd.DataFrame()
+    for col_idx in cfg.passthrough_columns:
+        if col_idx < len(data_df.columns):
+            out_df[f'Col_{col_idx}'] = data_df.iloc[:, col_idx]
+
+    if cfg.column_mappings.get('alpha') is not None:
+        aidx = cfg.column_mappings['alpha']
+        if aidx < len(data_df.columns):
+            out_df['Alpha'] = data_df.iloc[:, aidx].reset_index(drop=True)
+
+    out_df['Fx_new'] = results['force_transformed'][:, 0]
+    out_df['Fy_new'] = results['force_transformed'][:, 1]
+    out_df['Fz_new'] = results['force_transformed'][:, 2]
+
+    out_df['Mx_new'] = results['moment_transformed'][:, 0]
+    out_df['My_new'] = results['moment_transformed'][:, 1]
+    out_df['Mz_new'] = results['moment_transformed'][:, 2]
+
+    out_df['Cx'] = results['coeff_force'][:, 0]
+    out_df['Cy'] = results['coeff_force'][:, 1]
+    out_df['Cz'] = results['coeff_force'][:, 2]
+
+    out_df['Cl'] = results['coeff_moment'][:, 0]
+    out_df['Cm'] = results['coeff_moment'][:, 1]
+    out_df['Cn'] = results['coeff_moment'][:, 2]
+
+    # 对于 'nan' 策略，将原始存在缺失的行对应计算列置为 NaN
+    if cfg.treat_non_numeric == 'nan' and n_non > 0:
+        comp_cols = ['Fx_new', 'Fy_new', 'Fz_new', 'Mx_new', 'My_new', 'Mz_new', 'Cx', 'Cy', 'Cz', 'Cl', 'Cm', 'Cn']
+        out_df.loc[mask_non_numeric, comp_cols] = np.nan
+
+    mode = 'w' if first_chunk else 'a'
+    header = first_chunk
+    out_df.to_csv(out_path, index=False, mode=mode, header=header, encoding='utf-8')
+
+    processed = len(out_df)
+    first_chunk = False
+    return processed, dropped, n_non, first_chunk
+
+
 def find_matching_files(directory: str, pattern: str) -> list:
     """在目录中查找匹配模式的文件"""
     directory = Path(directory)
@@ -272,95 +358,28 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         total_dropped = 0
         total_non_numeric = 0
 
-        def _process_df_chunk(chunk_df: pd.DataFrame):
-            nonlocal first_chunk, total_processed, total_dropped, total_non_numeric
-
-            forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]].apply(pd.to_numeric, errors='coerce')
-            moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]].apply(pd.to_numeric, errors='coerce')
-
-            mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
-            n_non = int(mask_non_numeric.sum())
-            if n_non:
-                total_non_numeric += n_non
-                # 记录示例
-                samp_n = min(cfg.sample_rows, n_non)
-                if samp_n > 0:
-                    idxs = list(np.where(mask_non_numeric)[0][:samp_n])
-                    for idx in idxs:
-                        logger.warning(f"文件 {file_path.name} 非数值示例（chunk 内行 {idx}）: {chunk_df.iloc[idx].to_dict()}")
-
-            if cfg.treat_non_numeric == 'drop':
-                valid_idx = ~mask_non_numeric
-                if valid_idx.sum() == 0:
-                    total_dropped += len(chunk_df)
-                    return
-                forces = forces_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
-                moments = moments_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
-            else:
-                # 对计算总是以0.0替代缺失，之后可标记 NaN 输出
-                forces = forces_df.fillna(0.0).to_numpy(dtype=float)
-                moments = moments_df.fillna(0.0).to_numpy(dtype=float)
-
-            logger.info(f"  执行坐标变换... 行数={len(forces)}")
-            results = calculator.process_batch(forces, moments)
-
-            # 构建输出DataFrame（对应计算输入的行）
-            out_df = pd.DataFrame()
-            # 保留 passthrough
-            for col_idx in cfg.passthrough_columns:
-                if col_idx < len(chunk_df.columns):
-                    out_df[f'Col_{col_idx}'] = chunk_df.iloc[:, col_idx].reset_index(drop=True)
-
-            # Alpha 列
-            if cfg.column_mappings['alpha'] is not None:
-                aidx = cfg.column_mappings['alpha']
-                if aidx < len(chunk_df.columns):
-                    out_df['Alpha'] = chunk_df.iloc[:, aidx].reset_index(drop=True)
-
-            out_df['Fx_new'] = results['force_transformed'][:, 0]
-            out_df['Fy_new'] = results['force_transformed'][:, 1]
-            out_df['Fz_new'] = results['force_transformed'][:, 2]
-
-            out_df['Mx_new'] = results['moment_transformed'][:, 0]
-            out_df['My_new'] = results['moment_transformed'][:, 1]
-            out_df['Mz_new'] = results['moment_transformed'][:, 2]
-
-            out_df['Cx'] = results['coeff_force'][:, 0]
-            out_df['Cy'] = results['coeff_force'][:, 1]
-            out_df['Cz'] = results['coeff_force'][:, 2]
-
-            out_df['Cl'] = results['coeff_moment'][:, 0]
-            out_df['Cm'] = results['coeff_moment'][:, 1]
-            out_df['Cn'] = results['coeff_moment'][:, 2]
-
-            # 如果策略为 'nan'，则将原始输入有缺失的行对应的计算列置为 NaN
-            if cfg.treat_non_numeric == 'nan' and n_non > 0:
-                # mask_non_numeric 对应 chunk_df 行，但当 drop 时已过滤
-                if 'valid_idx' in locals():
-                    # 对于 drop 情况不会到这里
-                    pass
-                else:
-                    # 将对应行设为 NaN
-                    comp_cols = ['Fx_new','Fy_new','Fz_new','Mx_new','My_new','Mz_new','Cx','Cy','Cz','Cl','Cm','Cn']
-                    for c in comp_cols:
-                        out_df.loc[mask_non_numeric, c] = np.nan
-
-            # 写入 CSV（分块写入）：首块写 header，随后 append
-            mode = 'w' if first_chunk else 'a'
-            header = first_chunk
-            out_df.to_csv(out_path, index=False, mode=mode, header=header, encoding='utf-8')
-
-            first_chunk = False
-            total_processed += len(out_df)
+        # 块处理已提取为模块级函数 `process_df_chunk`
 
         # 如果是 CSV 且配置了 chunksize，则流式
         ext = file_path.suffix.lower()
         if ext == '.csv' and cfg.chunksize and int(cfg.chunksize) > 0:
             for chunk in pd.read_csv(file_path, header=None, skiprows=cfg.skip_rows, chunksize=int(cfg.chunksize)):
-                _process_df_chunk(chunk)
+                proc, dropped, non_num, first_chunk = process_df_chunk(
+                    chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
+                    calculator, cfg, out_path, first_chunk, logger
+                )
+                total_processed += proc
+                total_dropped += dropped
+                total_non_numeric += non_num
         else:
             # 整表处理
-            _process_df_chunk(df)
+            proc, dropped, non_num, first_chunk = process_df_chunk(
+                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
+                calculator, cfg, out_path, first_chunk, logger
+            )
+            total_processed += proc
+            total_dropped += dropped
+            total_non_numeric += non_num
 
         logger.info(f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行")
         logger.info(f"结果文件: {out_path}")
@@ -397,7 +416,6 @@ def _worker_process(args_tuple):
         cfg.timestamp_format = config_dict.get('timestamp_format', cfg.timestamp_format)
         cfg.overwrite = bool(config_dict.get('overwrite', cfg.overwrite))
         cfg.treat_non_numeric = config_dict.get('treat_non_numeric', cfg.treat_non_numeric)
-        cfg.sample_rows = int(config_dict.get('sample_rows', cfg.sample_rows))
 
         success = process_single_file(file_path, calculator, cfg, output_dir)
         return (str(file_path), success, None)
@@ -570,7 +588,14 @@ if __name__ == "__main__":
                 files_to_process = [input_path]
                 output_dir = input_path.parent
             elif input_path.is_dir():
-                pat = pattern or input('文件名匹配模式 (如 *.csv, default *.csv): ').strip() or '*.csv'
+                if pattern:
+                    pat = pattern
+                else:
+                    if args.non_interactive:
+                        pat = '*.csv'
+                        logger.info("非交互模式：使用默认文件匹配模式 '*.csv'")
+                    else:
+                        pat = input('文件名匹配模式 (如 *.csv, default *.csv): ').strip() or '*.csv'
                 files = find_matching_files(str(input_path), pat)
                 logger.info(f'找到 {len(files)} 个匹配文件')
                 # 选择 all
@@ -588,7 +613,7 @@ if __name__ == "__main__":
                 'passthrough_columns': data_config.passthrough_columns,
                 'chunksize': data_config.chunksize,
                 'name_template': data_config.name_template,
-                'timestamp_format': data_config.timestamp_format,
+
                 'overwrite': data_config.overwrite,
                 'treat_non_numeric': data_config.treat_non_numeric,
                 'sample_rows': data_config.sample_rows,
