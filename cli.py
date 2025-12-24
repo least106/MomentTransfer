@@ -1,93 +1,82 @@
 import os
-import argparse
 import json
+import click
 
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
-from src import load_data, AeroCalculator
+from src.data_loader import load_data
+from src.physics import AeroCalculator
 
 
-def main():
-    """CLI 主入口函数"""
+@click.command()
+@click.option('-i', '--input', 'input_path', default=None,
+              help='配置文件路径 (JSON)，默认使用项目 data/input.json')
+@click.option('-o', '--output', 'output_path', default=None,
+              help='结果输出路径 (JSON)，若不提供则不写文件')
+@click.option('--force', type=(float, float, float), default=None,
+              help='输入力向量 (例如: --force 100 0 -50)')
+@click.option('--moment', type=(float, float, float), default=None,
+              help='输入力矩向量 (例如: --moment 0 500 0)')
+def main(input_path, output_path, force, moment):
+    """气动载荷坐标变换工具（click CLI）
 
-    # 1. 设置默认路径
-    # 获取当前脚本所在目录 (AeroTransform/)
+    支持非交互模式通过 `--force` 与 `--moment` 指定载荷。
+    自动生成帮助文档（`--help`）。
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     default_config = os.path.join(base_dir, 'data', 'input.json')
-    default_output = os.path.join(base_dir, 'data', 'output_result.json')
 
-    # 2. 参数解析
-    parser = argparse.ArgumentParser(
-        description='气动载荷坐标变换工具 (Single Point CLI)',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    cfg_path = input_path or default_config
 
-    parser.add_argument('-i', '--input', default=default_config, help='配置文件路径 (JSON)')
-    parser.add_argument('-o', '--output', default=default_output, help='结果输出路径 (JSON)')
-
-    # 允许用户在命令行直接输入 F 和 M
-    parser.add_argument('--force', type=float, nargs=3, metavar=('Fx', 'Fy', 'Fz'),
-                        help='输入力向量 (例如: --force 100 0 -50)')
-    parser.add_argument('--moment', type=float, nargs=3, metavar=('Mx', 'My', 'Mz'),
-                        help='输入力矩向量 (例如: --moment 0 500 0)')
-
-    args = parser.parse_args()
-
-    # 3. 交互式输入 (如果没有在命令行提供参数)
-    raw_forces = args.force
-    raw_moments = args.moment
+    raw_forces = list(force) if force is not None else None
+    raw_moments = list(moment) if moment is not None else None
 
     if raw_forces is None:
-        print("\n--- 请输入载荷数据 (Source Frame) ---")
+        click.echo('\n--- 请输入载荷数据 (Source Frame) ---')
+        f_str = click.prompt('Force [Fx, Fy, Fz] (逗号分隔，默认 0,0,0)', default='0,0,0')
         try:
-            f_str = input("Force  [Fx, Fy, Fz] (默认 0,0,0): ")
-            raw_forces = [float(x) for x in f_str.split(",")] if f_str.strip() else [0.0, 0.0, 0.0]
+            raw_forces = [float(x) for x in f_str.split(',')]
         except ValueError:
-            print("[错误] 格式不正确，请使用逗号分隔数字。")
-            return
+            click.echo('[错误] 格式不正确，请使用逗号分隔数字。')
+            raise click.Abort()
 
     if raw_moments is None:
+        m_str = click.prompt('Moment [Mx, My, Mz] (逗号分隔，默认 0,0,0)', default='0,0,0')
         try:
-            m_str = input("Moment [Mx, My, Mz] (默认 0,0,0): ")
-            raw_moments = [float(x) for x in m_str.split(",")] if m_str.strip() else [0.0, 0.0, 0.0]
+            raw_moments = [float(x) for x in m_str.split(',')]
         except ValueError:
-            print("[错误] 格式不正确。")
-            return
+            click.echo('[错误] 格式不正确。')
+            raise click.Abort()
 
-    # 4. 执行计算
-    print(f"\n[1] 加载配置: {args.input}")
+    click.echo(f"\n[1] 加载配置: {cfg_path}")
     try:
-        project_data = load_data(args.input)
+        project_data = load_data(cfg_path)
         calculator = AeroCalculator(project_data)
     except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-        print(f"[致命错误] 无法加载配置: {e}")
-        print("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或至少包含旧格式的 'SourceCoordSystem' 与 'Target'。可使用 creator.py 生成兼容配置。")
-        return
+        click.echo(f"[致命错误] 无法加载配置: {e}")
+        click.echo("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或至少包含旧格式的 'SourceCoordSystem' 与 'Target'。可使用 creator.py 生成兼容配置。")
+        raise click.Abort()
 
-    print("[2] 执行计算...")
-    # 注意：这里调用的是 physics.py 中的 process_frame (单点包装器)
+    click.echo('[2] 执行计算...')
     result = calculator.process_frame(raw_forces, raw_moments)
 
-    # 5. 打印结果
-    print("-" * 40)
-    print(f"输入载荷: F={raw_forces}, M={raw_moments}")
-    print("-" * 40)
-    print(f"转换结果 (Target: {project_data.target_config.part_name})")
+    click.echo('-' * 40)
+    click.echo(f"输入载荷: F={raw_forces}, M={raw_moments}")
+    click.echo('-' * 40)
+    click.echo(f"转换结果 (Target: {project_data.target_config.part_name})")
 
     def round_values(values):
         return [round(x, 4) for x in values]
 
-    print(f"Force (N)    : {round_values(result.force_transformed)}")
-    print(f"Moment (N*m) : {round_values(result.moment_transformed)}")
-    print("-" * 40)
-    print(f"气动系数:")
-    print(f"Force [Cx,Cy,Cz] : {round_values(result.coeff_force)}")
-    print(f"Moment [Cl,Cm,Cn]: {round_values(result.coeff_moment)}")
-    print("-" * 40)
+    click.echo(f"Force (N)    : {round_values(result.force_transformed)}")
+    click.echo(f"Moment (N*m) : {round_values(result.moment_transformed)}")
+    click.echo('-' * 40)
+    click.echo(f"气动系数:")
+    click.echo(f"Force [Cx,Cy,Cz] : {round_values(result.coeff_force)}")
+    click.echo(f"Moment [Cl,Cm,Cn]: {round_values(result.coeff_moment)}")
+    click.echo('-' * 40)
 
-    # (可选) 这里可以添加将单点结果写入 output.json 的逻辑
-    # 如果用户提供了 --output，则将结果序列化并写入指定文件
-    if args.output:
+    if output_path:
         out_data = {
             "input": {"force": raw_forces, "moment": raw_moments},
             "target": getattr(project_data.target_config, "part_name", None),
@@ -100,11 +89,11 @@ def main():
         }
 
         try:
-            with open(args.output, "w", encoding="utf-8") as fh:
+            with open(output_path, "w", encoding="utf-8") as fh:
                 json.dump(out_data, fh, ensure_ascii=False, indent=2)
-            print(f"已将结果写入: {args.output}")
+            click.echo(f"已将结果写入: {output_path}")
         except OSError as e:
-            print(f"[警告] 无法将结果写入 {args.output}: {e}")
+            click.echo(f"[警告] 无法将结果写入 {output_path}: {e}")
 
 
 if __name__ == "__main__":
