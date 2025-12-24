@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox, QFormLayout, QFileDialog,
     QTextEdit, QMessageBox, QProgressBar, QSplitter, QCheckBox, QSpinBox,
-    QDialog, QDialogButtonBox, QDoubleSpinBox
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt, QThread, Signal
@@ -74,54 +74,77 @@ class Mpl3DCanvas(FigureCanvas):
                              linewidth=2 if linestyle == '-' else 1,
                              linestyle=linestyle)
             self.axes.text(o[0] + vec[0] * 1.1, o[1] + vec[1] * 1.1, o[2] + vec[2] * 1.1,
-                                # 检查预条件
-                                if not self.calculator:
-                                    QMessageBox.warning(self, "警告", '请先点击"应用配置"按钮!')
-                                    return
+                           f"{label_prefix}_{labels[i]}", color=color[i], fontsize=9, fontweight='bold')
 
-                                if not self.data_config:
-                                    # 使用默认配置代替弹窗询问
-                                    self.data_config = {
-                                        'skip_rows': 0,
-                                        'columns': {'alpha': None, 'fx': 0, 'fy': 1, 'fz': 2, 'mx': 3, 'my': 4, 'mz': 5},
-                                        'passthrough': []
-                                    }
 
-                                # 根据当前输入路径和模式扫描（如果尚未扫描，先进行扫描并展示）
-                                scanned = self.scan_input_path()
-                                if not scanned:
-                                    QMessageBox.warning(self, "警告", "未找到要处理的文件，请检查输入路径和匹配模式")
-                                    return
-
-                                # 收集被选中的文件
-                                files_to_process = []
-                                for cb, path in getattr(self, 'file_checkboxes', []):
-                                    if cb.isChecked():
-                                        files_to_process.append(path)
-
-                                if not files_to_process:
-                                    QMessageBox.warning(self, "警告", "未选中任何要处理的文件")
-                                    return
-
-                                # 输出目录默认取第一个文件的父目录（与之前行为一致）
-                                output_dir = files_to_process[0].parent
-
-                                # 开始处理（不额外弹窗）
-                                self.progress_bar.setVisible(True)
-                                self.progress_bar.setValue(0)
-                                self.txt_batch_log.clear()
-                                self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 开始批量处理...")
-                                self.txt_batch_log.append(f"共 {len(files_to_process)} 个文件")
-
-                                self.batch_thread = BatchProcessThread(
-                                    self.calculator, files_to_process, output_dir, self.data_config
-                                )
-                                self.batch_thread.progress.connect(self.progress_bar.setValue)
-                                self.batch_thread.log_message.connect(
-                                    lambda msg: self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
-                                self.batch_thread.finished.connect(self.on_batch_finished)
-                                self.batch_thread.error.connect(self.on_batch_error)
-                                self.batch_thread.start()
+class ColumnMappingDialog(QDialog):
+    """列映射配置对话框"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("数据格式配置")
+        self.resize(500, 600)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # 跳过行数
+        grp_skip = QGroupBox("表头设置")
+        form_skip = QFormLayout()
+        self.spin_skip_rows = QSpinBox()
+        self.spin_skip_rows.setRange(0, 100)
+        self.spin_skip_rows.setValue(0)
+        form_skip.addRow("跳过行数:", self.spin_skip_rows)
+        grp_skip.setLayout(form_skip)
+        
+        # 列映射
+        grp_columns = QGroupBox("数据列映射 (列号从0开始)")
+        form_cols = QFormLayout()
+        
+        self.col_alpha = QSpinBox()
+        self.col_alpha.setRange(-1, 1000)
+        self.col_alpha.setValue(-1)
+        self.col_alpha.setSpecialValueText("不存在")
+        
+        self.col_fx = QSpinBox()
+        self.col_fy = QSpinBox()
+        self.col_fz = QSpinBox()
+        self.col_mx = QSpinBox()
+        self.col_my = QSpinBox()
+        self.col_mz = QSpinBox()
+        
+        for spin in [self.col_fx, self.col_fy, self.col_fz, 
+                     self.col_mx, self.col_my, self.col_mz]:
+            spin.setRange(0, 1000)
+            spin.setValue(0)
+        
+        form_cols.addRow("迎角 Alpha (可选):", self.col_alpha)
+        form_cols.addRow("轴向力 Fx:", self.col_fx)
+        form_cols.addRow("侧向力 Fy:", self.col_fy)
+        form_cols.addRow("法向力 Fz:", self.col_fz)
+        form_cols.addRow("滚转力矩 Mx:", self.col_mx)
+        form_cols.addRow("俯仰力矩 My:", self.col_my)
+        form_cols.addRow("偏航力矩 Mz:", self.col_mz)
+        
+        grp_columns.setLayout(form_cols)
+        
+        # 保留列
+        grp_pass = QGroupBox("需要保留输出的其他列")
+        layout_pass = QVBoxLayout()
+        self.txt_passthrough = QLineEdit()
+        self.txt_passthrough.setPlaceholderText("用逗号分隔列号，如: 0,1,2")
+        layout_pass.addWidget(QLabel("列号:"))
+        layout_pass.addWidget(self.txt_passthrough)
+        grp_pass.setLayout(layout_pass)
+        
+        # 按钮
+        btn_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        btn_box.accepted.connect(self.accept)
+        btn_box.rejected.connect(self.reject)
+        
+        layout.addWidget(grp_skip)
         layout.addWidget(grp_columns)
         layout.addWidget(grp_pass)
         layout.addWidget(btn_box)
@@ -132,18 +155,15 @@ class Mpl3DCanvas(FigureCanvas):
         if self.txt_passthrough.text().strip():
             try:
                 passthrough = [int(x.strip()) for x in self.txt_passthrough.text().split(',')]
-            except ValueError:
-                QMessageBox.warning(
-                    self,
-                    "无效的列索引",
-                    "透传列索引解析失败，请使用逗号分隔的整数，例如：0, 3, 5。\n"
-                    "当前输入将被忽略。"
-                )
-                passthrough = []
-        
-        return {
-            'skip_rows': self.spin_skip_rows.value(),
-            'columns': {
+        # 从界面上的复选框列表获取用户选择的文件
+        selected_files = [p for (chk, p) in self._file_check_items if chk.isChecked()]
+        if not selected_files:
+            # 将警告写入日志而非弹窗
+            self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 未选择任何文件，已取消批处理。")
+            self.progress_bar.setVisible(False)
+            return
+
+        files_to_process = selected_files
                 'alpha': self.col_alpha.value() if self.col_alpha.value() >= 0 else None,
                 'fx': self.col_fx.value(),
                 'fy': self.col_fy.value(),
@@ -494,19 +514,11 @@ class IntegratedAeroGUI(QMainWindow):
         input_row = QHBoxLayout()
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
-
-        # 提供两个明确的按钮，避免弹窗询问文件/目录类型
-        btn_browse_file = QPushButton("选择文件")
-        btn_browse_file.setMaximumWidth(100)
-        btn_browse_file.clicked.connect(self.browse_batch_file)
-
-        btn_browse_dir = QPushButton("选择目录")
-        btn_browse_dir.setMaximumWidth(100)
-        btn_browse_dir.clicked.connect(self.browse_batch_dir)
-
+        btn_browse_input = QPushButton("浏览")
+        btn_browse_input.setMaximumWidth(80)
+        btn_browse_input.clicked.connect(self.browse_batch_input)
         input_row.addWidget(self.inp_batch_input)
-        input_row.addWidget(btn_browse_file)
-        input_row.addWidget(btn_browse_dir)
+        input_row.addWidget(btn_browse_input)
 
         # 文件匹配模式
         pattern_row = QHBoxLayout()
@@ -518,19 +530,22 @@ class IntegratedAeroGUI(QMainWindow):
         file_form.addRow("输入路径:", input_row)
         file_form.addRow("", pattern_row)
 
-        # 文件列表（可滚动，多文件复选框）
-        self.grp_file_list = QGroupBox("文件列表")
+        # 文件列表（可复选、可滚动），默认位于数据格式配置之上
+        self.grp_file_list = QGroupBox("找到的文件列表")
+        self.grp_file_list.setVisible(False)
         file_list_layout = QVBoxLayout()
-        self.file_list_container = QWidget()
-        self.file_list_vbox = QVBoxLayout(self.file_list_container)
-        self.file_list_vbox.setContentsMargins(2, 2, 2, 2)
-        self.file_list_vbox.addStretch()
-
-        self.scr_file_list = QScrollArea()
-        self.scr_file_list.setWidgetResizable(True)
-        self.scr_file_list.setWidget(self.file_list_container)
-        file_list_layout.addWidget(self.scr_file_list)
+        self.file_scroll = QScrollArea()
+        self.file_scroll.setWidgetResizable(True)
+        self.file_list_widget = QWidget()
+        self.file_list_layout_inner = QVBoxLayout(self.file_list_widget)
+        self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
+        self.file_scroll.setWidget(self.file_list_widget)
+        file_list_layout.addWidget(self.file_scroll)
         self.grp_file_list.setLayout(file_list_layout)
+
+        # 存储 (checkbox, Path)
+        self._file_check_items = []
+
 
         # 数据格式配置按钮
         btn_config_format = QPushButton("⚙ 配置数据格式")
@@ -868,25 +883,64 @@ class IntegratedAeroGUI(QMainWindow):
 
     def browse_batch_input(self):
         """选择输入文件或目录"""
-        # 保留兼容方法，但改为由两个明确按钮触发：browse_batch_file / browse_batch_dir
-        pass
-
-    def browse_batch_file(self):
+        # 允许用户先尝试选文件（单文件），若未选则尝试选目录；选中后自动扫描并填充文件列表
         fname, _ = QFileDialog.getOpenFileName(
-            self, '选择输入文件', '.',
+            self, '选择输入文件（或取消以选择目录）', '.',
             'Data Files (*.csv *.xlsx *.xls);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls)'
         )
+        chosen_path = None
         if fname:
-            self.inp_batch_input.setText(fname)
-            # 扫描并显示（若是单文件就只显示该文件）
-            self.scan_input_path()
+            chosen_path = fname
+        else:
+            dirname = QFileDialog.getExistingDirectory(self, '选择输入目录')
+            if dirname:
+                chosen_path = dirname
 
-    def browse_batch_dir(self):
-        dirname = QFileDialog.getExistingDirectory(self, '选择输入目录')
-        if dirname:
-            self.inp_batch_input.setText(dirname)
-            # 扫描并显示目录下匹配的文件
-            self.scan_input_path()
+        if chosen_path:
+            self.inp_batch_input.setText(chosen_path)
+            # 扫描并在界面上列出文件，用户可勾选要处理的文件
+            try:
+                self._scan_and_populate_files(chosen_path)
+            except Exception as e:
+                QMessageBox.warning(self, "扫描失败", f"扫描文件失败: {e}")
+
+    def _scan_and_populate_files(self, chosen_path):
+        """扫描所选路径并在滚动区域中生成复选框列表（默认全选）。"""
+        p = Path(chosen_path)
+        files = []
+        if p.is_file():
+            files = [p]
+            output_dir = p.parent
+        elif p.is_dir():
+            pattern = self.inp_pattern.text() if hasattr(self, 'inp_pattern') else "*.csv"
+            for file_path in p.rglob('*'):
+                if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
+                    files.append(file_path)
+            output_dir = p
+        else:
+            raise ValueError("无效的输入路径")
+
+        # 清空旧的复选框
+        for i in reversed(range(self.file_list_layout_inner.count())):
+            w = self.file_list_layout_inner.itemAt(i).widget()
+            if w:
+                w.setParent(None)
+        self._file_check_items = []
+
+        if not files:
+            self.grp_file_list.setVisible(False)
+            return
+
+        # 创建复选框
+        for fp in files:
+            cb = QCheckBox(fp.name)
+            cb.setChecked(True)
+            self.file_list_layout_inner.addWidget(cb)
+            self._file_check_items.append((cb, fp))
+
+        # 显示并自动滚动到顶部
+        self.grp_file_list.setVisible(True)
+        self.file_scroll.verticalScrollBar().setValue(0)
 
     def run_batch_processing(self):
         """运行批处理"""
@@ -977,41 +1031,6 @@ class IntegratedAeroGUI(QMainWindow):
         self.progress_bar.setVisible(False)
         self.statusBar().showMessage("批量处理失败")
         QMessageBox.critical(self, "错误", f"批处理失败:\n{error_msg}")
-
-    def scan_input_path(self):
-        """扫描 `self.inp_batch_input` 指定的路径，填充文件列表滚动区，返回是否找到文件"""
-        input_path = Path(self.inp_batch_input.text())
-        if not input_path.exists():
-            return False
-
-        files_to_process = []
-        if input_path.is_file():
-            files_to_process = [input_path]
-        elif input_path.is_dir():
-            pattern = self.inp_pattern.text() if hasattr(self, 'inp_pattern') else '*.csv'
-            for file_path in input_path.rglob('*'):
-                if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
-                    files_to_process.append(file_path)
-        else:
-            return False
-
-        # 填充滚动区
-        # 清理旧内容
-        for i in reversed(range(self.file_list_vbox.count())):
-            item = self.file_list_vbox.itemAt(i)
-            widget = item.widget()
-            if widget:
-                widget.setParent(None)
-
-        self.file_checkboxes = []
-        for p in files_to_process:
-            cb = QCheckBox(p.name)
-            cb.setChecked(True)
-            self.file_list_vbox.addWidget(cb)
-            self.file_checkboxes.append((cb, p))
-
-        self.file_list_vbox.addStretch()
-        return len(files_to_process) > 0
 
 
 def main():
