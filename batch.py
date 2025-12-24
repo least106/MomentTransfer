@@ -189,9 +189,13 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
     """
     # 解析力/力矩列并检测非数值
-    forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]].apply(pd.to_numeric, errors='coerce')
-    moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]].apply(pd.to_numeric, errors='coerce')
+    forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]]
+    for col in forces_df.columns:
+        forces_df[col] = pd.to_numeric(forces_df[col], errors='coerce')
 
+    moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]]
+    for col in moments_df.columns:
+        moments_df[col] = pd.to_numeric(moments_df[col], errors='coerce')
     mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
     n_non = int(mask_non_numeric.sum())
     dropped = 0
@@ -214,8 +218,18 @@ def process_df_chunk(chunk_df: pd.DataFrame,
         moments = moments_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
         data_df = chunk_df[valid_idx].reset_index(drop=True)
     else:
-        forces = forces_df.fillna(0.0).to_numpy(dtype=float)
-        moments = moments_df.fillna(0.0).to_numpy(dtype=float)
+        if cfg.treat_non_numeric == 'zero':
+            # 非数值按 0 处理
+            forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+            moments = moments_df.fillna(0.0).to_numpy(dtype=float)
+        elif cfg.treat_non_numeric == 'nan':
+            # 保留 NaN，让后续计算和结果中体现为 NaN
+            forces = forces_df.to_numpy(dtype=float)
+            moments = moments_df.to_numpy(dtype=float)
+        else:
+            # 未知策略时退回到按 0 处理，避免崩溃
+            forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+            moments = moments_df.fillna(0.0).to_numpy(dtype=float)
         data_df = chunk_df.reset_index(drop=True)
 
     logger.info(f"  执行坐标变换... 行数={len(forces)}")
@@ -230,7 +244,7 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     if cfg.column_mappings.get('alpha') is not None:
         aidx = cfg.column_mappings['alpha']
         if aidx < len(data_df.columns):
-            out_df['Alpha'] = data_df.iloc[:, aidx].reset_index(drop=True)
+            out_df['Alpha'] = data_df.iloc[:, aidx]
 
     out_df['Fx_new'] = results['force_transformed'][:, 0]
     out_df['Fy_new'] = results['force_transformed'][:, 1]
@@ -324,20 +338,25 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
     """处理单个文件"""
     try:
         logger = logging.getLogger('batch')
-        # 先根据配置读取数据文件
-        df = read_data_with_config(file_path, config)
-        # 校验列索引是否在有效范围内
-        num_cols = len(df.columns)
-        required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
-        for key in required_keys:
-            col_idx = config.column_mappings.get(key)
-            if col_idx is None:
-                raise ValueError(f"列映射缺失: '{key}' 未配置")
-            if not (0 <= col_idx < num_cols):
-                raise ValueError(
-                    f"列索引越界: column_mappings['{key}'] = {col_idx}, "
-                    f"但当前数据仅有 {num_cols} 列"
-                )
+        # 检查文件类型与是否启用 chunksize（仅对 CSV 有效）
+        ext = Path(file_path).suffix.lower()
+        use_chunks = (ext == '.csv') and config.chunksize and int(config.chunksize) > 0
+
+        # 若未使用流式，则一次性读取完整表格用于后续处理与列验证
+        if not use_chunks:
+            df = read_data_with_config(file_path, config)
+            # 校验列索引是否在有效范围内
+            num_cols = len(df.columns)
+            required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
+            for key in required_keys:
+                col_idx = config.column_mappings.get(key)
+                if col_idx is None:
+                    raise ValueError(f"列映射缺失: '{key}' 未配置")
+                if not (0 <= col_idx < num_cols):
+                    raise ValueError(
+                        f"列索引越界: column_mappings['{key}'] = {col_idx}, "
+                        f"但当前数据仅有 {num_cols} 列"
+                    )
         
         # 提取力和力矩数据（按列位置索引），并转换为数值数组
         fx_i = config.column_mappings['fx']
@@ -347,11 +366,9 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         my_i = config.column_mappings['my']
         mz_i = config.column_mappings['mz']
         # 读取并处理（支持 CSV chunksize 流式）
-        output_dir = Path(output_dir)
-        cfg = config
 
         # 生成输出路径（按模板与冲突策略）
-        out_path = generate_output_path(file_path, output_dir, cfg)
+        out_path = generate_output_path(file_path, output_dir, config)
 
         first_chunk = True
         total_processed = 0
@@ -361,12 +378,41 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         # 块处理已提取为模块级函数 `process_df_chunk`
 
         # 如果是 CSV 且配置了 chunksize，则流式
-        ext = file_path.suffix.lower()
-        if ext == '.csv' and cfg.chunksize and int(cfg.chunksize) > 0:
-            for chunk in pd.read_csv(file_path, header=None, skiprows=cfg.skip_rows, chunksize=int(cfg.chunksize)):
+        if use_chunks:
+            reader = pd.read_csv(file_path, header=None, skiprows=config.skip_rows, chunksize=int(config.chunksize))
+            try:
+                first = next(reader)
+            except StopIteration:
+                logger.warning(f"文件 {file_path} 为空，跳过处理")
+                return False
+
+            # 使用首块校验列数
+            num_cols = len(first.columns)
+            # 验证列索引在首块中是否有效
+            required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
+            for key in required_keys:
+                col_idx = config.column_mappings.get(key)
+                if col_idx is None:
+                    raise ValueError(f"列映射缺失: '{key}' 未配置")
+                if not (0 <= col_idx < num_cols):
+                    raise ValueError(
+                        f"列索引越界: column_mappings['{key}'] = {col_idx}, 但数据仅有 {num_cols} 列"
+                    )
+
+            # 处理首块
+            proc, dropped, non_num, first_chunk = process_df_chunk(
+                first, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
+                calculator, config, out_path, first_chunk, logger
+            )
+            total_processed += proc
+            total_dropped += dropped
+            total_non_numeric += non_num
+
+            # 处理剩余块
+            for chunk in reader:
                 proc, dropped, non_num, first_chunk = process_df_chunk(
                     chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                    calculator, cfg, out_path, first_chunk, logger
+                    calculator, config, out_path, first_chunk, logger
                 )
                 total_processed += proc
                 total_dropped += dropped
@@ -375,7 +421,7 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
             # 整表处理
             proc, dropped, non_num, first_chunk = process_df_chunk(
                 df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                calculator, cfg, out_path, first_chunk, logger
+                calculator, config, out_path, first_chunk, logger
             )
             total_processed += proc
             total_dropped += dropped
@@ -416,14 +462,21 @@ def _worker_process(args_tuple):
         cfg.timestamp_format = config_dict.get('timestamp_format', cfg.timestamp_format)
         cfg.overwrite = bool(config_dict.get('overwrite', cfg.overwrite))
         cfg.treat_non_numeric = config_dict.get('treat_non_numeric', cfg.treat_non_numeric)
+        cfg.sample_rows = config_dict.get('sample_rows', cfg.sample_rows)
 
         success = process_single_file(file_path, calculator, cfg, output_dir)
         return (str(file_path), success, None)
     except Exception as e:
-        return (file_path_str if 'file_path_str' in locals() else str(file_path_str), False, str(e))
+        # 捕获子进程中任何异常，返回失败信息以便主进程记录
+        return (
+            file_path_str if 'file_path_str' in locals()
+            else (str(args_tuple[0]) if args_tuple and len(args_tuple) > 0 else 'unknown'),
+            False,
+            str(e)
+        )
 
 
-def run_batch_processing_v2(config_path: str, input_path: str):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None):
     """增强版批处理主函数"""
     print("=" * 70)
     print("气动载荷坐标变换批处理工具 v2.0")
@@ -441,8 +494,9 @@ def run_batch_processing_v2(config_path: str, input_path: str):
     
     # 2. 获取数据格式配置（交互或非交互）
     print(f"\n[2/5] 配置数据格式")
-    # 默认交互方式，可能后面由 CLI 覆盖
-    data_config = get_user_file_format()
+    # 若外部已提供 data_config（例如非交互模式），则使用之
+    if data_config is None:
+        data_config = get_user_file_format()
     
     # 3. 确定输入文件列表
     print(f"\n[3/5] 扫描输入文件")
@@ -613,13 +667,13 @@ if __name__ == "__main__":
                 'passthrough_columns': data_config.passthrough_columns,
                 'chunksize': data_config.chunksize,
                 'name_template': data_config.name_template,
-
+                'timestamp_format': data_config.timestamp_format,
                 'overwrite': data_config.overwrite,
                 'treat_non_numeric': data_config.treat_non_numeric,
                 'sample_rows': data_config.sample_rows,
             }
 
-            tasks = []
+
             with ProcessPoolExecutor(max_workers=args.workers) as exe:
                 futures = {}
                 for fp in files_to_process:
@@ -647,7 +701,7 @@ if __name__ == "__main__":
             # 如果是非交互模式但只有 workers=1，我们仍需传入 data_config
             # 将 data_config 临时写回用于 run_batch_processing_v2 的 get_user_file_format 使用
             # 为简洁起见，直接调用 run_batch_processing_v2 并退出
-            run_batch_processing_v2(args.config, args.input)
+            run_batch_processing_v2(args.config, args.input, data_config)
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')
