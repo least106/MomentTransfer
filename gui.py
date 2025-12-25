@@ -24,7 +24,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 from typing import Optional
-from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping
+from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping, update_mapping, init_db
 
 
 class Mpl3DCanvas(FigureCanvas):
@@ -1104,10 +1104,48 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             chosen_fp = None
 
-        # 2) 收集候选格式文件路径
+        # 1.5) 检查用户是否在 registry 列表中选中了某条映射；若有则优先作为编辑目标
+        selected_registry_entry = None
+        selected_format_path = None
+        selected_source = None  # 'registry' | 'candidate' | None
+        try:
+            sel_entry = None
+            if hasattr(self, 'lst_registry'):
+                sel_items = self.lst_registry.selectedItems()
+                if sel_items:
+                    # 解析选中项的 id（格式为 [id] ...）
+                    text = sel_items[0].text()
+                    try:
+                        if text.startswith('['):
+                            end = text.find(']')
+                            mid = text[1:end]
+                            sel_id = int(mid)
+                            dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+                            if dbp:
+                                try:
+                                    mappings = list_mappings(dbp)
+                                    sel_entry = next((m for m in mappings if m['id'] == sel_id), None)
+                                except Exception:
+                                    sel_entry = None
+                    except Exception:
+                        sel_entry = None
+            if sel_entry:
+                # 将选中 registry 映射作为预选格式
+                selected_registry_entry = sel_entry
+                selected_source = 'registry'
+                try:
+                    pf = Path(sel_entry['format_path'])
+                    if pf.exists():
+                        selected_format_path = pf
+                except Exception:
+                    selected_format_path = None
+        except Exception:
+            pass
+
+        # 2) 收集候选格式文件路径（仅在用户未显式选中 registry 映射时进行）
         candidate_paths = []
         try:
-            if chosen_fp:
+            if chosen_fp and selected_source != 'registry':
                 # registry 优先查询（若用户提供了 registry 路径）
                 try:
                     dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
@@ -1137,9 +1175,11 @@ class IntegratedAeroGUI(QMainWindow):
             pass
 
         # 3) 如果找到多个候选，弹出选择对话
-        selected_format = None
         try:
-            if len(candidate_paths) > 1:
+            if selected_source == 'registry':
+                # 已有明确 registry 选择，跳过候选收集/选择
+                pass
+            elif len(candidate_paths) > 1:
                 # 创建一个简易选择对话
                 dlg = QDialog(self)
                 dlg.setWindowTitle('选择要加载的格式文件')
@@ -1158,35 +1198,37 @@ class IntegratedAeroGUI(QMainWindow):
                 if dlg.exec() == QDialog.Accepted:
                     sel = lw.currentItem()
                     if sel:
-                        selected_format = Path(sel.text())
+                        selected_format_path = Path(sel.text())
+                        selected_source = 'candidate'
                 else:
                     # 用户取消选择：退回，不打开配置对话
                     return
             elif len(candidate_paths) == 1:
-                selected_format = candidate_paths[0]
+                selected_format_path = candidate_paths[0]
+                selected_source = 'candidate'
         except Exception:
-            selected_format = None
+            selected_format_path = None
 
         # 4) 如果找到格式文件则尝试解析并用其内容预填充对话框
         initial_cfg = None
-        selected_registry_entry = None
-        if selected_format:
+        if selected_format_path:
             try:
-                import json as _json
-                # selected_format may be a Path or a tuple (source, entry)
-                if isinstance(selected_format, tuple) and selected_format[0] == 'registry':
-                    # tuple structure: ('registry', entry_dict)
-                    selected_registry_entry = selected_format[1]
-                    fmt_path = Path(selected_registry_entry['format_path'])
-                else:
-                    fmt_path = Path(selected_format)
-
+                fmt_path = Path(selected_format_path)
                 with open(fmt_path, 'r', encoding='utf-8') as fh:
-                    initial_cfg = _json.load(fh)
-                # normalize selected_format to path for later use
-                selected_format = fmt_path
+                    initial_cfg = json.load(fh)
+                # 若 source 为 registry 但 selected_registry_entry 尚未指明（可能是通过 format_path 设置），尝试同步 entry
+                if selected_source == 'registry' and selected_registry_entry is None:
+                    try:
+                        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+                        if dbp:
+                            mappings = list_mappings(dbp)
+                            sel = next((m for m in mappings if Path(m['format_path']) == fmt_path), None)
+                            if sel:
+                                selected_registry_entry = sel
+                    except Exception:
+                        pass
             except Exception as e:
-                QMessageBox.warning(self, '警告', f'无法加载格式文件: {selected_format}\n{e}')
+                QMessageBox.warning(self, '警告', f'无法加载格式文件: {selected_format_path}\n{e}')
 
         # 5) 打开 ColumnMappingDialog，并在可能时预填充
         dialog = ColumnMappingDialog(self)
@@ -1197,7 +1239,6 @@ class IntegratedAeroGUI(QMainWindow):
             self.data_config = dialog.get_config()
             # 将编辑后的配置写回到选定的格式文件（若存在），并在必要时注册/更新 registry
             try:
-                import json as _json
                 cfg_to_write = self.data_config
 
                 # 如果用户是基于 registry 条目打开并选择了 registry 映射
@@ -1208,11 +1249,15 @@ class IntegratedAeroGUI(QMainWindow):
                         fmtp = Path(selected_registry_entry['format_path'])
                         fmtp.parent.mkdir(parents=True, exist_ok=True)
                         with open(fmtp, 'w', encoding='utf-8') as fh:
-                            _json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
+                            json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
                         # 刷新映射的时间戳（保持 pattern 不变）
                         try:
-                            from src.format_registry import update_mapping
                             update_mapping(dbp, int(selected_registry_entry['id']), selected_registry_entry['pattern'], str(fmtp))
+                            # 刷新 UI 中的 registry 列表以展示最新信息
+                            try:
+                                self._refresh_registry_list()
+                            except Exception:
+                                pass
                         except Exception:
                             pass
                         self.txt_batch_log.append(f"已保存并更新 registry 映射 id={selected_registry_entry['id']}: {fmtp}")
@@ -1226,16 +1271,14 @@ class IntegratedAeroGUI(QMainWindow):
                             sidecar = chosen_fp.parent / f"{chosen_fp.stem}.format.json"
                         else:
                             # 无所选文件，保存到项目 data 目录，使用 timestamp 名称
-                            from datetime import datetime as _dt
-                            sidecar = Path('data') / f"format_{_dt.now().strftime('%Y%m%d_%H%M%S')}.json"
+                            sidecar = Path('data') / f"format_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
                         sidecar.parent.mkdir(parents=True, exist_ok=True)
                         with open(sidecar, 'w', encoding='utf-8') as fh:
-                            _json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
+                            json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
 
                         # 默认注册到项目的 data/formats.sqlite（若存在或可创建）
                         default_db = Path('data') / 'formats.sqlite'
                         try:
-                            from src.format_registry import init_db, register_mapping
                             init_db(str(default_db))
                             # pattern 使用文件名作为默认值
                             default_pattern = chosen_fp.name if chosen_fp else sidecar.name
@@ -1346,10 +1389,9 @@ class IntegratedAeroGUI(QMainWindow):
                 QMessageBox.warning(self, '错误', f'格式文件不存在: {fmt}')
                 return
             # 尝试解析 JSON
-            import json as _json
             with open(fpath, 'r', encoding='utf-8') as _fh:
                 try:
-                    _json.load(_fh)
+                    json.load(_fh)
                 except Exception as e:
                     QMessageBox.warning(self, '错误', f'格式文件不是有效的 JSON: {e}')
                     return
@@ -1365,7 +1407,6 @@ class IntegratedAeroGUI(QMainWindow):
         # 如果处于编辑模式（存在 _editing_mapping_id），则执行 update
         if hasattr(self, '_editing_mapping_id') and self._editing_mapping_id is not None:
             try:
-                from src.format_registry import update_mapping
                 update_mapping(dbp, self._editing_mapping_id, pat, fmt)
                 self.txt_batch_log.append(f"已更新映射 id={self._editing_mapping_id}: {pat} -> {fmt}")
                 # 清除编辑标识
@@ -1461,15 +1502,14 @@ class IntegratedAeroGUI(QMainWindow):
             if not p.exists():
                 QMessageBox.warning(self, '预览', f'格式文件不存在: {fmt}')
                 return
-            import json as _json
             with open(p, 'r', encoding='utf-8') as fh:
-                data = _json.load(fh)
+                data = json.load(fh)
             # 构建简短摘要
             if isinstance(data, dict):
                 keys = list(data.keys())[:10]
-                preview = _json.dumps({k: data[k] for k in keys}, indent=2, ensure_ascii=False)
+                preview = json.dumps({k: data[k] for k in keys}, indent=2, ensure_ascii=False)
             else:
-                preview = _json.dumps(data, indent=2, ensure_ascii=False)
+                preview = json.dumps(data, indent=2, ensure_ascii=False)
             dlg = QDialog(self)
             dlg.setWindowTitle('格式文件预览')
             v = QVBoxLayout(dlg)
