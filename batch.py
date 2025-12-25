@@ -374,9 +374,10 @@ def _worker_process(args_tuple):
     """
     try:
         # 保证在任何异常分支中都能报告文件名：优先读取 args_tuple[0]
-        file_path_str = str(args_tuple[0]) if args_tuple else 'unknown'
-        # unpack args (支持新增的 registry_db 可选项)
-        if len(args_tuple) == 4:
+        file_path_str = (
+        # unpack args（前 4 个为必需参数，后续位置参数作为可选项，例如 registry_db）
+        file_path_str, config_dict, project_config_path, output_dir_str, *optional = args_tuple
+        registry_db = optional[0] if optional else None
             file_path_str, config_dict, project_config_path, output_dir_str = args_tuple
             registry_db = None
         else:
@@ -447,7 +448,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     files_to_process = []
     
     # 若提供了 data_config 且同时提供了 registry_db，则视为非交互自动模式，避免使用 input() 阶段
-    auto_mode = (data_config is not None and registry_db is not None)
+    non_interactive_mode = (data_config is not None and registry_db is not None)
 
     if input_path.is_file():
         print(f"  模式: 单文件处理")
@@ -455,7 +456,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         output_dir = input_path.parent
     elif input_path.is_dir():
         print(f"  模式: 目录批处理")
-        if auto_mode:
+        if non_interactive_mode:
             # 非交互自动模式：使用默认模式匹配所有 CSV 文件并全部处理
             pattern = "*.csv"
             files = find_matching_files(str(input_path), pattern)
@@ -488,7 +489,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     print(f"\n[4/5] 准备处理 {len(files_to_process)} 个文件")
     print(f"  输出目录: {output_dir}")
     # 若自动模式则默认确认
-    if not auto_mode:
+    if not non_interactive_mode:
         confirm = input("  确认开始处理? (y/n): ").strip().lower()
         if confirm != 'y':
             print("  已取消")
@@ -603,7 +604,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
                     else:
                         pat_use = input('文件名匹配模式 (如 *.csv, default *.csv): ').strip() or '*.csv'
                 files = find_matching_files(str(input_path_obj), pat_use)
-                logger.info(f'找到 {len(files)} 个匹配文件')
+                # 并行模式下不提供交互选择：自动处理所有匹配到的文件
                 # 选择 all
                 chosen_idxs = list(range(len(files)))
                 files_to_process = [files[i] for i in chosen_idxs]
