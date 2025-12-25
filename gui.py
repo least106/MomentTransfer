@@ -189,6 +189,47 @@ class ColumnMappingDialog(QDialog):
             'passthrough': passthrough
         }
 
+    def set_config(self, cfg: dict):
+        """用已有配置填充对话框控件，兼容部分字段缺失的情况。"""
+        try:
+            if not isinstance(cfg, dict):
+                return
+            if 'skip_rows' in cfg:
+                try:
+                    self.spin_skip_rows.setValue(int(cfg.get('skip_rows', 0)))
+                except Exception:
+                    pass
+
+            cols = cfg.get('columns') or cfg.get('Columns') or {}
+            try:
+                if 'alpha' in cols and cols.get('alpha') is not None:
+                    self.col_alpha.setValue(int(cols.get('alpha')))
+                if 'fx' in cols and cols.get('fx') is not None:
+                    self.col_fx.setValue(int(cols.get('fx')))
+                if 'fy' in cols and cols.get('fy') is not None:
+                    self.col_fy.setValue(int(cols.get('fy')))
+                if 'fz' in cols and cols.get('fz') is not None:
+                    self.col_fz.setValue(int(cols.get('fz')))
+                if 'mx' in cols and cols.get('mx') is not None:
+                    self.col_mx.setValue(int(cols.get('mx')))
+                if 'my' in cols and cols.get('my') is not None:
+                    self.col_my.setValue(int(cols.get('my')))
+                if 'mz' in cols and cols.get('mz') is not None:
+                    self.col_mz.setValue(int(cols.get('mz')))
+            except Exception:
+                pass
+
+            passthrough = cfg.get('passthrough') or cfg.get('Passthrough') or []
+            try:
+                if isinstance(passthrough, (list, tuple)):
+                    self.txt_passthrough.setText(','.join(str(int(x)) for x in passthrough))
+                elif isinstance(passthrough, str):
+                    self.txt_passthrough.setText(passthrough)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
 
 class BatchProcessThread(QThread):
     """在后台线程中执行批量处理，发出进度与日志信号"""
@@ -361,6 +402,8 @@ class IntegratedAeroGUI(QMainWindow):
     def create_config_panel(self):
         """创建左侧配置编辑面板"""
         panel = QWidget()
+        # 给左侧配置面板一个合理的最小宽度，避免在窄窗口时完全压扁
+        panel.setMinimumWidth(420)
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
 
@@ -530,6 +573,8 @@ class IntegratedAeroGUI(QMainWindow):
     def create_operation_panel(self):
         """创建右侧操作面板"""
         panel = QWidget()
+        # 给右侧操作面板设定最小宽度，保证批处理控件可见性
+        panel.setMinimumWidth(600)
         layout = QVBoxLayout(panel)
         layout.setSpacing(15)
 
@@ -570,7 +615,7 @@ class IntegratedAeroGUI(QMainWindow):
         # Registry DB 输入行（可选）
         registry_row = QHBoxLayout()
         self.inp_registry_db = QLineEdit()
-        self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.db)")
+        self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.sqlite)")
         # 当 registry 路径变化时刷新文件来源标签（实时反馈）
         try:
             self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
@@ -600,7 +645,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.inp_registry_pattern.setPlaceholderText("Pattern，例如: sample.csv 或 *.csv")
         self.inp_registry_format = QLineEdit()
         self.inp_registry_format.setPlaceholderText("Format 文件路径 (JSON)")
-        btn_browse_format = QPushButton("浏览格式")
+        btn_browse_format = QPushButton("浏览格式文件")
         btn_browse_format.setMaximumWidth(90)
         btn_browse_format.clicked.connect(self._browse_registry_format)
         btn_preview_format = QPushButton("预览格式")
@@ -640,8 +685,15 @@ class IntegratedAeroGUI(QMainWindow):
         self.file_scroll.setWidgetResizable(True)
         self.file_list_widget = QWidget()
         self.file_list_layout_inner = QVBoxLayout(self.file_list_widget)
+        # 保证复选框列表从顶部开始排列
+        try:
+            self.file_list_layout_inner.setAlignment(Qt.AlignTop)
+        except Exception:
+            pass
         self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
         self.file_scroll.setWidget(self.file_list_widget)
+        # 给文件滚动区域一个最小高度，避免在窄窗口或重排时过度收缩
+        self.file_scroll.setMinimumHeight(180)
         file_list_layout.addWidget(self.file_scroll)
         self.grp_file_list.setLayout(file_list_layout)
 
@@ -700,9 +752,11 @@ class IntegratedAeroGUI(QMainWindow):
         layout_batch.addWidget(QLabel("处理日志:"))
         layout_batch.addWidget(self.txt_batch_log)
         # 让日志框占据剩余垂直空间，从而使外部 groupbox 底部贴近窗口底部
-        # 对应索引: 0=file_form,1=grp_file_list,2=progress_bar,3=btn_widget,4=Label,5=txt_batch_log
+        # 对应索引: 0=file_form,1=grp_registry_list,2=grp_file_list,3=progress_bar,4=btn_widget,5=Label,6=txt_batch_log
         try:
-            layout_batch.setStretch(5, 1)
+            # 使文件列表与日志框可以拉伸（优先日志框）
+            layout_batch.setStretch(2, 0)
+            layout_batch.setStretch(6, 1)
         except Exception:
             pass
 
@@ -725,7 +779,12 @@ class IntegratedAeroGUI(QMainWindow):
     def _create_input(self, default_value):
         """创建输入框"""
         inp = QLineEdit(default_value)
-        inp.setMaximumWidth(80)
+        # 提高最大宽度以适配高 DPI 和更长的数值输入，同时使用合适的 sizePolicy
+        inp.setMaximumWidth(120)
+        try:
+            inp.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        except Exception:
+            pass
         return inp
 
     def _create_vector_row(self, inp1, inp2, inp3):
@@ -742,7 +801,8 @@ class IntegratedAeroGUI(QMainWindow):
         layout.addWidget(QLabel(","))
         layout.addWidget(inp3)
         layout.addWidget(QLabel("]"))
-        layout.addStretch()
+        # 使用小间距替代 stretch，避免把右侧控件挤出可见区域
+        layout.addSpacing(6)
 
         return row
 
@@ -816,6 +876,9 @@ class IntegratedAeroGUI(QMainWindow):
         """加载配置文件"""
         try:
             fname, _ = QFileDialog.getOpenFileName(self, '打开配置', '.', 'JSON Files (*.json)')
+            if not fname:
+                # 用户取消选择时不进行任何操作
+                return
             with open(fname, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
@@ -950,11 +1013,13 @@ class IntegratedAeroGUI(QMainWindow):
             }
 
             fname, _ = QFileDialog.getSaveFileName(self, '保存配置', 'config.json', 'JSON Files (*.json)')
-            if fname:
-                with open(fname, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2)
-                QMessageBox.information(self, "成功", f"配置已保存:\n{fname}")
-                self.statusBar().showMessage(f"已保存: {fname}")
+            # 用户取消保存时立即返回，避免继续执行或触发异常处理逻辑
+            if not fname:
+                return
+            with open(fname, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            QMessageBox.information(self, "成功", f"配置已保存:\n{fname}")
+            self.statusBar().showMessage(f"已保存: {fname}")
 
         except ValueError as e:
             QMessageBox.warning(self, "输入错误", f"请检查数值输入是否正确:\n{str(e)}")
@@ -1012,8 +1077,106 @@ class IntegratedAeroGUI(QMainWindow):
             QMessageBox.critical(self, "应用失败", f"配置应用失败:\n{str(e)}")
 
     def configure_data_format(self):
-        """配置数据格式"""
+        """配置数据格式
+
+        行为说明：
+        - 如果在文件列表中选择了一个或多个文件，会尝试基于所选第一个文件查找可用的格式定义（优先级：registry -> file-sidecar -> dir -> global）。
+        - 若找到多个候选格式文件，弹出候选选择对话让用户选择要加载的格式。
+        - 若未找到任何格式文件，则打开空白/默认的列映射对话。
+        """
+        # 1) 确定目标文件（优先使用文件列表中勾选的项）
+        chosen_fp = None
+        try:
+            items = getattr(self, '_file_check_items', None)
+            if items:
+                checked = [fp for cb, fp, *rest in items if cb.isChecked()]
+                if len(checked) == 1:
+                    chosen_fp = checked[0]
+                elif len(checked) > 1:
+                    # 多选时使用第一个作为配置目标，并提示用户
+                    chosen_fp = checked[0]
+                    self.txt_batch_log.append(f"注意：有多个文件被选中，正在为第一个选中项配置格式: {chosen_fp.name}")
+        except Exception:
+            chosen_fp = None
+
+        # 2) 收集候选格式文件路径
+        candidate_paths = []
+        try:
+            if chosen_fp:
+                # registry 优先查询（若用户提供了 registry 路径）
+                try:
+                    dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+                    if dbp:
+                        try:
+                            fmtp = get_format_for_file(dbp, str(chosen_fp))
+                            if fmtp:
+                                p = Path(fmtp)
+                                if p.exists():
+                                    candidate_paths.append(p)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # sidecar 文件优先级（.format.json, .json）
+                for suf in ('.format.json', '.json'):
+                    cand = chosen_fp.parent / f"{chosen_fp.stem}{suf}"
+                    if cand.exists():
+                        candidate_paths.append(cand)
+
+                # 目录级默认
+                dir_cand = chosen_fp.parent / 'format.json'
+                if dir_cand.exists():
+                    candidate_paths.append(dir_cand)
+        except Exception:
+            pass
+
+        # 3) 如果找到多个候选，弹出选择对话
+        selected_format = None
+        try:
+            if len(candidate_paths) > 1:
+                # 创建一个简易选择对话
+                dlg = QDialog(self)
+                dlg.setWindowTitle('选择要加载的格式文件')
+                v = QVBoxLayout(dlg)
+                from PySide6.QtWidgets import QListWidget, QListWidgetItem
+                lw = QListWidget()
+                for p in candidate_paths:
+                    lw.addItem(str(p))
+                v.addWidget(QLabel('找到多个格式定义，请选择要用于该文件的格式：'))
+                v.addWidget(lw)
+                btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                btns.accepted.connect(dlg.accept)
+                btns.rejected.connect(dlg.reject)
+                v.addWidget(btns)
+                dlg.resize(600, 300)
+                if dlg.exec() == QDialog.Accepted:
+                    sel = lw.currentItem()
+                    if sel:
+                        selected_format = Path(sel.text())
+                else:
+                    # 用户取消选择：退回，不打开配置对话
+                    return
+            elif len(candidate_paths) == 1:
+                selected_format = candidate_paths[0]
+        except Exception:
+            selected_format = None
+
+        # 4) 如果找到格式文件则尝试解析并用其内容预填充对话框
+        initial_cfg = None
+        if selected_format:
+            try:
+                import json as _json
+                with open(selected_format, 'r', encoding='utf-8') as fh:
+                    initial_cfg = _json.load(fh)
+            except Exception as e:
+                QMessageBox.warning(self, '警告', f'无法加载格式文件: {selected_format}\n{e}')
+
+        # 5) 打开 ColumnMappingDialog，并在可能时预填充
         dialog = ColumnMappingDialog(self)
+        if initial_cfg:
+            dialog.set_config(initial_cfg)
+
         if dialog.exec() == QDialog.Accepted:
             self.data_config = dialog.get_config()
             QMessageBox.information(self, "成功", 
@@ -1068,7 +1231,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     def browse_registry_db(self):
         """选择 format registry 数据库文件（可选）"""
-        fname, _ = QFileDialog.getOpenFileName(self, '选择 format registry 数据库', '.', 'SQLite DB Files (*.db);;All Files (*)')
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 format registry 数据库', '.', 'SQLite DB Files (*.sqlite *.db);;All Files (*)')
         if fname:
             try:
                 self.inp_registry_db.setText(fname)
@@ -1302,7 +1465,10 @@ class IntegratedAeroGUI(QMainWindow):
                 src_label.setStyleSheet("color: #dc3545; font-size: 11px;")
 
             row_layout.addWidget(cb)
-            row_layout.addStretch()
+            # 保持标签靠近复选框，并限制标签宽度，避免在窄窗口下被推到最右侧
+            row_layout.addSpacing(8)
+            src_label.setFixedWidth(300)
+            src_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             row_layout.addWidget(src_label)
             self.file_list_layout_inner.addWidget(row)
             # 存储三元组 (checkbox, Path, label) 以便后续使用或更新
@@ -1395,8 +1561,7 @@ class IntegratedAeroGUI(QMainWindow):
                         pass
         except Exception:
             pass
-        except Exception:
-            pass
+
 
     def _refresh_registry_list(self):
         """将当前 registry 的映射列表渲染到 `self.lst_registry`。"""
@@ -1520,15 +1685,29 @@ class IntegratedAeroGUI(QMainWindow):
         self.batch_thread.finished.connect(self.on_batch_finished)
         self.batch_thread.error.connect(self.on_batch_error)
         self.batch_thread.start()
+        # 锁定配置相关控件，提示用户当前运行使用启动时的配置快照
+        try:
+            self._set_controls_locked(True)
+            self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 注意：当前任务使用启动时配置；在运行期间对配置/格式的修改不会影响本次任务。")
+        except Exception:
+            pass
 
     def on_batch_finished(self, message):
         """批处理完成"""
+        try:
+            self._set_controls_locked(False)
+        except Exception:
+            pass
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ {message}")
         self.statusBar().showMessage("批量处理完成")
         QMessageBox.information(self, "完成", message)
 
     def on_batch_error(self, error_msg):
         """批处理出错"""
+        try:
+            self._set_controls_locked(False)
+        except Exception:
+            pass
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✗ 错误: {error_msg}")
         self.progress_bar.setVisible(False)
         self.statusBar().showMessage("批量处理失败")
@@ -1702,6 +1881,31 @@ class IntegratedAeroGUI(QMainWindow):
                 pass
         except Exception:
             pass
+
+    def _set_controls_locked(self, locked: bool):
+        """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
+
+        locked=True 时禁用；locked=False 时恢复。此方法尽量保持幂等并静默忽略缺失控件。
+        """
+        widgets = [
+            getattr(self, 'btn_load', None),
+            getattr(self, 'btn_save', None),
+            getattr(self, 'btn_apply', None),
+            getattr(self, 'btn_config_format', None),
+            getattr(self, 'btn_registry_register', None),
+            getattr(self, 'btn_registry_edit', None),
+            getattr(self, 'btn_registry_remove', None),
+            getattr(self, 'btn_batch', None),
+            getattr(self, 'inp_registry_db', None),
+            getattr(self, 'inp_registry_pattern', None),
+            getattr(self, 'inp_registry_format', None),
+        ]
+        for w in widgets:
+            try:
+                if w is not None:
+                    w.setEnabled(not locked)
+            except Exception:
+                pass
 
 
 def main():

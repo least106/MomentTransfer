@@ -47,12 +47,23 @@ def register_mapping(db_path: str, pattern: str, format_path: str):
         raise ValueError("pattern 必须为非空字符串")
 
     _ensure_db(db_path)
+    # 如果已有相同的 pattern，则更新对应映射（避免为同一 pattern 重复插入），并刷新 added_at
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO mappings (pattern, format_path, added_at) VALUES (?, ?, ?)",
-            (pattern, str(format_path), datetime.datetime.now(datetime.timezone.utc).isoformat()),
-        )
+        cur.execute("SELECT id FROM mappings WHERE pattern = ?", (pattern,))
+        row = cur.fetchone()
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        if row:
+            mapping_id = int(row[0])
+            cur.execute(
+                "UPDATE mappings SET format_path = ?, added_at = ? WHERE id = ?",
+                (str(format_path), now_iso, mapping_id),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO mappings (pattern, format_path, added_at) VALUES (?, ?, ?)",
+                (pattern, str(format_path), now_iso),
+            )
         conn.commit()
 
 
