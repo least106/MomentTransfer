@@ -8,6 +8,8 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 import fnmatch
+import uuid
+import traceback
 
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
@@ -47,16 +49,20 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
             except OSError as e:
                 raise IOError(f"无法覆盖已存在的输出文件: {out_path} -> {e}")
         else:
-            # 自动添加序号后缀直到不冲突
+            # 自动添加唯一后缀以减少并发冲突（优先短序号尝试，然后回退到 UUID）
             base = out_path.stem
             suf = out_path.suffix
-            for i in range(1, MAX_FILE_COLLISION_RETRIES + 1):
+            found = False
+            for i in range(1, min(20, MAX_FILE_COLLISION_RETRIES) + 1):
                 candidate = output_dir / f"{base}_{i}{suf}"
                 if not candidate.exists():
                     out_path = candidate
+                    found = True
                     break
-            else:
-                raise IOError(f"无法为输出文件找到不冲突的文件名（尝试 {MAX_FILE_COLLISION_RETRIES} 次）: {out_path}")
+            if not found:
+                # 回退到 UUID 保证唯一性，适用于高并发场景
+                unique = uuid.uuid4().hex
+                out_path = output_dir / f"{base}_{unique}{suf}"
 
     # 最后检查目录是否可写
     try:
@@ -373,15 +379,17 @@ def _worker_process(args_tuple):
     - config_path: path to JSON config for AeroCalculator (project geometry)
     """
     try:
-        # 保证在任何异常分支中都能报告文件名：优先读取 args_tuple[0]
-        file_path_str = (
-        # unpack args（前 4 个为必需参数，后续位置参数作为可选项，例如 registry_db）
-        file_path_str, config_dict, project_config_path, output_dir_str, *optional = args_tuple
-        registry_db = optional[0] if optional else None
-            file_path_str, config_dict, project_config_path, output_dir_str = args_tuple
-            registry_db = None
-        else:
-            file_path_str, config_dict, project_config_path, output_dir_str, registry_db = args_tuple
+        # 保证在任何异常分支中都能报告文件名：先尽量设置 file_path_str 为可辨识值
+        file_path_str = args_tuple[0] if len(args_tuple) > 0 else "<unknown>"
+        # 期望的最小参数数量为 4（file_path, config_dict, project_config_path, output_dir）
+        if len(args_tuple) < 4:
+            raise ValueError("子进程参数不足，至少需要 4 个参数: (file_path, config_dict, project_config_path, output_dir)")
+        # 稳健解包：多余参数视为可选项（registry_db）
+        config_dict = args_tuple[1]
+        project_config_path = args_tuple[2]
+        output_dir_str = args_tuple[3]
+        registry_db = args_tuple[4] if len(args_tuple) > 4 else None
+
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
 
@@ -416,10 +424,11 @@ def _worker_process(args_tuple):
         return (str(file_path), success, None)
     except Exception as e:
         # 捕获子进程中任何异常，返回失败信息以便主进程记录
+        tb = traceback.format_exc()
         return (
             file_path_str,
             False,
-            str(e)
+            tb
         )
 def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None):
     """增强版批处理主函数"""
