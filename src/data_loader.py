@@ -148,7 +148,7 @@ class ProjectData:
                 coord_system=CoordSystemDefinition.from_dict(data["SourceCoordSystem"])
             )
         else:
-            raise ValueError("配置文件缺少 Source 或 SourceCoordSystem 定义")
+            raise ValueError("配置文件缺少 Source 或 SourceCoordSystem 定义。有效的顶层字段为 'Source'（完整配置）或 'SourceCoordSystem'（仅坐标系定义，向后兼容）。")
         
         # 解析 Target
         if "Target" not in data:

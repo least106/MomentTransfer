@@ -1,5 +1,4 @@
 import click
-import json
 import logging
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -13,9 +12,11 @@ import fnmatch
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
 
-from src.data_loader import load_data
+# 必需列键常量
+REQUIRED_KEYS = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
+
+
 from src.physics import AeroCalculator
-from src.cli_helpers import configure_logging, load_project_calculator, BatchConfig, load_format_from_file
 
 from src.cli_helpers import (
     configure_logging,
@@ -43,7 +44,7 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
             # 尝试删除旧文件以便后续写入（若无法删除则抛出）
             try:
                 out_path.unlink()
-            except Exception as e:
+            except OSError as e:
                 raise IOError(f"无法覆盖已存在的输出文件: {out_path} -> {e}")
         else:
             # 自动添加序号后缀直到不冲突
@@ -126,6 +127,7 @@ def process_df_chunk(chunk_df: pd.DataFrame,
         else:
             # 未知策略时退回到按 0 处理，避免崩溃
             forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+            logger.warning(f"未知的非数值处理策略: '{cfg.treat_non_numeric}'，已退回为 'zero' 策略")
             moments = moments_df.fillna(0.0).to_numpy(dtype=float)
         data_df = chunk_df.reset_index(drop=True)
 
@@ -204,11 +206,13 @@ def parse_selection(sel_str: str, n: int) -> list:
                 b_i = int(b) - 1
                 idxs.extend(range(a_i, b_i + 1))
             except (ValueError, TypeError):
+                logging.warning("批处理文件选择解析时忽略了无效区间片段 '%s'（原始输入: '%s'）。", part, sel_str)
                 continue
         else:
             try:
                 idxs.append(int(part) - 1)
             except (ValueError, TypeError):
+                logging.warning("批处理文件选择解析时忽略了无效索引片段 '%s'（原始输入: '%s'）。", part, sel_str)
                 continue
     return sorted(set(i for i in idxs if 0 <= i < n))
 
@@ -236,16 +240,23 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
     try:
         logger = logging.getLogger('batch')
         # 检查文件类型与是否启用 chunksize（仅对 CSV 有效）
+        # 安全解析 chunksize，避免非数值字符串导致 ValueError 
+        chunk_size = None
+        if config.chunksize:
+            try:
+                chunk_size = int(config.chunksize)
+            except (ValueError, TypeError):
+                chunk_size = None
+
         ext = Path(file_path).suffix.lower()
-        use_chunks = (ext == '.csv') and config.chunksize and int(config.chunksize) > 0
+        use_chunks = (ext == '.csv') and chunk_size and chunk_size > 0
 
         # 若未使用流式，则一次性读取完整表格用于后续处理与列验证
         if not use_chunks:
             df = read_data_with_config(file_path, config)
             # 校验列索引是否在有效范围内
             num_cols = len(df.columns)
-            required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
-            for key in required_keys:
+            for key in REQUIRED_KEYS:
                 col_idx = config.column_mappings.get(key)
                 if col_idx is None:
                     raise ValueError(f"列映射缺失: '{key}' 未配置")
@@ -286,8 +297,7 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
             # 使用首块校验列数
             num_cols = len(first.columns)
             # 验证列索引在首块中是否有效
-            required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
-            for key in required_keys:
+            for key in REQUIRED_KEYS:
                 col_idx = config.column_mappings.get(key)
                 if col_idx is None:
                     raise ValueError(f"列映射缺失: '{key}' 未配置")
@@ -341,12 +351,14 @@ def _worker_process(args_tuple):
     - config_path: path to JSON config for AeroCalculator (project geometry)
     """
     try:
-        # 支持可选的 mapping_file 参数作为第五项
-        if len(args_tuple) == 5:
-            file_path_str, config_dict, project_config_path, output_dir_str, mapping_file = args_tuple
-        else:
+        # 保证在任何异常分支中都能报告文件名：优先读取 args_tuple[0]
+        file_path_str = str(args_tuple[0]) if args_tuple else 'unknown'
+        # unpack args (支持新增的 registry_db 可选项)
+        if len(args_tuple) == 4:
             file_path_str, config_dict, project_config_path, output_dir_str = args_tuple
-            mapping_file = None
+            registry_db = None
+        else:
+            file_path_str, config_dict, project_config_path, output_dir_str, registry_db = args_tuple
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
 
@@ -365,23 +377,28 @@ def _worker_process(args_tuple):
         cfg.treat_non_numeric = config_dict.get('treat_non_numeric', cfg.treat_non_numeric)
         cfg.sample_rows = config_dict.get('sample_rows', cfg.sample_rows)
 
-        # 若提供 mapping_file，则解析 per-file 最终配置（优先级: sidecar -> mapping -> dir-default -> global）
+        # 若提供了 registry_db，则尝试按文件解析最终配置
         try:
-            final_cfg = resolve_file_format(file_path_str, cfg, mapping_file=mapping_file)
-        except Exception:
-            final_cfg = cfg
+            from src.cli_helpers import resolve_file_format
+            if registry_db:
+                cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+        except Exception as e:
+            # 不中断处理，但记录警告日志以便调试解析失败原因
+            logging.getLogger(__name__).warning(
+                "使用register_db“%s”解析“%s”的文件格式失败，错误：%s",
+                str(file_path), registry_db, e
+            )
 
-        success = process_single_file(file_path, calculator, final_cfg, output_dir)
+        success = process_single_file(file_path, calculator, cfg, output_dir)
         return (str(file_path), success, None)
     except Exception as e:
         # 捕获子进程中任何异常，返回失败信息以便主进程记录
         return (
-            file_path_str if 'file_path_str' in locals()
-            else str(args_tuple[0]) if args_tuple else 'unknown',
+            file_path_str,
             False,
             str(e)
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, mapping_file: str = None):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None):
     """增强版批处理主函数"""
     print("=" * 70)
     print("MomentTransfer v2.0")
@@ -449,12 +466,14 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     # 若在外部通过 CLI 提供了并行参数，会由外层主函数处理；这里保持串行以便直接调用
     for i, file_path in enumerate(files_to_process, 1):
         print(f"\n进度: [{i}/{len(files_to_process)}]")
+        # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
         try:
-            final_cfg = resolve_file_format(str(file_path), data_config, mapping_file=mapping_file)
-        except Exception as e:
-            print(f"  [错误] 解析文件格式失败: {e}")
-            continue
-        if process_single_file(file_path, calculator, final_cfg, output_dir):
+            from src.cli_helpers import resolve_file_format
+            cfg_local = resolve_file_format(str(file_path), data_config, registry_db=registry_db)
+        except Exception:
+            cfg_local = data_config
+
+        if process_single_file(file_path, calculator, cfg_local, output_dir):
             success_count += 1
     
     # 总结
@@ -480,8 +499,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--timestamp-format', 'timestamp_format', default=None, help='时间戳格式，用于 {timestamp} 占位符，默认 %%Y%%m%%d_%%H%%M%%S')
 @click.option('--treat-non-numeric', 'treat_non_numeric', type=click.Choice(['zero','nan','drop']), default=None, help='如何处理非数值输入: zero|nan|drop')
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
-@click.option('--mapping-file', 'mapping_file', default=None, help='pattern->format 映射 JSON 文件路径')
-def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows, mapping_file):
+@click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
+def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows, registry_db):
     """批处理入口（click 版）"""
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
@@ -568,7 +587,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
             with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
                 for fp in files_to_process:
-                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir), mapping_file))
+                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir), registry_db))
                     futures[fut] = fp
 
                 success_count = 0
@@ -589,7 +608,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
 
         else:
             # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            run_batch_processing_v2(config, input_path, data_config, mapping_file=mapping_file)
+            run_batch_processing_v2(config, input_path, data_config, registry_db=registry_db)
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')

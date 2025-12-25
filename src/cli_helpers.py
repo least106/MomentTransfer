@@ -47,19 +47,14 @@ def load_format_from_file(path: str) -> BatchConfig:
     except json.JSONDecodeError as e:
         raise ValueError(f"格式文件不是有效的 JSON: {path} -> {e}") from e
 
-    return _batchconfig_from_dict(data)
-
-
-def _batchconfig_from_dict(data: dict) -> BatchConfig:
-    """从字典创建 BatchConfig，供文件/映射加载复用。"""
     cfg = BatchConfig()
     cfg.skip_rows = int(data.get('skip_rows', 0))
-    cols = data.get('columns', {}) or {}
+    cols = data.get('columns', {})
     for k in cfg.column_mappings.keys():
         if k in cols:
             v = cols[k]
             cfg.column_mappings[k] = int(v) if v is not None else None
-    cfg.passthrough_columns = [int(x) for x in (data.get('passthrough', []) or [])]
+    cfg.passthrough_columns = [int(x) for x in data.get('passthrough', [])]
     if 'chunksize' in data:
         try:
             cfg.chunksize = int(data.get('chunksize'))
@@ -79,36 +74,6 @@ def _batchconfig_from_dict(data: dict) -> BatchConfig:
         except (TypeError, ValueError):
             cfg.sample_rows = 5
     return cfg
-
-
-def load_mapping_file(path: str) -> list:
-    """加载 mapping 文件，返回按顺序的映射列表: [{"pattern": str, "config": BatchConfig}, ...]
-
-    映射文件期望一个 JSON 列表，每项包含 `pattern` 字段和 `format` 字典，
-    例如: [{"pattern": "*_A.csv", "format": { ... }}, ...]
-    """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"mapping 文件未找到: {path}")
-    with open(p, 'r', encoding='utf-8') as fh:
-        txt = fh.read()
-    if not txt or not txt.strip():
-        raise ValueError(f"mapping 文件为空: {path}")
-    try:
-        data = json.loads(txt)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"mapping 文件不是有效的 JSON: {path} -> {e}") from e
-    if not isinstance(data, list):
-        raise ValueError("mapping 文件必须是一个列表，每项包含 'pattern' 和 'format' 字段")
-    mappings = []
-    for item in data:
-        if not isinstance(item, dict) or 'pattern' not in item or 'format' not in item:
-            raise ValueError("mapping 文件每项应为对象且包含 'pattern' 和 'format' 字段")
-        pat = str(item['pattern'])
-        fmt = item['format']
-        cfg = _batchconfig_from_dict(fmt)
-        mappings.append({'pattern': pat, 'config': cfg})
-    return mappings
 
 
 def get_user_file_format() -> BatchConfig:
@@ -171,10 +136,13 @@ def get_user_file_format() -> BatchConfig:
     return config
 
 
+from src.format_registry import get_format_for_file
+
+
 def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
+                        registry_db: str = None,
                         sidecar_suffixes=('.format.json', '.json'),
-                        dir_default_name='format.json',
-                        mapping_file: str | None = None) -> BatchConfig:
+                        dir_default_name='format.json') -> BatchConfig:
     """为单个数据文件解析并返回最终的 BatchConfig。
 
     优先级：file-sidecar（同名） -> 目录级默认（dir_default_name） -> global_cfg（传入的全局配置）。
@@ -188,6 +156,23 @@ def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
     # 开始于全局配置的拷贝
     cfg = deepcopy(global_cfg)
 
+    # 0) 优先查询 registry（若提供）
+    if registry_db:
+        try:
+            reg_fmt = get_format_for_file(registry_db, file_path)
+            if reg_fmt:
+                local = load_format_from_file(str(reg_fmt))
+                _merge_batch_config(cfg, local)
+                return cfg
+        except Exception as exc:
+            # registry 查询失败时不阻塞，降级到本地侧车/目录/全局策略，但记录具体原因便于排查
+            logging.getLogger(__name__).warning(
+                "Registry lookup failed for file %r with registry_db %r: %s",
+                file_path,
+                registry_db,
+                exc,
+            )
+
     # 1) 检查 file-sidecar
     stem = p.stem
     parent = p.parent
@@ -198,21 +183,6 @@ def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
             # 覆盖 cfg
             _merge_batch_config(cfg, local)
             return cfg
-
-    # 1.5) 若提供 mapping_file，则按映射优先级匹配（mapping 的优先级低于 file-sidecar，但高于 dir-default）
-    if mapping_file:
-        try:
-            mappings = load_mapping_file(mapping_file)
-        except Exception:
-            mappings = []
-        # 尝试按顺序匹配，优先第一项匹配
-        import fnmatch
-        for m in mappings:
-            pat = m.get('pattern')
-            # 匹配文件名或相对路径
-            if fnmatch.fnmatch(p.name, pat) or fnmatch.fnmatch(str(p), pat):
-                _merge_batch_config(cfg, m['config'])
-                return cfg
 
     # 2) 检查目录级默认
     dir_candidate = parent / dir_default_name
@@ -243,13 +213,39 @@ def _merge_batch_config(dst: BatchConfig, src: BatchConfig) -> None:
 
 
 def configure_logging(log_file: str | None, verbose: bool) -> logging.Logger:
-    """配置并返回名为 `batch` 的 logger。"""
+    """配置并返回名为 `batch` 的 logger。
+
+    实现要点：
+    - 不调用 `logging.basicConfig()` 以避免影响全局根 logger。
+    - 配置并返回专用的 `batch` logger。
+    - 每次调用会重置该 logger 的 handlers（避免重复添加）。
+    """
     log_level = logging.DEBUG if verbose else logging.INFO
-    handlers = [logging.StreamHandler()]
+    logger = logging.getLogger('batch')
+    logger.setLevel(log_level)
+
+    # 清理已有 handlers（如果有），避免重复输出或多次添加
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        try:
+            h.close()
+        except Exception:
+            pass
+
+    fmt = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+
+    stream_h = logging.StreamHandler()
+    stream_h.setLevel(log_level)
+    stream_h.setFormatter(fmt)
+    logger.addHandler(stream_h)
+
     if log_file:
-        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
-    logging.basicConfig(level=log_level, format='%(asctime)s %(levelname)s: %(message)s', handlers=handlers)
-    return logging.getLogger('batch')
+        file_h = logging.FileHandler(log_file, encoding='utf-8')
+        file_h.setLevel(log_level)
+        file_h.setFormatter(fmt)
+        logger.addHandler(file_h)
+
+    return logger
 
 
 def load_project_calculator(config_path: str):
