@@ -12,6 +12,7 @@ import uuid
 import traceback
 import tempfile
 import os
+import shutil
 
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
@@ -306,6 +307,11 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         # 生成输出路径（按模板与冲突策略）
         out_path = generate_output_path(file_path, output_dir, config)
 
+        # 使用临时文件写入，最终原子替换为 out_path（避免并发或部分写入）
+        temp_fd, temp_name = tempfile.mkstemp(prefix=out_path.name + '.', dir=str(out_path.parent), text=True)
+        os.close(temp_fd)
+        temp_out_path = Path(temp_name)
+
         first_chunk = True
         total_processed = 0
         total_dropped = 0
@@ -314,7 +320,8 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         # 块处理已提取为模块级函数 `process_df_chunk`
 
         # 如果是 CSV 且配置了 chunksize，则流式
-        if use_chunks:
+        try:
+            if use_chunks:
             reader = pd.read_csv(file_path, header=None, skiprows=config.skip_rows, chunksize=int(config.chunksize))
             try:
                 first = next(reader)
@@ -347,28 +354,45 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
             for chunk in reader:
                 proc, dropped, non_num, first_chunk = process_df_chunk(
                     chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                    calculator, config, out_path, first_chunk, logger
+                    calculator, config, temp_out_path, first_chunk, logger
                 )
                 total_processed += proc
                 total_dropped += dropped
                 total_non_numeric += non_num
-        else:
-            # 整表处理
-            proc, dropped, non_num, first_chunk = process_df_chunk(
-                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                calculator, config, out_path, first_chunk, logger
-            )
+            else:
+                # 整表处理
+                proc, dropped, non_num, first_chunk = process_df_chunk(
+                    df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
+                    calculator, config, temp_out_path, first_chunk, logger
+                )
             total_processed += proc
             total_dropped += dropped
             total_non_numeric += non_num
 
-        logger.info(f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行")
-        logger.info(f"结果文件: {out_path}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
-        return False
+            # 在所有块写入完成后，原子替换到目标文件
+            try:
+                shutil.move(str(temp_out_path), str(out_path))
+            except Exception:
+                # 在某些平台上 move 不是原子操作，尝试 os.replace
+                try:
+                    os.replace(str(temp_out_path), str(out_path))
+                except Exception as e:
+                    logger.error("将临时文件移动到目标位置失败: %s", e, exc_info=True)
+                    raise
+
+            logger.info(f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行")
+            logger.info(f"结果文件: {out_path}")
+            return True
+
+        except Exception as e:
+            # 发生错误时尝试清理临时文件
+            try:
+                if temp_out_path.exists():
+                    temp_out_path.unlink()
+            except Exception:
+                pass
+            logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
+            return False
 
 
 def _worker_process(args):
