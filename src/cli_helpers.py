@@ -8,7 +8,7 @@ from src.data_loader import load_data
 from src.physics import AeroCalculator
 from pathlib import Path
 from datetime import datetime
-import numpy as np
+
 
 
 class BatchConfig:
@@ -47,18 +47,23 @@ def load_format_from_file(path: str) -> BatchConfig:
     except json.JSONDecodeError as e:
         raise ValueError(f"格式文件不是有效的 JSON: {path} -> {e}") from e
 
+    return _batchconfig_from_dict(data)
+
+
+def _batchconfig_from_dict(data: dict) -> BatchConfig:
+    """从字典创建 BatchConfig，供文件/映射加载复用。"""
     cfg = BatchConfig()
     cfg.skip_rows = int(data.get('skip_rows', 0))
-    cols = data.get('columns', {})
+    cols = data.get('columns', {}) or {}
     for k in cfg.column_mappings.keys():
         if k in cols:
             v = cols[k]
             cfg.column_mappings[k] = int(v) if v is not None else None
-    cfg.passthrough_columns = [int(x) for x in data.get('passthrough', [])]
+    cfg.passthrough_columns = [int(x) for x in (data.get('passthrough', []) or [])]
     if 'chunksize' in data:
         try:
             cfg.chunksize = int(data.get('chunksize'))
-        except Exception:
+        except (TypeError, ValueError):
             cfg.chunksize = None
     if 'name_template' in data:
         cfg.name_template = str(data.get('name_template'))
@@ -74,6 +79,36 @@ def load_format_from_file(path: str) -> BatchConfig:
         except (TypeError, ValueError):
             cfg.sample_rows = 5
     return cfg
+
+
+def load_mapping_file(path: str) -> list:
+    """加载 mapping 文件，返回按顺序的映射列表: [{"pattern": str, "config": BatchConfig}, ...]
+
+    映射文件期望一个 JSON 列表，每项包含 `pattern` 字段和 `format` 字典，
+    例如: [{"pattern": "*_A.csv", "format": { ... }}, ...]
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"mapping 文件未找到: {path}")
+    with open(p, 'r', encoding='utf-8') as fh:
+        txt = fh.read()
+    if not txt or not txt.strip():
+        raise ValueError(f"mapping 文件为空: {path}")
+    try:
+        data = json.loads(txt)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"mapping 文件不是有效的 JSON: {path} -> {e}") from e
+    if not isinstance(data, list):
+        raise ValueError("mapping 文件必须是一个列表，每项包含 'pattern' 和 'format' 字段")
+    mappings = []
+    for item in data:
+        if not isinstance(item, dict) or 'pattern' not in item or 'format' not in item:
+            raise ValueError("mapping 文件每项应为对象且包含 'pattern' 和 'format' 字段")
+        pat = str(item['pattern'])
+        fmt = item['format']
+        cfg = _batchconfig_from_dict(fmt)
+        mappings.append({'pattern': pat, 'config': cfg})
+    return mappings
 
 
 def get_user_file_format() -> BatchConfig:
@@ -134,6 +169,77 @@ def get_user_file_format() -> BatchConfig:
             print("[警告] 格式错误，将不保留额外列")
 
     return config
+
+
+def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
+                        sidecar_suffixes=('.format.json', '.json'),
+                        dir_default_name='format.json',
+                        mapping_file: str | None = None) -> BatchConfig:
+    """为单个数据文件解析并返回最终的 BatchConfig。
+
+    优先级：file-sidecar（同名） -> 目录级默认（dir_default_name） -> global_cfg（传入的全局配置）。
+
+    返回的是一个 `BatchConfig` 的深拷贝，基于 `global_cfg` ，并由本地配置覆盖相应字段。
+    """
+    from copy import deepcopy
+    from pathlib import Path
+
+    p = Path(file_path)
+    # 开始于全局配置的拷贝
+    cfg = deepcopy(global_cfg)
+
+    # 1) 检查 file-sidecar
+    stem = p.stem
+    parent = p.parent
+    for suf in sidecar_suffixes:
+        candidate = parent / f"{stem}{suf}"
+        if candidate.exists():
+            local = load_format_from_file(str(candidate))
+            # 覆盖 cfg
+            _merge_batch_config(cfg, local)
+            return cfg
+
+    # 1.5) 若提供 mapping_file，则按映射优先级匹配（mapping 的优先级低于 file-sidecar，但高于 dir-default）
+    if mapping_file:
+        try:
+            mappings = load_mapping_file(mapping_file)
+        except Exception:
+            mappings = []
+        # 尝试按顺序匹配，优先第一项匹配
+        import fnmatch
+        for m in mappings:
+            pat = m.get('pattern')
+            # 匹配文件名或相对路径
+            if fnmatch.fnmatch(p.name, pat) or fnmatch.fnmatch(str(p), pat):
+                _merge_batch_config(cfg, m['config'])
+                return cfg
+
+    # 2) 检查目录级默认
+    dir_candidate = parent / dir_default_name
+    if dir_candidate.exists():
+        local = load_format_from_file(str(dir_candidate))
+        _merge_batch_config(cfg, local)
+        return cfg
+
+    # 3) 否则返回全局（已拷贝）
+    return cfg
+
+
+def _merge_batch_config(dst: BatchConfig, src: BatchConfig) -> None:
+    """把 src 的非空/非默认字段合并到 dst（就地修改 dst）。"""
+    # 简单策略：直接覆盖字段（列映射中以非 None 值覆盖）
+    dst.skip_rows = int(src.skip_rows)
+    for k, v in src.column_mappings.items():
+        if v is not None:
+            dst.column_mappings[k] = int(v)
+    if src.passthrough_columns:
+        dst.passthrough_columns = list(src.passthrough_columns)
+    dst.chunksize = src.chunksize
+    dst.name_template = src.name_template
+    dst.timestamp_format = src.timestamp_format
+    dst.overwrite = bool(src.overwrite)
+    dst.treat_non_numeric = src.treat_non_numeric
+    dst.sample_rows = int(src.sample_rows)
 
 
 def configure_logging(log_file: str | None, verbose: bool) -> logging.Logger:

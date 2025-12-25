@@ -17,8 +17,14 @@ from src.data_loader import load_data
 from src.physics import AeroCalculator
 from src.cli_helpers import configure_logging, load_project_calculator, BatchConfig, load_format_from_file
 
-
-from src.cli_helpers import get_user_file_format
+from src.cli_helpers import (
+    configure_logging,
+    load_project_calculator,
+    BatchConfig,
+    load_format_from_file,
+    get_user_file_format,
+    resolve_file_format,
+)
 
 
 
@@ -335,7 +341,12 @@ def _worker_process(args_tuple):
     - config_path: path to JSON config for AeroCalculator (project geometry)
     """
     try:
-        file_path_str, config_dict, project_config_path, output_dir_str = args_tuple
+        # 支持可选的 mapping_file 参数作为第五项
+        if len(args_tuple) == 5:
+            file_path_str, config_dict, project_config_path, output_dir_str, mapping_file = args_tuple
+        else:
+            file_path_str, config_dict, project_config_path, output_dir_str = args_tuple
+            mapping_file = None
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
 
@@ -354,7 +365,13 @@ def _worker_process(args_tuple):
         cfg.treat_non_numeric = config_dict.get('treat_non_numeric', cfg.treat_non_numeric)
         cfg.sample_rows = config_dict.get('sample_rows', cfg.sample_rows)
 
-        success = process_single_file(file_path, calculator, cfg, output_dir)
+        # 若提供 mapping_file，则解析 per-file 最终配置（优先级: sidecar -> mapping -> dir-default -> global）
+        try:
+            final_cfg = resolve_file_format(file_path_str, cfg, mapping_file=mapping_file)
+        except Exception:
+            final_cfg = cfg
+
+        success = process_single_file(file_path, calculator, final_cfg, output_dir)
         return (str(file_path), success, None)
     except Exception as e:
         # 捕获子进程中任何异常，返回失败信息以便主进程记录
@@ -364,7 +381,7 @@ def _worker_process(args_tuple):
             False,
             str(e)
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, mapping_file: str = None):
     """增强版批处理主函数"""
     print("=" * 70)
     print("MomentTransfer v2.0")
@@ -432,7 +449,12 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     # 若在外部通过 CLI 提供了并行参数，会由外层主函数处理；这里保持串行以便直接调用
     for i, file_path in enumerate(files_to_process, 1):
         print(f"\n进度: [{i}/{len(files_to_process)}]")
-        if process_single_file(file_path, calculator, data_config, output_dir):
+        try:
+            final_cfg = resolve_file_format(str(file_path), data_config, mapping_file=mapping_file)
+        except Exception as e:
+            print(f"  [错误] 解析文件格式失败: {e}")
+            continue
+        if process_single_file(file_path, calculator, final_cfg, output_dir):
             success_count += 1
     
     # 总结
@@ -458,7 +480,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--timestamp-format', 'timestamp_format', default=None, help='时间戳格式，用于 {timestamp} 占位符，默认 %%Y%%m%%d_%%H%%M%%S')
 @click.option('--treat-non-numeric', 'treat_non_numeric', type=click.Choice(['zero','nan','drop']), default=None, help='如何处理非数值输入: zero|nan|drop')
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
-def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows):
+@click.option('--mapping-file', 'mapping_file', default=None, help='pattern->format 映射 JSON 文件路径')
+def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows, mapping_file):
     """批处理入口（click 版）"""
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
@@ -545,7 +568,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
             with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
                 for fp in files_to_process:
-                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir)))
+                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir), mapping_file))
                     futures[fut] = fp
 
                 success_count = 0
@@ -566,7 +589,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
 
         else:
             # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            run_batch_processing_v2(config, input_path, data_config)
+            run_batch_processing_v2(config, input_path, data_config, mapping_file=mapping_file)
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')
