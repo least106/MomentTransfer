@@ -385,13 +385,18 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         # 块处理已提取为模块级函数 `process_df_chunk`
 
         # 如果是 CSV 且配置了 chunksize，则流式
-        try:
-            if use_chunks:
+        if use_chunks:
             reader = pd.read_csv(file_path, header=None, skiprows=config.skip_rows, chunksize=int(config.chunksize))
             try:
                 first = next(reader)
             except StopIteration:
                 logger.warning(f"文件 {file_path} 为空，跳过处理")
+                # 尝试清理临时文件（若已创建）
+                try:
+                    if temp_out_path.exists():
+                        temp_out_path.unlink()
+                except Exception:
+                    pass
                 return False
 
             # 使用首块校验列数
@@ -406,10 +411,10 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
                         f"列索引越界: column_mappings['{key}'] = {col_idx}, 但数据仅有 {num_cols} 列"
                     )
 
-            # 处理首块
+            # 处理首块（写入临时文件，避免最终替换时覆盖首块）
             proc, dropped, non_num, first_chunk = process_df_chunk(
                 first, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                calculator, config, out_path, first_chunk, logger
+                calculator, config, temp_out_path, first_chunk, logger
             )
             total_processed += proc
             total_dropped += dropped
@@ -424,40 +429,40 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
                 total_processed += proc
                 total_dropped += dropped
                 total_non_numeric += non_num
-            else:
-                # 整表处理
-                proc, dropped, non_num, first_chunk = process_df_chunk(
-                    df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                    calculator, config, temp_out_path, first_chunk, logger
-                )
+        else:
+            # 整表处理
+            proc, dropped, non_num, first_chunk = process_df_chunk(
+                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
+                calculator, config, temp_out_path, first_chunk, logger
+            )
             total_processed += proc
             total_dropped += dropped
             total_non_numeric += non_num
 
-            # 在所有块写入完成后，原子替换到目标文件
+        # 在所有块写入完成后，原子替换到目标文件
+        try:
+            shutil.move(str(temp_out_path), str(out_path))
+        except Exception:
+            # 在某些平台上 move 不是原子操作，尝试 os.replace
             try:
-                shutil.move(str(temp_out_path), str(out_path))
-            except Exception:
-                # 在某些平台上 move 不是原子操作，尝试 os.replace
-                try:
-                    os.replace(str(temp_out_path), str(out_path))
-                except Exception as e:
-                    logger.error("将临时文件移动到目标位置失败: %s", e, exc_info=True)
-                    raise
+                os.replace(str(temp_out_path), str(out_path))
+            except Exception as e:
+                logger.error("将临时文件移动到目标位置失败: %s", e, exc_info=True)
+                raise
 
-            logger.info(f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行")
-            logger.info(f"结果文件: {out_path}")
-            return True
+        logger.info(f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行")
+        logger.info(f"结果文件: {out_path}")
+        return True
 
-        except Exception as e:
-            # 发生错误时尝试清理临时文件
-            try:
-                if temp_out_path.exists():
-                    temp_out_path.unlink()
-            except Exception:
-                pass
-            logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
-            return False
+    except Exception as e:
+        # 发生错误时尝试清理临时文件
+        try:
+            if temp_out_path.exists():
+                temp_out_path.unlink()
+        except Exception:
+            pass
+        logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
+        return False
 
 
 def _worker_process(args):
