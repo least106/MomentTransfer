@@ -1,6 +1,7 @@
 import os
 import json
 import click
+from typing import Any
 
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
@@ -8,16 +9,29 @@ from src.cli_helpers import load_project_calculator
 from src.registry_cli import registry as registry_cmd
 
 
+def _make_serializable(v: Any) -> Any:
+    """将 numpy/其它可转为 list 的对象转为 Python 原生结构，便于 json.dump。"""
+    try:
+        if hasattr(v, 'tolist'):
+            return v.tolist()
+    except Exception:
+        pass
+    return v
+
+
 @click.command()
-@click.option('-i', '--input', 'input_path', default=None,
+# 新增明确的 -c/--config 选项，保留 -i/--input 作为向后兼容的别名（标注为已弃用）
+@click.option('-c', '--config', 'config_path', default=None,
               help='配置文件路径 (JSON)，默认使用项目 data/input.json')
+@click.option('-i', '--input', 'input_path', default=None,
+              help='（已弃用）配置文件路径，使用 -c/--config 替代')
 @click.option('-o', '--output', 'output_path', default=None,
               help='结果输出路径 (JSON)，若不提供则不写文件')
 @click.option('--force', type=(float, float, float), default=None,
               help='输入力向量 (例如: --force 100 0 -50)')
 @click.option('--moment', type=(float, float, float), default=None,
               help='输入力矩向量 (例如: --moment 0 500 0)')
-def main(input_path, output_path, force, moment):
+def main(config_path, input_path, output_path, force, moment):
     """气动载荷坐标变换工具（click CLI）
 
     支持非交互模式通过 `--force` 与 `--moment` 指定载荷。
@@ -26,7 +40,14 @@ def main(input_path, output_path, force, moment):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     default_config = os.path.join(base_dir, 'data', 'input.json')
 
-    cfg_path = input_path or default_config
+    # 优先使用 -c/--config，其次兼容 -i/--input，最后使用默认配置文件
+    cfg_path = config_path or input_path or default_config
+
+    # 在尝试加载前先检查配置文件是否存在，给出友好错误提示
+    if not os.path.exists(cfg_path):
+        click.echo(f"[致命错误] 配置文件未找到: {cfg_path}")
+        click.echo("提示: 使用 -c/--config 指定配置文件，或运行 creator.py 生成 data/input.json")
+        raise click.Abort()
 
     raw_forces = list(force) if force is not None else None
     raw_moments = list(moment) if moment is not None else None
@@ -80,10 +101,10 @@ def main(input_path, output_path, force, moment):
             "input": {"force": raw_forces, "moment": raw_moments},
             "target": getattr(project_data.target_config, "part_name", None),
             "result": {
-                "force_transformed": result.force_transformed,
-                "moment_transformed": result.moment_transformed,
-                "coeff_force": result.coeff_force,
-                "coeff_moment": result.coeff_moment,
+                "force_transformed": _make_serializable(result.force_transformed),
+                "moment_transformed": _make_serializable(result.moment_transformed),
+                "coeff_force": _make_serializable(result.coeff_force),
+                "coeff_moment": _make_serializable(result.coeff_moment),
             },
         }
 
