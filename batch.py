@@ -389,6 +389,7 @@ def _worker_process(args_tuple):
         project_config_path = args_tuple[2]
         output_dir_str = args_tuple[3]
         registry_db = args_tuple[4] if len(args_tuple) > 4 else None
+        strict = args_tuple[5] if len(args_tuple) > 5 else False
 
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
@@ -412,9 +413,19 @@ def _worker_process(args_tuple):
         try:
             from src.cli_helpers import resolve_file_format
             if registry_db:
-                cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+                # 支持子进程严格模式：若 strict 为 True，则在解析失败时视为致命错误
+                if strict:
+                    cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+                else:
+                    try:
+                        cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(
+                            "Registry lookup failed for '%s' with registry_db '%s', falling back to global config: %s",
+                            str(file_path), registry_db, e
+                        )
         except Exception as e:
-            # 不中断处理，但记录警告日志以便调试解析失败原因
+            # 不中断处理，但记录警告日志以便调试解析失败原因（若 strict 则后续会被上层处理）
             logging.getLogger(__name__).warning(
                 "使用registry_db\"%s\"解析\"%s\"的文件格式失败，错误：%s",
                 registry_db, str(file_path), e
@@ -430,29 +441,34 @@ def _worker_process(args_tuple):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None):
-    """增强版批处理主函数"""
-    print("=" * 70)
-    print("MomentTransfer v2.0")
-    print("=" * 70)
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False):
+    """增强版批处理主函数
+
+    使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
+    """
+    logger = logging.getLogger('batch')
+    logger.info("%s", "=" * 70)
+    logger.info("MomentTransfer v2.0")
+    logger.info("%s", "=" * 70)
     
     # 1. 加载配置（支持新版对等的 Source/Target 结构，向后兼容旧的 SourceCoordSystem）
-    print(f"\n[1/5] 加载几何配置: {config_path}")
+    logger.info("[1/5] 加载几何配置: %s", config_path)
     try:
         project_data, calculator = load_project_calculator(config_path)
-        print(f"  ✓ 配置加载成功: {project_data.target_config.part_name}")
+        logger.info("  ✓ 配置加载成功: %s", project_data.target_config.part_name)
     except Exception as e:
-        print(f"  ✗ 配置加载失败: {e}\n  提示: 请检查 JSON 是否包含 Target 的 CoordSystem/MomentCenter/Q/S 或使用 GUI/creator.py 生成兼容的配置。")
+        logger.error("  ✗ 配置加载失败: %s", e)
+        logger.error("  提示: 请检查 JSON 是否包含 Target 的 CoordSystem/MomentCenter/Q/S 或使用 GUI/creator.py 生成兼容的配置。")
         return
     
     # 2. 获取数据格式配置（交互或非交互）
-    print(f"\n[2/5] 配置数据格式")
+    logger.info("[2/5] 配置数据格式")
     # 若外部已提供 data_config（例如非交互模式），则使用之
     if data_config is None:
         data_config = get_user_file_format()
     
     # 3. 确定输入文件列表
-    print(f"\n[3/5] 扫描输入文件")
+    logger.info("[3/5] 扫描输入文件")
     input_path = Path(input_path)
     files_to_process = []
     
@@ -460,16 +476,16 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     non_interactive_mode = (data_config is not None and registry_db is not None)
 
     if input_path.is_file():
-        print(f"  模式: 单文件处理")
+        logger.info("  模式: 单文件处理")
         files_to_process = [input_path]
         output_dir = input_path.parent
     elif input_path.is_dir():
-        print(f"  模式: 目录批处理")
+        logger.info("  模式: 目录批处理")
         if non_interactive_mode:
             # 非交互自动模式：使用默认模式匹配所有 CSV 文件并全部处理
             pattern = "*.csv"
             files = find_matching_files(str(input_path), pattern)
-            print(f"  自动模式下找到 {len(files)} 个匹配文件 (pattern={pattern})")
+            logger.info("  自动模式下找到 %d 个匹配文件 (pattern=%s)", len(files), pattern)
             files_to_process = files
             output_dir = input_path
         else:
@@ -477,14 +493,14 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             if not pattern:
                 pattern = "*.csv"
             files = find_matching_files(str(input_path), pattern)
-            print(f"  找到 {len(files)} 个匹配文件:")
+            logger.info("  找到 %d 个匹配文件:", len(files))
             for i, fp in enumerate(files, start=1):
-                print(f"    {i}. {fp.name}")
+                logger.info("    %d. %s", i, fp.name)
 
             sel = input("  选择要处理的文件（默认 all）: ").strip().lower()
             chosen_idxs = parse_selection(sel, len(files))
             if not chosen_idxs:
-                print("  未选择有效文件，已取消")
+                logger.info("  未选择有效文件，已取消")
                 return
 
             files_to_process = [files[i] for i in chosen_idxs]
@@ -495,27 +511,32 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         return
     
     # 4. 确认处理
-    print(f"\n[4/5] 准备处理 {len(files_to_process)} 个文件")
-    print(f"  输出目录: {output_dir}")
+    logger.info("[4/5] 准备处理 %d 个文件", len(files_to_process))
+    logger.info("  输出目录: %s", output_dir)
     # 若自动模式则默认确认
     if not non_interactive_mode:
         confirm = input("  确认开始处理? (y/n): ").strip().lower()
         if confirm != 'y':
-            print("  已取消")
+            logger.info("  已取消")
             return
     
     # 5. 批量处理
-    print(f"\n[5/5] 开始批量处理...")
+    logger.info("[5/5] 开始批量处理...")
     success_count = 0
     
     # 若在外部通过 CLI 提供了并行参数，会由外层主函数处理；这里保持串行以便直接调用
     for i, file_path in enumerate(files_to_process, 1):
-        print(f"\n进度: [{i}/{len(files_to_process)}]")
+        logger.info("进度: [%d/%d]", i, len(files_to_process))
         # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
         try:
             from src.cli_helpers import resolve_file_format
             cfg_local = resolve_file_format(str(file_path), data_config, registry_db=registry_db)
         except Exception:
+            # 解析失败：记录并根据 strict 决定是否中止
+            logger.warning("解析文件 %s 的格式失败，使用全局配置作为回退。", file_path)
+            if strict and non_interactive_mode:
+                logger.error("strict 模式下解析失败，终止批处理。")
+                return
             cfg_local = data_config
 
         if process_single_file(file_path, calculator, cfg_local, output_dir):
@@ -545,6 +566,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--treat-non-numeric', 'treat_non_numeric', type=click.Choice(['zero','nan','drop']), default=None, help='如何处理非数值输入: zero|nan|drop')
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
 @click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
+@click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
 def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows, registry_db):
     """批处理入口（click 版）"""
     # 配置 logging（通过共享 helper）
@@ -639,7 +661,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
             with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
                 for fp in files_to_process:
-                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir), registry_db))
+                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir), registry_db, strict))
                     futures[fut] = fp
 
                 success_count = 0
@@ -660,7 +682,7 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
 
         else:
             # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            run_batch_processing_v2(config, input_path, data_config, registry_db=registry_db)
+            run_batch_processing_v2(config, input_path, data_config, registry_db=registry_db, strict=strict)
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')
