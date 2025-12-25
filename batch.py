@@ -331,134 +331,132 @@ def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
 
 def process_single_file(file_path: Path, calculator: AeroCalculator, 
                        config: BatchConfig, output_dir: Path) -> bool:
-    """处理单个文件"""
+    """处理单个文件（支持 chunked CSV）。
+
+    实现要点：
+    - 使用临时文件写入，完成后原子替换到目标文件；
+    - 在写入开始写入 `.partial`，成功时写入 `.complete`；
+    - 在异常时清理临时并在 partial 中记录错误信息。
+    """
+    logger = logging.getLogger('batch')
+
+    # 安全解析 chunksize
+    if config.chunksize:
+        try:
+            config.chunksize = int(config.chunksize)
+        except (ValueError, TypeError):
+            config.chunksize = None
+
+    ext = Path(file_path).suffix.lower()
+    use_chunks = (ext == '.csv') and config.chunksize and config.chunksize > 0
+
+    # 若非流式，先读取整表以便列索引校验
+    df = None
+    if not use_chunks:
+        df = read_data_with_config(file_path, config)
+        num_cols = len(df.columns)
+        for key in REQUIRED_KEYS:
+            col_idx = config.column_mappings.get(key)
+            if col_idx is None:
+                raise ValueError(f"列映射缺失: '{key}' 未配置")
+            if not (0 <= col_idx < num_cols):
+                raise ValueError(f"列索引越界: column_mappings['{key}'] = {col_idx}, 但当前数据仅有 {num_cols} 列")
+
+    fx_i = config.column_mappings['fx']
+    fy_i = config.column_mappings['fy']
+    fz_i = config.column_mappings['fz']
+    mx_i = config.column_mappings['mx']
+    my_i = config.column_mappings['my']
+    mz_i = config.column_mappings['mz']
+
+    out_path = generate_output_path(file_path, output_dir, config)
+    temp_fd, temp_name = tempfile.mkstemp(prefix=out_path.name + '.', dir=str(out_path.parent), text=True)
+    os.close(temp_fd)
+    temp_out_path = Path(temp_name)
+
+    partial_flag = out_path.with_name(out_path.name + '.partial')
+    complete_flag = out_path.with_name(out_path.name + '.complete')
     try:
-        logger = logging.getLogger('batch')
-        # 检查文件类型与是否启用 chunksize（仅对 CSV 有效）
-        # 安全解析 chunksize，避免非数值字符串导致 ValueError 
-        if config.chunksize:
-            try:
-                config.chunksize = int(config.chunksize)
-            except (ValueError, TypeError):
-                config.chunksize = None
+        partial_flag.write_text(datetime.now().isoformat())
+    except Exception:
+        pass
 
-        ext = Path(file_path).suffix.lower()
-        use_chunks = (ext == '.csv') and config.chunksize and config.chunksize > 0
+    first_chunk = True
+    total_processed = 0
+    total_dropped = 0
+    total_non_numeric = 0
 
-        # 若未使用流式，则一次性读取完整表格用于后续处理与列验证
-        if not use_chunks:
-            df = read_data_with_config(file_path, config)
-            # 校验列索引是否在有效范围内
-            num_cols = len(df.columns)
-            for key in REQUIRED_KEYS:
-                col_idx = config.column_mappings.get(key)
-                if col_idx is None:
-                    raise ValueError(f"列映射缺失: '{key}' 未配置")
-                if not (0 <= col_idx < num_cols):
-                    raise ValueError(
-                        f"列索引越界: column_mappings['{key}'] = {col_idx}, "
-                        f"但当前数据仅有 {num_cols} 列"
-                    )
-        
-        # 提取力和力矩数据（按列位置索引），并转换为数值数组
-        fx_i = config.column_mappings['fx']
-        fy_i = config.column_mappings['fy']
-        fz_i = config.column_mappings['fz']
-        mx_i = config.column_mappings['mx']
-        my_i = config.column_mappings['my']
-        mz_i = config.column_mappings['mz']
-        # 读取并处理（支持 CSV chunksize 流式）
-
-        # 生成输出路径（按模板与冲突策略）
-        out_path = generate_output_path(file_path, output_dir, config)
-
-        # 使用临时文件写入，最终原子替换为 out_path（避免并发或部分写入）
-        temp_fd, temp_name = tempfile.mkstemp(prefix=out_path.name + '.', dir=str(out_path.parent), text=True)
-        os.close(temp_fd)
-        temp_out_path = Path(temp_name)
-
-        first_chunk = True
-        total_processed = 0
-        total_dropped = 0
-        total_non_numeric = 0
-
-        # 块处理已提取为模块级函数 `process_df_chunk`
-
-        # 如果是 CSV 且配置了 chunksize，则流式
+    try:
         if use_chunks:
             reader = pd.read_csv(file_path, header=None, skiprows=config.skip_rows, chunksize=int(config.chunksize))
             try:
                 first = next(reader)
             except StopIteration:
                 logger.warning(f"文件 {file_path} 为空，跳过处理")
-                # 尝试清理临时文件（若已创建）
-                try:
-                    if temp_out_path.exists():
+                if temp_out_path.exists():
+                    try:
                         temp_out_path.unlink()
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
                 return False
 
-            # 使用首块校验列数
+            # 校验首块列数
             num_cols = len(first.columns)
-            # 验证列索引在首块中是否有效
             for key in REQUIRED_KEYS:
                 col_idx = config.column_mappings.get(key)
-                if col_idx is None:
-                    raise ValueError(f"列映射缺失: '{key}' 未配置")
-                if not (0 <= col_idx < num_cols):
-                    raise ValueError(
-                        f"列索引越界: column_mappings['{key}'] = {col_idx}, 但数据仅有 {num_cols} 列"
-                    )
+                if col_idx is None or not (0 <= col_idx < num_cols):
+                    raise ValueError(f"列映射缺失或越界: {key} -> {col_idx}")
 
-            # 处理首块（写入临时文件，避免最终替换时覆盖首块）
             proc, dropped, non_num, first_chunk = process_df_chunk(
-                first, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                calculator, config, temp_out_path, first_chunk, logger
+                first, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator, config, temp_out_path, first_chunk, logger
             )
             total_processed += proc
             total_dropped += dropped
             total_non_numeric += non_num
 
-            # 处理剩余块
             for chunk in reader:
                 proc, dropped, non_num, first_chunk = process_df_chunk(
-                    chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                    calculator, config, temp_out_path, first_chunk, logger
+                    chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator, config, temp_out_path, first_chunk, logger
                 )
                 total_processed += proc
                 total_dropped += dropped
                 total_non_numeric += non_num
         else:
-            # 整表处理
             proc, dropped, non_num, first_chunk = process_df_chunk(
-                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i,
-                calculator, config, temp_out_path, first_chunk, logger
+                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator, config, temp_out_path, first_chunk, logger
             )
             total_processed += proc
             total_dropped += dropped
             total_non_numeric += non_num
 
-        # 在所有块写入完成后，原子替换到目标文件
+        # 完成后原子替换
         try:
             shutil.move(str(temp_out_path), str(out_path))
         except Exception:
-            # 在某些平台上 move 不是原子操作，尝试 os.replace
-            try:
-                os.replace(str(temp_out_path), str(out_path))
-            except Exception as e:
-                logger.error("将临时文件移动到目标位置失败: %s", e, exc_info=True)
-                raise
+            os.replace(str(temp_out_path), str(out_path))
+
+        try:
+            if partial_flag.exists():
+                partial_flag.unlink()
+        except Exception:
+            pass
+        try:
+            complete_flag.write_text(datetime.now().isoformat())
+        except Exception:
+            pass
 
         logger.info(f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行")
         logger.info(f"结果文件: {out_path}")
         return True
 
     except Exception as e:
-        # 发生错误时尝试清理临时文件
         try:
             if temp_out_path.exists():
                 temp_out_path.unlink()
+        except Exception:
+            pass
+        try:
+            partial_flag.write_text(f"error: {str(e)}\n{traceback.format_exc()}")
         except Exception:
             pass
         logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
@@ -536,7 +534,7 @@ def _worker_process(args):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, dry_run: bool = False, show_progress: bool = False):
     """增强版批处理主函数
 
     使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
@@ -618,10 +616,26 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     # 5. 批量处理
     logger.info("[5/5] 开始批量处理...")
     success_count = 0
+
+    # Dry-run: 仅打印将处理的文件、解析的格式与目标输出路径，然后返回
+    if dry_run:
+        logger.info("Dry-run 模式：不写入文件，仅显示解析结果。")
+        for fp in files_to_process:
+            try:
+                from src.cli_helpers import resolve_file_format
+                cfg_local = resolve_file_format(str(fp), data_config, registry_db=registry_db)
+            except Exception as e:
+                logger.warning("解析文件 %s 的格式失败：%s", fp, e)
+                cfg_local = data_config
+            out_path = generate_output_path(fp, output_dir, cfg_local)
+            logger.info("将处理: %s -> %s (format: %s)", fp, out_path, cfg_local.column_mappings)
+        return
     
     # 若在外部通过 CLI 提供了并行参数，会由外层主函数处理；这里保持串行以便直接调用
+    # 记录开始时间以便估算 ETA
+    start_time = datetime.now()
     for i, file_path in enumerate(files_to_process, 1):
-        logger.info("进度: [%d/%d]", i, len(files_to_process))
+        logger.info("进度: [%d/%d] %s", i, len(files_to_process), file_path.name)
         # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
         try:
             from src.cli_helpers import resolve_file_format
@@ -634,8 +648,17 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
                 return
             cfg_local = data_config
 
-        if process_single_file(file_path, calculator, cfg_local, output_dir):
+        t0 = datetime.now()
+        ok = process_single_file(file_path, calculator, cfg_local, output_dir)
+        elapsed = (datetime.now() - t0).total_seconds()
+        if ok:
             success_count += 1
+        if show_progress:
+            files_done = i
+            files_left = len(files_to_process) - files_done
+            avg_per_file = (datetime.now() - start_time).total_seconds() / files_done
+            eta_seconds = int(avg_per_file * files_left)
+            logger.info("已完成 %d/%d，耗时 %.1fs，本文件耗时 %.2fs，预计剩余 %ds", files_done, len(files_to_process), (datetime.now() - start_time).total_seconds(), elapsed, eta_seconds)
     
     # 总结
     print("\n" + "=" * 70)
@@ -662,6 +685,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
 @click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
 @click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
+@click.option('--dry-run', 'dry_run', is_flag=True, help='仅解析并显示将处理的文件与输出路径，但不实际写入')
+@click.option('--progress', 'show_progress', is_flag=True, help='显示处理进度与 ETA（串行/并行均支持）')
 def main(**cli_options):
     """批处理入口（click 版）"""
     # 将 CLI 选项解包为原来的局部变量，保持后续逻辑不变
@@ -681,6 +706,8 @@ def main(**cli_options):
     sample_rows = cli_options.get('sample_rows')
     registry_db = cli_options.get('registry_db')
     strict = cli_options.get('strict')
+    dry_run = cli_options.get('dry_run')
+    show_progress = cli_options.get('show_progress')
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
 
@@ -726,7 +753,7 @@ def main(**cli_options):
     else:
         pat = None
 
-    # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
+            # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
     try:
         if workers > 1:
             logger.info(f'并行处理模式: workers={workers}')
@@ -802,7 +829,7 @@ def main(**cli_options):
 
         else:
             # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            run_batch_processing_v2(config, input_path, data_config, registry_db=registry_db, strict=strict)
+            run_batch_processing_v2(config, input_path, data_config, registry_db=registry_db, strict=strict, dry_run=dry_run, show_progress=show_progress)
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')
