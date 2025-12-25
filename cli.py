@@ -19,6 +19,26 @@ def _make_serializable(v: Any) -> Any:
     return v
 
 
+def prompt_vector(label: str, default=(0.0, 0.0, 0.0)) -> list:
+    """交互式提示用户输入三元向量，支持逗号或空格分隔，出错时可重试。"""
+    def fmt_def(d):
+        return ",".join(str(x) for x in d)
+
+    while True:
+        s = click.prompt(f"{label} (逗号或空格分隔，默认 {fmt_def(default)})", default=fmt_def(default))
+        # 支持逗号或空格分隔
+        parts = [p for p in s.replace(',', ' ').split() if p]
+        if len(parts) != 3:
+            click.echo('[错误] 请输入三个数，格式示例: 100 0 -50 或 100,0,-50')
+            continue
+        try:
+            vals = [float(x) for x in parts]
+            return vals
+        except ValueError:
+            click.echo('[错误] 包含无法解析为数字的项，请重试。')
+            continue
+
+
 @click.command()
 # 新增明确的 -c/--config 选项，保留 -i/--input 作为向后兼容的别名（标注为已弃用）
 @click.option('-c', '--config', 'config_path', default=None,
@@ -54,20 +74,10 @@ def main(config_path, input_path, output_path, force, moment):
 
     if raw_forces is None:
         click.echo('\n--- 请输入载荷数据 (Source Frame) ---')
-        f_str = click.prompt('Force [Fx, Fy, Fz] (逗号分隔，默认 0,0,0)', default='0,0,0')
-        try:
-            raw_forces = [float(x) for x in f_str.split(',')]
-        except ValueError:
-            click.echo('[错误] 格式不正确，请使用逗号分隔数字。')
-            raise click.Abort()
+        raw_forces = prompt_vector('Force [Fx, Fy, Fz]')
 
     if raw_moments is None:
-        m_str = click.prompt('Moment [Mx, My, Mz] (逗号分隔，默认 0,0,0)', default='0,0,0')
-        try:
-            raw_moments = [float(x) for x in m_str.split(',')]
-        except ValueError:
-            click.echo('[错误] 格式不正确。')
-            raise click.Abort()
+        raw_moments = prompt_vector('Moment [Mx, My, Mz]')
 
     click.echo(f"\n[1] 加载配置: {cfg_path}")
     try:
