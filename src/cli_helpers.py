@@ -76,6 +76,66 @@ def load_format_from_file(path: str) -> BatchConfig:
     return cfg
 
 
+def get_user_file_format() -> BatchConfig:
+    """交互式获取用户数据格式配置，供命令行交互使用。
+
+    虽然这是交互函数，但放在此处可将所有与数据格式相关的逻辑集中。
+    """
+    print("\n=== 数据格式配置 ===")
+    config = BatchConfig()
+
+    # 跳过行数
+    skip_input = input("需要跳过的表头行数 (默认0): ").strip()
+    if skip_input:
+        try:
+            config.skip_rows = int(skip_input)
+        except ValueError:
+            print("[警告] 无效输入，使用默认值0")
+
+    print("\n请指定数据列位置 (从0开始计数，留空表示该列不存在):")
+
+    # 可选的迎角列
+    alpha_col = input("  迎角 Alpha 列号: ").strip()
+    if alpha_col:
+        try:
+            config.column_mappings['alpha'] = int(alpha_col)
+        except ValueError:
+            pass
+
+    # 必需的力和力矩列
+    required_mappings = {
+        'fx': '轴向力 Fx',
+        'fy': '侧向力 Fy', 
+        'fz': '法向力 Fz',
+        'mx': '滚转力矩 Mx',
+        'my': '俯仰力矩 My',
+        'mz': '偏航力矩 Mz'
+    }
+
+    for key, label in required_mappings.items():
+        while True:
+            col_input = input(f"  {label} 列号 (必需): ").strip()
+            if col_input:
+                try:
+                    config.column_mappings[key] = int(col_input)
+                    break
+                except ValueError:
+                    print("    [错误] 请输入有效的列号")
+            else:
+                print("    [错误] 此列为必需项")
+
+    # 需要保留的列
+    print("\n需要原样输出的其他列 (用逗号分隔列号，如: 0,1,2):")
+    passthrough = input("  列号: ").strip()
+    if passthrough:
+        try:
+            config.passthrough_columns = [int(x.strip()) for x in passthrough.split(',')]
+        except ValueError:
+            print("[警告] 格式错误，将不保留额外列")
+
+    return config
+
+
 def configure_logging(log_file: str | None, verbose: bool) -> logging.Logger:
     """配置并返回名为 `batch` 的 logger。"""
     log_level = logging.DEBUG if verbose else logging.INFO
