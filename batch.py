@@ -10,6 +10,9 @@ from datetime import datetime
 from pathlib import Path
 import fnmatch
 
+# 最大文件名冲突重试次数（避免魔法数字）
+MAX_FILE_COLLISION_RETRIES = 1000
+
 from src.data_loader import load_data
 from src.physics import AeroCalculator
 from src.cli_helpers import configure_logging, load_project_calculator, BatchConfig, load_format_from_file
@@ -17,11 +20,6 @@ from src.cli_helpers import configure_logging, load_project_calculator, BatchCon
 
 from src.cli_helpers import get_user_file_format
 
-
-def load_format_from_file(path: str) -> BatchConfig:
-    # 转发到共享实现（已迁移到 src.cli_helpers）
-    from src.cli_helpers import load_format_from_file as _shared_load
-    return _shared_load(path)
 
 
 def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) -> Path:
@@ -45,13 +43,13 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
             # 自动添加序号后缀直到不冲突
             base = out_path.stem
             suf = out_path.suffix
-            for i in range(1, 1000):
+            for i in range(1, MAX_FILE_COLLISION_RETRIES + 1):
                 candidate = output_dir / f"{base}_{i}{suf}"
                 if not candidate.exists():
                     out_path = candidate
                     break
             else:
-                raise IOError(f"无法为输出文件找到不冲突的文件名: {out_path}")
+                raise IOError(f"无法为输出文件找到不冲突的文件名（尝试 {MAX_FILE_COLLISION_RETRIES} 次）: {out_path}")
 
     # 最后检查目录是否可写
     try:
@@ -325,7 +323,7 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         return True
         
     except Exception as e:
-        print(f"  ✗ 处理失败: {str(e)}")
+        logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
         return False
 
 
@@ -362,12 +360,10 @@ def _worker_process(args_tuple):
         # 捕获子进程中任何异常，返回失败信息以便主进程记录
         return (
             file_path_str if 'file_path_str' in locals()
-            else (str(args_tuple[0]) if args_tuple and len(args_tuple) > 0 else 'unknown'),
+            else str(args_tuple[0]) if args_tuple else 'unknown',
             False,
             str(e)
         )
-
-
 def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None):
     """增强版批处理主函数"""
     print("=" * 70)
