@@ -21,6 +21,10 @@ try:
     import msvcrt
 except Exception:
     msvcrt = None
+try:
+    import portalocker
+except Exception:
+    portalocker = None
 
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
@@ -215,12 +219,16 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     try:
         # 尝试获取文件锁，若失败则继续（best-effort）
         try:
-            if os.name == 'nt' and msvcrt:
+            # 优先使用 portalocker（若可用），它在多平台上提供一致语义
+            if portalocker:
+                portalocker.lock(f, portalocker.LOCK_EX)
+            elif os.name == 'nt' and msvcrt:
                 # Windows: 锁定从当前位置起的 1 字节（尽管不是完美，但能阻止交叉写入）
                 msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
             elif fcntl:
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         except Exception:
+            # best-effort，不应阻止写入
             pass
 
         f.write(csv_text)
@@ -234,7 +242,12 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     finally:
         # 释放文件锁（best-effort）并关闭文件
         try:
-            if os.name == 'nt' and msvcrt:
+            if portalocker:
+                try:
+                    portalocker.unlock(f)
+                except Exception:
+                    pass
+            elif os.name == 'nt' and msvcrt:
                 try:
                     f.seek(0)
                     msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
