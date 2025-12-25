@@ -201,6 +201,15 @@ pytest tests/ --cov=src --cov-report=html
 - **numpy**: 用于矩阵运算和向量计算
 - **pytest**: 单元测试框架
 
+### 可选依赖
+- **portalocker**: 可选依赖，用于在跨进程/跨平台场景下提供更一致的文件锁定语义。推荐在并发批处理或多进程写入同一输出目录时安装。
+
+安装示例：
+```bash
+# 使用清华镜像源安装可选依赖
+pip install portalocker -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
 ## 许可证
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
