@@ -645,7 +645,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     print("=" * 70)
 
 
-@click.command()
+@click.command(context_settings=dict(help_option_names=['-h', '--help']))
 @click.option('-c', '--config', 'config', required=True, help='配置文件路径 (JSON)')
 @click.option('-i', '--input', 'input_path', required=True, help='输入文件或目录路径')
 @click.option('-p', '--pattern', default=None, help='文件匹配模式（目录模式下），如 "*.csv"')
