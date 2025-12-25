@@ -10,6 +10,8 @@ from pathlib import Path
 import fnmatch
 import uuid
 import traceback
+import tempfile
+import os
 
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
@@ -64,12 +66,11 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
                 unique = uuid.uuid4().hex
                 out_path = output_dir / f"{base}_{unique}{suf}"
 
-    # 最后检查目录是否可写
+    # 最后检查目录是否可写 — 使用 mkstemp 生成唯一临时文件以避免并发冲突
     try:
-        test_path = out_path.parent / (out_path.stem + ".__writetest__")
-        with open(test_path, 'w', encoding='utf-8') as _:
-            pass
-        test_path.unlink()
+        fd, test_path = tempfile.mkstemp(prefix=out_path.stem + ".__writetest__", dir=str(out_path.parent), text=True)
+        os.close(fd)
+        os.remove(test_path)
     except (OSError, IOError, PermissionError) as e:
         raise IOError(f"无法在输出目录写入文件: {out_path.parent} -> {e}") from e
 
@@ -111,12 +112,12 @@ def process_df_chunk(chunk_df: pd.DataFrame,
             + ", ".join(f"{name}_i={idx}" for name, idx in invalid)
         )
     # 解析力/力矩列并检测非数值
-    # 先显式复制切片以避免链式赋值警告
-    forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]].copy()
+    # 一次性按位置提取所有 6 列并复制，避免多次切片与复制
+    selected_cols = chunk_df.iloc[:, [fx_i, fy_i, fz_i, mx_i, my_i, mz_i]].copy()
+    forces_df = selected_cols.iloc[:, :3]
+    moments_df = selected_cols.iloc[:, 3:]
     for col in forces_df.columns:
         forces_df[col] = pd.to_numeric(forces_df[col], errors='coerce')
-
-    moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]].copy()
     for col in moments_df.columns:
         moments_df[col] = pd.to_numeric(moments_df[col], errors='coerce')
     mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
@@ -141,8 +142,8 @@ def process_df_chunk(chunk_df: pd.DataFrame,
             # 全部丢弃
             dropped = len(chunk_df)
             return 0, dropped, n_non, first_chunk
-        forces = forces_df.loc[valid_idx].fillna(0.0).to_numpy(dtype=float)
-        moments = moments_df.loc[valid_idx].fillna(0.0).to_numpy(dtype=float)
+        forces = forces_df.loc[valid_idx].to_numpy(dtype=float)
+        moments = moments_df.loc[valid_idx].to_numpy(dtype=float)
         data_df = chunk_df.loc[valid_idx].reset_index(drop=True)
     elif cfg.treat_non_numeric == 'nan':
         # 保留 NaN，让后续计算和结果中体现为 NaN
@@ -269,15 +270,14 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         logger = logging.getLogger('batch')
         # 检查文件类型与是否启用 chunksize（仅对 CSV 有效）
         # 安全解析 chunksize，避免非数值字符串导致 ValueError 
-        chunk_size = None
         if config.chunksize:
             try:
-                chunk_size = int(config.chunksize)
+                config.chunksize = int(config.chunksize)
             except (ValueError, TypeError):
-                chunk_size = None
+                config.chunksize = None
 
         ext = Path(file_path).suffix.lower()
-        use_chunks = (ext == '.csv') and chunk_size and chunk_size > 0
+        use_chunks = (ext == '.csv') and config.chunksize and config.chunksize > 0
 
         # 若未使用流式，则一次性读取完整表格用于后续处理与列验证
         if not use_chunks:
@@ -371,7 +371,7 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
         return False
 
 
-def _worker_process(args_tuple):
+def _worker_process(args):
     """在子进程中运行单个文件的处理（用于并行）。
 
     args_tuple: (file_path_str, config_dict, config_path, output_dir_str)
@@ -379,17 +379,19 @@ def _worker_process(args_tuple):
     - config_path: path to JSON config for AeroCalculator (project geometry)
     """
     try:
-        # 保证在任何异常分支中都能报告文件名：先尽量设置 file_path_str 为可辨识值
-        file_path_str = args_tuple[0] if len(args_tuple) > 0 else "<unknown>"
-        # 期望的最小参数数量为 4（file_path, config_dict, project_config_path, output_dir）
-        if len(args_tuple) < 4:
-            raise ValueError("子进程参数不足，至少需要 4 个参数: (file_path, config_dict, project_config_path, output_dir)")
-        # 稳健解包：多余参数视为可选项（registry_db）
-        config_dict = args_tuple[1]
-        project_config_path = args_tuple[2]
-        output_dir_str = args_tuple[3]
-        registry_db = args_tuple[4] if len(args_tuple) > 4 else None
-        strict = args_tuple[5] if len(args_tuple) > 5 else False
+        # 期望 args 为 dict，包含明确字段，减少位置参数易碎性
+        if not isinstance(args, dict):
+            raise ValueError("子进程参数必须为 dict，推荐键: file_path, config_dict, project_config_path, output_dir, registry_db, strict")
+
+        file_path_str = args.get('file_path', '<unknown>')
+        config_dict = args.get('config_dict')
+        project_config_path = args.get('project_config_path')
+        output_dir_str = args.get('output_dir')
+        registry_db = args.get('registry_db', None)
+        strict = bool(args.get('strict', False))
+
+        if not all([file_path_str, config_dict is not None, project_config_path, output_dir_str is not None]):
+            raise ValueError("子进程参数不完整，至少需要 file_path, config_dict, project_config_path, output_dir")
 
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
@@ -410,26 +412,25 @@ def _worker_process(args_tuple):
         cfg.sample_rows = config_dict.get('sample_rows', cfg.sample_rows)
 
         # 若提供了 registry_db，则尝试按文件解析最终配置
-        try:
-            from src.cli_helpers import resolve_file_format
-            if registry_db:
-                # 支持子进程严格模式：若 strict 为 True，则在解析失败时视为致命错误
+        if registry_db:
+            try:
+                from src.cli_helpers import resolve_file_format
+                cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+            except Exception as e:
+                logger = logging.getLogger(__name__)
                 if strict:
-                    cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+                    # 严格模式下：解析失败视为致命错误，交由上层统一处理
+                    logger.warning(
+                        "使用registry_db\"%s\"解析\"%s\"的文件格式失败，错误：%s",
+                        registry_db, str(file_path), e
+                    )
+                    raise
                 else:
-                    try:
-                        cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
-                    except Exception as e:
-                        logging.getLogger(__name__).warning(
-                            "Registry lookup failed for '%s' with registry_db '%s', falling back to global config: %s",
-                            str(file_path), registry_db, e
-                        )
-        except Exception as e:
-            # 不中断处理，但记录警告日志以便调试解析失败原因（若 strict 则后续会被上层处理）
-            logging.getLogger(__name__).warning(
-                "使用registry_db\"%s\"解析\"%s\"的文件格式失败，错误：%s",
-                registry_db, str(file_path), e
-            )
+                    # 非严格模式：记录警告并回退到全局配置
+                    logger.warning(
+                        "Registry lookup failed for '%s' with registry_db '%s', falling back to global config: %s",
+                        str(file_path), registry_db, e
+                    )
 
         success = process_single_file(file_path, calculator, cfg, output_dir)
         return (str(file_path), success, None)
@@ -508,7 +509,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             output_dir = input_path
     else:
         print(f"  [错误] 无效的输入路径: {input_path}")
-        return
+        logger.error("  [错误] 无效的输入路径: %s", input_path)
     
     # 4. 确认处理
     logger.info("[4/5] 准备处理 %d 个文件", len(files_to_process))
@@ -567,8 +568,25 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
 @click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
 @click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
-def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows, registry_db):
+def main(**cli_options):
     """批处理入口（click 版）"""
+    # 将 CLI 选项解包为原来的局部变量，保持后续逻辑不变
+    config = cli_options.get('config')
+    input_path = cli_options.get('input_path')
+    pattern = cli_options.get('pattern')
+    format_file = cli_options.get('format_file')
+    non_interactive = cli_options.get('non_interactive')
+    log_file = cli_options.get('log_file')
+    verbose = cli_options.get('verbose')
+    workers = cli_options.get('workers')
+    chunksize = cli_options.get('chunksize')
+    overwrite = cli_options.get('overwrite')
+    name_template = cli_options.get('name_template')
+    timestamp_format = cli_options.get('timestamp_format')
+    treat_non_numeric = cli_options.get('treat_non_numeric')
+    sample_rows = cli_options.get('sample_rows')
+    registry_db = cli_options.get('registry_db')
+    strict = cli_options.get('strict')
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
 
@@ -661,7 +679,15 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
             with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
                 for fp in files_to_process:
-                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir), registry_db, strict))
+                    worker_args = {
+                        'file_path': str(fp),
+                        'config_dict': config_dict,
+                        'project_config_path': config,
+                        'output_dir': str(output_dir),
+                        'registry_db': registry_db,
+                        'strict': strict,
+                    }
+                    fut = exe.submit(_worker_process, worker_args)
                     futures[fut] = fp
 
                 success_count = 0
