@@ -5,6 +5,7 @@ import click
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
 from src.cli_helpers import load_project_calculator
+from src.registry_cli import registry as registry_cmd
 
 
 @click.command()
@@ -94,5 +95,9 @@ def main(input_path, output_path, force, moment):
             click.echo(f"[警告] 无法将结果写入 {output_path}: {e}")
 
 
+cli = click.Group()
+cli.add_command(main, name='run')
+cli.add_command(registry_cmd, name='registry')
+
 if __name__ == "__main__":
-    main()
+    cli()

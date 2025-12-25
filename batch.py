@@ -424,29 +424,40 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     input_path = Path(input_path)
     files_to_process = []
     
+    # 若提供了 data_config 且同时提供了 registry_db，则视为非交互自动模式，避免使用 input() 阶段
+    auto_mode = (data_config is not None and registry_db is not None)
+
     if input_path.is_file():
         print(f"  模式: 单文件处理")
         files_to_process = [input_path]
         output_dir = input_path.parent
     elif input_path.is_dir():
         print(f"  模式: 目录批处理")
-        pattern = input("  文件名匹配模式 (如 *.csv, data_*.xlsx): ").strip()
-        if not pattern:
+        if auto_mode:
+            # 非交互自动模式：使用默认模式匹配所有 CSV 文件并全部处理
             pattern = "*.csv"
-        files = find_matching_files(str(input_path), pattern)
-        print(f"  找到 {len(files)} 个匹配文件:")
-        for i, fp in enumerate(files, start=1):
-            print(f"    {i}. {fp.name}")
+            files = find_matching_files(str(input_path), pattern)
+            print(f"  自动模式下找到 {len(files)} 个匹配文件 (pattern={pattern})")
+            files_to_process = files
+            output_dir = input_path
+        else:
+            pattern = input("  文件名匹配模式 (如 *.csv, data_*.xlsx): ").strip()
+            if not pattern:
+                pattern = "*.csv"
+            files = find_matching_files(str(input_path), pattern)
+            print(f"  找到 {len(files)} 个匹配文件:")
+            for i, fp in enumerate(files, start=1):
+                print(f"    {i}. {fp.name}")
 
-        sel = input("  选择要处理的文件（默认 all）: ").strip().lower()
-        chosen_idxs = parse_selection(sel, len(files))
-        if not chosen_idxs:
-            print("  未选择有效文件，已取消")
-            return
+            sel = input("  选择要处理的文件（默认 all）: ").strip().lower()
+            chosen_idxs = parse_selection(sel, len(files))
+            if not chosen_idxs:
+                print("  未选择有效文件，已取消")
+                return
 
-        files_to_process = [files[i] for i in chosen_idxs]
-        # 输出目录默认为输入目录
-        output_dir = input_path
+            files_to_process = [files[i] for i in chosen_idxs]
+            # 输出目录默认为输入目录
+            output_dir = input_path
     else:
         print(f"  [错误] 无效的输入路径: {input_path}")
         return
@@ -454,10 +465,12 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     # 4. 确认处理
     print(f"\n[4/5] 准备处理 {len(files_to_process)} 个文件")
     print(f"  输出目录: {output_dir}")
-    confirm = input("  确认开始处理? (y/n): ").strip().lower()
-    if confirm != 'y':
-        print("  已取消")
-        return
+    # 若自动模式则默认确认
+    if not auto_mode:
+        confirm = input("  确认开始处理? (y/n): ").strip().lower()
+        if confirm != 'y':
+            print("  已取消")
+            return
     
     # 5. 批量处理
     print(f"\n[5/5] 开始批量处理...")
@@ -507,15 +520,22 @@ def main(config, input_path, pattern, format_file, non_interactive, log_file, ve
 
     # 读取数据格式配置
     if non_interactive:
-        if not format_file:
-            logger.error('--non-interactive 模式下必须提供 --format-file')
+        # 放宽约束：当未提供 global format_file，但提供了 registry_db 或依赖侧车/目录默认时，允许继续运行。
+        if not format_file and not registry_db:
+            logger.error('--non-interactive 模式下必须提供 --format-file 或 --registry-db 用于解析每个文件的格式')
             sys.exit(2)
-        try:
-            data_config = load_format_from_file(format_file)
-            logger.info(f'使用格式文件: {format_file}')
-        except Exception as e:
-            logger.exception('读取格式文件失败')
-            sys.exit(3)
+
+        if format_file:
+            try:
+                data_config = load_format_from_file(format_file)
+                logger.info(f'使用格式文件: {format_file}')
+            except Exception as e:
+                logger.exception('读取格式文件失败')
+                sys.exit(3)
+        else:
+            # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 registry / sidecar / 目录 默认覆盖
+            data_config = BatchConfig()
+            logger.info('非交互模式且未提供 --format-file，使用默认 BatchConfig 并依赖 registry/sidecar/目录默认进行每文件解析')
     else:
         # 交互式
         data_config = get_user_file_format()

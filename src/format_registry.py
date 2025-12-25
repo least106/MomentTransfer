@@ -116,3 +116,29 @@ def get_format_for_file(db_path: str, file_path: str) -> Optional[str]:
             return str(Path(fmt))
 
     return None
+
+
+def delete_mapping(db_path: str, mapping_id: int) -> None:
+    """按 id 删除映射记录（若不存在则无操作）。"""
+    _ensure_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mappings WHERE id = ?", (int(mapping_id),))
+        conn.commit()
+
+
+def update_mapping(db_path: str, mapping_id: int, pattern: str, format_path: str) -> None:
+    """更新映射的 pattern 与 format_path（按 id）。若 id 不存在则抛出异常。"""
+    if not isinstance(pattern, str) or not pattern.strip():
+        raise ValueError("pattern 必须为非空字符串")
+    _ensure_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(1) FROM mappings WHERE id = ?", (int(mapping_id),))
+        if cur.fetchone()[0] == 0:
+            raise KeyError(f"映射 id={mapping_id} 不存在")
+        cur.execute(
+            "UPDATE mappings SET pattern = ?, format_path = ? WHERE id = ?",
+            (pattern, str(format_path), int(mapping_id)),
+        )
+        conn.commit()

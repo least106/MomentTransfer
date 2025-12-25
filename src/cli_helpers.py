@@ -8,6 +8,7 @@ from src.data_loader import load_data
 from src.physics import AeroCalculator
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 
 
@@ -212,7 +213,7 @@ def _merge_batch_config(dst: BatchConfig, src: BatchConfig) -> None:
     dst.sample_rows = int(src.sample_rows)
 
 
-def configure_logging(log_file: str | None, verbose: bool) -> logging.Logger:
+def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     """配置并返回名为 `batch` 的 logger。
 
     实现要点：

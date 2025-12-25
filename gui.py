@@ -23,6 +23,8 @@ from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from src.physics import AeroCalculator
 from src.data_loader import ProjectData
+from typing import Optional
+from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping
 
 
 class Mpl3DCanvas(FigureCanvas):
@@ -195,12 +197,14 @@ class BatchProcessThread(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, calculator, file_list, output_dir, data_config):
+    def __init__(self, calculator, file_list, output_dir, data_config, registry_db=None):
         super().__init__()
         self.calculator = calculator
         self.file_list = file_list
         self.output_dir = Path(output_dir)
         self.data_config = data_config
+        # 可选的 format registry 数据库路径（字符串或 None）
+        self.registry_db = registry_db
 
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""
@@ -294,6 +298,11 @@ class BatchProcessThread(QThread):
         try:
             total = len(self.file_list)
             success = 0
+            if self.registry_db:
+                try:
+                    self.log_message.emit(f"使用 format registry: {self.registry_db}")
+                except Exception:
+                    pass
             
             for i, file_path in enumerate(self.file_list):
                 self.log_message.emit(f"处理 [{i+1}/{total}]: {file_path.name}")
@@ -558,8 +567,70 @@ class IntegratedAeroGUI(QMainWindow):
         pattern_row.addWidget(QLabel("匹配模式:"))
         pattern_row.addWidget(self.inp_pattern)
 
+        # Registry DB 输入行（可选）
+        registry_row = QHBoxLayout()
+        self.inp_registry_db = QLineEdit()
+        self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.db)")
+        # 当 registry 路径变化时刷新文件来源标签（实时反馈）
+        try:
+            self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
+        except Exception:
+            pass
+        btn_browse_registry = QPushButton("浏览")
+        btn_browse_registry.setMaximumWidth(80)
+        btn_browse_registry.clicked.connect(self.browse_registry_db)
+        registry_row.addWidget(QLabel("格式注册表:"))
+        registry_row.addWidget(self.inp_registry_db)
+        registry_row.addWidget(btn_browse_registry)
+
+        # Registry 映射管理区（列表 + 注册/删除）
+        self.grp_registry_list = QGroupBox("Registry 映射管理 (可选)")
+        self.grp_registry_list.setVisible(False)
+        reg_layout = QVBoxLayout()
+
+        # 列表
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
+        self.lst_registry = QListWidget()
+        self.lst_registry.setSelectionMode(QListWidget.SingleSelection)
+        self.lst_registry.setMinimumHeight(100)
+
+        # 注册行：pattern + format path + browse + 预览
+        reg_form = QHBoxLayout()
+        self.inp_registry_pattern = QLineEdit()
+        self.inp_registry_pattern.setPlaceholderText("Pattern，例如: sample.csv 或 *.csv")
+        self.inp_registry_format = QLineEdit()
+        self.inp_registry_format.setPlaceholderText("Format 文件路径 (JSON)")
+        btn_browse_format = QPushButton("浏览格式")
+        btn_browse_format.setMaximumWidth(90)
+        btn_browse_format.clicked.connect(self._browse_registry_format)
+        btn_preview_format = QPushButton("预览格式")
+        btn_preview_format.setMaximumWidth(90)
+        btn_preview_format.clicked.connect(self._on_preview_format)
+        reg_form.addWidget(self.inp_registry_pattern)
+        reg_form.addWidget(self.inp_registry_format)
+        reg_form.addWidget(btn_browse_format)
+        reg_form.addWidget(btn_preview_format)
+
+        # 操作按钮
+        ops_row = QHBoxLayout()
+        self.btn_registry_register = QPushButton("注册映射")
+        self.btn_registry_edit = QPushButton("编辑选中")
+        self.btn_registry_remove = QPushButton("删除选中")
+        self.btn_registry_register.clicked.connect(self._on_registry_register)
+        self.btn_registry_edit.clicked.connect(self._on_registry_edit)
+        self.btn_registry_remove.clicked.connect(self._on_registry_remove)
+        ops_row.addWidget(self.btn_registry_register)
+        ops_row.addWidget(self.btn_registry_edit)
+        ops_row.addWidget(self.btn_registry_remove)
+
+        reg_layout.addWidget(self.lst_registry)
+        reg_layout.addLayout(reg_form)
+        reg_layout.addLayout(ops_row)
+        self.grp_registry_list.setLayout(reg_layout)
+
         file_form.addRow("输入路径:", input_row)
         file_form.addRow("", pattern_row)
+        file_form.addRow("", registry_row)
 
         # 文件列表（可复选、可滚动），默认位于数据格式配置之上
         self.grp_file_list = QGroupBox("找到的文件列表")
@@ -622,6 +693,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_grid = grid
 
         layout_batch.addLayout(file_form)
+        layout_batch.addWidget(self.grp_registry_list)
         layout_batch.addWidget(self.grp_file_list)
         layout_batch.addWidget(self.progress_bar)
         layout_batch.addWidget(self.btn_widget)
@@ -994,6 +1066,191 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "扫描失败", f"扫描文件失败: {e}")
 
+    def browse_registry_db(self):
+        """选择 format registry 数据库文件（可选）"""
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 format registry 数据库', '.', 'SQLite DB Files (*.db);;All Files (*)')
+        if fname:
+            try:
+                self.inp_registry_db.setText(fname)
+                self.txt_batch_log.append(f"已选择 registry: {fname}")
+                # 选择后刷新已有文件的来源标签
+                try:
+                    self._refresh_format_labels()
+                except Exception:
+                    pass
+                # 刷新 registry 映射显示
+                try:
+                    self._refresh_registry_list()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    def _browse_registry_format(self):
+        """选择一个 format JSON 文件以便注册映射时使用"""
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 format JSON', '.', 'JSON Files (*.json);;All Files (*)')
+        if fname:
+            try:
+                self.inp_registry_format.setText(fname)
+            except Exception:
+                pass
+
+    def _on_registry_register(self):
+        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        pat = self.inp_registry_pattern.text().strip()
+        fmt = self.inp_registry_format.text().strip()
+        if not pat or not fmt:
+            QMessageBox.warning(self, '错误', '请填写 pattern 与 format 文件路径')
+            return
+        # 校验 format 文件是否存在且为合法 JSON
+        try:
+            fpath = Path(fmt)
+            if not fpath.exists():
+                QMessageBox.warning(self, '错误', f'格式文件不存在: {fmt}')
+                return
+            # 尝试解析 JSON
+            import json as _json
+            with open(fpath, 'r', encoding='utf-8') as _fh:
+                try:
+                    _json.load(_fh)
+                except Exception as e:
+                    QMessageBox.warning(self, '错误', f'格式文件不是有效的 JSON: {e}')
+                    return
+        except Exception:
+            QMessageBox.warning(self, '错误', '无法访问或验证格式文件')
+            return
+
+        # 确认注册
+        resp = QMessageBox.question(self, '确认', f'确定要注册映射吗？\n{pat} -> {fmt}', QMessageBox.Yes | QMessageBox.No)
+        if resp != QMessageBox.Yes:
+            return
+
+        # 如果处于编辑模式（存在 _editing_mapping_id），则执行 update
+        if hasattr(self, '_editing_mapping_id') and self._editing_mapping_id is not None:
+            try:
+                from src.format_registry import update_mapping
+                update_mapping(dbp, self._editing_mapping_id, pat, fmt)
+                self.txt_batch_log.append(f"已更新映射 id={self._editing_mapping_id}: {pat} -> {fmt}")
+                # 清除编辑标识
+                self._editing_mapping_id = None
+                self._refresh_registry_list()
+                return
+            except Exception as e:
+                QMessageBox.critical(self, '更新失败', str(e))
+                return
+
+        try:
+            register_mapping(dbp, pat, fmt)
+            self.txt_batch_log.append(f"已注册: {pat} -> {fmt}")
+            self._refresh_registry_list()
+        except Exception as e:
+            QMessageBox.critical(self, '注册失败', str(e))
+
+    def _on_registry_edit(self):
+        """编辑选中映射：把选中项加载到输入框并在用户修改后更新。"""
+        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        sel = self.lst_registry.selectedItems()
+        if not sel:
+            QMessageBox.warning(self, '错误', '请先选择要编辑的映射项')
+            return
+        text = sel[0].text()
+        try:
+            if text.startswith('['):
+                end = text.find(']')
+                mid = text[1:end]
+                mapping_id = int(mid)
+            else:
+                raise ValueError('无法解析选中项 ID')
+        except Exception as e:
+            QMessageBox.critical(self, '错误', str(e))
+            return
+
+        # 把当前值填入输入框，允许用户修改并点击注册以提交（我们将把注册按钮作为新增/覆盖两用）
+        # 也可以直接弹出编辑对话；这里采用填充方式并记录待编辑 id
+        try:
+            # 从 registry 读取当前映射详情
+            mappings = list_mappings(dbp)
+            entry = next((m for m in mappings if m['id'] == mapping_id), None)
+            if not entry:
+                QMessageBox.warning(self, '错误', f'映射 id={mapping_id} 未找到')
+                return
+            self.inp_registry_pattern.setText(entry['pattern'])
+            self.inp_registry_format.setText(entry['format_path'])
+            # 将编辑 id 存入属性以供后续保存
+            self._editing_mapping_id = mapping_id
+            QMessageBox.information(self, '编辑模式', f'已加载 id={mapping_id} 到输入框，修改后点击"注册映射"以保存')
+        except Exception as e:
+            QMessageBox.critical(self, '错误', str(e))
+
+    def _on_registry_remove(self):
+        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        sel = self.lst_registry.selectedItems()
+        if not sel:
+            QMessageBox.warning(self, '错误', '请先选择要删除的映射项')
+            return
+        # 解析选中项的 id（格式为 [id] ...）
+        text = sel[0].text()
+        try:
+            if text.startswith('['):
+                end = text.find(']')
+                mid = text[1:end]
+                mapping_id = int(mid)
+            else:
+                raise ValueError('无法解析选中项 ID')
+            # 确认删除
+            resp = QMessageBox.question(self, '确认删除', f'确认要删除映射 id={mapping_id} ?', QMessageBox.Yes | QMessageBox.No)
+            if resp != QMessageBox.Yes:
+                return
+            delete_mapping(dbp, mapping_id)
+            self.txt_batch_log.append(f"已删除映射 id={mapping_id}")
+            self._refresh_registry_list()
+        except Exception as e:
+            QMessageBox.critical(self, '删除失败', str(e))
+
+    def _on_preview_format(self):
+        """显示当前输入格式文件的 JSON 摘要（前几行或 keys）。"""
+        fmt = self.inp_registry_format.text().strip()
+        if not fmt:
+            QMessageBox.warning(self, '预览', '请先填写或选择格式文件路径')
+            return
+        try:
+            p = Path(fmt)
+            if not p.exists():
+                QMessageBox.warning(self, '预览', f'格式文件不存在: {fmt}')
+                return
+            import json as _json
+            with open(p, 'r', encoding='utf-8') as fh:
+                data = _json.load(fh)
+            # 构建简短摘要
+            if isinstance(data, dict):
+                keys = list(data.keys())[:10]
+                preview = _json.dumps({k: data[k] for k in keys}, indent=2, ensure_ascii=False)
+            else:
+                preview = _json.dumps(data, indent=2, ensure_ascii=False)
+            dlg = QDialog(self)
+            dlg.setWindowTitle('格式文件预览')
+            v = QVBoxLayout(dlg)
+            te = QTextEdit()
+            te.setReadOnly(True)
+            te.setPlainText(preview)
+            v.addWidget(te)
+            btn = QDialogButtonBox(QDialogButtonBox.Ok)
+            btn.accepted.connect(dlg.accept)
+            v.addWidget(btn)
+            dlg.resize(600, 400)
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.warning(self, '预览失败', str(e))
+
     def _scan_and_populate_files(self, chosen_path):
         """扫描所选路径并在滚动区域中生成复选框列表（默认全选）。"""
         p = Path(chosen_path)
@@ -1009,8 +1266,12 @@ class IntegratedAeroGUI(QMainWindow):
                     files.append(file_path)
             self.output_dir = p
         # 清空旧的复选框
+        # 清空旧的复选框及标签
         for i in reversed(range(self.file_list_layout_inner.count())):
-            w = self.file_list_layout_inner.itemAt(i).widget()
+            item = self.file_list_layout_inner.itemAt(i)
+            if item is None:
+                continue
+            w = item.widget()
             if w:
                 w.setParent(None)
         self._file_check_items = []
@@ -1020,15 +1281,154 @@ class IntegratedAeroGUI(QMainWindow):
             return
 
         # 创建复选框
+        # 创建复选框并显示格式来源标签
         for fp in files:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
             cb = QCheckBox(fp.name)
             cb.setChecked(True)
-            self.file_list_layout_inner.addWidget(cb)
-            self._file_check_items.append((cb, fp))
+            src_label = QLabel("")
+            src_label.setStyleSheet("color: #666; font-size: 11px;")
+            # 解析并设置来源（同步快速判断）
+            try:
+                src, src_path = self._determine_format_source(fp)
+                disp, tip, color = self._format_label_from(src, src_path)
+                src_label.setText(disp)
+                src_label.setToolTip(tip or "")
+                src_label.setStyleSheet(f"color: {color}; font-size: 11px;")
+            except Exception:
+                src_label.setText("未知")
+                src_label.setStyleSheet("color: #dc3545; font-size: 11px;")
+
+            row_layout.addWidget(cb)
+            row_layout.addStretch()
+            row_layout.addWidget(src_label)
+            self.file_list_layout_inner.addWidget(row)
+            # 存储三元组 (checkbox, Path, label) 以便后续使用或更新
+            self._file_check_items.append((cb, fp, src_label))
 
         # 显示并自动滚动到顶部
         self.grp_file_list.setVisible(True)
         self.file_scroll.verticalScrollBar().setValue(0)
+
+    def _determine_format_source(self, fp: Path):
+        """快速判断单个文件的格式来源，返回 (label, path_or_None)。
+
+        label: 'registry' | 'sidecar' | 'dir' | 'global' | 'unknown'
+        path_or_None: 指向具体的 format 文件（Path）或 None
+        """
+        try:
+            # 1) registry 优先（若界面提供了 db 路径）
+            if hasattr(self, 'inp_registry_db'):
+                dbp = self.inp_registry_db.text().strip()
+                if dbp:
+                    try:
+                        fmt = get_format_for_file(dbp, str(fp))
+                        if fmt:
+                            return ("registry", Path(fmt))
+                    except Exception:
+                        # registry 查询不应阻塞 UI，降级处理
+                        pass
+
+            # 2) file-sidecar
+            for suf in ('.format.json', '.json'):
+                cand = fp.parent / f"{fp.stem}{suf}"
+                if cand.exists():
+                    return ("sidecar", cand)
+
+            # 3) 目录级默认
+            dir_cand = fp.parent / 'format.json'
+            if dir_cand.exists():
+                return ("dir", dir_cand)
+
+            # 4) 全局
+            return ("global", None)
+        except Exception:
+            return ("unknown", None)
+
+    def _format_label_from(self, src: str, src_path: Optional[Path]):
+        """将源类型与路径格式化为显示文本、tooltip 与颜色。
+
+        返回 (display_text, tooltip_text_or_empty, css_color)
+        """
+        try:
+            if src == 'registry':
+                name = Path(src_path).name if src_path else ''
+                return (f"registry ({name})" if name else "registry", str(src_path) if src_path else "", '#1f77b4')
+            if src == 'sidecar':
+                name = Path(src_path).name if src_path else ''
+                return (f"sidecar ({name})" if name else "sidecar", str(src_path) if src_path else "", '#28a745')
+            if src == 'dir':
+                name = Path(src_path).name if src_path else ''
+                return (f"dir ({name})" if name else "dir", str(src_path) if src_path else "", '#ff8c00')
+            if src == 'global':
+                return ("global", "", '#6c757d')
+            return ("unknown", "", '#dc3545')
+        except Exception:
+            return ("unknown", "", '#dc3545')
+
+    def _refresh_format_labels(self):
+        """遍历当前文件列表，重新解析并更新每个文件旁的来源标签及 tooltip。"""
+        try:
+            items = getattr(self, '_file_check_items', None)
+            if not items:
+                return
+            for tup in items:
+                # 支持旧的 (cb, fp) 形式或新的 (cb, fp, label)
+                if len(tup) == 2:
+                    # 旧结构 (cb, fp) 无标签，跳过
+                    continue
+                cb, fp, lbl = tup
+                try:
+                    src, src_path = self._determine_format_source(fp)
+                    disp, tip, color = self._format_label_from(src, src_path)
+                    lbl.setText(disp)
+                    lbl.setToolTip(tip or "")
+                    lbl.setStyleSheet(f"color: {color}; font-size: 11px;")
+                except Exception:
+                    try:
+                        lbl.setText('未知')
+                        lbl.setToolTip("")
+                        lbl.setStyleSheet("color: #dc3545; font-size: 11px;")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        except Exception:
+            pass
+
+    def _refresh_registry_list(self):
+        """将当前 registry 的映射列表渲染到 `self.lst_registry`。"""
+        try:
+            dbp = ''
+            if hasattr(self, 'inp_registry_db'):
+                dbp = self.inp_registry_db.text().strip()
+            if not dbp:
+                self.grp_registry_list.setVisible(False)
+                return
+            try:
+                mappings = list_mappings(dbp)
+            except Exception as e:
+                self.lst_registry.clear()
+                self.lst_registry.addItem(f"无法读取 registry: {e}")
+                self.grp_registry_list.setVisible(True)
+                return
+
+            self.lst_registry.clear()
+            if not mappings:
+                self.lst_registry.addItem("(空)")
+            else:
+                for m in mappings:
+                    text = f"[{m['id']}] {m['pattern']} -> {m['format_path']}  (added: {m['added_at']})"
+                    self.lst_registry.addItem(text)
+
+            self.grp_registry_list.setVisible(True)
+        except Exception:
+            try:
+                self.grp_registry_list.setVisible(False)
+            except Exception:
+                pass
 
     def run_batch_processing(self):
         """运行批处理"""
@@ -1067,7 +1467,7 @@ class IntegratedAeroGUI(QMainWindow):
         elif input_path.is_dir():
             # 若界面上存在由 _scan_and_populate_files 填充的复选框列表，则以复选框选择为准
             if getattr(self, '_file_check_items', None):
-                files_to_process = [fp for cb, fp in self._file_check_items if cb.isChecked()]
+                files_to_process = [fp for cb, fp, *_ in self._file_check_items if cb.isChecked()]
                 output_dir = getattr(self, 'output_dir', input_path)
             else:
                 pattern = self.inp_pattern.text()
@@ -1104,8 +1504,15 @@ class IntegratedAeroGUI(QMainWindow):
         self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 开始批量处理...")
         self.txt_batch_log.append(f"共 {len(files_to_process)} 个文件")
 
+        # 读取可选的 registry DB 路径
+        registry_db_path = None
+        if hasattr(self, 'inp_registry_db'):
+            val = self.inp_registry_db.text().strip()
+            if val:
+                registry_db_path = val
+
         self.batch_thread = BatchProcessThread(
-            self.calculator, files_to_process, output_dir, self.data_config
+            self.calculator, files_to_process, output_dir, self.data_config, registry_db=registry_db_path
         )
         self.batch_thread.progress.connect(self.progress_bar.setValue)
         self.batch_thread.log_message.connect(
