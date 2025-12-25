@@ -5,7 +5,7 @@ from typing import Any
 
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
-from src.cli_helpers import load_project_calculator
+from src.cli_helpers import load_project_calculator, configure_logging
 from src.registry_cli import registry as registry_cmd
 
 
@@ -39,7 +39,17 @@ def prompt_vector(label: str, default=(0.0, 0.0, 0.0)) -> list:
             continue
 
 
-@click.command()
+@click.group()
+@click.option('--verbose', is_flag=True, help='增加日志详细程度')
+@click.option('--log-file', default=None, help='将日志写入指定文件')
+@click.pass_context
+def cli(ctx, verbose, log_file):
+    """MomentTransfer CLI 主入口（包含子命令）。"""
+    ctx.ensure_object(dict)
+    ctx.obj['logger'] = configure_logging(log_file, verbose)
+
+
+@cli.command(name='run')
 # 新增明确的 -c/--config 选项，保留 -i/--input 作为向后兼容的别名（标注为已弃用）
 @click.option('-c', '--config', 'config_path', default=None,
               help='配置文件路径 (JSON)，默认使用项目 data/input.json')
@@ -51,7 +61,8 @@ def prompt_vector(label: str, default=(0.0, 0.0, 0.0)) -> list:
               help='输入力向量 (例如: --force 100 0 -50)')
 @click.option('--moment', type=(float, float, float), default=None,
               help='输入力矩向量 (例如: --moment 0 500 0)')
-def main(config_path, input_path, output_path, force, moment):
+@click.pass_context
+def main(ctx, config_path, input_path, output_path, force, moment):
     """气动载荷坐标变换工具（click CLI）
 
     支持非交互模式通过 `--force` 与 `--moment` 指定载荷。
