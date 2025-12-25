@@ -1,4 +1,4 @@
-import argparse
+import click
 import json
 import logging
 import sys
@@ -12,32 +12,7 @@ import fnmatch
 
 from src.data_loader import load_data
 from src.physics import AeroCalculator
-
-
-class BatchConfig:
-    """批处理配置类"""
-    def __init__(self):
-        self.skip_rows = 0
-        self.column_mappings = {
-            'alpha': None,  # 迎角列
-            'fx': None,     # 轴向力
-            'fy': None,     # 侧向力
-            'fz': None,     # 法向力
-            'mx': None,     # 滚转力矩
-            'my': None,     # 俯仰力矩
-            'mz': None      # 偏航力矩
-        }
-        self.passthrough_columns = []  # 需要原样输出的列
-        # 流式处理相关
-        self.chunksize = None  # None 或 int
-        # 输出命名与冲突策略
-        self.name_template = "{stem}_result_{timestamp}.csv"
-        self.timestamp_format = "%Y%m%d_%H%M%S"
-        self.overwrite = False
-        # 非数值处理策略: 'zero'|'nan'|'drop'
-        self.treat_non_numeric = 'zero'
-        # 采样日志行为
-        self.sample_rows = 5
+from src.cli_helpers import configure_logging, load_project_calculator, BatchConfig, load_format_from_file
 
 
 def get_user_file_format():
@@ -98,41 +73,9 @@ def get_user_file_format():
 
 
 def load_format_from_file(path: str) -> BatchConfig:
-    """从 JSON 文件加载 BatchConfig"""
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"格式文件未找到: {path}")
-    with open(p, 'r', encoding='utf-8') as fh:
-        data = json.load(fh)
-
-    cfg = BatchConfig()
-    cfg.skip_rows = int(data.get('skip_rows', 0))
-    cols = data.get('columns', {})
-    for k in cfg.column_mappings.keys():
-        if k in cols:
-            v = cols[k]
-            cfg.column_mappings[k] = int(v) if v is not None else None
-    cfg.passthrough_columns = [int(x) for x in data.get('passthrough', [])]
-    # 可选流式与输出设置
-    if 'chunksize' in data:
-        try:
-            cfg.chunksize = int(data.get('chunksize'))
-        except Exception:
-            cfg.chunksize = None
-    if 'name_template' in data:
-        cfg.name_template = str(data.get('name_template'))
-    if 'timestamp_format' in data:
-        cfg.timestamp_format = str(data.get('timestamp_format'))
-    if 'overwrite' in data:
-        cfg.overwrite = bool(data.get('overwrite'))
-    if 'treat_non_numeric' in data:
-        cfg.treat_non_numeric = str(data.get('treat_non_numeric'))
-    if 'sample_rows' in data:
-        try:
-            cfg.sample_rows = int(data.get('sample_rows'))
-        except Exception:
-            cfg.sample_rows = 5
-    return cfg
+    # 转发到共享实现（已迁移到 src.cli_helpers）
+    from src.cli_helpers import load_format_from_file as _shared_load
+    return _shared_load(path)
 
 
 def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) -> Path:
@@ -170,8 +113,8 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
         with open(test_path, 'w', encoding='utf-8') as _:
             pass
         test_path.unlink()
-    except Exception:
-        raise IOError(f"无法在输出目录写入文件: {out_path.parent}")
+    except (OSError, IOError, PermissionError) as e:
+        raise IOError(f"无法在输出目录写入文件: {out_path.parent} -> {e}") from e
 
     return out_path
 
@@ -189,14 +132,17 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
     """
     # 解析力/力矩列并检测非数值
-    forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]]
+    # 先显式复制切片以避免链式赋值警告
+    forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]].copy()
     for col in forces_df.columns:
         forces_df[col] = pd.to_numeric(forces_df[col], errors='coerce')
 
-    moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]]
+    moments_df = chunk_df.iloc[:, [mx_i, my_i, mz_i]].copy()
     for col in moments_df.columns:
         moments_df[col] = pd.to_numeric(moments_df[col], errors='coerce')
     mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
+    # 为避免后续 index 对齐问题，使用 numpy 布尔数组作为掩码
+    mask_array = mask_non_numeric.to_numpy()
     n_non = int(mask_non_numeric.sum())
     dropped = 0
 
@@ -204,8 +150,9 @@ def process_df_chunk(chunk_df: pd.DataFrame,
         # 记录示例行用于诊断
         samp_n = min(cfg.sample_rows, n_non)
         if samp_n > 0:
-            idxs = list(np.where(mask_non_numeric)[0][:samp_n])
+            idxs = list(np.where(mask_array)[0][:samp_n])
             for idx in idxs:
+                # 注意 chunk_df 可能保留原始索引，因此使用 iloc 按位置访问示例
                 logger.warning(f"文件 {out_path.name} 非数值示例（chunk 内行 {idx}）: {chunk_df.iloc[idx].to_dict()}")
 
     if cfg.treat_non_numeric == 'drop':
@@ -214,9 +161,9 @@ def process_df_chunk(chunk_df: pd.DataFrame,
             # 全部丢弃
             dropped = len(chunk_df)
             return 0, dropped, n_non, first_chunk
-        forces = forces_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
-        moments = moments_df[valid_idx].fillna(0.0).to_numpy(dtype=float)
-        data_df = chunk_df[valid_idx].reset_index(drop=True)
+        forces = forces_df.loc[valid_idx].fillna(0.0).to_numpy(dtype=float)
+        moments = moments_df.loc[valid_idx].fillna(0.0).to_numpy(dtype=float)
+        data_df = chunk_df.loc[valid_idx].reset_index(drop=True)
     else:
         if cfg.treat_non_numeric == 'zero':
             # 非数值按 0 处理
@@ -265,7 +212,7 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     # 对于 'nan' 策略，将原始存在缺失的行对应计算列置为 NaN
     if cfg.treat_non_numeric == 'nan' and n_non > 0:
         comp_cols = ['Fx_new', 'Fy_new', 'Fz_new', 'Mx_new', 'My_new', 'Mz_new', 'Cx', 'Cy', 'Cz', 'Cl', 'Cm', 'Cn']
-        out_df.loc[mask_non_numeric, comp_cols] = np.nan
+        out_df.loc[mask_array, comp_cols] = np.nan
 
     mode = 'w' if first_chunk else 'a'
     header = first_chunk
@@ -306,12 +253,12 @@ def parse_selection(sel_str: str, n: int) -> list:
                 a_i = int(a) - 1
                 b_i = int(b) - 1
                 idxs.extend(range(a_i, b_i + 1))
-            except Exception:
+            except (ValueError, TypeError):
                 continue
         else:
             try:
                 idxs.append(int(part) - 1)
-            except Exception:
+            except (ValueError, TypeError):
                 continue
     return sorted(set(i for i in idxs if 0 <= i < n))
 
@@ -448,9 +395,8 @@ def _worker_process(args_tuple):
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
 
-        # 重新加载计算器（每个进程独立）
-        project_data = load_data(project_config_path)
-        calculator = AeroCalculator(project_data)
+        # 重新加载计算器（每个进程独立），使用共享 helper 以统一错误信息
+        project_data, calculator = load_project_calculator(project_config_path)
 
         # 构造 BatchConfig
         cfg = BatchConfig()
@@ -479,14 +425,13 @@ def _worker_process(args_tuple):
 def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None):
     """增强版批处理主函数"""
     print("=" * 70)
-    print("气动载荷坐标变换批处理工具 v2.0")
+    print("MomentTransfer v2.0")
     print("=" * 70)
     
     # 1. 加载配置（支持新版对等的 Source/Target 结构，向后兼容旧的 SourceCoordSystem）
     print(f"\n[1/5] 加载几何配置: {config_path}")
     try:
-        project_data = load_data(config_path)
-        calculator = AeroCalculator(project_data)
+        project_data, calculator = load_project_calculator(config_path)
         print(f"  ✓ 配置加载成功: {project_data.target_config.part_name}")
     except Exception as e:
         print(f"  ✗ 配置加载失败: {e}\n  提示: 请检查 JSON 是否包含 Target 的 CoordSystem/MomentCenter/Q/S 或使用 GUI/creator.py 生成兼容的配置。")
@@ -556,53 +501,34 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     print("=" * 70)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="MomentTransfer",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-使用示例:
-  单文件处理:
-    python batch.py -c config.json -i data.csv --non-interactive --format-file format.json
-  
-  目录批处理:
-    python batch.py -c config.json -i ./data_folder/ --non-interactive --format-file format.json --workers 4
-        """
-    )
-
-    parser.add_argument('-c', '--config', required=True, help="配置文件路径 (JSON)")
-    parser.add_argument('-i', '--input', required=True, help="输入文件或目录路径")
-    parser.add_argument('-p', '--pattern', default=None, help='文件匹配模式（目录模式下），如 "*.csv"')
-    parser.add_argument('-f', '--format-file', default=None, help='数据格式 JSON 文件路径（包含 skip_rows, columns, passthrough）')
-    parser.add_argument('--non-interactive', action='store_true', help='以非交互模式运行（必须提供 --format-file）')
-    parser.add_argument('--log-file', default=None, help='将日志写入指定文件')
-    parser.add_argument('--verbose', action='store_true', help='增加日志详细程度')
-    parser.add_argument('--workers', type=int, default=1, help='并行工作进程数（默认为1，表示串行）')
-    parser.add_argument('--chunksize', type=int, default=None, help='CSV 流式读取块大小（行数），若未设置则一次性读取整个文件')
-    parser.add_argument('--overwrite', action='store_true', help='若输出文件存在则覆盖（默认会自动改名避免冲突）')
-    parser.add_argument('--name-template', default=None, help='输出文件名模板，支持 {stem} 和 {timestamp} 占位符')
-    parser.add_argument('--timestamp-format', default=None, help='时间戳格式，用于 {timestamp} 占位符，默认 %%Y%%m%%d_%%H%%M%%S')
-    parser.add_argument('--treat-non-numeric', choices=['zero','nan','drop'], default=None, help='如何处理非数值输入: zero|nan|drop')
-    parser.add_argument('--sample-rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
-
-    args = parser.parse_args()
-
-    # 配置 logging
-    log_level = logging.DEBUG if args.verbose else logging.INFO
-    handlers = [logging.StreamHandler()]
-    if args.log_file:
-        handlers.append(logging.FileHandler(args.log_file, encoding='utf-8'))
-    logging.basicConfig(level=log_level, format='%(asctime)s %(levelname)s: %(message)s', handlers=handlers)
-    logger = logging.getLogger('batch')
+@click.command()
+@click.option('-c', '--config', 'config', required=True, help='配置文件路径 (JSON)')
+@click.option('-i', '--input', 'input_path', required=True, help='输入文件或目录路径')
+@click.option('-p', '--pattern', default=None, help='文件匹配模式（目录模式下），如 "*.csv"')
+@click.option('-f', '--format-file', 'format_file', default=None, help='数据格式 JSON 文件路径（包含 skip_rows, columns, passthrough）')
+@click.option('--non-interactive', 'non_interactive', is_flag=True, help='以非交互模式运行（必须提供 --format-file）')
+@click.option('--log-file', 'log_file', default=None, help='将日志写入指定文件')
+@click.option('--verbose', 'verbose', is_flag=True, help='增加日志详细程度')
+@click.option('--workers', 'workers', type=int, default=1, help='并行工作进程数（默认为1，表示串行）')
+@click.option('--chunksize', 'chunksize', type=int, default=None, help='CSV 流式读取块大小（行数），若未设置则一次性读取整个文件')
+@click.option('--overwrite', 'overwrite', is_flag=True, help='若输出文件存在则覆盖（默认会自动改名避免冲突）')
+@click.option('--name-template', 'name_template', default=None, help='输出文件名模板，支持 {stem} 和 {timestamp} 占位符')
+@click.option('--timestamp-format', 'timestamp_format', default=None, help='时间戳格式，用于 {timestamp} 占位符，默认 %%Y%%m%%d_%%H%%M%%S')
+@click.option('--treat-non-numeric', 'treat_non_numeric', type=click.Choice(['zero','nan','drop']), default=None, help='如何处理非数值输入: zero|nan|drop')
+@click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
+def main(config, input_path, pattern, format_file, non_interactive, log_file, verbose, workers, chunksize, overwrite, name_template, timestamp_format, treat_non_numeric, sample_rows):
+    """批处理入口（click 版）"""
+    # 配置 logging（通过共享 helper）
+    logger = configure_logging(log_file, verbose)
 
     # 读取数据格式配置
-    if args.non_interactive:
-        if not args.format_file:
+    if non_interactive:
+        if not format_file:
             logger.error('--non-interactive 模式下必须提供 --format-file')
             sys.exit(2)
         try:
-            data_config = load_format_from_file(args.format_file)
-            logger.info(f'使用格式文件: {args.format_file}')
+            data_config = load_format_from_file(format_file)
+            logger.info(f'使用格式文件: {format_file}')
         except Exception as e:
             logger.exception('读取格式文件失败')
             sys.exit(3)
@@ -611,53 +537,53 @@ if __name__ == "__main__":
         data_config = get_user_file_format()
 
     # 命令行参数覆盖格式文件中的设置（若提供）
-    if args.chunksize is not None:
-        data_config.chunksize = args.chunksize
-    if args.overwrite:
+    if chunksize is not None:
+        data_config.chunksize = chunksize
+    if overwrite:
         data_config.overwrite = True
-    if args.name_template:
-        data_config.name_template = args.name_template
-    if args.timestamp_format:
-        data_config.timestamp_format = args.timestamp_format
-    if args.treat_non_numeric:
-        data_config.treat_non_numeric = args.treat_non_numeric
-    if args.sample_rows is not None:
-        data_config.sample_rows = args.sample_rows
+    if name_template:
+        data_config.name_template = name_template
+    if timestamp_format:
+        data_config.timestamp_format = timestamp_format
+    if treat_non_numeric:
+        data_config.treat_non_numeric = treat_non_numeric
+    if sample_rows is not None:
+        data_config.sample_rows = sample_rows
 
     # 根据 pattern 参数或交互获取 pattern
-    if args.pattern:
-        pattern = args.pattern
+    if pattern:
+        pat = pattern
     else:
-        pattern = None
+        pat = None
 
     # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
     try:
-        if args.workers > 1:
-            logger.info(f'并行处理模式: workers={args.workers}')
+        if workers > 1:
+            logger.info(f'并行处理模式: workers={workers}')
             # 构造文件列表
-            input_path = Path(args.input)
+            input_path_obj = Path(input_path)
             files_to_process = []
             output_dir = None
-            if input_path.is_file():
-                files_to_process = [input_path]
-                output_dir = input_path.parent
-            elif input_path.is_dir():
-                if pattern:
-                    pat = pattern
+            if input_path_obj.is_file():
+                files_to_process = [input_path_obj]
+                output_dir = input_path_obj.parent
+            elif input_path_obj.is_dir():
+                if pat:
+                    pat_use = pat
                 else:
-                    if args.non_interactive:
-                        pat = '*.csv'
+                    if non_interactive:
+                        pat_use = '*.csv'
                         logger.info("非交互模式：使用默认文件匹配模式 '*.csv'")
                     else:
-                        pat = input('文件名匹配模式 (如 *.csv, default *.csv): ').strip() or '*.csv'
-                files = find_matching_files(str(input_path), pat)
+                        pat_use = input('文件名匹配模式 (如 *.csv, default *.csv): ').strip() or '*.csv'
+                files = find_matching_files(str(input_path_obj), pat_use)
                 logger.info(f'找到 {len(files)} 个匹配文件')
                 # 选择 all
                 chosen_idxs = list(range(len(files)))
                 files_to_process = [files[i] for i in chosen_idxs]
-                output_dir = input_path
+                output_dir = input_path_obj
             else:
-                logger.error(f'无效的输入路径: {args.input}')
+                logger.error(f'无效的输入路径: {input_path}')
                 sys.exit(4)
 
             # 准备并行任务参数（将 data_config 序列化为 dict）
@@ -674,10 +600,10 @@ if __name__ == "__main__":
             }
 
 
-            with ProcessPoolExecutor(max_workers=args.workers) as exe:
+            with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
                 for fp in files_to_process:
-                    fut = exe.submit(_worker_process, (str(fp), config_dict, args.config, str(output_dir)))
+                    fut = exe.submit(_worker_process, (str(fp), config_dict, config, str(output_dir)))
                     futures[fut] = fp
 
                 success_count = 0
@@ -698,11 +624,12 @@ if __name__ == "__main__":
 
         else:
             # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            # 如果是非交互模式但只有 workers=1，我们仍需传入 data_config
-            # 将 data_config 临时写回用于 run_batch_processing_v2 的 get_user_file_format 使用
-            # 为简洁起见，直接调用 run_batch_processing_v2 并退出
-            run_batch_processing_v2(args.config, args.input, data_config)
+            run_batch_processing_v2(config, input_path, data_config)
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')
         sys.exit(5)
+
+
+if __name__ == '__main__':
+    main()

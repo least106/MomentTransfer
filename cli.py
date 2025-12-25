@@ -4,8 +4,7 @@ import click
 
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
-from src.data_loader import load_data
-from src.physics import AeroCalculator
+from src.cli_helpers import load_project_calculator
 
 
 @click.command()
@@ -50,11 +49,10 @@ def main(input_path, output_path, force, moment):
 
     click.echo(f"\n[1] 加载配置: {cfg_path}")
     try:
-        project_data = load_data(cfg_path)
-        calculator = AeroCalculator(project_data)
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        project_data, calculator = load_project_calculator(cfg_path)
+    except ValueError as e:
         click.echo(f"[致命错误] 无法加载配置: {e}")
-        click.echo("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或至少包含旧格式的 'SourceCoordSystem' 与 'Target'。可使用 creator.py 生成兼容配置。")
+        click.echo("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。")
         raise click.Abort()
 
     click.echo('[2] 执行计算...')
