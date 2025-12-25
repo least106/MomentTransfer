@@ -13,6 +13,14 @@ import traceback
 import tempfile
 import os
 import shutil
+try:
+    import fcntl
+except Exception:
+    fcntl = None
+try:
+    import msvcrt
+except Exception:
+    msvcrt = None
 
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
@@ -194,7 +202,51 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
     mode = 'w' if first_chunk else 'a'
     header = first_chunk
-    out_df.to_csv(out_path, index=False, mode=mode, header=header, encoding='utf-8')
+
+    # 将 DataFrame 序列化为 CSV 文本，然后以文件描述符方式写入以支持 flush+fsync
+    csv_text = out_df.to_csv(index=False, header=header, encoding='utf-8')
+
+    # 确保父目录存在
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    open_mode = 'w' if mode == 'w' else 'a'
+    # 以文本模式打开，写入后立即 flush 并 fsync，必要时尝试加锁（平台相关）
+    f = open(out_path, open_mode, encoding='utf-8', newline='')
+    try:
+        # 尝试获取文件锁，若失败则继续（best-effort）
+        try:
+            if os.name == 'nt' and msvcrt:
+                # Windows: 锁定从当前位置起的 1 字节（尽管不是完美，但能阻止交叉写入）
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+            elif fcntl:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        except Exception:
+            pass
+
+        f.write(csv_text)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except Exception:
+            # 某些平台或文件系统上可能不支持 fsync，忽略该错误
+            pass
+
+    finally:
+        # 释放文件锁（best-effort）并关闭文件
+        try:
+            if os.name == 'nt' and msvcrt:
+                try:
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                except Exception:
+                    pass
+            elif fcntl:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+        finally:
+            f.close()
 
     processed = len(out_df)
     first_chunk = False
