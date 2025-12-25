@@ -82,6 +82,28 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
     返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
     """
+    # 在使用位置索引前，先校验传入的列索引是否在当前 chunk 的列范围内
+    num_cols = chunk_df.shape[1]
+    index_specs = [
+        ("fx", fx_i),
+        ("fy", fy_i),
+        ("fz", fz_i),
+        ("mx", mx_i),
+        ("my", my_i),
+        ("mz", mz_i),
+    ]
+    invalid = [(name, idx) for name, idx in index_specs if idx < 0 or idx >= num_cols]
+    if invalid:
+        logger.error(
+            "文件 %s: 列索引超出范围（chunk 仅有 %d 列）：%s",
+            out_path.name,
+            num_cols,
+            ", ".join(f"{name}_i={idx}" for name, idx in invalid),
+        )
+        raise IndexError(
+            f"Column index out of range for chunk_df with {num_cols} columns: "
+            + ", ".join(f"{name}_i={idx}" for name, idx in invalid)
+        )
     # 解析力/力矩列并检测非数值
     # 先显式复制切片以避免链式赋值警告
     forces_df = chunk_df.iloc[:, [fx_i, fy_i, fz_i]].copy()
@@ -106,6 +128,7 @@ def process_df_chunk(chunk_df: pd.DataFrame,
                 # 注意 chunk_df 可能保留原始索引，因此使用 iloc 按位置访问示例
                 logger.warning(f"文件 {out_path.name} 非数值示例（chunk 内行 {idx}）: {chunk_df.iloc[idx].to_dict()}")
 
+    # 根据配置处理非数值行
     if cfg.treat_non_numeric == 'drop':
         valid_idx = ~mask_non_numeric
         if valid_idx.sum() == 0:
@@ -115,20 +138,15 @@ def process_df_chunk(chunk_df: pd.DataFrame,
         forces = forces_df.loc[valid_idx].fillna(0.0).to_numpy(dtype=float)
         moments = moments_df.loc[valid_idx].fillna(0.0).to_numpy(dtype=float)
         data_df = chunk_df.loc[valid_idx].reset_index(drop=True)
+    elif cfg.treat_non_numeric == 'nan':
+        # 保留 NaN，让后续计算和结果中体现为 NaN
+        forces = forces_df.to_numpy(dtype=float)
+        moments = moments_df.to_numpy(dtype=float)
+        data_df = chunk_df.reset_index(drop=True)
     else:
-        if cfg.treat_non_numeric == 'zero':
-            # 非数值按 0 处理
-            forces = forces_df.fillna(0.0).to_numpy(dtype=float)
-            moments = moments_df.fillna(0.0).to_numpy(dtype=float)
-        elif cfg.treat_non_numeric == 'nan':
-            # 保留 NaN，让后续计算和结果中体现为 NaN
-            forces = forces_df.to_numpy(dtype=float)
-            moments = moments_df.to_numpy(dtype=float)
-        else:
-            # 未知策略时退回到按 0 处理，避免崩溃
-            forces = forces_df.fillna(0.0).to_numpy(dtype=float)
-            logger.warning(f"未知的非数值处理策略: '{cfg.treat_non_numeric}'，已退回为 'zero' 策略")
-            moments = moments_df.fillna(0.0).to_numpy(dtype=float)
+        # 默认或 'zero' 策略：将非数值按 0 处理
+        forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+        moments = moments_df.fillna(0.0).to_numpy(dtype=float)
         data_df = chunk_df.reset_index(drop=True)
 
     logger.info(f"  执行坐标变换... 行数={len(forces)}")
@@ -204,6 +222,7 @@ def parse_selection(sel_str: str, n: int) -> list:
                 a, b = part.split('-', 1)
                 a_i = int(a) - 1
                 b_i = int(b) - 1
+                # 限界检查将在后面进行
                 idxs.extend(range(a_i, b_i + 1))
             except (ValueError, TypeError):
                 logging.warning("批处理文件选择解析时忽略了无效区间片段 '%s'（原始输入: '%s'）。", part, sel_str)
@@ -213,25 +232,28 @@ def parse_selection(sel_str: str, n: int) -> list:
                 idxs.append(int(part) - 1)
             except (ValueError, TypeError):
                 logging.warning("批处理文件选择解析时忽略了无效索引片段 '%s'（原始输入: '%s'）。", part, sel_str)
-                continue
-    return sorted(set(i for i in idxs if 0 <= i < n))
+
+    # 规范化：去重、排序，并限定在 [0, n-1]
+    valid = sorted({i for i in idxs if 0 <= i < n})
+    return valid
 
 
-def read_data_with_config(file_path: str, config: BatchConfig) -> pd.DataFrame:
-    """根据配置读取数据文件"""
-    # 读取文件（跳过指定行数）
-    ext = Path(file_path).suffix.lower()
+def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
+    """根据 `config` 读取整个数据表（非流式模式）。
+
+    返回 pandas DataFrame（不做列名解析，使用 header=None）。
+    """
+    p = Path(file_path)
+    ext = p.suffix.lower()
     if ext == '.csv':
-        df = pd.read_csv(file_path, header=None, skiprows=config.skip_rows)
+        return pd.read_csv(p, header=None, skiprows=config.skip_rows)
     elif ext in {'.xls', '.xlsx', '.xlsm', '.xlsb', '.odf', '.ods', '.odt'}:
-        df = pd.read_excel(file_path, header=None, skiprows=config.skip_rows)
+        return pd.read_excel(p, header=None, skiprows=config.skip_rows)
     else:
         raise ValueError(
             f"不支持的文件类型: '{file_path}'. 仅支持 CSV (.csv) 和 Excel "
             f"(.xls, .xlsx, .xlsm, .xlsb, .odf, .ods, .odt) 文件。"
         )
-    
-    return df
 
 
 def process_single_file(file_path: Path, calculator: AeroCalculator, 
@@ -385,8 +407,8 @@ def _worker_process(args_tuple):
         except Exception as e:
             # 不中断处理，但记录警告日志以便调试解析失败原因
             logging.getLogger(__name__).warning(
-                "使用register_db“%s”解析“%s”的文件格式失败，错误：%s",
-                str(file_path), registry_db, e
+                "使用registry_db\"%s\"解析\"%s\"的文件格式失败，错误：%s",
+                registry_db, str(file_path), e
             )
 
         success = process_single_file(file_path, calculator, cfg, output_dir)
