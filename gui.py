@@ -388,6 +388,11 @@ class IntegratedAeroGUI(QMainWindow):
         splitter.addWidget(self.create_operation_panel())
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 6)
+        # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
+        try:
+            splitter.setSizes([520, 880])
+        except Exception:
+            pass
 
         main_layout.addWidget(splitter)
         self.statusBar().showMessage("就绪 - 请加载或创建配置")
@@ -1164,11 +1169,22 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 4) 如果找到格式文件则尝试解析并用其内容预填充对话框
         initial_cfg = None
+        selected_registry_entry = None
         if selected_format:
             try:
                 import json as _json
-                with open(selected_format, 'r', encoding='utf-8') as fh:
+                # selected_format may be a Path or a tuple (source, entry)
+                if isinstance(selected_format, tuple) and selected_format[0] == 'registry':
+                    # tuple structure: ('registry', entry_dict)
+                    selected_registry_entry = selected_format[1]
+                    fmt_path = Path(selected_registry_entry['format_path'])
+                else:
+                    fmt_path = Path(selected_format)
+
+                with open(fmt_path, 'r', encoding='utf-8') as fh:
                     initial_cfg = _json.load(fh)
+                # normalize selected_format to path for later use
+                selected_format = fmt_path
             except Exception as e:
                 QMessageBox.warning(self, '警告', f'无法加载格式文件: {selected_format}\n{e}')
 
@@ -1179,6 +1195,61 @@ class IntegratedAeroGUI(QMainWindow):
 
         if dialog.exec() == QDialog.Accepted:
             self.data_config = dialog.get_config()
+            # 将编辑后的配置写回到选定的格式文件（若存在），并在必要时注册/更新 registry
+            try:
+                import json as _json
+                cfg_to_write = self.data_config
+
+                # 如果用户是基于 registry 条目打开并选择了 registry 映射
+                if selected_registry_entry is not None:
+                    dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+                    try:
+                        # 覆写映射指向的 format 文件
+                        fmtp = Path(selected_registry_entry['format_path'])
+                        fmtp.parent.mkdir(parents=True, exist_ok=True)
+                        with open(fmtp, 'w', encoding='utf-8') as fh:
+                            _json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
+                        # 刷新映射的时间戳（保持 pattern 不变）
+                        try:
+                            from src.format_registry import update_mapping
+                            update_mapping(dbp, int(selected_registry_entry['id']), selected_registry_entry['pattern'], str(fmtp))
+                        except Exception:
+                            pass
+                        self.txt_batch_log.append(f"已保存并更新 registry 映射 id={selected_registry_entry['id']}: {fmtp}")
+                    except Exception as e:
+                        QMessageBox.warning(self, '保存失败', f'无法保存到 registry 指向的文件: {e}')
+
+                else:
+                    # 未基于 registry 映射：写为 sidecar（chosen file 的同名 .format.json），并尝试注册到默认 registry
+                    try:
+                        if chosen_fp:
+                            sidecar = chosen_fp.parent / f"{chosen_fp.stem}.format.json"
+                        else:
+                            # 无所选文件，保存到项目 data 目录，使用 timestamp 名称
+                            from datetime import datetime as _dt
+                            sidecar = Path('data') / f"format_{_dt.now().strftime('%Y%m%d_%H%M%S')}.json"
+                        sidecar.parent.mkdir(parents=True, exist_ok=True)
+                        with open(sidecar, 'w', encoding='utf-8') as fh:
+                            _json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
+
+                        # 默认注册到项目的 data/formats.sqlite（若存在或可创建）
+                        default_db = Path('data') / 'formats.sqlite'
+                        try:
+                            from src.format_registry import init_db, register_mapping
+                            init_db(str(default_db))
+                            # pattern 使用文件名作为默认值
+                            default_pattern = chosen_fp.name if chosen_fp else sidecar.name
+                            register_mapping(str(default_db), default_pattern, str(sidecar))
+                            self.txt_batch_log.append(f"已将格式保存为 {sidecar} 并注册到默认 registry: {default_db} (pattern={default_pattern})")
+                        except Exception:
+                            # 若注册失败，仅提醒用户文件已保存
+                            self.txt_batch_log.append(f"已保存格式文件: {sidecar} (但未能注册到默认 registry)")
+                    except Exception as e:
+                        QMessageBox.warning(self, '保存失败', f'无法保存格式文件: {e}')
+
+            except Exception as e:
+                QMessageBox.warning(self, '错误', f'保存格式时出错: {e}')
+
             QMessageBox.information(self, "成功", 
                 f"数据格式配置已保存:\n"
                 f"- 跳过 {self.data_config['skip_rows']} 行\n"
