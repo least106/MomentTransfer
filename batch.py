@@ -237,14 +237,16 @@ def process_df_chunk(chunk_df: pd.DataFrame,
                 # 优先使用 portalocker 提供跨平台一致的锁定语义
                 try:
                     if portalocker:
-                        portalocker.lock(f, portalocker.LOCK_EX)
-                    elif os.name == 'nt' and msvcrt:
-                        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-                    elif fcntl:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                        try:
+                            portalocker.lock(f, portalocker.LOCK_EX)
+                        except Exception as le:
+                            logger.debug("portalocker.lock 失败，继续以无锁模式写入：%s", le)
+                    else:
+                        # 不再尝试平台特定的 1 字节锁（如 msvcrt 或 fcntl），它们在某些平台/情形下不可靠。
+                        logger.debug("portalocker 不可用，跳过文件锁（best-effort 写入）: %s", out_path)
                 except Exception:
-                    # best-effort，不应阻止写入
-                    pass
+                    # 任何锁相关的异常均不应阻止写入，但记录以便诊断
+                    logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
                 try:
                     # 直接将 DataFrame 写入文件句柄，避免在内存中构造大型字符串
@@ -259,30 +261,20 @@ def process_df_chunk(chunk_df: pd.DataFrame,
                     last_exc = None
                     break
                 finally:
-                    # 在 with 块内释放锁以确保在关闭前解锁
-                    try:
-                        if portalocker:
-                            try:
-                                portalocker.unlock(f)
-                            except Exception:
-                                pass
-                        elif os.name == 'nt' and msvcrt:
-                            try:
-                                f.seek(0)
-                                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-                            except Exception:
-                                pass
-                        elif fcntl:
-                            try:
-                                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
+                    # 在 with 块内如果使用 portalocker 则尝试解锁
+                    if portalocker:
+                        try:
+                            portalocker.unlock(f)
+                        except Exception:
+                            logger.debug("portalocker.unlock 失败（忽略）")
 
         except Exception as e:
             last_exc = e
-            logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, max_write_attempts, e)
+            if isinstance(e, PermissionError):
+                logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, max_write_attempts, e, exc_info=True)
+            else:
+                logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, max_write_attempts, e)
+
             # 如果不是最后一次尝试，则等待退避后重试
             if attempt < max_write_attempts:
                 time.sleep(backoffs[min(attempt-1, len(backoffs)-1)])
@@ -474,7 +466,10 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
                 break
             except Exception as e:
                 replace_err = e
-                logger.warning("尝试用 os.replace 替换 %s -> %s 失败（%d/%d）：%s", temp_out_path.name, out_path.name, ri, replace_attempts, e)
+                if isinstance(e, PermissionError):
+                    logger.warning("os.replace 被拒绝（PermissionError）: %s -> %s（%d/%d），将重试：%s", temp_out_path.name, out_path.name, ri, replace_attempts, e, exc_info=True)
+                else:
+                    logger.warning("尝试用 os.replace 替换 %s -> %s 失败（%d/%d）：%s", temp_out_path.name, out_path.name, ri, replace_attempts, e)
                 if ri < replace_attempts:
                     time.sleep(replace_backoffs[min(ri-1, len(replace_backoffs)-1)])
         if not replaced:
