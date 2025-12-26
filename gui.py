@@ -846,7 +846,47 @@ class IntegratedAeroGUI(QMainWindow):
 
         grp_batch.setLayout(layout_batch)
 
+        # === 配置预览（在状态栏下方）===
+        self.grp_config_preview = QGroupBox("配置预览")
+        pv_layout = QVBoxLayout()
+        self.lbl_preview_part = QLabel("Part: -")
+        self.lbl_preview_moment = QLabel("MomentCenter: -")
+        self.lbl_preview_qs = QLabel("Q/S: -")
+        for w in (self.lbl_preview_part, self.lbl_preview_moment, self.lbl_preview_qs):
+            w.setStyleSheet("font-size:12px;")
+            pv_layout.addWidget(w)
+        self.grp_config_preview.setLayout(pv_layout)
+
+        # === 最近项目与快捷操作 ===
+        recent_group = QGroupBox("最近项目 & 快捷操作")
+        recent_layout = QVBoxLayout()
+        from PySide6.QtWidgets import QListWidget
+        self.lst_recent = QListWidget()
+        self.lst_recent.setMaximumHeight(120)
+        self.lst_recent.itemActivated.connect(lambda it: self.inp_batch_input.setText(it.text()))
+        recent_layout.addWidget(QLabel("最近打开的配置/项目（双击以填充输入路径）:"))
+        recent_layout.addWidget(self.lst_recent)
+
+        # 默认输出目录行
+        out_row = QHBoxLayout()
+        self.inp_default_output = QLineEdit()
+        self.inp_default_output.setPlaceholderText("默认输出目录，可选")
+        btn_browse_default_out = QPushButton("浏览")
+        btn_browse_default_out.clicked.connect(lambda: self._browse_default_output())
+        out_row.addWidget(self.inp_default_output)
+        out_row.addWidget(btn_browse_default_out)
+        recent_layout.addLayout(out_row)
+
+        # 一键处理按钮
+        self.btn_quick = QPushButton("一键处理")
+        self.btn_quick.setToolTip("使用当前配置与默认输出目录快速开始批处理")
+        self.btn_quick.clicked.connect(self.one_click_process)
+        recent_layout.addWidget(self.btn_quick)
+        recent_group.setLayout(recent_layout)
+
         layout.addWidget(status_group)
+        layout.addWidget(self.grp_config_preview)
+        layout.addWidget(recent_group)
         layout.addWidget(grp_batch)
         # 为了让右侧的 grp_batch 在垂直方向上拉伸并触底，设置 layout 的 stretch
         try:
@@ -1059,6 +1099,11 @@ class IntegratedAeroGUI(QMainWindow):
 
             # 自动应用
             self.apply_config()
+            try:
+                # 记录最近打开项目
+                self.add_recent_project(fname)
+            except Exception:
+                logger.debug("add_recent_project failed", exc_info=True)
 
         except Exception as e:
             QMessageBox.critical(self, "加载失败", f"无法加载配置文件:\n{str(e)}")
@@ -1156,6 +1201,11 @@ class IntegratedAeroGUI(QMainWindow):
             self.statusBar().showMessage(f"配置已应用: {part_name}")
 
             QMessageBox.information(self, "成功", f"配置已应用!\n组件: {part_name}\n现在可以进行计算了。")
+            try:
+                # 更新 GUI 的配置预览
+                self.update_config_preview()
+            except Exception:
+                logger.debug("update_config_preview failed", exc_info=True)
 
         except ValueError as e:
             QMessageBox.warning(self, "输入错误", f"请检查数值输入:\n{str(e)}")
@@ -2127,6 +2177,106 @@ class IntegratedAeroGUI(QMainWindow):
                 logger.debug("Splitter resize refresh failed in _refresh_layouts", exc_info=True)
         except Exception:
             logger.debug("_refresh_layouts failed", exc_info=True)
+
+    # ----- 新增辅助方法：配置预览 / 最近项目 / 快速处理 -----
+    def update_config_preview(self):
+        """根据 self.current_config 更新预览面板，并高亮缺失或异常值"""
+        try:
+            cfg = getattr(self, 'current_config', None)
+            if cfg is None:
+                self.lbl_preview_part.setText('Part: -')
+                self.lbl_preview_moment.setText('MomentCenter: -')
+                self.lbl_preview_qs.setText('Q/S: -')
+                return
+
+            part = getattr(cfg.target_config, 'part_name', None)
+            mc = getattr(cfg.target_config, 'moment_center', None)
+            q = getattr(cfg.target_config, 'q', None)
+            s = getattr(cfg.target_config, 's_ref', None) if hasattr(cfg.target_config, 's_ref') else getattr(cfg.target_config, 'S', None)
+
+            # Part 名称
+            self.lbl_preview_part.setText(f"Part: {part}")
+            # 力矩中心
+            if mc is None or not isinstance(mc, (list, tuple)) or len(mc) != 3:
+                self.lbl_preview_moment.setText("MomentCenter: 缺失或格式错误")
+                self.lbl_preview_moment.setStyleSheet("color: red; font-size:12px;")
+            else:
+                self.lbl_preview_moment.setText(f"MomentCenter: {mc}")
+                self.lbl_preview_moment.setStyleSheet("color: black; font-size:12px;")
+
+            # Q/S
+            q_text = f"Q={q}" if q is not None else "Q=缺失"
+            s_text = f"S={s}" if s is not None else "S=缺失"
+            qs_text = f"{q_text} / {s_text}"
+            if q is None or s is None:
+                self.lbl_preview_qs.setStyleSheet("color: red; font-size:12px;")
+            else:
+                self.lbl_preview_qs.setStyleSheet("color: black; font-size:12px;")
+            self.lbl_preview_qs.setText(qs_text)
+        except Exception:
+            logger.debug("update_config_preview failed", exc_info=True)
+
+    def add_recent_project(self, path_str: str):
+        """将最近打开的配置/项目加入列表（去重，保持最新在上）。"""
+        try:
+            if not hasattr(self, 'recent_projects'):
+                self.recent_projects = []
+            p = str(path_str)
+            if p in self.recent_projects:
+                self.recent_projects.remove(p)
+            self.recent_projects.insert(0, p)
+            # 限制数量
+            self.recent_projects = self.recent_projects[:10]
+            # 更新 UI 列表
+            try:
+                self.lst_recent.clear()
+                for rp in self.recent_projects:
+                    self.lst_recent.addItem(rp)
+            except Exception:
+                logger.debug("Failed to update lst_recent", exc_info=True)
+        except Exception:
+            logger.debug("add_recent_project failed", exc_info=True)
+
+    def _browse_default_output(self):
+        try:
+            d = QFileDialog.getExistingDirectory(self, '选择默认输出目录', '.')
+            if d:
+                self.inp_default_output.setText(d)
+        except Exception:
+            logger.debug("_browse_default_output failed", exc_info=True)
+
+    def one_click_process(self):
+        """使用当前配置和默认输出目录快速启动批处理（单次、非交互）。"""
+        try:
+            # 初始化基本前置条件
+            if not hasattr(self, 'calculator') or self.calculator is None:
+                QMessageBox.warning(self, "错误", "尚未应用配置，请先点击“应用配置”。")
+                return
+            inp = self.inp_batch_input.text().strip()
+            if not inp:
+                # 若最近项目可用，则使用第一个
+                if hasattr(self, 'recent_projects') and self.recent_projects:
+                    inp = self.recent_projects[0]
+                    self.inp_batch_input.setText(inp)
+                else:
+                    QMessageBox.warning(self, "错误", "请先选择输入文件或目录（或在最近项目中选择一项）。")
+                    return
+
+            output_dir = self.inp_default_output.text().strip() or None
+            if output_dir:
+                self.output_dir = Path(output_dir)
+            else:
+                self.output_dir = None
+
+            # 将输入路径设置到控件并调用 run_batch_processing
+            self.inp_batch_input.setText(inp)
+            # 如果指定了默认输出目录，设置为实例属性，run_batch_processing 会优先使用它
+            try:
+                self.run_batch_processing()
+            except Exception as e:
+                logger.exception("one_click_process failed: %s", e)
+        except Exception:
+            logger.debug("one_click_process failed", exc_info=True)
 
     def request_cancel_batch(self):
         """UI 回调：请求取消正在运行的批处理任务"""
