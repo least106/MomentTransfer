@@ -14,18 +14,19 @@ import tempfile
 import os
 import shutil
 import time
+import json
 import pickle
 try:
     import fcntl
-except Exception:
+except ImportError:
     fcntl = None
 try:
     import msvcrt
-except Exception:
+except ImportError:
     msvcrt = None
 try:
     import portalocker
-except Exception:
+except ImportError:
     portalocker = None
 
 # 最大文件名冲突重试次数（避免魔法数字）
@@ -644,6 +645,16 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
     """
     logger = logging.getLogger('batch')
+
+    def _error_exit_json(message: str, code: int = 2, hint: str = None):
+        payload = {"error": True, "message": message, "code": code}
+        if hint:
+            payload['hint'] = hint
+        try:
+            sys.stderr.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except Exception:
+            logger.error("无法写入错误到 stderr: %s", payload)
+        sys.exit(code)
     logger.info("%s", "=" * 70)
     logger.info("MomentTransfer v2.0")
     logger.info("%s", "=" * 70)
@@ -757,12 +768,17 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         elapsed = (datetime.now() - t0).total_seconds()
         if ok:
             success_count += 1
+
+        # 总是记录每文件耗时，便于 log-file 中查看详情
+        logger.info("文件 %s 处理完成: 成功=%s, 耗时=%.2fs", file_path.name, ok, elapsed)
+
+        # 若开启进度显示，则打印稳定的 ETA 估算（基于平均每文件耗时）
         if show_progress:
             files_done = i
             files_left = len(files_to_process) - files_done
             avg_per_file = (datetime.now() - start_time).total_seconds() / files_done
             eta_seconds = int(avg_per_file * files_left)
-            logger.info("已完成 %d/%d，耗时 %.1fs，本文件耗时 %.2fs，预计剩余 %ds", files_done, len(files_to_process), (datetime.now() - start_time).total_seconds(), elapsed, eta_seconds)
+            logger.info("已完成 %d/%d，累计耗时 %.1fs，本文件耗时 %.2fs，平均 %.2fs/文件，预计剩余 %ds", files_done, len(files_to_process), (datetime.now() - start_time).total_seconds(), elapsed, avg_per_file, eta_seconds)
     
     # 总结
     print("\n" + "=" * 70)
@@ -817,10 +833,10 @@ def main(**cli_options):
 
     # 读取数据格式配置
     if non_interactive:
-        # 放宽约束：当未提供 global format_file，但提供了 registry_db 或依赖侧车/目录默认时，允许继续运行。
+        # 非交互模式下要求提供全局格式文件或 registry_db 用于按文件解析格式
         if not format_file and not registry_db:
-            logger.error('--non-interactive 模式下必须提供 --format-file 或 --registry-db 用于解析每个文件的格式')
-            sys.exit(2)
+            _error_exit_json("--non-interactive 模式下必须提供 --format-file 或 --registry-db", code=2,
+                             hint="传入 --format-file 或 --registry-db 以在非交互模式下解析每个文件的格式。")
 
         if format_file:
             try:
@@ -828,7 +844,7 @@ def main(**cli_options):
                 logger.info(f'使用格式文件: {format_file}')
             except Exception as e:
                 logger.exception('读取格式文件失败')
-                sys.exit(3)
+                _error_exit_json(f"读取格式文件失败: {e}", code=3)
         else:
             # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 registry / sidecar / 目录 默认覆盖
             data_config = BatchConfig()
@@ -884,8 +900,7 @@ def main(**cli_options):
                 files_to_process = [files[i] for i in chosen_idxs]
                 output_dir = input_path_obj
             else:
-                logger.error(f'无效的输入路径: {input_path}')
-                sys.exit(4)
+                _error_exit_json(f'无效的输入路径: {input_path}', code=4)
 
             # 准备并行任务参数（将 data_config 序列化为 dict）
             config_dict = {
@@ -903,6 +918,7 @@ def main(**cli_options):
 
             with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
+                start_times = {}
                 for fp in files_to_process:
                     worker_args = {
                         'file_path': str(fp),
@@ -914,19 +930,41 @@ def main(**cli_options):
                     }
                     fut = exe.submit(_worker_process, worker_args)
                     futures[fut] = fp
+                    start_times[fut] = datetime.now()
 
                 success_count = 0
+                # 统计完成的任务以计算平均耗时并估算 ETA
+                completed = 0
+                total = len(futures)
+                elapsed_sum = 0.0
                 for fut in as_completed(futures):
                     fp = futures[fut]
+                    st = start_times.get(fut, None)
                     try:
                         file_str, ok, err = fut.result()
+                        endt = datetime.now()
+                        elapsed = (endt - st).total_seconds() if st else None
+                        if elapsed is not None:
+                            elapsed_sum += elapsed
+                            completed += 1
+                        avg = (elapsed_sum / completed) if completed else None
+                        remaining = total - completed
+                        eta = int(avg * remaining) if avg is not None else None
+
                         if ok:
-                            logger.info(f'处理成功: {file_str}')
+                            logger.info("处理成功: %s (耗时: %.2fs)", file_str, elapsed if elapsed else 0.0)
                             success_count += 1
                         else:
-                            logger.error(f'处理失败: {file_str} 错误: {err}')
+                            logger.error("处理失败: %s 错误: %s (耗时: %.2fs)", file_str, err, elapsed if elapsed else 0.0)
+
+                        # 当请求进度显示时，记录 ETA 与平均每文件耗时
+                        if show_progress and eta is not None:
+                            logger.info("已完成 %d/%d，平均每文件耗时 %.2fs，预计剩余 %ds", completed, total, avg, eta)
+                        else:
+                            logger.info("已完成 %d/%d", completed, total)
+
                     except Exception as e:
-                        logger.exception(f'任务异常: {fp}')
+                        logger.exception("任务异常: %s", fp)
 
             logger.info(f'并行处理完成: 成功 {success_count}/{len(files_to_process)}')
             sys.exit(0 if success_count == len(files_to_process) else 1)
