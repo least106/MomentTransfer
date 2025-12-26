@@ -788,6 +788,25 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             avg_per_file = (datetime.now() - start_time).total_seconds() / files_done
             eta_seconds = int(avg_per_file * files_left)
             logger.info("已完成 %d/%d，累计耗时 %.1fs，本文件耗时 %.2fs，平均 %.2fs/文件，预计剩余 %ds", files_done, len(files_to_process), (datetime.now() - start_time).total_seconds(), elapsed, avg_per_file, eta_seconds)
+            # 同步向 stdout 输出可机器解析的进度行（JSON），便于监控系统采集
+            try:
+                prog = {
+                    'completed': files_done,
+                    'total': len(files_to_process),
+                    'file': str(file_path.name),
+                    'success': bool(ok),
+                    'elapsed_sec': round(elapsed or 0.0, 3),
+                    'avg_sec': round(avg_per_file or 0.0, 3),
+                    'eta_sec': eta_seconds
+                }
+                print(json.dumps(prog, ensure_ascii=False))
+                sys.stdout.flush()
+            except Exception:
+                try:
+                    print(f"[{files_done}/{len(files_to_process)}] {file_path.name} success={ok} elapsed={elapsed:.2f}s eta={eta_seconds}s")
+                    sys.stdout.flush()
+                except Exception:
+                    pass
     
     # 总结
     print("\n" + "=" * 70)
@@ -1001,8 +1020,34 @@ def main(**cli_options):
                         # 当请求进度显示时，记录 ETA 与平均每文件耗时
                         if show_progress and eta is not None:
                             logger.info("已完成 %d/%d，平均每文件耗时 %.2fs，预计剩余 %ds", completed, total, avg, eta)
+                            # 同步向 stdout 输出可机器解析的进度行（JSON），便于监控系统采集
+                            try:
+                                prog = {
+                                    'completed': completed,
+                                    'total': total,
+                                    'file': file_str,
+                                    'success': bool(ok),
+                                    'elapsed_sec': round(elapsed or 0.0, 3),
+                                    'avg_sec': round(avg or 0.0, 3),
+                                    'eta_sec': eta
+                                }
+                                print(json.dumps(prog, ensure_ascii=False))
+                                sys.stdout.flush()
+                            except Exception:
+                                # 回退到简单文本输出
+                                try:
+                                    print(f"[{completed}/{total}] {file_str} success={ok} elapsed={elapsed:.2f}s eta={eta}s")
+                                    sys.stdout.flush()
+                                except Exception:
+                                    pass
                         else:
                             logger.info("已完成 %d/%d", completed, total)
+                            if show_progress:
+                                try:
+                                    print(json.dumps({'completed': completed, 'total': total}, ensure_ascii=False))
+                                    sys.stdout.flush()
+                                except Exception:
+                                    pass
 
                     except Exception as e:
                         logger.exception("任务异常: %s", fp)
