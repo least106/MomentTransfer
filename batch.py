@@ -142,12 +142,25 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
     if n_non:
         # 记录示例行用于诊断
-        samp_n = min(cfg.sample_rows, n_non)
+        samp_n = min(int(cfg.sample_rows or 0), n_non)
         if samp_n > 0:
             idxs = list(np.where(mask_array)[0][:samp_n])
-            for idx in idxs:
-                # 注意 chunk_df 可能保留原始索引，因此使用 iloc 按位置访问示例
-                logger.warning(f"文件 {out_path.name} 非数值示例（chunk 内行 {idx}）: {chunk_df.iloc[idx].to_dict()}")
+            examples = [chunk_df.iloc[idx].to_dict() for idx in idxs]
+            if n_non > samp_n:
+                logger.warning(
+                    "文件 %s: 共 %d 行非数值，仅记录前 %d 条示例: %s",
+                    out_path.name,
+                    n_non,
+                    samp_n,
+                    examples,
+                )
+            else:
+                logger.warning(
+                    "文件 %s: 共 %d 行非数值，示例: %s",
+                    out_path.name,
+                    n_non,
+                    examples,
+                )
 
     # 根据配置处理非数值行
     if cfg.treat_non_numeric == 'drop':
