@@ -14,6 +14,7 @@ import tempfile
 import os
 import shutil
 import time
+import pickle
 try:
     import fcntl
 except Exception:
@@ -56,39 +57,66 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
     timestamp = datetime.now().strftime(cfg.timestamp_format)
     name = cfg.name_template.format(stem=stem, timestamp=timestamp)
     out_path = output_dir / name
+    logger = logging.getLogger('batch')
 
-    if out_path.exists():
-        if cfg.overwrite:
-            # 尝试删除旧文件以便后续写入（若无法删除则抛出）
-            try:
-                out_path.unlink()
-            except OSError as e:
-                raise IOError(f"无法覆盖已存在的输出文件: {out_path} -> {e}")
+    base = out_path.stem
+    suf = out_path.suffix
+
+    # 优先尝试原始名字；若已存在且不覆盖则通过原子创建占位文件避免 check-then-create 的竞态
+    max_trials = min(20, MAX_FILE_COLLISION_RETRIES)
+    candidate = out_path
+
+    # 如果用户允许覆盖，直接尝试删除旧文件（若删除失败，则视为不可写）
+    if cfg.overwrite and candidate.exists():
+        try:
+            candidate.unlink()
+        except Exception as e:
+            raise IOError(f"无法覆盖已存在的输出文件: {candidate} -> {e}") from e
+
+    # 尝试以 O_EXCL 原子方式创建占位文件以预占名字，避免并发冲突
+    created = False
+    last_err = None
+    for i in range(0, max_trials + 1):
+        if i == 0:
+            candidate = output_dir / name
         else:
-            # 自动添加唯一后缀以减少并发冲突（优先短序号尝试，然后回退到 UUID）
-            base = out_path.stem
-            suf = out_path.suffix
-            found = False
-            for i in range(1, min(20, MAX_FILE_COLLISION_RETRIES) + 1):
-                candidate = output_dir / f"{base}_{i}{suf}"
-                if not candidate.exists():
-                    out_path = candidate
-                    found = True
-                    break
-            if not found:
-                # 回退到 UUID 保证唯一性，适用于高并发场景
-                unique = uuid.uuid4().hex
-                out_path = output_dir / f"{base}_{unique}{suf}"
+            candidate = output_dir / f"{base}_{i}{suf}"
 
-    # 最后检查目录是否可写 — 使用 mkstemp 生成唯一临时文件以避免并发冲突
-    try:
-        fd, test_path = tempfile.mkstemp(prefix=out_path.stem + ".__writetest__", dir=str(out_path.parent), text=True)
-        os.close(fd)
-        os.remove(test_path)
-    except (OSError, IOError, PermissionError) as e:
-        raise IOError(f"无法在输出目录写入文件: {out_path.parent} -> {e}") from e
+        try:
+            flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+            # 在 Windows 上，文本模式参数不适用；直接使用 os.open
+            fd = os.open(str(candidate), flags, 0o666)
+            os.close(fd)
+            created = True
+            if i > 0:
+                logger.debug("为避免冲突，使用候选输出名: %s", candidate.name)
+            break
+        except FileExistsError:
+            last_err = None
+            continue
+        except PermissionError as pe:
+            last_err = pe
+            logger.warning("无法在路径创建占位文件: %s（尝试 %d/%d）：%s", candidate, i + 1, max_trials + 1, pe, exc_info=True)
+            break
+        except OSError as oe:
+            last_err = oe
+            logger.warning("尝试创建占位文件 %s 时出错（尝试 %d/%d）：%s", candidate, i + 1, max_trials + 1, oe)
+            continue
 
-    return out_path
+    if not created:
+        # 回退到 UUID 名称并尝试一次创建（若失败则抛出）
+        unique = uuid.uuid4().hex
+        candidate = output_dir / f"{base}_{unique}{suf}"
+        try:
+            fd = os.open(str(candidate), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+            os.close(fd)
+            logger.debug("使用 UUID 回退输出名: %s", candidate.name)
+        except Exception as e:
+            # 最终尝试失败：不可写或权限不足
+            raise IOError(f"无法在输出目录创建唯一输出文件: {candidate} -> {e}") from e
+
+    # 确保路径可写性（占位创建已验证），返回已占位的路径
+    return candidate
 
 
 def process_df_chunk(chunk_df: pd.DataFrame,
@@ -531,8 +559,41 @@ def _worker_process(args):
         file_path = Path(file_path_str)
         output_dir = Path(output_dir_str)
 
-        # 重新加载计算器（每个进程独立），使用共享 helper 以统一错误信息
-        project_data, calculator = load_project_calculator(project_config_path)
+        # 进程内缓存：避免对大量小文件重复加载配置带来的开销
+        # 若调用方传入序列化的计算器（calculator_pickle），优先使用并缓存
+        # 否则：若当前进程已缓存相同 project_config_path 的计算器，则重用
+        # 否则按需加载一次并缓存
+        global _WORKER_CALCULATOR, _WORKER_PROJECT_PATH
+        try:
+            _WORKER_CALCULATOR
+        except NameError:
+            _WORKER_CALCULATOR = None
+            _WORKER_PROJECT_PATH = None
+
+        project_data = None
+        calculator = None
+
+        # 支持传入序列化对象（caller 可通过 pickle.dumps((project_data, calculator)) 传入 bytes）
+        calc_pickle = args.get('calculator_pickle')
+        if calc_pickle:
+            try:
+                project_data, calculator = pickle.loads(calc_pickle)
+                _WORKER_CALCULATOR = calculator
+                _WORKER_PROJECT_PATH = project_config_path
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.warning("反序列化传入的 calculator 失败，回退到按路径加载: %s", e)
+
+        if calculator is None:
+            if _WORKER_CALCULATOR is not None and project_config_path == _WORKER_PROJECT_PATH:
+                # 重用已缓存的计算器
+                calculator = _WORKER_CALCULATOR
+                project_data = None
+            else:
+                # 仅在必要时加载一次并缓存到进程全局变量
+                project_data, calculator = load_project_calculator(project_config_path)
+                _WORKER_CALCULATOR = calculator
+                _WORKER_PROJECT_PATH = project_config_path
 
         # 构造 BatchConfig
         cfg = BatchConfig()
