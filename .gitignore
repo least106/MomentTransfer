@@ -19,3 +19,4 @@ venv/
 *.pyd
 .Python
 data/
+tools/
