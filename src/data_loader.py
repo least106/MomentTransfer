@@ -94,10 +94,14 @@ class FrameConfiguration:
         s_ref = data.get("S")
         
         # 如果提供了这些参数，进行验证
-        def parse_positive_number(name: str, val, strictly_positive: bool = True):
+        def parse_numeric_value(name: str, val, strictly_positive: bool = True):
             """
-            尝试将 val 转为 float 并进行正数/非负校验。
-            返回转换后的 float，失败时抛出 ValueError，错误消息为通用格式。
+            尝试将 val 转为 float 并进行数值校验。
+
+            - 当 `strictly_positive=True` 时，要求数值为严格正数 (>0)。
+            - 当 `strictly_positive=False` 时，要求数值为非负 (>=0)。
+
+            返回转换后的 float；当 val 为 None 时返回 None；校验失败时抛出 ValueError，错误消息为统一格式。
             """
             if val is None:
                 return None
@@ -107,25 +111,25 @@ class FrameConfiguration:
                 raise ValueError(f"字段 {name} 的值必须是数值类型，当前值: {val} (type={type(val).__name__})")
             if strictly_positive:
                 if f <= 0:
-                    raise ValueError(f"字段 {name} 必须为正数 (>0)，当前值: {val}")
+                    raise ValueError(f"字段 {name} 必须为严格正数 (>0)，当前值: {val}")
             else:
                 if f < 0:
-                    raise ValueError(f"字段 {name} 不能为负数，当前值: {val}")
+                    raise ValueError(f"字段 {name} 必须为非负数 (>=0)，当前值: {val}")
             return f
 
-        c_ref = parse_positive_number("Cref", c_ref, strictly_positive=True)
-        b_ref = parse_positive_number("Bref", b_ref, strictly_positive=True)
-        s_ref = parse_positive_number("S", s_ref, strictly_positive=True)
-        q = parse_positive_number("Q", q, strictly_positive=False)
+        c_ref = parse_numeric_value("Cref", c_ref, strictly_positive=True)
+        b_ref = parse_numeric_value("Bref", b_ref, strictly_positive=True)
+        s_ref = parse_numeric_value("S", s_ref, strictly_positive=True)
+        q = parse_numeric_value("Q", q, strictly_positive=False)
         
         return cls(
             part_name=data["PartName"],
             coord_system=CoordSystemDefinition.from_dict(data[coord_key]),
             moment_center=moment_center,
-                c_ref=c_ref,
-                b_ref=b_ref,
-                q=q,
-                s_ref=s_ref
+            c_ref=c_ref,
+            b_ref=b_ref,
+            q=q,
+            s_ref=s_ref
         )
 
 
@@ -230,18 +234,26 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
             'message': str(e),
             'suggestion': '检查路径或使用 creator.py 生成 data/input.json。'
         }
-        return False, None, info
+        if strict:
+            return False, None, info
+        raise
     except json.JSONDecodeError as e:
         info = {
             'message': f'配置文件不是有效的 JSON: {e}',
             'suggestion': '请使用 JSON 校验工具检查语法或修复格式错误。'
         }
-        return False, None, info
+        if strict:
+            return False, None, info
+        raise
     except (ValueError, KeyError) as e:
         # 语义/缺失字段类错误，提供修复建议
         msg = str(e)
         suggestion = '检查配置是否包含 Source/Target、Target.MomentCenter、Target.Q、Target.S 等必需字段，或使用 creator.py 生成兼容配置。'
-        return False, None, {'message': msg, 'suggestion': suggestion}
+        if strict:
+            return False, None, {'message': msg, 'suggestion': suggestion}
+        raise
     except Exception as e:
         # 未知错误：返回通用建议
-        return False, None, {'message': str(e), 'suggestion': '查看完整异常并检查文件权限/编码。'}
+        if strict:
+            return False, None, {'message': str(e), 'suggestion': '查看完整异常并检查文件权限/编码。'}
+        raise
