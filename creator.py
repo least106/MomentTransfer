@@ -49,16 +49,16 @@ class Mpl3DCanvas(FigureCanvas):
         self.axes.legend()
         self.draw()
 
-    def _draw_frame(self, o, basis, label_prefix, color, length=1.0, alpha=1.0):
+    def _draw_frame(self, origin, basis, label_prefix, color, length=1.0, alpha=1.0):
         # Basis[0]=X, Basis[1]=Y, Basis[2]=Z
         labels = ['X', 'Y', 'Z']
         for i in range(3):
             vec = basis[i] * length
-            self.axes.quiver(o[0], o[1], o[2], 
-                             vec[0], vec[1], vec[2], 
+            self.axes.quiver(origin[0], origin[1], origin[2],
+                             vec[0], vec[1], vec[2],
                              color=color[i], alpha=alpha, arrow_length_ratio=0.1)
             # 在箭头末端加标签
-            self.axes.text(o[0]+vec[0], o[1]+vec[1], o[2]+vec[2], 
+            self.axes.text(origin[0] + vec[0], origin[1] + vec[1], origin[2] + vec[2],
                            f"{label_prefix}_{labels[i]}", color=color[i])
 
 class ConfigCreator(QMainWindow):
@@ -161,10 +161,10 @@ class ConfigCreator(QMainWindow):
         layout.addWidget(control_panel)
         layout.addWidget(self.canvas3d, stretch=1)
 
-    def _create_spin(self, tooltip, val, min_v=-180, max_v=180):
+    def _create_spin(self, tooltip, initial_value, minimum_value=-180, maximum_value=180):
         spin = QDoubleSpinBox()
-        spin.setRange(min_v, max_v)
-        spin.setValue(val)
+        spin.setRange(minimum_value, maximum_value)
+        spin.setValue(initial_value)
         spin.setSingleStep(1.0)
         spin.setToolTip(tooltip)
         spin.valueChanged.connect(self.update_visualization)
@@ -212,12 +212,7 @@ class ConfigCreator(QMainWindow):
         mc = [self.spin_mcx.value(), self.spin_mcy.value(), self.spin_mcz.value()]
         
         # 2. 计算方向矩阵 (Euler -> Basis Vectors)
-        # 注意：这里调用了我们新增的几何函数
-        basis = euler_angles_to_basis(
-            self.spin_roll.value(),
-            self.spin_pitch.value(),
-            self.spin_yaw.value()
-        )
+        basis = self._get_current_basis_matrix()
 
         # 3. 绘图
         self.canvas3d.plot_systems(origin, basis, mc)
@@ -233,18 +228,18 @@ class ConfigCreator(QMainWindow):
                     json.dump(data, f, indent=2)
                 QMessageBox.information(self, "成功", f"配置文件已生成：\n{fname}")
             except Exception as e:
-                QMessageBox.critical(self, "错误", str(e))
+                QMessageBox.critical(
+                    self,
+                    "错误",
+                    f"保存配置文件失败：\n{fname}\n\n详细信息：{e}"
+                )
 
     def build_config_dict(self) -> dict:
         """构建符合项目 `input.json` 结构的字典并返回。
 
         抽取为独立方法以避免与其他位置重复定义结构。
         """
-        basis = euler_angles_to_basis(
-            self.spin_roll.value(),
-            self.spin_pitch.value(),
-            self.spin_yaw.value()
-        )
+        basis = self._get_current_basis_matrix()
 
         data = {
             "Source": {
@@ -280,6 +275,18 @@ class ConfigCreator(QMainWindow):
         }
 
         return data
+
+    def _get_current_basis_matrix(self):
+        """Helper: 从当前 UI 的欧拉角控件计算并返回基向量矩阵。
+
+        抽取为单独方法以避免在多处重复调用 `euler_angles_to_basis`，
+        并确保两个位置使用一致的参数顺序。
+        """
+        # note: euler_angles_to_basis(roll, pitch, yaw)
+        roll = self.spin_roll.value()
+        pitch = self.spin_pitch.value()
+        yaw = self.spin_yaw.value()
+        return euler_angles_to_basis(roll, pitch, yaw)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
