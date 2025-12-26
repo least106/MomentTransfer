@@ -219,31 +219,53 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
     last_exc = None
     for attempt in range(1, max_write_attempts + 1):
-        f = open(out_path, open_mode, encoding='utf-8', newline='')
         try:
-            # 优先使用 portalocker 提供跨平台一致的锁定语义
-            try:
-                if portalocker:
-                    portalocker.lock(f, portalocker.LOCK_EX)
-                elif os.name == 'nt' and msvcrt:
-                    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-                elif fcntl:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            except Exception:
-                # best-effort，不应阻止写入
-                pass
+            with open(out_path, open_mode, encoding='utf-8', newline='') as f:
+                # 优先使用 portalocker 提供跨平台一致的锁定语义
+                try:
+                    if portalocker:
+                        portalocker.lock(f, portalocker.LOCK_EX)
+                    elif os.name == 'nt' and msvcrt:
+                        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                    elif fcntl:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                except Exception:
+                    # best-effort，不应阻止写入
+                    pass
 
-            # 直接将 DataFrame 写入文件句柄，避免在内存中构造大型字符串
-            out_df.to_csv(f, index=False, header=header, encoding='utf-8')
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except Exception:
-                pass
+                try:
+                    # 直接将 DataFrame 写入文件句柄，避免在内存中构造大型字符串
+                    out_df.to_csv(f, index=False, header=header, encoding='utf-8')
+                    f.flush()
+                    try:
+                        os.fsync(f.fileno())
+                    except Exception:
+                        pass
 
-            # 成功写入，退出重试循环
-            last_exc = None
-            break
+                    # 成功写入，退出重试循环
+                    last_exc = None
+                    break
+                finally:
+                    # 在 with 块内释放锁以确保在关闭前解锁
+                    try:
+                        if portalocker:
+                            try:
+                                portalocker.unlock(f)
+                            except Exception:
+                                pass
+                        elif os.name == 'nt' and msvcrt:
+                            try:
+                                f.seek(0)
+                                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                            except Exception:
+                                pass
+                        elif fcntl:
+                            try:
+                                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
 
         except Exception as e:
             last_exc = e
@@ -254,30 +276,6 @@ def process_df_chunk(chunk_df: pd.DataFrame,
             else:
                 # 记录完整堆栈以便诊断
                 logger.exception("写入失败，达到最大重试次数")
-        finally:
-            # 释放文件锁（best-effort）并关闭文件
-            try:
-                if portalocker:
-                    try:
-                        portalocker.unlock(f)
-                    except Exception:
-                        pass
-                elif os.name == 'nt' and msvcrt:
-                    try:
-                        f.seek(0)
-                        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-                    except Exception:
-                        pass
-                elif fcntl:
-                    try:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                    except Exception:
-                        pass
-            finally:
-                try:
-                    f.close()
-                except Exception:
-                    pass
 
     if last_exc is not None:
         # 将异常向上抛出，process_single_file 会捕获并清理临时文件
@@ -468,6 +466,8 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
                     time.sleep(replace_backoffs[min(ri-1, len(replace_backoffs)-1)])
         if not replaced:
             # 若替换失败，抛出并由外层 except 捕获以进行清理和记录
+            if replace_err is None:
+                raise RuntimeError(f"os.replace 替换失败: {temp_out_path} -> {out_path}（无异常信息）")
             raise replace_err
 
         try:
@@ -788,7 +788,7 @@ def main(**cli_options):
     else:
         pat = None
 
-            # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
+    # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
     try:
         if workers > 1:
             logger.info(f'并行处理模式: workers={workers}')
