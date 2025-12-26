@@ -24,7 +24,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from src.physics import AeroCalculator
 from src.data_loader import ProjectData
-from typing import Optional
+from typing import Optional, List, Tuple
 from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping, update_mapping, init_db
 
 logger = logging.getLogger(__name__)
@@ -772,7 +772,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 存储文件复选框相关信息的元组列表。
         # 每个元素为 (checkbox: QCheckBox, path: Path, label: Optional[QLabel])，
         # 其中 label 可选，因此在使用处可能通过 *rest 等方式解包。
-        self._file_check_items: list[tuple[QCheckBox, Path, Optional[QLabel]]] = []
+        self._file_check_items: List[Tuple[QCheckBox, Path, Optional[QLabel]]] = []
 
 
         # 数据格式配置按钮（并作为实例属性，放入可切换的容器）
@@ -1224,7 +1224,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             items = getattr(self, '_file_check_items', None)
             if items:
-                checked = [fp for cb, fp, *rest in items if cb.isChecked()]
+                checked = [fp for cb, fp, *_ in items if cb.isChecked()]
                 if len(checked) == 1:
                     chosen_fp = checked[0]
                 elif len(checked) > 1:
@@ -1880,7 +1880,19 @@ class IntegratedAeroGUI(QMainWindow):
         elif input_path.is_dir():
             # 若界面上存在由 _scan_and_populate_files 填充的复选框列表，则以复选框选择为准
             if getattr(self, '_file_check_items', None):
-                files_to_process = [fp for cb, fp, *_ in self._file_check_items if cb.isChecked()]
+                files_to_process = []
+                for item in self._file_check_items:
+                    # 兼容可能只包含 cb 或 (cb, fp) 等不同结构的条目
+                    if not item:
+                        continue
+                    try:
+                        cb = item[0]
+                        fp = item[1]
+                    except (TypeError, IndexError):
+                        # 条目结构不符合预期时跳过，避免批处理直接崩溃
+                        continue
+                    if cb.isChecked():
+                        files_to_process.append(fp)
                 output_dir = getattr(self, 'output_dir', input_path)
             else:
                 pattern = self.inp_pattern.text()
@@ -1990,7 +2002,7 @@ class IntegratedAeroGUI(QMainWindow):
             dlg.setText("批处理过程中发生错误，已记录到日志。请检查输入文件与数据格式配置。")
             dlg.setInformativeText("建议：检查数据格式映射（列索引）、Target 配置中的 MomentCenter/Q/S，或在 GUI 中打开“配置数据格式”进行修正。")
             dlg.setDetailedText(str(error_msg))
-            dlg.exec()
+
         except Exception:
             logger.debug("Failed to show error dialog", exc_info=True)
 
