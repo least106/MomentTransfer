@@ -243,9 +243,12 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
 
     if log_file:
         file_h = logging.FileHandler(log_file, encoding='utf-8')
-        file_h.setLevel(log_level)
+        # 若指定了 log_file，文件中记录详细调试信息（包含完整堆栈）以便排查
+        file_h.setLevel(logging.DEBUG)
         file_h.setFormatter(fmt)
         logger.addHandler(file_h)
+    # 不向根 logger 传播，避免重复日志
+    logger.propagate = False
 
     return logger
 
