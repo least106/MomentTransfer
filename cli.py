@@ -53,17 +53,18 @@ def cli(ctx, verbose, log_file):
 @cli.command(name='run')
 # 新增明确的 -c/--config 选项，保留 -i/--input 作为向后兼容的别名（标注为已弃用）
 @click.option('-c', '--config', 'config_path', default=None,
-              help='配置文件路径 (JSON)，默认使用项目 data/input.json')
+              help='配置文件路径 (JSON)。在非交互模式下此项为必需。示例: -c data/input.json')
 @click.option('-i', '--input', 'input_path', default=None,
               help='（已弃用）配置文件路径，使用 -c/--config 替代')
 @click.option('-o', '--output', 'output_path', default=None,
-              help='结果输出路径 (JSON)，若不提供则不写文件')
+              help='结果输出路径 (JSON)，若不提供则不写文件。示例: -o out.json')
+@click.option('--json-errors', is_flag=True, default=False, help='在发生错误时输出机器可读的 JSON 到 stderr')
 @click.option('--force', type=(float, float, float), default=None,
               help='输入力向量 (例如: --force 100 0 -50)')
 @click.option('--moment', type=(float, float, float), default=None,
               help='输入力矩向量 (例如: --moment 0 500 0)')
 @click.pass_context
-def main(ctx, config_path, input_path, output_path, force, moment):
+def main(ctx, config_path, input_path, output_path, force, moment, json_errors):
     """气动载荷坐标变换工具（click CLI）
 
     支持非交互模式通过 `--force` 与 `--moment` 指定载荷。
@@ -77,10 +78,21 @@ def main(ctx, config_path, input_path, output_path, force, moment):
 
     # 非交互脚本调用（stdin 非 tty）时强制要求显式提供 config/input
     interactive = sys.stdin.isatty()
+    def _error_exit(message: str, code: int = 2, hint: str = None):
+        payload = {"error": True, "message": message, "code": code}
+        if hint:
+            payload['hint'] = hint
+        try:
+            if json_errors:
+                sys.stderr.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            else:
+                sys.stderr.write(message + "\n")
+        except Exception:
+            pass
+        sys.exit(code)
+
     if not cfg_path and not interactive:
-        err = {"error": True, "message": "非交互模式下必须提供 --config/-c 或 --input/-i", "code": 2}
-        sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
-        sys.exit(2)
+        _error_exit("非交互模式下必须提供 --config/-c 或 --input/-i", code=2, hint="请在脚本中使用 -c/--config 指定配置文件路径")
 
     # 回退到默认配置仅在交互模式下允许
     if not cfg_path:
@@ -88,9 +100,7 @@ def main(ctx, config_path, input_path, output_path, force, moment):
 
     # 在尝试加载前先检查配置文件是否存在，给出机器可读错误
     if not os.path.exists(cfg_path):
-        err = {"error": True, "message": f"配置文件未找到: {cfg_path}", "hint": "使用 -c/--config 指定配置文件，或运行 creator.py 生成 data/input.json", "code": 3}
-        sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
-        sys.exit(3)
+        _error_exit(f"配置文件未找到: {cfg_path}", code=3, hint="使用 -c/--config 指定配置文件，或运行 creator.py 生成 data/input.json")
 
     raw_forces = list(force) if force is not None else None
     raw_moments = list(moment) if moment is not None else None
@@ -105,22 +115,19 @@ def main(ctx, config_path, input_path, output_path, force, moment):
     click.echo(f"\n[1] 加载配置: {cfg_path}")
     try:
         # 使用统一尝试加载封装，便于 strict vs fallback 策略
-        project_data = attempt_load_project_data(cfg_path, strict=not interactive)
-        # attempt_load_project_data 在 strict=False 时返回 (None, info)
-        if isinstance(project_data, tuple):
-            # 非严格回退，实际返回 (None, info)
-            project_data, info = project_data
+        loaded = attempt_load_project_data(cfg_path, strict=not interactive)
+        if isinstance(loaded, tuple):
+            # 回退结果 (None, info)
+            project_data, info = loaded
             if project_data is None:
-                err = {"error": True, "message": info.get('message', '加载失败'), "hint": info.get('suggestion'), "code": 4}
-                sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
-                sys.exit(4)
-        # 构造计算器
+                _error_exit(info.get('message', '加载失败'), code=4, hint=info.get('suggestion'))
+        else:
+            project_data = loaded
+
         from src.physics import AeroCalculator
         calculator = AeroCalculator(project_data)
     except Exception as e:
-        err = {"error": True, "message": f"无法加载配置: {str(e)}", "hint": "配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。", "code": 4}
-        sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
-        sys.exit(4)
+        _error_exit(f"无法加载配置: {str(e)}", code=4, hint="配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。")
 
     click.echo('[2] 执行计算...')
     result = calculator.process_frame(raw_forces, raw_moments)
