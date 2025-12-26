@@ -271,8 +271,8 @@ class BatchProcessThread(QThread):
                     sample_values = [str(v) for v in orig_col[bad_mask].head(5).tolist()]
                     self.log_message.emit(
                         f"列 {name} 有 {bad_mask.sum()} 个值无法解析为数值，示例索引: {sample_indices}，示例值: {sample_values}")
-                except Exception:
-                    pass
+                except (IndexError, AttributeError, ValueError) as ex:
+                    logger.debug("构建非数值示例时出错（忽略示例）: %s", ex, exc_info=True)
             return ser.values.astype(float)
 
         try:
@@ -286,11 +286,11 @@ class BatchProcessThread(QThread):
 
             forces = np.vstack([fx, fy, fz]).T
             moments = np.vstack([mx, my, mz]).T
-        except Exception as e:
+        except (ValueError, IndexError, TypeError, OSError) as e:
             try:
                 self.log_message.emit(f"数据列提取或转换失败: {e}")
             except Exception:
-                pass
+                logger.debug("无法通过 signal 发送失败消息: %s", e, exc_info=True)
             raise
 
         results = self.calculator.process_batch(forces, moments)
@@ -300,11 +300,11 @@ class BatchProcessThread(QThread):
         for col_idx in self.data_config.get('passthrough', []):
             try:
                 idx = int(col_idx)
-            except Exception:
+            except (ValueError, TypeError):
                 try:
                     self.log_message.emit(f"透传列索引无效（非整数）：{col_idx}")
                 except Exception:
-                    pass
+                    logger.debug("无法通过 signal 发送透传列无效消息: %s", col_idx, exc_info=True)
                 continue
             if 0 <= idx < len(df.columns):
                 output_df[f'Col_{idx}'] = df.iloc[:, idx]
@@ -312,7 +312,7 @@ class BatchProcessThread(QThread):
                 try:
                     self.log_message.emit(f"透传列索引越界: {idx}")
                 except Exception:
-                    pass
+                    logger.debug("无法通过 signal 发送透传列越界消息: %s", idx, exc_info=True)
 
         if cols.get('alpha') is not None and cols.get('alpha') < len(df.columns):
             output_df['Alpha'] = df.iloc[:, cols['alpha']]
@@ -339,27 +339,79 @@ class BatchProcessThread(QThread):
         try:
             total = len(self.file_list)
             success = 0
+            elapsed_list = []
+
             if self.registry_db:
                 try:
                     self.log_message.emit(f"使用 format registry: {self.registry_db}")
+                except RuntimeError as re:
+                    logger.debug("Signal emit failed for registry_db message: %s", re, exc_info=True)
                 except Exception:
-                    pass
-            
+                    logger.exception("Unexpected error when emitting registry message")
+
             for i, file_path in enumerate(self.file_list):
-                self.log_message.emit(f"处理 [{i+1}/{total}]: {file_path.name}")
-                
+                # per-file timing
+                file_start = datetime.now()
+                try:
+                    self.log_message.emit(f"处理 [{i+1}/{total}]: {file_path.name}")
+                except Exception:
+                    logger.debug("无法发出开始处理消息: %s", file_path, exc_info=True)
+
                 try:
                     output_file = self.process_file(file_path)
-                    self.log_message.emit(f"  ✓ 完成: {output_file.name}")
+                    file_elapsed = (datetime.now() - file_start).total_seconds()
+                    elapsed_list.append(file_elapsed)
+                    avg = sum(elapsed_list) / len(elapsed_list)
+                    remaining = total - (i + 1)
+                    eta = int(avg * remaining)
+
+                    try:
+                        self.log_message.emit(f"  ✓ 完成: {output_file.name} (耗时: {file_elapsed:.2f}s)")
+                    except Exception:
+                        logger.debug("Cannot emit success message for %s", file_path, exc_info=True)
+
+                    # 记录 ETA 与平均耗时
+                    try:
+                        self.log_message.emit(f"已完成 {i+1}/{total}，平均每文件耗时 {avg:.2f}s，预计剩余 {eta}s")
+                    except Exception:
+                        logger.debug("无法发出 ETA 消息", exc_info=True)
+
                     success += 1
+
+                except (ValueError, IndexError, OSError) as e:
+                    file_elapsed = (datetime.now() - file_start).total_seconds()
+                    elapsed_list.append(file_elapsed)
+                    logger.debug("File processing failed for %s: %s", file_path, e, exc_info=True)
+                    try:
+                        self.log_message.emit(f"  ✗ 失败: {e} (耗时: {file_elapsed:.2f}s)")
+                    except Exception:
+                        logger.debug("Cannot emit failure message for %s: %s", file_path, e, exc_info=True)
+
                 except Exception as e:
-                    self.log_message.emit(f"  ✗ 失败: {str(e)}")
-                
-                self.progress.emit(int((i + 1) / total * 100))
-            
-            self.finished.emit(f"成功处理 {success}/{total} 个文件")
-            
+                    file_elapsed = (datetime.now() - file_start).total_seconds()
+                    elapsed_list.append(file_elapsed)
+                    logger.exception("Unexpected error processing file %s", file_path)
+                    try:
+                        self.log_message.emit(f"  ✗ 未知错误: 请查看日志以获取详细信息 (耗时: {file_elapsed:.2f}s)")
+                    except Exception:
+                        logger.debug("Cannot emit unknown error message for %s", file_path, exc_info=True)
+
+                # 更新进度条
+                try:
+                    pct = int((i + 1) / total * 100)
+                    self.progress.emit(pct)
+                except Exception:
+                    logger.debug("Unable to emit progress value for %s", file_path, exc_info=True)
+
+            # 结束
+            total_elapsed = sum(elapsed_list)
+            try:
+                self.finished.emit(f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s")
+            except Exception:
+                logger.debug("Cannot emit finished signal", exc_info=True)
+
         except Exception as e:
+            logger.exception("BatchProcessThread.run 出现未处理异常")
             self.error.emit(str(e))
 
 
@@ -819,11 +871,14 @@ class IntegratedAeroGUI(QMainWindow):
         # 切换后刷新布局以确保组框填满高度并使右侧底部元素可见
         try:
             QTimer.singleShot(30, self._refresh_layouts)
-        except Exception:
+        except RuntimeError as re:
+            logger.debug("QTimer.singleShot 调度失败: %s", re, exc_info=True)
             try:
                 self._refresh_layouts()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception("_refresh_layouts 直接调用时出现异常")
+        except Exception as e:
+            logger.exception("调度 _refresh_layouts 时出现意外异常")
 
     def toggle_visualization(self):
         """切换3D可视化窗口"""
@@ -931,9 +986,8 @@ class IntegratedAeroGUI(QMainWindow):
                             self.src_mcx.setText(str(mc_src[0]))
                             self.src_mcy.setText(str(mc_src[1]))
                             self.src_mcz.setText(str(mc_src[2]))
-                        except Exception:
-                            # 格式异常则跳过，不中断加载流程
-                            pass
+                        except (IndexError, TypeError, ValueError) as ex:
+                            logger.debug("部分力矩中心字段格式异常，已忽略: %s", ex, exc_info=True)
 
                     if hasattr(self, 'src_cref') and src_section and isinstance(src_section, dict):
                         # 使用 get 并提供默认值以防缺失
@@ -1103,7 +1157,7 @@ class IntegratedAeroGUI(QMainWindow):
                     # 多选时使用第一个作为配置目标，并提示用户
                     chosen_fp = checked[0]
                     self.txt_batch_log.append(f"注意：有多个文件被选中，正在为第一个选中项配置格式: {chosen_fp.name}")
-        except Exception as e:
+        except (AttributeError, IndexError, TypeError) as e:
             logger.debug("Failed to determine chosen_fp", exc_info=True)
             chosen_fp = None
 
@@ -1128,10 +1182,10 @@ class IntegratedAeroGUI(QMainWindow):
                                 try:
                                     mappings = list_mappings(dbp)
                                     sel_entry = next((m for m in mappings if m['id'] == sel_id), None)
-                                except Exception as e:
-                                    logger.debug("list_mappings failed while selecting registry entry", exc_info=True)
+                                except (OSError, ValueError) as e:
+                                    logger.debug("list_mappings failed while selecting registry entry: %s", e, exc_info=True)
                                     sel_entry = None
-                    except Exception as e:
+                    except (ValueError, IndexError, TypeError) as e:
                         logger.debug("Failed to parse selected registry item text", exc_info=True)
                         sel_entry = None
             if sel_entry:
@@ -1142,10 +1196,10 @@ class IntegratedAeroGUI(QMainWindow):
                     pf = Path(sel_entry['format_path'])
                     if pf.exists():
                         selected_format_path = pf
-                except Exception as e:
-                    logger.debug("Failed to stat selected format path", exc_info=True)
+                except (OSError, KeyError, TypeError, ValueError) as e:
+                    logger.debug("Failed to stat selected format path: %s", e, exc_info=True)
                     selected_format_path = None
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             logger.debug("Error while resolving selected registry entry", exc_info=True)
 
         # 2) 收集候选格式文件路径（仅在用户未显式选中 registry 映射时进行）
