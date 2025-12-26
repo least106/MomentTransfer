@@ -31,6 +31,8 @@ def construct_basis_matrix(
     z: List[float],
     orthogonality_threshold: float = ORTHOGONALITY_THRESHOLD,
     singularity_threshold: float = SINGULARITY_THRESHOLD,
+    orthogonalize: bool = False,
+    strict: bool = False,
 ) -> np.ndarray:
     """
     构建基向量矩阵 (3x3)。
@@ -54,12 +56,45 @@ def construct_basis_matrix(
     yz_dot = abs(np.dot(vy, vz))
     zx_dot = abs(np.dot(vz, vx))
 
-    if xy_dot > orthogonality_threshold or yz_dot > orthogonality_threshold or zx_dot > orthogonality_threshold:
-        warnings.warn(
-            f"基向量可能不正交：X·Y={xy_dot:.4f}, Y·Z={yz_dot:.4f}, Z·X={zx_dot:.4f}。"
-            f"这可能导致坐标变换不准确。",
-            UserWarning
+    non_orthogonal = (xy_dot > orthogonality_threshold or
+                      yz_dot > orthogonality_threshold or
+                      zx_dot > orthogonality_threshold)
+
+    if non_orthogonal:
+        msg = (
+            f"基向量可能不正交：X·Y={xy_dot:.6f}, Y·Z={yz_dot:.6f}, Z·X={zx_dot:.6f}。"
+            "请检查输入或启用正交化（orthogonalize=True）。"
         )
+        if orthogonalize:
+            # 使用 Gram–Schmidt 进行正交化并归一化
+            def proj(u, v):
+                return (np.dot(v, u) / np.dot(u, u)) * u
+
+            u1 = vx
+            # 从 vy 中去掉在 u1 上的分量
+            u2 = vy - proj(u1, vy)
+            # 从 vz 中去掉在 u1,u2 上的分量
+            u3 = vz - proj(u1, vz) - proj(u2, vz)
+
+            # 检查正交化后是否退化
+            try:
+                u1 = normalize(u1)
+                u2 = normalize(u2)
+                u3 = normalize(u3)
+            except ValueError as e:
+                raise ValueError(
+                    f"正交化失败：输入向量可能线性相关或接近退化，无法构造正交基。详情: {e}"
+                ) from e
+
+            basis = np.array([u1, u2, u3])
+        else:
+            if strict:
+                raise ValueError(msg)
+            else:
+                warnings.warn(msg, UserWarning)
+            basis = np.array([vx, vy, vz])
+    else:
+        basis = np.array([vx, vy, vz])
 
     basis = np.array([vx, vy, vz])
 
