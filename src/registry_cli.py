@@ -1,7 +1,10 @@
 import click
-from src.format_registry import init_db, list_mappings, register_mapping, _ensure_db, delete_mapping
-from pathlib import Path
+from src.format_registry import init_db, list_mappings, register_mapping, delete_mapping
+
 import sys
+import logging
+import traceback
+import sqlite3
 
 @click.group()
 def registry():
@@ -20,9 +23,15 @@ def list_cmd(db_path):
             return
         for m in items:
             click.echo(f"[{m['id']}] {m['pattern']} -> {m['format_path']}  (added: {m['added_at']})")
-    except Exception as e:
-        click.echo(f"错误: {e}")
+    except (sqlite3.Error, FileNotFoundError, PermissionError) as e:
+        click.echo(f"数据库错误: {e}")
+        logging.exception("Registry list failed")
         sys.exit(2)
+    except Exception as e:
+        # 捕获意外错误并记录完整 traceback 以便排查
+        logging.exception("Unexpected error while listing registry mappings")
+        click.echo(f"未知错误: {e}; 详情已记录到日志")
+        sys.exit(3)
 
 @registry.command('register')
 @click.argument('db_path', required=True)
@@ -34,9 +43,14 @@ def register_cmd(db_path, pattern, format_path):
         init_db(db_path)
         register_mapping(db_path, pattern, format_path)
         click.echo('已注册')
-    except Exception as e:
+    except (ValueError, sqlite3.Error, FileNotFoundError, PermissionError) as e:
         click.echo(f"错误: {e}")
+        logging.exception("Registry register failed")
         sys.exit(2)
+    except Exception as e:
+        logging.exception("Unexpected error while registering mapping")
+        click.echo(f"未知错误: {e}; 详情已记录到日志")
+        sys.exit(3)
 
 @registry.command('remove')
 @click.argument('db_path', required=True)
@@ -47,9 +61,14 @@ def remove_cmd(db_path, id):
         init_db(db_path)
         delete_mapping(db_path, id)
         click.echo('已删除')
-    except Exception as e:
+    except (KeyError, sqlite3.Error, FileNotFoundError, PermissionError) as e:
         click.echo(f"错误: {e}")
+        logging.exception("Registry remove failed")
         sys.exit(2)
+    except Exception as e:
+        logging.exception("Unexpected error while removing mapping")
+        click.echo(f"未知错误: {e}; 详情已记录到日志")
+        sys.exit(3)
 
 if __name__ == '__main__':
     registry()
