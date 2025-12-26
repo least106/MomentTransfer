@@ -94,23 +94,38 @@ class FrameConfiguration:
         s_ref = data.get("S")
         
         # 如果提供了这些参数，进行验证
-        if c_ref is not None and c_ref <= 0:
-            raise ValueError(f"参考弦长 Cref 必须为正数，当前值: {c_ref}")
-        if b_ref is not None and b_ref <= 0:
-            raise ValueError(f"参考展长 Bref 必须为正数，当前值: {b_ref}")
-        if s_ref is not None and s_ref <= 0:
-            raise ValueError(f"参考面积 S 必须为正数，当前值: {s_ref}")
-        if q is not None and q < 0:
-            raise ValueError(f"动压 Q 不能为负数，当前值: {q}")
+        def parse_positive_number(name: str, val, strictly_positive: bool = True):
+            """
+            尝试将 val 转为 float 并进行正数/非负校验。
+            返回转换后的 float，失败时抛出 ValueError，错误消息为通用格式。
+            """
+            if val is None:
+                return None
+            try:
+                f = float(val)
+            except (ValueError, TypeError):
+                raise ValueError(f"字段 {name} 的值必须是数值类型，当前值: {val} (type={type(val).__name__})")
+            if strictly_positive:
+                if f <= 0:
+                    raise ValueError(f"字段 {name} 必须为正数 (>0)，当前值: {val}")
+            else:
+                if f < 0:
+                    raise ValueError(f"字段 {name} 不能为负数，当前值: {val}")
+            return f
+
+        c_ref = parse_positive_number("Cref", c_ref, strictly_positive=True)
+        b_ref = parse_positive_number("Bref", b_ref, strictly_positive=True)
+        s_ref = parse_positive_number("S", s_ref, strictly_positive=True)
+        q = parse_positive_number("Q", q, strictly_positive=False)
         
         return cls(
             part_name=data["PartName"],
             coord_system=CoordSystemDefinition.from_dict(data[coord_key]),
             moment_center=moment_center,
-            c_ref=c_ref,
-            b_ref=b_ref,
-            q=q,
-            s_ref=s_ref
+                c_ref=c_ref,
+                b_ref=b_ref,
+                q=q,
+                s_ref=s_ref
         )
 
 

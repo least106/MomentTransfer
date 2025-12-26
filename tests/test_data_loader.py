@@ -108,7 +108,7 @@ class TestTargetDefinition:
             "TargetMomentCenter": [0, 0, 0],
             "Cref": -1.0  # 负数
         }
-        with pytest.raises(ValueError, match="参考弦长 Cref 必须为正数"):
+        with pytest.raises(ValueError, match="字段 Cref 必须为正数"):
             TargetDefinition.from_dict(data)
     
     def test_negative_dynamic_pressure(self):
@@ -124,7 +124,7 @@ class TestTargetDefinition:
             "TargetMomentCenter": [0, 0, 0],
             "Q": -10.0  # 负数
         }
-        with pytest.raises(ValueError, match="动压 Q 不能为负数"):
+        with pytest.raises(ValueError, match="字段 Q 不能为负数"):
             TargetDefinition.from_dict(data)
 
 
