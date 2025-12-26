@@ -29,6 +29,19 @@ try:
 except ImportError:
     portalocker = None
 
+
+def _error_exit_json(message: str, code: int = 2, hint: str = None):
+    """模块级错误退出工具：向 stderr 输出 JSON 并退出（供 CLI 调用）。"""
+    payload = {"error": True, "message": message, "code": code}
+    if hint:
+        payload['hint'] = hint
+    try:
+        sys.stderr.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        logger = logging.getLogger('batch')
+        logger.error("无法写入错误到 stderr: %s", payload)
+    sys.exit(code)
+
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
 
@@ -646,15 +659,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     """
     logger = logging.getLogger('batch')
 
-    def _error_exit_json(message: str, code: int = 2, hint: str = None):
-        payload = {"error": True, "message": message, "code": code}
-        if hint:
-            payload['hint'] = hint
-        try:
-            sys.stderr.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        except Exception:
-            logger.error("无法写入错误到 stderr: %s", payload)
-        sys.exit(code)
+    # 使用模块级的 _error_exit_json 工具进行错误退出（已在模块顶部定义）
     logger.info("%s", "=" * 70)
     logger.info("MomentTransfer v2.0")
     logger.info("%s", "=" * 70)
@@ -749,6 +754,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     # 若在外部通过 CLI 提供了并行参数，会由外层主函数处理；这里保持串行以便直接调用
     # 记录开始时间以便估算 ETA
     start_time = datetime.now()
+    # 确保收集结果的容器始终存在，避免在空文件列表下引用未定义变量
+    results = []
     for i, file_path in enumerate(files_to_process, 1):
         logger.info("进度: [%d/%d] %s", i, len(files_to_process), file_path.name)
         # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
@@ -770,8 +777,6 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             success_count += 1
 
         # 收集结果以支持 --output-json/--summary
-        if 'results' not in locals():
-            results = []
         results.append({
             'file': str(file_path),
             'success': bool(ok),
@@ -817,7 +822,9 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 
     # 写出 JSON 汇总（若请求）
     if output_json:
-        if 'results' not in locals():
+        try:
+            results  # 确保 results 已定义；若未定义则回退为空列表
+        except NameError:
             results = []
         summary_payload = {
             'total': len(files_to_process),
@@ -858,6 +865,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
 @click.option('--dry-run', 'dry_run', is_flag=True, help='仅解析并显示将处理的文件与输出路径，但不实际写入')
 @click.option('--progress', 'show_progress', is_flag=True, help='显示处理进度与 ETA（串行/并行均支持）')
+@click.option('--output-json', 'output_json', default=None, help='将处理结果以 JSON 写入指定文件')
+@click.option('--summary', 'summary', is_flag=True, help='在结束时打印简要的 JSON 汇总（机器可读）')
 def main(**cli_options):
     """批处理入口（click 版）"""
     # 将 CLI 选项解包为原来的局部变量，保持后续逻辑不变
@@ -879,6 +888,8 @@ def main(**cli_options):
     strict = cli_options.get('strict')
     dry_run = cli_options.get('dry_run')
     show_progress = cli_options.get('show_progress')
+    output_json = cli_options.get('output_json')
+    summary = cli_options.get('summary')
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
 
@@ -1075,7 +1086,17 @@ def main(**cli_options):
 
         else:
             # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            run_batch_processing_v2(config, input_path, data_config, registry_db=registry_db, strict=strict, dry_run=dry_run, show_progress=show_progress)
+            run_batch_processing_v2(
+                config,
+                input_path,
+                data_config,
+                registry_db=registry_db,
+                strict=strict,
+                dry_run=dry_run,
+                show_progress=show_progress,
+                output_json=output_json,
+                summary=summary,
+            )
             sys.exit(0)
     except Exception:
         logger.exception('批处理失败')
