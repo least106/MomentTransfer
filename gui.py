@@ -1,4 +1,5 @@
 import sys
+import logging
 
 import json
 import numpy as np
@@ -25,6 +26,8 @@ from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 from typing import Optional
 from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping, update_mapping, init_db
+
+logger = logging.getLogger(__name__)
 
 
 class Mpl3DCanvas(FigureCanvas):
@@ -58,8 +61,8 @@ class Mpl3DCanvas(FigureCanvas):
         if max_span < eps:
             # 所有点几乎在同一位置：使用默认可视化范围
             max_range = 2.0
-            # 可根据需要改为日志记录或 GUI 提示，这里仅简单输出到控制台
-            print("Warning: coordinate systems are nearly coincident; using default visualization range.")
+            # 可根据需要改为日志记录或 GUI 提示，这里使用 logging 记录
+            logger.warning("coordinate systems are nearly coincident; using default visualization range.")
         else:
             max_range = max_span * 0.6
             max_range = max(max_range, 2.0)
@@ -198,8 +201,7 @@ class ColumnMappingDialog(QDialog):
             try:
                 self.spin_skip_rows.setValue(int(cfg.get('skip_rows', 0)))
             except (ValueError, TypeError) as e:
-                print(f"[ColumnMappingDialog.set_config] Invalid skip_rows value {cfg.get('skip_rows')!r}: {e}",
-                      file=sys.stderr)
+                logger.warning("Invalid skip_rows value %r: %s", cfg.get('skip_rows'), e, exc_info=True)
 
         cols = cfg.get('columns') or cfg.get('Columns') or {}
         try:
@@ -218,8 +220,7 @@ class ColumnMappingDialog(QDialog):
             if 'mz' in cols and cols.get('mz') is not None:
                 self.col_mz.setValue(int(cols.get('mz')))
         except (ValueError, TypeError) as e:
-            print(f"[ColumnMappingDialog.set_config] Invalid column indices in {cols!r}: {e}",
-                  file=sys.stderr)
+            logger.warning("Invalid column indices in %r: %s", cols, e, exc_info=True)
 
         passthrough = cfg.get('passthrough') or cfg.get('Passthrough') or []
         try:
@@ -228,8 +229,7 @@ class ColumnMappingDialog(QDialog):
             elif isinstance(passthrough, str):
                 self.txt_passthrough.setText(passthrough)
         except (ValueError, TypeError) as e:
-            print(f"[ColumnMappingDialog.set_config] Invalid passthrough values {passthrough!r}: {e}",
-                  file=sys.stderr)
+            logger.warning("Invalid passthrough values %r: %s", passthrough, e, exc_info=True)
 
 class BatchProcessThread(QThread):
     """在后台线程中执行批量处理，发出进度与日志信号"""
@@ -391,8 +391,8 @@ class IntegratedAeroGUI(QMainWindow):
         # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
         try:
             splitter.setSizes([520, 880])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
 
         main_layout.addWidget(splitter)
         self.statusBar().showMessage("就绪 - 请加载或创建配置")
@@ -400,9 +400,9 @@ class IntegratedAeroGUI(QMainWindow):
         # 根据当前窗口宽度设置按钮初始布局
         try:
             self.update_button_layout()
-        except Exception:
-            # 若方法尚未定义或出现异常，静默忽略，避免启动失败
-            pass
+        except Exception as e:
+            # 若方法尚未定义或出现异常，记录调试堆栈以便诊断，但不阻止 UI 启动
+            logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
 
     def create_config_panel(self):
         """创建左侧配置编辑面板"""
@@ -569,8 +569,8 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             layout.setStretch(2, 1)
             layout.setStretch(3, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
         layout.addStretch()
 
         return panel
@@ -624,8 +624,8 @@ class IntegratedAeroGUI(QMainWindow):
         # 当 registry 路径变化时刷新文件来源标签（实时反馈）
         try:
             self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to connect inp_registry_db.textChanged signal", exc_info=True)
         btn_browse_registry = QPushButton("浏览")
         btn_browse_registry.setMaximumWidth(80)
         btn_browse_registry.clicked.connect(self.browse_registry_db)
@@ -693,8 +693,8 @@ class IntegratedAeroGUI(QMainWindow):
         # 保证复选框列表从顶部开始排列
         try:
             self.file_list_layout_inner.setAlignment(Qt.AlignTop)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Error while collecting candidate format paths", exc_info=True)
         self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
         self.file_scroll.setWidget(self.file_list_widget)
         # 给文件滚动区域一个最小高度，避免在窄窗口或重排时过度收缩
@@ -764,8 +764,8 @@ class IntegratedAeroGUI(QMainWindow):
             # 使文件列表与日志框可以拉伸（优先日志框）
             layout_batch.setStretch(2, 0)
             layout_batch.setStretch(6, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("layout_batch.setStretch failed (non-fatal)", exc_info=True)
 
         grp_batch.setLayout(layout_batch)
 
@@ -776,8 +776,8 @@ class IntegratedAeroGUI(QMainWindow):
             # status_group 在顶部不拉伸，grp_batch 占据剩余空间
             layout.setStretch(0, 0)
             layout.setStretch(1, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
         # 保留一个小的伸缩因子以兼容不同平台的行为
         layout.addStretch()
 
@@ -790,8 +790,8 @@ class IntegratedAeroGUI(QMainWindow):
         inp.setMaximumWidth(120)
         try:
             inp.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("inp.setSizePolicy failed (non-fatal)", exc_info=True)
         return inp
 
     def _create_vector_row(self, inp1, inp2, inp3):
@@ -1103,7 +1103,8 @@ class IntegratedAeroGUI(QMainWindow):
                     # 多选时使用第一个作为配置目标，并提示用户
                     chosen_fp = checked[0]
                     self.txt_batch_log.append(f"注意：有多个文件被选中，正在为第一个选中项配置格式: {chosen_fp.name}")
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to determine chosen_fp", exc_info=True)
             chosen_fp = None
 
         # 1.5) 检查用户是否在 registry 列表中选中了某条映射；若有则优先作为编辑目标
@@ -1127,9 +1128,11 @@ class IntegratedAeroGUI(QMainWindow):
                                 try:
                                     mappings = list_mappings(dbp)
                                     sel_entry = next((m for m in mappings if m['id'] == sel_id), None)
-                                except Exception:
+                                except Exception as e:
+                                    logger.debug("list_mappings failed while selecting registry entry", exc_info=True)
                                     sel_entry = None
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("Failed to parse selected registry item text", exc_info=True)
                         sel_entry = None
             if sel_entry:
                 # 将选中 registry 映射作为预选格式
@@ -1139,10 +1142,11 @@ class IntegratedAeroGUI(QMainWindow):
                     pf = Path(sel_entry['format_path'])
                     if pf.exists():
                         selected_format_path = pf
-                except Exception:
+                except Exception as e:
+                    logger.debug("Failed to stat selected format path", exc_info=True)
                     selected_format_path = None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Error while resolving selected registry entry", exc_info=True)
 
         # 2) 收集候选格式文件路径（仅在用户未显式选中 registry 映射时进行）
         candidate_paths = []
@@ -1159,9 +1163,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 if p.exists():
                                     candidate_paths.append(p)
                         except Exception:
-                            pass
+                            logger.debug("get_format_for_file failed", exc_info=True)
                 except Exception:
-                    pass
+                    logger.debug("Error while checking registry DB path", exc_info=True)
 
                 # sidecar 文件优先级（.format.json, .json）
                 for suf in ('.format.json', '.json'):
@@ -1173,8 +1177,8 @@ class IntegratedAeroGUI(QMainWindow):
                 dir_cand = chosen_fp.parent / 'format.json'
                 if dir_cand.exists():
                     candidate_paths.append(dir_cand)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Error while collecting candidate paths (outer)", exc_info=True)
 
         # 3) 如果找到多个候选，弹出选择对话
         try:
@@ -1644,7 +1648,8 @@ class IntegratedAeroGUI(QMainWindow):
             if src == 'global':
                 return ("global", "", '#6c757d')
             return ("unknown", "", '#dc3545')
-        except Exception:
+        except Exception as e:
+            logger.debug("_format_label_from encountered error", exc_info=True)
             return ("unknown", "", '#dc3545')
 
     def _refresh_format_labels(self):
@@ -1665,15 +1670,16 @@ class IntegratedAeroGUI(QMainWindow):
                     lbl.setText(disp)
                     lbl.setToolTip(tip or "")
                     lbl.setStyleSheet(f"color: {color}; font-size: 11px;")
-                except Exception:
+                except Exception as e:
+                    logger.debug("Failed to set label text from format source", exc_info=True)
                     try:
                         lbl.setText('未知')
                         lbl.setToolTip("")
                         lbl.setStyleSheet("color: #dc3545; font-size: 11px;")
                     except Exception:
-                        pass
-        except Exception:
-            pass
+                        logger.debug("Failed to set fallback 'unknown' label", exc_info=True)
+        except Exception as e:
+            logger.debug("_refresh_format_labels failed", exc_info=True)
 
 
     def _refresh_registry_list(self):
@@ -1702,11 +1708,12 @@ class IntegratedAeroGUI(QMainWindow):
                     self.lst_registry.addItem(text)
 
             self.grp_registry_list.setVisible(True)
-        except Exception:
+        except Exception as e:
+            logger.debug("_refresh_registry_list encountered error", exc_info=True)
             try:
                 self.grp_registry_list.setVisible(False)
             except Exception:
-                pass
+                logger.debug("Failed to hide grp_registry_list after error", exc_info=True)
 
     def run_batch_processing(self):
         """运行批处理"""
@@ -1803,14 +1810,14 @@ class IntegratedAeroGUI(QMainWindow):
             self._set_controls_locked(True)
             self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 注意：当前任务使用启动时配置；在运行期间对配置/格式的修改不会影响本次任务。")
         except Exception:
-            pass
+            logger.debug("Failed to lock controls at batch start", exc_info=True)
 
     def on_batch_finished(self, message):
         """批处理完成"""
         try:
             self._set_controls_locked(False)
         except Exception:
-            pass
+            logger.debug("Failed to unlock controls on batch finished", exc_info=True)
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ {message}")
         self.statusBar().showMessage("批量处理完成")
         QMessageBox.information(self, "完成", message)
@@ -1820,7 +1827,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self._set_controls_locked(False)
         except Exception:
-            pass
+            logger.debug("Failed to unlock controls on batch error", exc_info=True)
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✗ 错误: {error_msg}")
         self.progress_bar.setVisible(False)
         self.statusBar().showMessage("批量处理失败")
@@ -1869,14 +1876,14 @@ class IntegratedAeroGUI(QMainWindow):
                     try:
                         grid.removeWidget(wdg)
                     except Exception:
-                        pass
+                        logger.debug("grid.removeWidget failed", exc_info=True)
                     extracted_widgets.append(wdg)
             # 重新确保列伸缩
             try:
                 grid.setColumnStretch(0, 1)
                 grid.setColumnStretch(1, 1)
             except Exception:
-                pass
+                logger.debug("grid.setColumnStretch failed", exc_info=True)
 
         if w >= threshold:
             # 宽窗口：一行两列
@@ -1911,7 +1918,7 @@ class IntegratedAeroGUI(QMainWindow):
             try:
                 self.btn_widget.setLayout(grid)
             except Exception:
-                pass
+                logger.debug("btn_widget.setLayout failed", exc_info=True)
         # 确保按钮容器在布局更改后更新尺寸与几何，以免在窗口状态切换时被临时挤出视口
         try:
             self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -1929,15 +1936,15 @@ class IntegratedAeroGUI(QMainWindow):
                 from PySide6.QtWidgets import QApplication
                 QApplication.processEvents()
             except Exception:
-                pass
+                logger.debug("QApplication.processEvents failed in update_button_layout", exc_info=True)
         except Exception:
-            pass
+            logger.debug("update_button_layout failed during size policy/layout refresh", exc_info=True)
 
     def resizeEvent(self, event):
         try:
             self.update_button_layout()
         except Exception:
-            pass
+            logger.debug("resizeEvent update_button_layout failed", exc_info=True)
         return super().resizeEvent(event)
 
     def showEvent(self, event):
@@ -1946,7 +1953,7 @@ class IntegratedAeroGUI(QMainWindow):
             QTimer.singleShot(50, self.update_button_layout)
             QTimer.singleShot(120, self._force_layout_refresh)
         except Exception:
-            pass
+            logger.debug("showEvent scheduling failed", exc_info=True)
         return super().showEvent(event)
 
     def _force_layout_refresh(self):
@@ -1968,7 +1975,7 @@ class IntegratedAeroGUI(QMainWindow):
                 from PySide6.QtWidgets import QApplication
                 QApplication.processEvents()
             except Exception:
-                pass
+                logger.debug("QApplication.processEvents failed in _force_layout_refresh", exc_info=True)
 
             # --- Qt 布局刷新 hack ---
             # 微调窗口宽度 (+2 然后恢复) 以触发底层布局引擎重新布局。
@@ -1978,7 +1985,7 @@ class IntegratedAeroGUI(QMainWindow):
             self.resize(w + 2, h)
             QTimer.singleShot(20, lambda: self.resize(w, h))
         except Exception:
-            pass
+            logger.debug("_force_layout_refresh failed", exc_info=True)
 
     def _refresh_layouts(self):
         """激活并刷新主要布局与 splitter，以保证子控件正确伸缩。"""
@@ -1991,12 +1998,12 @@ class IntegratedAeroGUI(QMainWindow):
                 # 触发按钮布局更新和一次强制刷新
                 self.update_button_layout()
             except Exception:
-                pass
+                logger.debug("update_button_layout failed in _refresh_layouts", exc_info=True)
             try:
                 from PySide6.QtWidgets import QApplication
                 QApplication.processEvents()
             except Exception:
-                pass
+                logger.debug("QApplication.processEvents failed in _refresh_layouts", exc_info=True)
             # 轻微调整 splitter 大小以促使 Qt 重新布局（仅在必要时）
             try:
                 s = self.findChild(QSplitter)
@@ -2004,9 +2011,9 @@ class IntegratedAeroGUI(QMainWindow):
                     sizes = s.sizes()
                     s.setSizes(sizes)
             except Exception:
-                pass
+                logger.debug("Splitter resize refresh failed in _refresh_layouts", exc_info=True)
         except Exception:
-            pass
+            logger.debug("_refresh_layouts failed", exc_info=True)
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
