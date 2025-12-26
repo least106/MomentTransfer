@@ -639,7 +639,7 @@ def _worker_process(args):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, dry_run: bool = False, show_progress: bool = False):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False):
     """增强版批处理主函数
 
     使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
@@ -769,6 +769,15 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         if ok:
             success_count += 1
 
+        # 收集结果以支持 --output-json/--summary
+        if 'results' not in locals():
+            results = []
+        results.append({
+            'file': str(file_path),
+            'success': bool(ok),
+            'elapsed_sec': round(elapsed, 3)
+        })
+
         # 总是记录每文件耗时，便于 log-file 中查看详情
         logger.info("文件 %s 处理完成: 成功=%s, 耗时=%.2fs", file_path.name, ok, elapsed)
 
@@ -786,6 +795,29 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     print(f"  成功: {success_count}/{len(files_to_process)}")
     print(f"  失败: {len(files_to_process) - success_count}/{len(files_to_process)}")
     print("=" * 70)
+
+    # 写出 JSON 汇总（若请求）
+    if output_json:
+        if 'results' not in locals():
+            results = []
+        summary_payload = {
+            'total': len(files_to_process),
+            'success': success_count,
+            'fail': len(files_to_process) - success_count,
+            'files': results
+        }
+        try:
+            with open(output_json, 'w', encoding='utf-8') as fh:
+                json.dump(summary_payload, fh, ensure_ascii=False, indent=2)
+            logger.info('已将处理结果写入 %s', output_json)
+        except Exception:
+            logger.exception('写入 output_json 失败')
+
+    if summary:
+        try:
+            print(json.dumps({'total': len(files_to_process), 'success': success_count, 'fail': len(files_to_process) - success_count}, ensure_ascii=False))
+        except Exception:
+            logger.exception('打印 summary 失败')
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
@@ -919,6 +951,7 @@ def main(**cli_options):
             with ProcessPoolExecutor(max_workers=workers) as exe:
                 futures = {}
                 start_times = {}
+                results = []
                 for fp in files_to_process:
                     worker_args = {
                         'file_path': str(fp),
@@ -951,6 +984,14 @@ def main(**cli_options):
                         remaining = total - completed
                         eta = int(avg * remaining) if avg is not None else None
 
+                        # 收集并记录
+                        results.append({
+                            'file': file_str,
+                            'success': bool(ok),
+                            'error': err,
+                            'elapsed_sec': round(elapsed or 0.0, 3)
+                        })
+
                         if ok:
                             logger.info("处理成功: %s (耗时: %.2fs)", file_str, elapsed if elapsed else 0.0)
                             success_count += 1
@@ -965,6 +1006,24 @@ def main(**cli_options):
 
                     except Exception as e:
                         logger.exception("任务异常: %s", fp)
+
+            # 写出 JSON 汇总（若请求）
+            if output_json:
+                summary_payload = {
+                    'total': len(files_to_process),
+                    'success': success_count,
+                    'fail': len(files_to_process) - success_count,
+                    'files': results
+                }
+                try:
+                    with open(output_json, 'w', encoding='utf-8') as fh:
+                        json.dump(summary_payload, fh, ensure_ascii=False, indent=2)
+                    logger.info('已将处理结果写入 %s', output_json)
+                except Exception:
+                    logger.exception('写入 output_json 失败')
+
+            if summary:
+                print(json.dumps({'total': len(files_to_process), 'success': success_count, 'fail': len(files_to_process) - success_count}, ensure_ascii=False))
 
             logger.info(f'并行处理完成: 成功 {success_count}/{len(files_to_process)}')
             sys.exit(0 if success_count == len(files_to_process) else 1)
