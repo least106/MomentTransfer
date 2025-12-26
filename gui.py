@@ -29,7 +29,6 @@ from src.format_registry import get_format_for_file, list_mappings, register_map
 
 logger = logging.getLogger(__name__)
 
-
 class Mpl3DCanvas(FigureCanvas):
     """3D坐标系可视化画布"""
 
@@ -459,7 +458,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
         try:
             splitter.setSizes([520, 880])
-        except Exception as e:
+        except Exception:
             logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
 
         main_layout.addWidget(splitter)
@@ -468,7 +467,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 根据当前窗口宽度设置按钮初始布局
         try:
             self.update_button_layout()
-        except Exception as e:
+        except Exception:
             # 若方法尚未定义或出现异常，记录调试堆栈以便诊断，但不阻止 UI 启动
             logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
 
@@ -637,7 +636,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             layout.setStretch(2, 1)
             layout.setStretch(3, 1)
-        except Exception as e:
+        except Exception:
             logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
         layout.addStretch()
 
@@ -692,7 +691,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 当 registry 路径变化时刷新文件来源标签（实时反馈）
         try:
             self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
-        except Exception as e:
+        except Exception:
             logger.debug("Failed to connect inp_registry_db.textChanged signal", exc_info=True)
         btn_browse_registry = QPushButton("浏览")
         btn_browse_registry.setMaximumWidth(80)
@@ -762,7 +761,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.file_list_layout_inner.setAlignment(Qt.AlignTop)
         except Exception as e:
-            logger.debug("Error while collecting candidate format paths", exc_info=True)
+            logger.debug("Error while setting file list layout alignment", exc_info=True)
         self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
         self.file_scroll.setWidget(self.file_list_widget)
         # 给文件滚动区域一个最小高度，避免在窄窗口或重排时过度收缩
@@ -841,7 +840,7 @@ class IntegratedAeroGUI(QMainWindow):
             # 使文件列表与日志框可以拉伸（优先日志框）
             layout_batch.setStretch(2, 0)
             layout_batch.setStretch(6, 1)
-        except Exception as e:
+        except Exception:
             logger.debug("layout_batch.setStretch failed (non-fatal)", exc_info=True)
 
         grp_batch.setLayout(layout_batch)
@@ -907,7 +906,7 @@ class IntegratedAeroGUI(QMainWindow):
         inp.setMaximumWidth(120)
         try:
             inp.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        except Exception as e:
+        except Exception:
             logger.debug("inp.setSizePolicy failed (non-fatal)", exc_info=True)
         return inp
 
