@@ -246,6 +246,8 @@ class BatchProcessThread(QThread):
         self.data_config = data_config
         # 可选的 format registry 数据库路径（字符串或 None）
         self.registry_db = registry_db
+        # 取消标志，用于请求优雅停止（线程内检查）
+        self._stop_requested = False
 
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""
@@ -335,6 +337,10 @@ class BatchProcessThread(QThread):
         output_df.to_csv(output_file, index=False)
         return output_file
 
+    def request_stop(self):
+        """请求停止后台线程的处理（线程在处理间检查此标志）。"""
+        self._stop_requested = True
+
     def run(self):
         try:
             total = len(self.file_list)
@@ -350,6 +356,13 @@ class BatchProcessThread(QThread):
                     logger.exception("Unexpected error when emitting registry message")
 
             for i, file_path in enumerate(self.file_list):
+                # 在每个文件开始前检查取消请求
+                if self._stop_requested:
+                    try:
+                        self.log_message.emit("用户取消：正在停止批处理")
+                    except Exception:
+                        logger.debug("Cannot emit cancel log message", exc_info=True)
+                    break
                 # per-file timing
                 file_start = datetime.now()
                 try:
@@ -406,7 +419,10 @@ class BatchProcessThread(QThread):
             # 结束
             total_elapsed = sum(elapsed_list)
             try:
-                self.finished.emit(f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s")
+                msg = f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+                if self._stop_requested:
+                    msg = f"已取消：已处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+                self.finished.emit(msg)
             except Exception:
                 logger.debug("Cannot emit finished signal", exc_info=True)
 
@@ -776,6 +792,14 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_batch.setStyleSheet("background-color: #ff6b6b; color: white; font-weight: bold;")
         self.btn_batch.clicked.connect(self.run_batch_processing)
 
+        # 取消按钮（仅在任务运行时显示并可用）
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setFixedHeight(34)
+        self.btn_cancel.setStyleSheet("background-color: #6c757d; color: white; font-weight: bold;")
+        self.btn_cancel.clicked.connect(self.request_cancel_batch)
+        self.btn_cancel.setVisible(False)
+        self.btn_cancel.setEnabled(False)
+
         # 日志
         self.txt_batch_log = QTextEdit()
         self.txt_batch_log.setReadOnly(True)
@@ -797,9 +821,10 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_config_format.setFixedHeight(34)
         self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        # 初始放置为一行两列
+        # 初始放置为一行两列（取消按钮放在第二行右侧）
         grid.addWidget(self.btn_config_format, 0, 0)
         grid.addWidget(self.btn_batch, 0, 1)
+        grid.addWidget(self.btn_cancel, 1, 1)
         # 固定并复用这个 grid，避免后续替换 layout 导致 Qt 布局对象延迟删除出现几何错误
         self.btn_grid = grid
 
@@ -1865,6 +1890,13 @@ class IntegratedAeroGUI(QMainWindow):
             self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 注意：当前任务使用启动时配置；在运行期间对配置/格式的修改不会影响本次任务。")
         except Exception:
             logger.debug("Failed to lock controls at batch start", exc_info=True)
+        # 显示并启用取消按钮
+        try:
+            if hasattr(self, 'btn_cancel'):
+                self.btn_cancel.setVisible(True)
+                self.btn_cancel.setEnabled(True)
+        except Exception:
+            logger.debug("Failed to show/enable cancel button", exc_info=True)
 
     def on_batch_finished(self, message):
         """批处理完成"""
@@ -1874,6 +1906,14 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("Failed to unlock controls on batch finished", exc_info=True)
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ {message}")
         self.statusBar().showMessage("批量处理完成")
+        # 隐藏取消按钮并禁用
+        try:
+            if hasattr(self, 'btn_cancel'):
+                self.btn_cancel.setVisible(False)
+                self.btn_cancel.setEnabled(False)
+        except Exception:
+            logger.debug("Failed to hide/disable cancel button", exc_info=True)
+
         QMessageBox.information(self, "完成", message)
 
     def on_batch_error(self, error_msg):
@@ -1885,6 +1925,25 @@ class IntegratedAeroGUI(QMainWindow):
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✗ 错误: {error_msg}")
         self.progress_bar.setVisible(False)
         self.statusBar().showMessage("批量处理失败")
+        # 隐藏并禁用取消按钮
+        try:
+            if hasattr(self, 'btn_cancel'):
+                self.btn_cancel.setVisible(False)
+                self.btn_cancel.setEnabled(False)
+        except Exception:
+            logger.debug("Failed to hide/disable cancel button after error", exc_info=True)
+
+        # 友好的错误提示，包含可行建议
+        try:
+            dlg = QMessageBox(self)
+            dlg.setIcon(QMessageBox.Critical)
+            dlg.setWindowTitle("处理失败")
+            dlg.setText("批处理过程中发生错误，已记录到日志。请检查输入文件与数据格式配置。")
+            dlg.setInformativeText("建议：检查数据格式映射（列索引）、Target 配置中的 MomentCenter/Q/S，或在 GUI 中打开“配置数据格式”进行修正。")
+            dlg.setDetailedText(str(error_msg))
+            dlg.exec()
+        except Exception:
+            logger.debug("Failed to show error dialog", exc_info=True)
 
     BUTTON_LAYOUT_THRESHOLD = 720
     def update_button_layout(self, threshold=None):
@@ -1907,7 +1966,7 @@ class IntegratedAeroGUI(QMainWindow):
             w = threshold
 
         # 取出已有按钮实例
-        btns = [getattr(self, 'btn_config_format', None), getattr(self, 'btn_batch', None)]
+        btns = [getattr(self, 'btn_config_format', None), getattr(self, 'btn_batch', None), getattr(self, 'btn_cancel', None)]
 
         # 安全地移除旧布局但保留按钮 widget 本身，避免双重删除或内存泄漏。
         # 我们会从旧布局中取出 widget 引用并在最后调用 deleteLater() 删除旧布局对象。
@@ -2069,6 +2128,24 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("_refresh_layouts failed", exc_info=True)
 
+    def request_cancel_batch(self):
+        """UI 回调：请求取消正在运行的批处理任务"""
+        try:
+            if hasattr(self, 'batch_thread') and self.batch_thread is not None:
+                self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 用户请求取消任务，正在停止...")
+                try:
+                    self.batch_thread.request_stop()
+                except Exception:
+                    logger.debug("batch_thread.request_stop 调用失败（可能已结束）", exc_info=True)
+                # 禁用取消按钮以避免重复点击
+                try:
+                    if hasattr(self, 'btn_cancel'):
+                        self.btn_cancel.setEnabled(False)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug("request_cancel_batch 失败", exc_info=True)
+
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
 
@@ -2093,6 +2170,19 @@ class IntegratedAeroGUI(QMainWindow):
                     w.setEnabled(not locked)
             except Exception:
                 pass
+
+        # 取消按钮在锁定时仍应保持可见/可用以提供取消能力
+        try:
+            if hasattr(self, 'btn_cancel'):
+                # 当 locked=True 时显示取消按钮并保持启用；当 locked=False 时隐藏
+                if locked:
+                    self.btn_cancel.setVisible(True)
+                    self.btn_cancel.setEnabled(True)
+                else:
+                    self.btn_cancel.setVisible(False)
+                    self.btn_cancel.setEnabled(False)
+        except Exception:
+            logger.debug("Failed to set btn_cancel visibility/state in _set_controls_locked", exc_info=True)
 
 
 def main():
