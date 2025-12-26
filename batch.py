@@ -45,6 +45,21 @@ def _error_exit_json(message: str, code: int = 2, hint: str = None):
 # 最大文件名冲突重试次数（避免魔法数字）
 MAX_FILE_COLLISION_RETRIES = 1000
 
+# 默认的最大冲突重试次数（用于输出名占位尝试，便于调整）
+DEFAULT_MAX_COLLISION_TRIALS = 20
+
+# 通用重试次数（用于写入和替换等操作）
+SHARED_RETRY_ATTEMPTS = 3
+
+# 写入失败时的退避秒数序列（按尝试次数选取）
+WRITE_RETRY_BACKOFF_SECONDS = [0.1, 0.5, 1.0]
+
+# os.replace 替换失败时的退避策略（目前与写入退避一致）
+REPLACE_RETRY_BACKOFFS = WRITE_RETRY_BACKOFF_SECONDS
+
+# 默认记录非数值示例的行数（CLI 帮助文字中的默认值）
+DEFAULT_SAMPLE_ROWS = 5
+
 # 必需列键常量
 REQUIRED_KEYS = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
 
@@ -77,7 +92,7 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
     suf = out_path.suffix
 
     # 优先尝试原始名字；若已存在且不覆盖则通过原子创建占位文件避免 check-then-create 的竞态
-    max_trials = min(20, MAX_FILE_COLLISION_RETRIES)
+    max_trials = min(DEFAULT_MAX_COLLISION_TRIALS, MAX_FILE_COLLISION_RETRIES)
     candidate = out_path
 
     # 如果用户允许覆盖，直接尝试删除旧文件（若删除失败，则视为不可写）
@@ -184,7 +199,8 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
     if n_non:
         # 记录示例行用于诊断
-        samp_n = min(int(cfg.sample_rows or 0), n_non)
+        sample_rows_val = cfg.sample_rows if cfg.sample_rows is not None else DEFAULT_SAMPLE_ROWS
+        samp_n = min(int(sample_rows_val), n_non)
         if samp_n > 0:
             idxs = list(np.where(mask_array)[0][:samp_n])
             examples = [chunk_df.iloc[idx].to_dict() for idx in idxs]
@@ -268,12 +284,9 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
     open_mode = 'w' if mode == 'w' else 'a'
     # 以文本模式打开文件句柄，并直接将 DataFrame 写入该句柄以节省内存
-    # 写入重试参数
-    max_write_attempts = 3
-    backoffs = [0.1, 0.5, 1.0]
-
+    # 写入重试参数（使用模块级常量）
     last_exc = None
-    for attempt in range(1, max_write_attempts + 1):
+    for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
         try:
             with open(out_path, open_mode, encoding='utf-8', newline='') as f:
                 # 优先使用 portalocker 提供跨平台一致的锁定语义
@@ -313,13 +326,13 @@ def process_df_chunk(chunk_df: pd.DataFrame,
         except Exception as e:
             last_exc = e
             if isinstance(e, PermissionError):
-                logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, max_write_attempts, e, exc_info=True)
+                logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e, exc_info=True)
             else:
-                logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, max_write_attempts, e)
+                logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
 
             # 如果不是最后一次尝试，则等待退避后重试
-            if attempt < max_write_attempts:
-                time.sleep(backoffs[min(attempt-1, len(backoffs)-1)])
+            if attempt < SHARED_RETRY_ATTEMPTS:
+                time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt-1, len(WRITE_RETRY_BACKOFF_SECONDS)-1)])
             else:
                 # 记录完整堆栈以便诊断
                 logger.exception("写入失败，达到最大重试次数")
@@ -497,8 +510,8 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
             total_non_numeric += non_num
 
         # 完成后使用 os.replace 做原子替换（跨平台），并提供重试/退避策略以应对并发场景
-        replace_attempts = 3
-        replace_backoffs = [0.1, 0.5, 1.0]
+        replace_attempts = SHARED_RETRY_ATTEMPTS
+        replace_backoffs = REPLACE_RETRY_BACKOFFS
         replaced = False
         replace_err = None
         for ri in range(1, replace_attempts + 1):
