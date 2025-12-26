@@ -6,7 +6,7 @@ from typing import Any
 
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
-from src.cli_helpers import load_project_calculator, configure_logging
+from src.cli_helpers import attempt_load_project_data, configure_logging
 from src.registry_cli import registry as registry_cmd
 
 
@@ -104,7 +104,19 @@ def main(ctx, config_path, input_path, output_path, force, moment):
 
     click.echo(f"\n[1] 加载配置: {cfg_path}")
     try:
-        project_data, calculator = load_project_calculator(cfg_path)
+        # 使用统一尝试加载封装，便于 strict vs fallback 策略
+        project_data = attempt_load_project_data(cfg_path, strict=not interactive)
+        # attempt_load_project_data 在 strict=False 时返回 (None, info)
+        if isinstance(project_data, tuple):
+            # 非严格回退，实际返回 (None, info)
+            project_data, info = project_data
+            if project_data is None:
+                err = {"error": True, "message": info.get('message', '加载失败'), "hint": info.get('suggestion'), "code": 4}
+                sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+                sys.exit(4)
+        # 构造计算器
+        from src.physics import AeroCalculator
+        calculator = AeroCalculator(project_data)
     except Exception as e:
         err = {"error": True, "message": f"无法加载配置: {str(e)}", "hint": "配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。", "code": 4}
         sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")

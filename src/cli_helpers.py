@@ -265,3 +265,22 @@ def load_project_calculator(config_path: str):
         raise ValueError(f"配置文件不是有效的 JSON: {config_path} -> {e}") from e
     except KeyError as e:
         raise ValueError(f"配置文件缺少必要字段: {e}") from e
+
+
+def attempt_load_project_data(path: str, *, strict: bool = True):
+    """
+    便捷包装：尝试加载项目数据并根据 strict 策略返回或抛出异常。
+
+    - 成功：返回 ProjectData
+    - 失败且 strict=True：抛出 ValueError，消息友好
+    - 失败且 strict=False：返回 (None, info_dict)
+    """
+    from src.data_loader import try_load_project_data
+
+    ok, project_data, info = try_load_project_data(path, strict=strict)
+    if ok:
+        return project_data
+    if strict:
+        # 抛出包含建议的错误，便于上层捕获并显示
+        raise ValueError(f"加载配置失败: {info.get('message')} 建议: {info.get('suggestion')}")
+    return None, info
