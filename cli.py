@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 import click
 from typing import Any
 
@@ -71,14 +72,25 @@ def main(ctx, config_path, input_path, output_path, force, moment):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     default_config = os.path.join(base_dir, 'data', 'input.json')
 
-    # 优先使用 -c/--config，其次兼容 -i/--input，最后使用默认配置文件
-    cfg_path = config_path or input_path or default_config
+    # 优先使用 -c/--config，其次兼容 -i/--input
+    cfg_path = config_path or input_path
 
-    # 在尝试加载前先检查配置文件是否存在，给出友好错误提示
+    # 非交互脚本调用（stdin 非 tty）时强制要求显式提供 config/input
+    interactive = sys.stdin.isatty()
+    if not cfg_path and not interactive:
+        err = {"error": True, "message": "非交互模式下必须提供 --config/-c 或 --input/-i", "code": 2}
+        sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+        sys.exit(2)
+
+    # 回退到默认配置仅在交互模式下允许
+    if not cfg_path:
+        cfg_path = default_config
+
+    # 在尝试加载前先检查配置文件是否存在，给出机器可读错误
     if not os.path.exists(cfg_path):
-        click.echo(f"[致命错误] 配置文件未找到: {cfg_path}")
-        click.echo("提示: 使用 -c/--config 指定配置文件，或运行 creator.py 生成 data/input.json")
-        raise click.Abort()
+        err = {"error": True, "message": f"配置文件未找到: {cfg_path}", "hint": "使用 -c/--config 指定配置文件，或运行 creator.py 生成 data/input.json", "code": 3}
+        sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+        sys.exit(3)
 
     raw_forces = list(force) if force is not None else None
     raw_moments = list(moment) if moment is not None else None
@@ -93,10 +105,10 @@ def main(ctx, config_path, input_path, output_path, force, moment):
     click.echo(f"\n[1] 加载配置: {cfg_path}")
     try:
         project_data, calculator = load_project_calculator(cfg_path)
-    except ValueError as e:
-        click.echo(f"[致命错误] 无法加载配置: {e}")
-        click.echo("提示: 配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。")
-        raise click.Abort()
+    except Exception as e:
+        err = {"error": True, "message": f"无法加载配置: {str(e)}", "hint": "配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。", "code": 4}
+        sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+        sys.exit(4)
 
     click.echo('[2] 执行计算...')
     result = calculator.process_frame(raw_forces, raw_moments)

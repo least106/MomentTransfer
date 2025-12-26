@@ -165,7 +165,7 @@ def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
                 local = load_format_from_file(str(reg_fmt))
                 _merge_batch_config(cfg, local)
                 return cfg
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             # registry 查询失败时不阻塞，降级到本地侧车/目录/全局策略，但记录具体原因便于排查
             logging.getLogger(__name__).warning(
                 "Registry lookup failed for file %r with registry_db %r: %s",
@@ -230,8 +230,9 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
         logger.removeHandler(h)
         try:
             h.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # 仅记录调试信息，避免在关闭 handler 时抛出
+            logger.debug("关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True)
 
     fmt = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
 
