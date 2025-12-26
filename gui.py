@@ -191,45 +191,45 @@ class ColumnMappingDialog(QDialog):
 
     def set_config(self, cfg: dict):
         """用已有配置填充对话框控件，兼容部分字段缺失的情况。"""
+        if not isinstance(cfg, dict):
+            return
+
+        if 'skip_rows' in cfg:
+            try:
+                self.spin_skip_rows.setValue(int(cfg.get('skip_rows', 0)))
+            except (ValueError, TypeError) as e:
+                print(f"[ColumnMappingDialog.set_config] Invalid skip_rows value {cfg.get('skip_rows')!r}: {e}",
+                      file=sys.stderr)
+
+        cols = cfg.get('columns') or cfg.get('Columns') or {}
         try:
-            if not isinstance(cfg, dict):
-                return
-            if 'skip_rows' in cfg:
-                try:
-                    self.spin_skip_rows.setValue(int(cfg.get('skip_rows', 0)))
-                except Exception:
-                    pass
+            if 'alpha' in cols and cols.get('alpha') is not None:
+                self.col_alpha.setValue(int(cols.get('alpha')))
+            if 'fx' in cols and cols.get('fx') is not None:
+                self.col_fx.setValue(int(cols.get('fx')))
+            if 'fy' in cols and cols.get('fy') is not None:
+                self.col_fy.setValue(int(cols.get('fy')))
+            if 'fz' in cols and cols.get('fz') is not None:
+                self.col_fz.setValue(int(cols.get('fz')))
+            if 'mx' in cols and cols.get('mx') is not None:
+                self.col_mx.setValue(int(cols.get('mx')))
+            if 'my' in cols and cols.get('my') is not None:
+                self.col_my.setValue(int(cols.get('my')))
+            if 'mz' in cols and cols.get('mz') is not None:
+                self.col_mz.setValue(int(cols.get('mz')))
+        except (ValueError, TypeError) as e:
+            print(f"[ColumnMappingDialog.set_config] Invalid column indices in {cols!r}: {e}",
+                  file=sys.stderr)
 
-            cols = cfg.get('columns') or cfg.get('Columns') or {}
-            try:
-                if 'alpha' in cols and cols.get('alpha') is not None:
-                    self.col_alpha.setValue(int(cols.get('alpha')))
-                if 'fx' in cols and cols.get('fx') is not None:
-                    self.col_fx.setValue(int(cols.get('fx')))
-                if 'fy' in cols and cols.get('fy') is not None:
-                    self.col_fy.setValue(int(cols.get('fy')))
-                if 'fz' in cols and cols.get('fz') is not None:
-                    self.col_fz.setValue(int(cols.get('fz')))
-                if 'mx' in cols and cols.get('mx') is not None:
-                    self.col_mx.setValue(int(cols.get('mx')))
-                if 'my' in cols and cols.get('my') is not None:
-                    self.col_my.setValue(int(cols.get('my')))
-                if 'mz' in cols and cols.get('mz') is not None:
-                    self.col_mz.setValue(int(cols.get('mz')))
-            except Exception:
-                pass
-
-            passthrough = cfg.get('passthrough') or cfg.get('Passthrough') or []
-            try:
-                if isinstance(passthrough, (list, tuple)):
-                    self.txt_passthrough.setText(','.join(str(int(x)) for x in passthrough))
-                elif isinstance(passthrough, str):
-                    self.txt_passthrough.setText(passthrough)
-            except Exception:
-                pass
-        except Exception:
-            pass
-
+        passthrough = cfg.get('passthrough') or cfg.get('Passthrough') or []
+        try:
+            if isinstance(passthrough, (list, tuple)):
+                self.txt_passthrough.setText(','.join(str(int(x)) for x in passthrough))
+            elif isinstance(passthrough, str):
+                self.txt_passthrough.setText(passthrough)
+        except (ValueError, TypeError) as e:
+            print(f"[ColumnMappingDialog.set_config] Invalid passthrough values {passthrough!r}: {e}",
+                  file=sys.stderr)
 
 class BatchProcessThread(QThread):
     """在后台线程中执行批量处理，发出进度与日志信号"""
@@ -702,8 +702,10 @@ class IntegratedAeroGUI(QMainWindow):
         file_list_layout.addWidget(self.file_scroll)
         self.grp_file_list.setLayout(file_list_layout)
 
-        # 存储 (checkbox, Path)
-        self._file_check_items = []
+        # 存储文件复选框相关信息的元组列表。
+        # 每个元素为 (checkbox: QCheckBox, path: Path, label: Optional[QLabel])，
+        # 其中 label 可选，因此在使用处可能通过 *rest 等方式解包。
+        self._file_check_items: list[tuple[QCheckBox, Path, Optional[QLabel]]] = []
 
 
         # 数据格式配置按钮（并作为实例属性，放入可切换的容器）
@@ -1822,17 +1824,20 @@ class IntegratedAeroGUI(QMainWindow):
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✗ 错误: {error_msg}")
         self.progress_bar.setVisible(False)
         self.statusBar().showMessage("批量处理失败")
-        QMessageBox.critical(self, "错误", f"批处理失败:\n{error_msg}")
 
-    def update_button_layout(self, threshold=720):
+    BUTTON_LAYOUT_THRESHOLD = 720
+    def update_button_layout(self, threshold=None):
         """根据窗口宽度在网格中切换按钮位置。
 
         参数 `threshold` 的单位为像素（px）。当窗口宽度大于或等于阈值时，
         按钮按一行两列排列；当宽度小于阈值时，按钮按两行单列排列（便于窄屏显示）。
 
-        选择 720px 作为默认值是经验值：在常见桌面窗口与侧栏宽度下能保持两按钮在一行。
+        默认阈值 720px 由类常量 ``BUTTON_LAYOUT_THRESHOLD`` 提供，可根据实际布局和用户屏幕密度微调该值。
         可根据实际布局和用户屏幕密度微调该值。
         """
+        if threshold is None:
+            threshold = self.BUTTON_LAYOUT_THRESHOLD
+        
         if not hasattr(self, 'btn_widget'):
             return
         try:
@@ -1945,7 +1950,16 @@ class IntegratedAeroGUI(QMainWindow):
         return super().showEvent(event)
 
     def _force_layout_refresh(self):
-        """尝试强制刷新布局：激活布局并做一个极小的像素级尺寸微调以触发布局重算。"""
+        """
+        尝试强制刷新布局：激活布局并做一个极小的像素级尺寸微调以触发布局重算。
+
+        说明：
+        由于 Qt（包括 PySide6/PyQt5）在某些复杂嵌套布局下，调用 layout().activate() 或 processEvents() 可能无法立即刷新所有控件的实际显示，
+        尤其是涉及 QSplitter/QScrollArea/QTabWidget 等嵌套时。此处采用“窗口宽度+2像素再还原”的 hack，
+        能强制 Qt 的底层布局引擎重新计算和应用所有控件的尺寸与位置。
+        该方法在 Windows/Linux/Mac 下 Qt 5/6 均有效，但未来 Qt 版本可能修复此类刷新 bug 时可移除。
+        若主窗口被设置为不可调整大小，则此 hack 可能无效。
+        """
         try:
             cw = self.centralWidget()
             if cw and cw.layout():
@@ -1956,6 +1970,7 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 pass
 
+            # --- Qt 布局刷新 hack ---
             # 微调窗口宽度 (+2 然后恢复) 以触发底层布局引擎重新布局。
             w = self.width()
             h = self.height()
