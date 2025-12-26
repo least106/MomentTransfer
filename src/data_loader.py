@@ -212,3 +212,36 @@ def load_data(file_path: str) -> ProjectData:
         raise ValueError(f"错误: 文件 {file_path} 不是有效的 JSON 格式。")
     except KeyError as e:
         raise KeyError(f"错误: JSON 数据缺少关键字段 {e}，请检查输入文件结构。")
+
+
+def try_load_project_data(file_path: str, *, strict: bool = True):
+    """
+    尝试加载并验证项目配置文件，返回结构化结果以便 CLI/GUI 决定回退策略。
+
+    返回 (success: bool, project_data or None, info: dict or None)
+    info 在失败时包含 'message' 与 'suggestion' 字段。
+    如果 strict=True，则在遇到致命错误时也返回结构化信息（不抛出），调用方可选择抛出。
+    """
+    try:
+        pd = load_data(file_path)
+        return True, pd, None
+    except FileNotFoundError as e:
+        info = {
+            'message': str(e),
+            'suggestion': '检查路径或使用 creator.py 生成 data/input.json。'
+        }
+        return False, None, info
+    except json.JSONDecodeError as e:
+        info = {
+            'message': f'配置文件不是有效的 JSON: {e}',
+            'suggestion': '请使用 JSON 校验工具检查语法或修复格式错误。'
+        }
+        return False, None, info
+    except (ValueError, KeyError) as e:
+        # 语义/缺失字段类错误，提供修复建议
+        msg = str(e)
+        suggestion = '检查配置是否包含 Source/Target、Target.MomentCenter、Target.Q、Target.S 等必需字段，或使用 creator.py 生成兼容配置。'
+        return False, None, {'message': msg, 'suggestion': suggestion}
+    except Exception as e:
+        # 未知错误：返回通用建议
+        return False, None, {'message': str(e), 'suggestion': '查看完整异常并检查文件权限/编码。'}
