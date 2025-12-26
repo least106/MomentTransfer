@@ -5,6 +5,8 @@ import warnings
 # 模块级常量：可根据不同应用场景调整
 ORTHOGONALITY_THRESHOLD = 0.05  # 允许基向量之间一定误差
 SINGULARITY_THRESHOLD = 1e-6    # 判断基矩阵是否接近奇异的阈值
+# 用于判断零向量或在投影时分母接近零的阈值（与奇异性阈值分开，便于微调）
+ZERO_VECTOR_THRESHOLD = 1e-10
 
 # 基础向量工具
 def to_numpy_vec(vec: List[float]) -> np.ndarray:
@@ -20,7 +22,7 @@ def normalize(vec: np.ndarray) -> np.ndarray:
         ValueError: 当输入向量为零向量时抛出异常
     """
     norm = np.linalg.norm(vec)
-    if norm < 1e-10:  # 使用小阈值避免数值精度问题
+    if norm < ZERO_VECTOR_THRESHOLD:  # 使用模块级阈值以便维护和统一
         raise ValueError(f"无法归一化零向量或接近零的向量: {vec}，模长: {norm}")
     return vec / norm
 
@@ -42,6 +44,10 @@ def construct_basis_matrix(
     可选参数:
         orthogonality_threshold: 正交性判定阈值，点积超过此值会触发警告。
         singularity_threshold: 行列式绝对值低于此值会被视为接近奇异并抛出异常。
+        orthogonalize: 当检测到轻微不正交（超过 orthogonality_threshold）时，是否自动对基向量进行再正交化。
+                       建议在允许对输入基向量做小幅修正、希望提高数值稳健性时开启。
+        strict: 是否采用严格模式。为 True 时，一旦不满足正交性阈值将直接抛出 ValueError；
+                为 False 时，仅给出 warnings 警告（配合 orthogonalize=False 可用于容忍轻微不正交的场景）。
 
     Raises:
         ValueError: 当输入向量为零或基矩阵接近奇异时抛出异常
@@ -68,7 +74,10 @@ def construct_basis_matrix(
         if orthogonalize:
             # 使用 Gram–Schmidt 进行正交化并归一化
             def proj(u, v):
-                return (np.dot(v, u) / np.dot(u, u)) * u
+                denom = np.dot(u, u)
+                if denom < ZERO_VECTOR_THRESHOLD:
+                    raise ValueError("Cannot project onto zero vector")
+                return (np.dot(v, u) / denom) * u
 
             u1 = vx
             # 从 vy 中去掉在 u1 上的分量
@@ -96,7 +105,6 @@ def construct_basis_matrix(
     else:
         basis = np.array([vx, vy, vz])
 
-    basis = np.array([vx, vy, vz])
 
     # 进一步检查基矩阵的线性相关性（行列式接近零表示基向量线性相关 -> 奇异矩阵）
     det = np.linalg.det(basis)
