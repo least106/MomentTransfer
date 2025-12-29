@@ -50,6 +50,8 @@ python -m src.CL_main
 
 程序会读取 `data/input.json` 配置文件，执行计算并将结果保存到 `data/output_result.json`。
 
+⚠️ 注意：程序的生产路径默认**不启用** per-file 侧车配置（即不会自动查找 CSV 对应的 `.format.json` 侧车或目录级 `format.json`）；若需要逐文件覆盖配置（仅用于示例或调试），可通过命令行显式启用：使用 `--enable-sidecar`（默认关闭），并可结合实验性 `--registry-db` 指定 registry 数据库；详见 `examples/per_file_config_demo.py`。
+
 **预期输出示例**：
 ```
 [开始] 运行力矩变换程序...
