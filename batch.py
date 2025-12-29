@@ -897,8 +897,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--timestamp-format', 'timestamp_format', default=None, help='时间戳格式，用于 {timestamp} 占位符，默认 %%Y%%m%%d_%%H%%M%%S')
 @click.option('--treat-non-numeric', 'treat_non_numeric', type=click.Choice(['zero','nan','drop']), default=None, help='如何处理非数值输入: zero|nan|drop')
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
-@click.option('--part', 'part_name', default=None, help='目标 part 名称（默认使用第一个 Part）')
-@click.option('--variant', 'variant_index', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
+@click.option('--target-part', 'target_part', default=None, help='目标 part 名称（必须指定或通过参数提供）')
+@click.option('--target-variant', 'target_variant', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
 @click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
 @click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
 @click.option('--dry-run', 'dry_run', is_flag=True, help='仅解析并显示将处理的文件与输出路径，但不实际写入')
@@ -922,8 +922,8 @@ def main(**cli_options):
     timestamp_format = cli_options.get('timestamp_format')
     treat_non_numeric = cli_options.get('treat_non_numeric')
     sample_rows = cli_options.get('sample_rows')
-    part_name = cli_options.get('part_name')
-    variant_index = cli_options.get('variant_index')
+    target_part = cli_options.get('target_part')
+    target_variant = cli_options.get('target_variant')
     registry_db = cli_options.get('registry_db')
     strict = cli_options.get('strict')
     dry_run = cli_options.get('dry_run')
@@ -1137,8 +1137,8 @@ def main(**cli_options):
                 show_progress=show_progress,
                 output_json=output_json,
                 summary=summary,
-                target_part=part_name,
-                target_variant=variant_index,
+                target_part=target_part,
+                target_variant=target_variant,
             )
             sys.exit(0)
     except Exception:

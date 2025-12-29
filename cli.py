@@ -64,10 +64,10 @@ def cli(ctx, verbose, log_file):
 @click.option('--moment', type=(float, float, float), default=None,
               help='输入力矩向量 (例如: --moment 0 500 0)')
 @click.pass_context
-@click.option('--part', 'part_name', default=None, help='目标 part 名称（默认使用第一个 Part）')
-@click.option('--variant', 'variant_index', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
+@click.option('--target-part', 'target_part', default=None, help='目标 part 名称（必须指定或通过参数提供）')
+@click.option('--target-variant', 'target_variant', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
 @click.pass_context
-def main(ctx, config_path, input_path, output_path, force, moment, json_errors, part_name, variant_index):
+def main(ctx, config_path, input_path, output_path, force, moment, json_errors, target_part, target_variant):
     """气动载荷坐标变换工具（click CLI）
 
     支持非交互模式通过 `--force` 与 `--moment` 指定载荷。
@@ -128,10 +128,11 @@ def main(ctx, config_path, input_path, output_path, force, moment, json_errors, 
             project_data = loaded
 
         from src.physics import AeroCalculator
-        # 若指定了 part/variant，则构造带选择的计算器
-        if part_name is not None:
-            calculator = AeroCalculator(project_data, target_part=part_name, target_variant=variant_index)
+        # 若指定了 target_part/target_variant，则构造带选择的计算器
+        if target_part is not None:
+            calculator = AeroCalculator(project_data, target_part=target_part, target_variant=target_variant)
         else:
+            # 当配置为多 Part 时，load_project_calculator / AeroCalculator 会要求显式提供 target_part
             calculator = AeroCalculator(project_data)
     except Exception as e:
         _error_exit(f"无法加载配置: {str(e)}", code=4, hint="配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。")
