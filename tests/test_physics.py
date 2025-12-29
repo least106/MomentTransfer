@@ -25,13 +25,15 @@ def create_test_project_data(q=100.0, s_ref=1.0, c_ref=1.0, b_ref=2.0, source_or
     source_cfg = FrameConfiguration(part_name="Source", coord_system=src_coord)
     target_cfg = FrameConfiguration(part_name="TestPart", coord_system=tgt_coord, moment_center=target_moment_center, c_ref=c_ref, b_ref=b_ref, q=q, s_ref=s_ref)
 
-    return ProjectData(source_config=source_cfg, target_config=target_cfg)
+    return ProjectData(source_parts={source_cfg.part_name: [source_cfg]}, target_parts={target_cfg.part_name: [target_cfg]})
 
 
 class TestAeroCalculatorProcessFrame:
     def test_identity_transformation(self):
         project = create_test_project_data(q=100.0, s_ref=1.0, source_origin=[0, 0, 0], target_moment_center=[0, 0, 0])
         calc = AeroCalculator(project)
+        # 注入 cfg 以兼容新版实现
+        calc.cfg = project
 
         force = [100.0, 0.0, 1000.0]
         moment = [0.0, 50.0, 0.0]
@@ -45,6 +47,7 @@ class TestAeroCalculatorProcessFrame:
     def test_moment_transfer(self):
         project = create_test_project_data(q=100.0, s_ref=1.0, source_origin=[1.0, 0.0, 0.0], target_moment_center=[0.0, 0.0, 0.0])
         calc = AeroCalculator(project)
+        calc.cfg = project
 
         force = [0.0, 0.0, 100.0]
         moment = [0.0, 0.0, 0.0]

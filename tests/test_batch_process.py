@@ -27,6 +27,8 @@ def test_process_single_file_chunksize_drop(tmp_path):
 
     project = load_data('data/input.json')
     calc = AeroCalculator(project)
+    # Ensure calculator has cfg reference for coeff calculations
+    calc.cfg = project
 
     cfg = BatchConfig()
     cfg.skip_rows = 0

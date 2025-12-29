@@ -133,12 +133,16 @@ class TestLoadData:
     
     def test_load_valid_json(self):
         """测试加载合法的 JSON 文件"""
+        # 使用新版 ProjectData 的格式（包含 Source / Target 部分）
         valid_data = {
-            "SourceCoordSystem": {
-                "Orig": [0, 0, 0],
-                "X": [1, 0, 0],
-                "Y": [0, 1, 0],
-                "Z": [0, 0, 1]
+            "Source": {
+                "PartName": "SrcPart",
+                "CoordSystem": {
+                    "Orig": [0, 0, 0],
+                    "X": [1, 0, 0],
+                    "Y": [0, 1, 0],
+                    "Z": [0, 0, 1]
+                }
             },
             "Target": {
                 "PartName": "TestPart",

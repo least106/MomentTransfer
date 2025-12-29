@@ -17,6 +17,8 @@ def test_gui_background_thread_processing(tmp_path, qtbot=None):
 
     # 使用项目自带的配置加载计算器
     project_data, calculator = load_project_calculator('data/input.json')
+    # 确保 calculator 包含 cfg 引用以兼容新版实现
+    calculator.cfg = project_data
 
     # 创建一个简单 CSV
     csv_file = tmp_path / 'g_sample.csv'

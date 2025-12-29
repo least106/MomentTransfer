@@ -20,6 +20,8 @@ def test_process_single_file_creates_complete_flag(tmp_path):
 
     # load calculator from sample project config
     project_data, calculator = load_project_calculator('data/input.json')
+    # 新版 AeroCalculator 不再自动保留 project 引用，测试中显式设置以兼容 process_batch
+    calculator.cfg = project_data
 
     cfg = load_format_from_file('data/default.format.json')
     # ensure output goes to tmp_path

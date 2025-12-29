@@ -15,7 +15,9 @@ def _worker_write(args):
     out_path = Path(args['out_path'])
 
     # 重建计算器与配置
-    _, calculator = load_project_calculator(project_path)
+    project_data, calculator = load_project_calculator(project_path)
+    # 在子进程中也确保 calculator 包含 cfg（新版要求）
+    calculator.cfg = project_data
     cfg = BatchConfig()
     cfg.column_mappings = {'fx': 0, 'fy': 1, 'fz': 2, 'mx': 3, 'my': 4, 'mz': 5}
     cfg.passthrough_columns = []
@@ -49,7 +51,9 @@ def test_concurrent_appends_to_same_file(tmp_path):
     import batch as b
     from src.cli_helpers import load_project_calculator, BatchConfig
 
-    _, calculator = load_project_calculator(project_config)
+    project_data, calculator = load_project_calculator(project_config)
+    # 主进程也设置 cfg
+    calculator.cfg = project_data
     cfg = BatchConfig()
     cfg.column_mappings = {'fx': 0, 'fy': 1, 'fz': 2, 'mx': 3, 'my': 4, 'mz': 5}
     cfg.passthrough_columns = []

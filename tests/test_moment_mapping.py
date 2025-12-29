@@ -10,7 +10,8 @@ def create_test_project_data(q=10.0, s_ref=2.0, c_ref=1.0, b_ref=4.0):
     source_cfg = FrameConfiguration(part_name="Source", coord_system=src_coord)
     target_cfg = FrameConfiguration(part_name="Target", coord_system=tgt_coord, moment_center=[0.0, 0.0, 0.0], c_ref=c_ref, b_ref=b_ref, q=q, s_ref=s_ref)
 
-    return ProjectData(source_config=source_cfg, target_config=target_cfg)
+    # 新的 ProjectData 构造采用 parts 字典形式
+    return ProjectData(source_parts={source_cfg.part_name: [source_cfg]}, target_parts={target_cfg.part_name: [target_cfg]})
 
 
 def test_moment_coeff_mapping():
@@ -22,6 +23,8 @@ def test_moment_coeff_mapping():
 
     project = create_test_project_data(q=q, s_ref=s_ref, c_ref=c_ref, b_ref=b_ref)
     calc = AeroCalculator(project)
+    # 为新版 AeroCalculator 注入 cfg 引用
+    calc.cfg = project
 
     # 提供零力，只提供已知矩，旋转与移轴均为单位/零以简化验证
     forces = np.zeros((1, 3))
