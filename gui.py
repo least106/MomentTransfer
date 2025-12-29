@@ -164,15 +164,32 @@ class ColumnMappingDialog(QDialog):
         layout_pass.addWidget(self.txt_passthrough)
         grp_pass.setLayout(layout_pass)
 
-        # 按钮
+        # 标准按钮 OK/Cancel
         btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btn_box.accepted.connect(self.accept)
         btn_box.rejected.connect(self.reject)
 
+        # 额外的保存按钮，允许用户把当前列映射直接保存为 JSON 文件（便于复用）
+        self.btn_save_format = QPushButton("保存")
+        self.btn_save_format.setToolTip("将当前数据格式保存为 JSON 文件")
+        self.btn_save_format.clicked.connect(self._on_dialog_save)
+
+        # 额外的加载按钮，允许用户从 JSON 文件加载数据格式到对话框（不关闭对话）
+        self.btn_load_format = QPushButton("加载")
+        self.btn_load_format.setToolTip("从 JSON 文件加载数据格式到当前对话框")
+        self.btn_load_format.clicked.connect(self._on_dialog_load)
+
+        # 按钮行：保存 | 加载 | OK | Cancel
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(self.btn_save_format)
+        btn_row.addWidget(self.btn_load_format)
+        btn_row.addWidget(btn_box)
+
         layout.addWidget(grp_skip)
         layout.addWidget(grp_columns)
         layout.addWidget(grp_pass)
-        layout.addWidget(btn_box)
+        layout.addLayout(btn_row)
 
     def get_config(self):
         """获取并返回配置字典"""
@@ -243,6 +260,82 @@ class ColumnMappingDialog(QDialog):
         except (ValueError, TypeError) as e:
             logger.warning("Invalid passthrough values %r: %s", passthrough, e, exc_info=True)
 
+    def _on_dialog_save(self):
+        """把当前对话框配置另存为 JSON 文件（不关闭对话）。"""
+        try:
+            cfg = self.get_config()
+            fname, _ = QFileDialog.getSaveFileName(self, '保存格式为', 'format.json', 'JSON Files (*.json)')
+            if not fname:
+                return
+            p = Path(fname)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, 'w', encoding='utf-8') as fh:
+                json.dump(cfg, fh, indent=2, ensure_ascii=False)
+            QMessageBox.information(self, '已保存', f'格式已保存到: {fname}')
+        except Exception as e:
+            QMessageBox.warning(self, '保存失败', f'无法保存格式: {e}')
+
+    def _on_dialog_load(self):
+        """从 JSON 文件加载数据格式并填充对话框（不关闭对话）。"""
+        try:
+            fname, _ = QFileDialog.getOpenFileName(self, '加载格式文件', '', 'JSON Files (*.json)')
+            if not fname:
+                return
+            with open(fname, 'r', encoding='utf-8') as fh:
+                cfg = json.load(fh)
+            if not isinstance(cfg, dict):
+                raise ValueError('格式文件应为 JSON 对象')
+            self.set_config(cfg)
+            QMessageBox.information(self, '已加载', f'已从 {fname} 加载格式并填充对话框')
+        except Exception as e:
+            QMessageBox.warning(self, '加载失败', f'无法加载格式: {e}')
+
+    def _on_src_partname_changed(self, new_text: str):
+        """当用户编辑 Source 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。"""
+        try:
+            # 更新下拉中的当前项文本
+            if hasattr(self, 'cmb_source_parts') and self.cmb_source_parts.isVisible() and self.cmb_source_parts.count() > 0:
+                idx = self.cmb_source_parts.currentIndex()
+                if idx >= 0:
+                    # 获取旧名字（记录或下拉之前的文本）
+                    old = getattr(self, '_current_source_part_name', None)
+                    # 更新下拉项
+                    try:
+                        self.cmb_source_parts.setItemText(idx, new_text)
+                    except Exception:
+                        pass
+                    # 如果 current_config 中存在旧 key，尝试重命名 key
+                    try:
+                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
+                            if old in self.current_config.source_parts:
+                                self.current_config.source_parts[new_text] = self.current_config.source_parts.pop(old)
+                    except Exception:
+                        logger.debug("重命名 current_config.source_parts 失败", exc_info=True)
+                    # 更新记录的当前名
+                    self._current_source_part_name = new_text
+        except Exception:
+            logger.debug("_on_src_partname_changed failed", exc_info=True)
+
+    def _on_tgt_partname_changed(self, new_text: str):
+        """当用户编辑 Target 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。"""
+        try:
+            if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
+                idx = self.cmb_target_parts.currentIndex()
+                if idx >= 0:
+                    old = getattr(self, '_current_target_part_name', None)
+                    try:
+                        self.cmb_target_parts.setItemText(idx, new_text)
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
+                            if old in self.current_config.target_parts:
+                                self.current_config.target_parts[new_text] = self.current_config.target_parts.pop(old)
+                    except Exception:
+                        logger.debug("重命名 current_config.target_parts 失败", exc_info=True)
+                    self._current_target_part_name = new_text
+        except Exception:
+            logger.debug("_on_tgt_partname_changed failed", exc_info=True)
 class BatchProcessThread(QThread):
     """在后台线程中执行批量处理，发出进度与日志信号"""
     progress = Signal(int)
@@ -571,7 +664,20 @@ class IntegratedAeroGUI(QMainWindow):
         self.src_oz = self._create_input("0.0")
 
         # Source Part Name（与 Target 对等）
+        # 支持多 Part/Variant 的下拉选择（当从 ProjectData 加载时会显示）
         self.src_part_name = self._create_input("Global")
+        # 当用户直接编辑 Part Name 时，实时更新下拉列表（若可见）与 current_config 的键名
+        try:
+            self.src_part_name.textChanged.connect(self._on_src_partname_changed)
+        except Exception:
+            logger.debug("无法连接 src_part_name.textChanged", exc_info=True)
+        self.cmb_source_parts = QComboBox()
+        self.cmb_source_parts.setVisible(False)
+        self.spin_source_variant = QSpinBox()
+        self.spin_source_variant.setRange(0, 100)
+        self.spin_source_variant.setValue(0)
+        self.spin_source_variant.setVisible(False)
+        self.cmb_source_parts.currentTextChanged.connect(lambda _: self._on_source_part_changed())
 
         self.src_xx = self._create_input("1.0")
         self.src_xy = self._create_input("0.0")
@@ -590,7 +696,10 @@ class IntegratedAeroGUI(QMainWindow):
         self.src_mcy = self._create_input("0.0")
         self.src_mcz = self._create_input("0.0")
 
+        # 当有多个 source part 时显示下拉；否则使用自由文本框
         form_source.addRow("Part Name:", self.src_part_name)
+        form_source.addRow("选择 Source Part:", self.cmb_source_parts)
+        form_source.addRow("Source Variant:", self.spin_source_variant)
         form_source.addRow("Orig:", self._create_vector_row(self.src_ox, self.src_oy, self.src_oz))
         form_source.addRow("X:", self._create_vector_row(self.src_xx, self.src_xy, self.src_xz))
         form_source.addRow("Y:", self._create_vector_row(self.src_yx, self.src_yy, self.src_yz))
@@ -620,6 +729,10 @@ class IntegratedAeroGUI(QMainWindow):
 
         # Part Name
         self.tgt_part_name = QLineEdit("TestModel")
+        try:
+            self.tgt_part_name.textChanged.connect(self._on_tgt_partname_changed)
+        except Exception:
+            logger.debug("无法连接 tgt_part_name.textChanged", exc_info=True)
         form_target.addRow("Part Name:", self.tgt_part_name)
 
         # 当加载 ProjectData 时，展示可选的 Part 下拉框与 Variant 索引选择器
@@ -899,6 +1012,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_config_format.setFixedHeight(34)
         self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # （已移除）原先放在主界面的“加载数据格式”按钮已移入配置对话框，
+        # 避免与其他按钮重叠并提升可点击性。
         # 初始放置为一行两列（取消按钮放在第二行右侧）
         grid.addWidget(self.btn_config_format, 0, 0)
         grid.addWidget(self.btn_batch, 0, 1)
@@ -936,9 +1051,19 @@ class IntegratedAeroGUI(QMainWindow):
         # 让日志框占据剩余垂直空间，从而使外部 groupbox 底部贴近窗口底部
         # 对应索引: 0=file_form,1=grp_registry_list,2=grp_file_list,3=progress_bar,4=btn_widget,5=Label,6=txt_batch_log
         try:
-            # 使文件列表与日志框可以拉伸（优先日志框）
-            layout_batch.setStretch(2, 0)
-            layout_batch.setStretch(6, 1)
+            # 按实际索引设置伸缩：让日志框占据剩余空间，文件列表不拉伸
+            try:
+                idx_file_list = layout_batch.indexOf(self.grp_file_list)
+                if idx_file_list >= 0:
+                    layout_batch.setStretch(idx_file_list, 0)
+            except Exception:
+                pass
+            try:
+                idx_log = layout_batch.indexOf(self.txt_batch_log)
+                if idx_log >= 0:
+                    layout_batch.setStretch(idx_log, 1)
+            except Exception:
+                pass
         except Exception:
             logger.debug("layout_batch.setStretch failed (non-fatal)", exc_info=True)
 
@@ -1141,7 +1266,13 @@ class IntegratedAeroGUI(QMainWindow):
             project = ProjectData.from_dict(data)
             self.current_config = project
 
-            # 填充下拉列表与 variant 控件
+            # 记录上次加载的配置路径，以便后续保存时可直接覆盖原文件
+            try:
+                self._last_loaded_config_path = Path(fname)
+            except Exception:
+                self._last_loaded_config_path = None
+
+            # 填充 Target 下拉列表与 variant 控件
             self.cmb_target_parts.clear()
             for part in project.target_parts.keys():
                 self.cmb_target_parts.addItem(part)
@@ -1152,8 +1283,24 @@ class IntegratedAeroGUI(QMainWindow):
                 variants = project.target_parts.get(first, [])
                 self.spin_target_variant.setRange(0, max(0, len(variants) - 1))
 
-            # 使用选定的 variant 填充 Target 表单
+            # 填充 Source 下拉列表与 variant 控件（若存在多 Part）
             try:
+                self.cmb_source_parts.clear()
+                for part in project.source_parts.keys():
+                    self.cmb_source_parts.addItem(part)
+                if self.cmb_source_parts.count() > 0:
+                    self.cmb_source_parts.setVisible(True)
+                    self.spin_source_variant.setVisible(True)
+                    firsts = self.cmb_source_parts.currentText() or self.cmb_source_parts.itemText(0)
+                    s_variants = project.source_parts.get(firsts, [])
+                    self.spin_source_variant.setRange(0, max(0, len(s_variants) - 1))
+            except Exception:
+                # 若 project 未包含 source_parts，静默忽略
+                pass
+
+            # 使用选定的 variant 填充 Target 与 Source 表单
+            try:
+                # Target
                 sel_part = self.cmb_target_parts.currentText() or self.cmb_target_parts.itemText(0)
                 sel_variant = int(self.spin_target_variant.value())
                 frame = project.get_target_part(sel_part, sel_variant)
@@ -1180,7 +1327,44 @@ class IntegratedAeroGUI(QMainWindow):
                 self.tgt_bref.setText(str(frame.b_ref or 1.0))
                 self.tgt_sref.setText(str(frame.s_ref or 10.0))
                 self.tgt_q.setText(str(frame.q or 1000.0))
+                # Source（若有多 Part 则使用下拉，否则保留原文本框作为编辑）
+                try:
+                    if self.cmb_source_parts.count() > 0 and self.cmb_source_parts.isVisible():
+                        s_part = self.cmb_source_parts.currentText() or self.cmb_source_parts.itemText(0)
+                        s_variant = int(self.spin_source_variant.value())
+                        sframe = project.get_source_part(s_part, s_variant)
+                    else:
+                        # 退回到兼容访问器
+                        sframe = project.source_config
 
+                    scs = sframe.coord_system
+                    smc = sframe.moment_center or [0.0, 0.0, 0.0]
+                    self.src_part_name.setText(sframe.part_name)
+                    self.src_ox.setText(str(scs.origin[0]))
+                    self.src_oy.setText(str(scs.origin[1]))
+                    self.src_oz.setText(str(scs.origin[2]))
+                    self.src_xx.setText(str(scs.x_axis[0]))
+                    self.src_xy.setText(str(scs.x_axis[1]))
+                    self.src_xz.setText(str(scs.x_axis[2]))
+                    self.src_yx.setText(str(scs.y_axis[0]))
+                    self.src_yy.setText(str(scs.y_axis[1]))
+                    self.src_yz.setText(str(scs.y_axis[2]))
+                    self.src_zx.setText(str(scs.z_axis[0]))
+                    self.src_zy.setText(str(scs.z_axis[1]))
+                    self.src_zz.setText(str(scs.z_axis[2]))
+                    self.src_mcx.setText(str(smc[0]))
+                    self.src_mcy.setText(str(smc[1]))
+                    self.src_mcz.setText(str(smc[2]))
+                    self.src_cref.setText(str(sframe.c_ref or 1.0))
+                    self.src_bref.setText(str(sframe.b_ref or 1.0))
+                    self.src_sref.setText(str(sframe.s_ref or 10.0))
+                    # Source 的 Q 通常在 Target 上有校验，但也尝试设置
+                    try:
+                        self.src_q.setText(str(sframe.q or 1000.0))
+                    except Exception:
+                        pass
+                except Exception:
+                    logger.debug("在填充 Source 表单时发生错误（忽略）", exc_info=True)
             except Exception as e:
                 logger.debug("在填充 Target 表单时发生错误: %s", e, exc_info=True)
 
@@ -1249,6 +1433,19 @@ class IntegratedAeroGUI(QMainWindow):
                 "Source": {"Parts": [src_part]},
                 "Target": {"Parts": [tgt_part]}
             }
+
+            # 如果此前通过 "加载配置" 打开了一个文件，则优先直接覆盖该文件
+            try:
+                last = getattr(self, '_last_loaded_config_path', None)
+                if last:
+                    with open(last, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2)
+                    QMessageBox.information(self, "成功", f"配置已覆盖保存:\n{last}")
+                    self.statusBar().showMessage(f"已保存: {last}")
+                    return
+            except Exception:
+                # 如果直接覆盖失败，回退到另存为对话框
+                logger.debug("直接覆盖上次加载文件失败，退回到另存为", exc_info=True)
 
             fname, _ = QFileDialog.getSaveFileName(self, '保存配置', 'config.json', 'JSON Files (*.json)')
             # 用户取消保存时立即返回，避免继续执行或触发异常处理逻辑
@@ -1489,90 +1686,16 @@ class IntegratedAeroGUI(QMainWindow):
             dialog.set_config(initial_cfg)
 
         if dialog.exec() == QDialog.Accepted:
+            # 仅将对话框中的配置加载到当前会话并更新预览。
+            # 保存/注册操作由对话框内的“保存”按钮或 Registry 管理区显式触发，
+            # 因此移除自动弹窗询问，避免重复或令人困惑的确认框。
             self.data_config = dialog.get_config()
             try:
                 self.update_config_preview()
             except Exception:
                 logger.debug("update_config_preview failed after configure_data_format", exc_info=True)
 
-            # 在写文件/注册前询问用户意图，避免自动注册到 registry（registry 为实验性功能）
-            try:
-                cfg_to_write = self.data_config
-
-                resp = QMessageBox.question(
-                    self,
-                    '保存数据格式',
-                    '请选择保存方式：\n是: 保存并注册到 registry\n否: 仅保存为格式文件\n取消: 不保存',
-                    QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                )
-
-                if resp == QMessageBox.Cancel:
-                    self.txt_batch_log.append('已取消保存格式文件')
-                    return
-
-                # Helper to write cfg to path
-                def _write_json(pth: Path):
-                    pth.parent.mkdir(parents=True, exist_ok=True)
-                    with open(pth, 'w', encoding='utf-8') as fh:
-                        json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
-
-                # 若用户选择基于已有 registry 条目进行编辑（selected_registry_entry），总是写回到该 format 文件
-                if selected_registry_entry is not None:
-                    try:
-                        fmtp = Path(selected_registry_entry['format_path'])
-                        _write_json(fmtp)
-                        # 仅在用户选择 "保存并注册" 时更新映射（触发 timestamp 刷新）
-                        if resp == QMessageBox.Yes:
-                            try:
-                                dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
-                                update_mapping(dbp, int(selected_registry_entry['id']), selected_registry_entry['pattern'], str(fmtp))
-                                try:
-                                    self._refresh_registry_list()
-                                except Exception:
-                                    pass
-                            except Exception:
-                                pass
-                        self.txt_batch_log.append(f"已保存格式文件: {fmtp} (编辑 registry 条目 id={selected_registry_entry.get('id')})")
-                    except Exception as e:
-                        QMessageBox.warning(self, '保存失败', f'无法保存到 registry 指向的文件: {e}')
-                        return
-
-                else:
-                    # 未基于 registry 映射：写为 sidecar（chosen file 的同名 .format.json）或 data 下的 timestamp 文件
-                    try:
-                        if chosen_fp:
-                            sidecar = chosen_fp.parent / f"{chosen_fp.stem}.format.json"
-                        else:
-                            sidecar = Path('data') / f"format_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                        _write_json(sidecar)
-                        self.txt_batch_log.append(f"已保存格式文件: {sidecar}")
-
-                        # 仅在用户选择保存并注册时尝试注册到 registry
-                        if resp == QMessageBox.Yes:
-                            # 如果用户在界面中指定了 registry 路径，优先使用；否则使用项目默认 data/formats.sqlite
-                            dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
-                            if not dbp:
-                                dbp = str(Path('data') / 'formats.sqlite')
-                            try:
-                                init_db(str(dbp))
-                                default_pattern = chosen_fp.name if chosen_fp else sidecar.name
-                                register_mapping(str(dbp), default_pattern, str(sidecar))
-                                self.txt_batch_log.append(f"已注册到 registry: {dbp} (pattern={default_pattern})")
-                            except Exception:
-                                self.txt_batch_log.append(f"已保存格式文件: {sidecar} (注册到 registry 失败)")
-
-                    except Exception as e:
-                        QMessageBox.warning(self, '保存失败', f'无法保存格式文件: {e}')
-                        return
-
-            except Exception as e:
-                QMessageBox.warning(self, '错误', f'保存格式时出错: {e}')
-
-            # 提示用户保存结果摘要
-            try:
-                QMessageBox.information(self, "完成", "数据格式配置已处理（已写入/已注册的详情见处理日志）。")
-            except Exception:
-                pass
+            self.txt_batch_log.append('已设置当前会话的数据格式（如需保存请在对话框点击“保存”或使用 Registry 操作）')
 
     def browse_batch_input(self):
         """选择输入文件或目录（单一对话框，支持切换文件/目录模式）。"""
@@ -1646,6 +1769,28 @@ class IntegratedAeroGUI(QMainWindow):
                 self.inp_registry_format.setText(fname)
             except Exception:
                 pass
+
+    def _on_load_data_format_file(self):
+        """从 JSON 文件加载数据格式并更新预览与当前 data_config。"""
+        try:
+            fname, _ = QFileDialog.getOpenFileName(self, '加载数据格式', '.', 'JSON Files (*.json);;All Files (*)')
+            if not fname:
+                return
+            with open(fname, 'r', encoding='utf-8') as fh:
+                cfg = json.load(fh)
+            # 简单验证 cfg 是 dict
+            if not isinstance(cfg, dict):
+                QMessageBox.warning(self, '错误', '格式文件内容不是有效的 JSON 对象')
+                return
+            self.data_config = cfg
+            try:
+                self.update_config_preview()
+            except Exception:
+                logger.debug('update_config_preview failed after loading format', exc_info=True)
+            self.txt_batch_log.append(f'已加载数据格式: {fname}')
+            QMessageBox.information(self, '已加载', f'数据格式已加载: {fname}')
+        except Exception as e:
+            QMessageBox.warning(self, '加载失败', f'无法加载格式文件: {e}')
 
     def _on_registry_register(self):
         dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
@@ -2469,8 +2614,63 @@ class IntegratedAeroGUI(QMainWindow):
                 self.update_config_preview()
             except Exception:
                 logger.debug("update_config_preview failed in _on_target_part_changed", exc_info=True)
+            # 记录当前选中的 target part 名称，供外部编辑同步使用
+            try:
+                self._current_target_part_name = self.cmb_target_parts.currentText()
+            except Exception:
+                self._current_target_part_name = None
         except Exception:
             logger.debug("_on_target_part_changed failed", exc_info=True)
+
+    def _on_source_part_changed(self):
+        """当用户在 Source 下拉选择不同 Part 时，更新 Variant 上限并刷新 Source 表单。"""
+        try:
+            if not hasattr(self, 'current_config') or self.current_config is None:
+                return
+            if not isinstance(self.current_config, ProjectData):
+                return
+            sel = self.cmb_source_parts.currentText()
+            variants = self.current_config.source_parts.get(sel, [])
+            max_idx = max(0, len(variants) - 1)
+            self.spin_source_variant.setRange(0, max_idx)
+            if variants:
+                frame = variants[0]
+                cs = frame.coord_system
+                mc = frame.moment_center or [0.0, 0.0, 0.0]
+                self.src_part_name.setText(frame.part_name)
+                self.src_ox.setText(str(cs.origin[0]))
+                self.src_oy.setText(str(cs.origin[1]))
+                self.src_oz.setText(str(cs.origin[2]))
+                self.src_xx.setText(str(cs.x_axis[0]))
+                self.src_xy.setText(str(cs.x_axis[1]))
+                self.src_xz.setText(str(cs.x_axis[2]))
+                self.src_yx.setText(str(cs.y_axis[0]))
+                self.src_yy.setText(str(cs.y_axis[1]))
+                self.src_yz.setText(str(cs.y_axis[2]))
+                self.src_zx.setText(str(cs.z_axis[0]))
+                self.src_zy.setText(str(cs.z_axis[1]))
+                self.src_zz.setText(str(cs.z_axis[2]))
+                self.src_mcx.setText(str(mc[0]))
+                self.src_mcy.setText(str(mc[1]))
+                self.src_mcz.setText(str(mc[2]))
+                self.src_cref.setText(str(frame.c_ref or 1.0))
+                self.src_bref.setText(str(frame.b_ref or 1.0))
+                self.src_sref.setText(str(frame.s_ref or 10.0))
+                try:
+                    self.src_q.setText(str(frame.q or 1000.0))
+                except Exception:
+                    pass
+            try:
+                self.update_config_preview()
+            except Exception:
+                logger.debug("update_config_preview failed in _on_source_part_changed", exc_info=True)
+        except Exception:
+            logger.debug("_on_source_part_changed failed", exc_info=True)
+        # 记录当前选中的 source part 名称，供外部编辑同步使用
+        try:
+            self._current_source_part_name = self.cmb_source_parts.currentText()
+        except Exception:
+            self._current_source_part_name = None
 
     def one_click_process(self):
         """使用当前配置和默认输出目录快速启动批处理（单次、非交互）。"""
