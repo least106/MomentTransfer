@@ -303,63 +303,102 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     open_mode = 'w' if mode == 'w' else 'a'
-    # 以文本模式打开文件句柄，并直接将 DataFrame 写入该句柄以节省内存
+
     # 写入重试参数（使用模块级常量）
     last_exc = None
-    for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
-        try:
-            with open(out_path, open_mode, encoding='utf-8', newline='') as f:
-                # 优先使用 portalocker 提供跨平台一致的锁定语义
-                try:
-                    if portalocker:
-                        try:
-                            portalocker.lock(f, portalocker.LOCK_EX)
-                        except Exception as le:
-                            logger.debug("portalocker.lock 失败，继续以无锁模式写入：%s", le)
-                    else:
-                        # 不再尝试平台特定的 1 字节锁（如 msvcrt 或 fcntl），它们在某些平台/情形下不可靠。
-                        logger.debug("portalocker 不可用，跳过文件锁（best-effort 写入）: %s", out_path)
-                except Exception:
-                    # 任何锁相关的异常均不应阻止写入，但记录以便诊断
-                    logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
-                try:
-                    # 直接将 DataFrame 写入文件句柄，避免在内存中构造大型字符串
-                    out_df.to_csv(f, index=False, header=header, encoding='utf-8')
-                    f.flush()
+    # 对于 append 模式，直接在目标文件上以二进制追加写入（减少替换竞争）
+    if mode == 'a':
+        csv_bytes = out_df.to_csv(index=False, header=header, encoding='utf-8').encode('utf-8')
+        for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
+            try:
+                # 以二进制追加打开并尝试加锁写入（若可用）
+                with open(out_path, 'ab') as f:
                     try:
-                        os.fsync(f.fileno())
+                        if portalocker:
+                            try:
+                                portalocker.lock(f, portalocker.LOCK_EX)
+                            except Exception as le:
+                                logger.debug("portalocker.lock 失败，继续以无锁追加写入：%s", le)
+                        else:
+                            logger.debug("portalocker 不可用，按附加模式直接写入（best-effort）: %s", out_path)
                     except Exception:
-                        pass
+                        logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
-                    # 成功写入，退出重试循环
-                    last_exc = None
-                    break
-                finally:
-                    # 在 with 块内如果使用 portalocker 则尝试解锁
-                    if portalocker:
+                    try:
+                        f.write(csv_bytes)
+                        f.flush()
                         try:
-                            portalocker.unlock(f)
+                            os.fsync(f.fileno())
                         except Exception:
-                            logger.debug("portalocker.unlock 失败（忽略）")
+                            pass
+                    finally:
+                        if portalocker:
+                            try:
+                                portalocker.unlock(f)
+                            except Exception:
+                                logger.debug("portalocker.unlock 失败（忽略）")
+                # 成功写入
+                last_exc = None
+                break
+            except Exception as e:
+                last_exc = e
+                logger.warning("追加写入 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+                if attempt < SHARED_RETRY_ATTEMPTS:
+                    time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt-1, len(WRITE_RETRY_BACKOFF_SECONDS)-1)])
+                else:
+                    logger.exception("追加写入失败，达到最大重试次数")
 
-        except Exception as e:
-            last_exc = e
-            if isinstance(e, PermissionError):
-                logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e, exc_info=True)
-            else:
-                logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+        if last_exc is not None:
+            raise last_exc
 
-            # 如果不是最后一次尝试，则等待退避后重试
-            if attempt < SHARED_RETRY_ATTEMPTS:
-                time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt-1, len(WRITE_RETRY_BACKOFF_SECONDS)-1)])
-            else:
-                # 记录完整堆栈以便诊断
-                logger.exception("写入失败，达到最大重试次数")
+    else:
+        # 使用临时文件并替换以实现原子写入（用于首次写入或覆盖）
+        for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
+            try:
+                with open(out_path, open_mode, encoding='utf-8', newline='') as f:
+                    try:
+                        if portalocker:
+                            try:
+                                portalocker.lock(f, portalocker.LOCK_EX)
+                            except Exception as le:
+                                logger.debug("portalocker.lock 失败，继续以无锁模式写入：%s", le)
+                        else:
+                            logger.debug("portalocker 不可用，跳过文件锁（best-effort 写入）: %s", out_path)
+                    except Exception:
+                        logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
-    if last_exc is not None:
-        # 将异常向上抛出，process_single_file 会捕获并清理临时文件
-        raise last_exc
+                    try:
+                        out_df.to_csv(f, index=False, header=header, encoding='utf-8')
+                        f.flush()
+                        try:
+                            os.fsync(f.fileno())
+                        except Exception:
+                            pass
+
+                        last_exc = None
+                        break
+                    finally:
+                        if portalocker:
+                            try:
+                                portalocker.unlock(f)
+                            except Exception:
+                                logger.debug("portalocker.unlock 失败（忽略）")
+
+            except Exception as e:
+                last_exc = e
+                if isinstance(e, PermissionError):
+                    logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e, exc_info=True)
+                else:
+                    logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+
+                if attempt < SHARED_RETRY_ATTEMPTS:
+                    time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt-1, len(WRITE_RETRY_BACKOFF_SECONDS)-1)])
+                else:
+                    logger.exception("写入失败，达到最大重试次数")
+
+        if last_exc is not None:
+            raise last_exc
 
     processed = len(out_df)
     first_chunk = False
@@ -658,7 +697,7 @@ def _worker_process(args):
         if registry_db:
             try:
                 from src.cli_helpers import resolve_file_format
-                cfg = resolve_file_format(str(file_path), cfg, registry_db=registry_db)
+                cfg = resolve_file_format(str(file_path), cfg, enable_sidecar=enable_sidecar, registry_db=registry_db)
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 if strict:
@@ -779,7 +818,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         for fp in files_to_process:
             try:
                 from src.cli_helpers import resolve_file_format
-                cfg_local = resolve_file_format(str(fp), data_config, registry_db=registry_db)
+                cfg_local = resolve_file_format(str(fp), data_config, enable_sidecar=enable_sidecar, registry_db=registry_db)
             except Exception as e:
                 logger.warning("解析文件 %s 的格式失败：%s", fp, e)
                 cfg_local = data_config
@@ -797,7 +836,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
         try:
             from src.cli_helpers import resolve_file_format
-            cfg_local = resolve_file_format(str(file_path), data_config, registry_db=registry_db)
+            cfg_local = resolve_file_format(str(file_path), data_config, enable_sidecar=bool(registry_db), registry_db=registry_db)
         except Exception:
             # 解析失败：记录并根据 strict 决定是否中止
             logger.warning("解析文件 %s 的格式失败，使用全局配置作为回退。", file_path)
@@ -899,7 +938,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
 @click.option('--target-part', 'target_part', default=None, help='目标 part 名称（必须指定或通过参数提供）')
 @click.option('--target-variant', 'target_variant', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
-@click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
+@click.option('--enable-sidecar', 'enable_sidecar', is_flag=True, default=False, help='启用 per-file 覆盖（file-sidecar / dir-default / registry），默认关闭')
+@click.option('--registry-db', 'registry_db', default=None, help='(实验) SQLite registry 数据库路径（仅在启用 per-file 覆盖时使用）', hidden=True)
 @click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
 @click.option('--dry-run', 'dry_run', is_flag=True, help='仅解析并显示将处理的文件与输出路径，但不实际写入')
 @click.option('--progress', 'show_progress', is_flag=True, help='显示处理进度与 ETA（串行/并行均支持）')
@@ -924,6 +964,7 @@ def main(**cli_options):
     sample_rows = cli_options.get('sample_rows')
     target_part = cli_options.get('target_part')
     target_variant = cli_options.get('target_variant')
+    enable_sidecar = cli_options.get('enable_sidecar')
     registry_db = cli_options.get('registry_db')
     strict = cli_options.get('strict')
     dry_run = cli_options.get('dry_run')
@@ -944,13 +985,13 @@ def main(**cli_options):
             _error_exit_json(f"读取格式文件失败: {e}", code=3)
 
     if non_interactive and data_config is None:
-        # 非交互模式下要求提供全局格式文件或 registry_db 用于按文件解析格式
-        if not registry_db:
-            _error_exit_json("--non-interactive 模式下必须提供 --format-file 或 --registry-db", code=2,
-                             hint="传入 --format-file 或 --registry-db 以在非交互模式下解析每个文件的格式。")
-        # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 registry / sidecar / 目录 默认覆盖
+        # 非交互模式下要求提供全局格式文件或启用 per-file 覆盖策略（enable_sidecar）
+        if not enable_sidecar and not registry_db:
+            _error_exit_json("--non-interactive 模式下必须提供 --format-file 或启用 per-file 覆盖（--enable-sidecar）", code=2,
+                             hint="传入 --format-file 或 --enable-sidecar（可选同时传入 --registry-db）以在非交互模式下解析每个文件的格式。")
+        # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 sidecar/dir-default/registry 覆盖（仅当 enable_sidecar=True 时）
         data_config = BatchConfig()
-        logger.info('非交互模式且未提供 --format-file，使用默认 BatchConfig 并依赖 registry/sidecar/目录默认进行每文件解析')
+        logger.info('非交互模式且未提供 --format-file，使用默认 BatchConfig 并依赖 per-file 覆盖策略进行每文件解析（若已启用）')
 
     if data_config is None:
         # 交互式获取格式配置
