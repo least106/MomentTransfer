@@ -37,6 +37,14 @@ from src.format_registry import get_format_for_file, list_mappings, register_map
 
 logger = logging.getLogger(__name__)
 
+# 主题常量（便于代码中引用）
+THEME_MAIN = '#0078d7'
+THEME_ACCENT = '#28a745'
+THEME_DANGER = '#ff6b6b'
+THEME_BG = '#f7f9fb'
+LAYOUT_MARGIN = 12
+LAYOUT_SPACING = 8
+
 if _HAS_MPL:
     class Mpl3DCanvas(FigureCanvas):
         """3D坐标系可视化画布"""
@@ -173,6 +181,10 @@ class ColumnMappingDialog(QDialog):
         self.btn_save_format = QPushButton("保存")
         self.btn_save_format.setToolTip("将当前数据格式保存为 JSON 文件")
         self.btn_save_format.clicked.connect(self._on_dialog_save)
+        try:
+            self.btn_save_format.setObjectName('secondaryButton')
+        except Exception:
+            pass
 
         # 额外的加载按钮，允许用户从 JSON 文件加载数据格式到对话框（不关闭对话）
         self.btn_load_format = QPushButton("加载")
@@ -625,7 +637,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 标题与可视化按钮
         header_layout = QHBoxLayout()
         title = QLabel("配置编辑器")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #333;")
+        try:
+            title.setObjectName('panelTitle')
+        except Exception:
+            pass
 
         # 允许用户显示实验性选项（默认隐藏）
         self.chk_show_experimental = QCheckBox("显示实验性选项（实验）")
@@ -649,12 +664,14 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === Source 坐标系（可折叠） ===
         self.chk_show_source = QCheckBox("显示 Source 坐标系设置")
-        self.chk_show_source.setStyleSheet("font-weight: bold; color: #0078d7;")
+        try:
+            self.chk_show_source.setObjectName('sectionToggle')
+        except Exception:
+            pass
         self.chk_show_source.stateChanged.connect(self.toggle_source_visibility)
         layout.addWidget(self.chk_show_source)
 
         self.grp_source = QGroupBox("Source Coordinate System")
-        self.grp_source.setStyleSheet("QGroupBox { font-weight: bold; }")
         # 允许在垂直方向扩展以填充空间，使底部按钮保持在窗口底部
         self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_source = QFormLayout()
@@ -723,7 +740,6 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
-        grp_target.setStyleSheet("QGroupBox { font-weight: bold; }")
         grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_target = QFormLayout()
 
@@ -799,10 +815,17 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_save.setFixedHeight(34)
         self.btn_save.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_save.clicked.connect(self.save_config)
+        try:
+            self.btn_save.setObjectName('secondaryButton')
+        except Exception:
+            pass
 
         self.btn_apply = QPushButton("应用配置")
         self.btn_apply.setFixedHeight(34)
-        self.btn_apply.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold;")
+        try:
+            self.btn_apply.setObjectName('primaryButton')
+        except Exception:
+            pass
         self.btn_apply.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_apply.clicked.connect(self.apply_config)
 
@@ -837,14 +860,16 @@ class IntegratedAeroGUI(QMainWindow):
         status_group = QGroupBox("当前配置状态")
         status_layout = QHBoxLayout()
         self.lbl_status = QLabel("未加载配置")
-        self.lbl_status.setStyleSheet("color: red; font-weight: bold; font-size: 13px;")
+        try:
+            self.lbl_status.setObjectName('statusLabel')
+        except Exception:
+            pass
         status_layout.addWidget(self.lbl_status)
         status_layout.addStretch()
         status_group.setLayout(status_layout)
 
         # === 批量处理区 ===
         grp_batch = QGroupBox("批量处理 (Batch Processing)")
-        grp_batch.setStyleSheet("QGroupBox { font-weight: bold; }")
         grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout_batch = QVBoxLayout()
 
@@ -969,7 +994,10 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 数据格式配置按钮（并作为实例属性，放入可切换的容器）
         self.btn_config_format = QPushButton("⚙ 配置数据格式")
-        self.btn_config_format.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        try:
+            self.btn_config_format.setObjectName('secondaryButton')
+        except Exception:
+            pass
         self.btn_config_format.setToolTip("设置跳过行数、列映射等")
         self.btn_config_format.clicked.connect(self.configure_data_format)
 
@@ -980,13 +1008,19 @@ class IntegratedAeroGUI(QMainWindow):
         # 执行按钮（作为实例属性）
         self.btn_batch = QPushButton("开始批量处理")
         self.btn_batch.setFixedHeight(34)
-        self.btn_batch.setStyleSheet("background-color: #ff6b6b; color: white; font-weight: bold;")
+        try:
+            self.btn_batch.setObjectName('dangerButton')
+        except Exception:
+            pass
         self.btn_batch.clicked.connect(self.run_batch_processing)
 
         # 取消按钮（仅在任务运行时显示并可用）
         self.btn_cancel = QPushButton("取消")
         self.btn_cancel.setFixedHeight(34)
-        self.btn_cancel.setStyleSheet("background-color: #6c757d; color: white; font-weight: bold;")
+        try:
+            self.btn_cancel.setObjectName('secondaryButton')
+        except Exception:
+            pass
         self.btn_cancel.clicked.connect(self.request_cancel_batch)
         self.btn_cancel.setVisible(False)
         self.btn_cancel.setEnabled(False)
@@ -1035,7 +1069,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 3D 可视化按钮（移入实验组）
         self.btn_visualize = QPushButton("3D可视化")
         self.btn_visualize.setMaximumWidth(120)
-        self.btn_visualize.setStyleSheet("background-color: #6c757d; color: white; font-weight: bold;")
+        try:
+            self.btn_visualize.setObjectName('secondaryButton')
+        except Exception:
+            pass
         self.btn_visualize.setToolTip("打开3D坐标系可视化窗口（实验）")
         self.btn_visualize.clicked.connect(self.toggle_visualization)
         exp_layout.addWidget(self.btn_visualize)
@@ -1083,7 +1120,10 @@ class IntegratedAeroGUI(QMainWindow):
         self.lbl_preview_columns = QLabel("列映射: -")
         self.lbl_preview_passthrough = QLabel("保留列: -")
         for w in (self.lbl_preview_skip, self.lbl_preview_columns, self.lbl_preview_passthrough):
-            w.setStyleSheet("font-size:12px;")
+            try:
+                w.setObjectName('previewText')
+            except Exception:
+                pass
             pv_layout.addWidget(w)
         self.grp_config_preview.setLayout(pv_layout)
 
@@ -1242,7 +1282,10 @@ class IntegratedAeroGUI(QMainWindow):
                 "灰色虚线: Source坐标系 | 彩色实线: Target坐标系 | 紫色点: 力矩中心\n"
                 "提示: 可以使用鼠标拖动旋转视角"
             )
-            info_label.setStyleSheet("background-color: #f0f0f0; padding: 8px; border-radius: 4px; font-size: 10px;")
+            try:
+                info_label.setObjectName('infoLabel')
+            except Exception:
+                pass
 
             layout.addWidget(info_label)
             layout.addWidget(self.canvas3d)
@@ -1512,7 +1555,6 @@ class IntegratedAeroGUI(QMainWindow):
 
             part_name = sel_part
             self.lbl_status.setText(f"已加载配置: {part_name}")
-            self.lbl_status.setStyleSheet("color: green; font-weight: bold; font-size: 13px;")
             self.statusBar().showMessage(f"配置已应用: {part_name}")
 
             QMessageBox.information(self, "成功", f"配置已应用!\n组件: {part_name}\n现在可以进行计算了。")
@@ -1983,17 +2025,33 @@ class IntegratedAeroGUI(QMainWindow):
             cb = QCheckBox(fp.name)
             cb.setChecked(True)
             src_label = QLabel("")
-            src_label.setStyleSheet("color: #666; font-size: 11px;")
+            try:
+                src_label.setObjectName('fileSrcLabel')
+                src_label.setProperty('variant', 'muted')
+            except Exception:
+                pass
             # 解析并设置来源（同步快速判断）
             try:
                 src, src_path = self._determine_format_source(fp)
                 disp, tip, color = self._format_label_from(src, src_path)
                 src_label.setText(disp)
                 src_label.setToolTip(tip or "")
-                src_label.setStyleSheet(f"color: {color}; font-size: 11px;")
+                # 映射返回的颜色到样式属性，样式表中根据 variant 设置颜色
+                try:
+                    if color == '#dc3545':
+                        src_label.setProperty('variant', 'error')
+                    elif color == '#6c757d':
+                        src_label.setProperty('variant', 'muted')
+                    else:
+                        src_label.setProperty('variant', 'normal')
+                except Exception:
+                    pass
             except Exception:
                 src_label.setText("未知")
-                src_label.setStyleSheet("color: #dc3545; font-size: 11px;")
+                try:
+                    src_label.setProperty('variant', 'error')
+                except Exception:
+                    pass
 
             row_layout.addWidget(cb)
             # 保持标签靠近复选框，并限制标签宽度，避免在窄窗口下被推到最右侧
@@ -2083,13 +2141,24 @@ class IntegratedAeroGUI(QMainWindow):
                     disp, tip, color = self._format_label_from(src, src_path)
                     lbl.setText(disp)
                     lbl.setToolTip(tip or "")
-                    lbl.setStyleSheet(f"color: {color}; font-size: 11px;")
+                    try:
+                        if color == '#dc3545':
+                            lbl.setProperty('variant', 'error')
+                        elif color == '#6c757d':
+                            lbl.setProperty('variant', 'muted')
+                        else:
+                            lbl.setProperty('variant', 'normal')
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.debug("Failed to set label text from format source", exc_info=True)
                     try:
                         lbl.setText('未知')
                         lbl.setToolTip("")
-                        lbl.setStyleSheet("color: #dc3545; font-size: 11px;")
+                        try:
+                            lbl.setProperty('variant', 'error')
+                        except Exception:
+                            pass
                     except Exception:
                         logger.debug("Failed to set fallback 'unknown' label", exc_info=True)
         except Exception as e:
@@ -2516,9 +2585,15 @@ class IntegratedAeroGUI(QMainWindow):
             cols_text = ", ".join(col_parts)
             # 若关键力列缺失，标红提示
             if cols.get('fx') is None or cols.get('fy') is None or cols.get('fz') is None:
-                self.lbl_preview_columns.setStyleSheet('color: red; font-size:12px;')
+                try:
+                    self.lbl_preview_columns.setProperty('state', 'error')
+                except Exception:
+                    pass
             else:
-                self.lbl_preview_columns.setStyleSheet('color: black; font-size:12px;')
+                try:
+                    self.lbl_preview_columns.setProperty('state', 'normal')
+                except Exception:
+                    pass
             self.lbl_preview_columns.setText(f"列映射: {cols_text}")
 
             # 保留列
@@ -2765,6 +2840,19 @@ class IntegratedAeroGUI(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    # 设置统一字体与样式表（styles.qss）以实现统一主题与可维护的样式
+    try:
+        from PySide6.QtGui import QFont
+        app.setFont(QFont('Segoe UI', 10))
+    except Exception:
+        pass
+    try:
+        qss_path = Path(__file__).resolve().parent / 'styles.qss'
+        if qss_path.exists():
+            with open(qss_path, 'r', encoding='utf-8') as fh:
+                app.setStyleSheet(fh.read())
+    except Exception:
+        logger.debug('加载 styles.qss 失败（忽略）', exc_info=True)
     window = IntegratedAeroGUI()
     window.show()
     sys.exit(app.exec())
