@@ -719,9 +719,8 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
 
-        self.src_ox = self._create_input("0.0")
-        self.src_oy = self._create_input("0.0")
-        self.src_oz = self._create_input("0.0")
+        # 使用单行三元 QDoubleSpinBox 以节省垂直空间
+        self.src_ox, self.src_oy, self.src_oz = self._create_triple_spin(0.0, 0.0, 0.0)
 
         # Source Part Name（与 Target 对等）
         # 支持多 Part/Variant 的下拉选择（当从 ProjectData 加载时会显示）
@@ -739,31 +738,39 @@ class IntegratedAeroGUI(QMainWindow):
         self.spin_source_variant.setVisible(False)
         self.cmb_source_parts.currentTextChanged.connect(lambda _: self._on_source_part_changed())
 
-        self.src_xx = self._create_input("1.0")
-        self.src_xy = self._create_input("0.0")
-        self.src_xz = self._create_input("0.0")
+        self.src_xx, self.src_xy, self.src_xz = self._create_triple_spin(1.0, 0.0, 0.0)
 
-        self.src_yx = self._create_input("0.0")
-        self.src_yy = self._create_input("1.0")
-        self.src_yz = self._create_input("0.0")
+        self.src_yx, self.src_yy, self.src_yz = self._create_triple_spin(0.0, 1.0, 0.0)
 
-        self.src_zx = self._create_input("0.0")
-        self.src_zy = self._create_input("0.0")
-        self.src_zz = self._create_input("1.0")
+        self.src_zx, self.src_zy, self.src_zz = self._create_triple_spin(0.0, 0.0, 1.0)
 
-        # Source 力矩中心
-        self.src_mcx = self._create_input("0.0")
-        self.src_mcy = self._create_input("0.0")
-        self.src_mcz = self._create_input("0.0")
+        # Source 力矩中心（单行三元）
+        self.src_mcx, self.src_mcy, self.src_mcz = self._create_triple_spin(0.0, 0.0, 0.0)
 
         # 当有多个 source part 时显示下拉；否则使用自由文本框
         form_source.addRow("Part Name:", self.src_part_name)
         form_source.addRow("选择 Source Part:", self.cmb_source_parts)
         # Variant 索引已移除（始终使用第 0 个 variant）；避免用户混淆，因此不在表单中显示
-        form_source.addRow("Orig:", self._create_vector_row(self.src_ox, self.src_oy, self.src_oz))
-        form_source.addRow("X:", self._create_vector_row(self.src_xx, self.src_xy, self.src_xz))
-        form_source.addRow("Y:", self._create_vector_row(self.src_yx, self.src_yy, self.src_yz))
-        form_source.addRow("Z:", self._create_vector_row(self.src_zx, self.src_zy, self.src_zz))
+        # 使用一致宽度的 QLabel 以避免表单断行并保持对齐
+        lbl = QLabel("Orig:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self._create_vector_row(self.src_ox, self.src_oy, self.src_oz))
+
+        lbl = QLabel("X:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self._create_vector_row(self.src_xx, self.src_xy, self.src_xz))
+
+        lbl = QLabel("Y:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self._create_vector_row(self.src_yx, self.src_yy, self.src_yz))
+
+        lbl = QLabel("Z:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self._create_vector_row(self.src_zx, self.src_zy, self.src_zz))
 
         # Source 参考量（与 Target 对等）
         self.src_cref = self._create_input("1.0")
@@ -771,11 +778,26 @@ class IntegratedAeroGUI(QMainWindow):
         self.src_sref = self._create_input("10.0")
         self.src_q = self._create_input("1000.0")
 
-        form_source.addRow("Moment Center:", self._create_vector_row(self.src_mcx, self.src_mcy, self.src_mcz))
-        form_source.addRow("C_ref (m):", self.src_cref)
-        form_source.addRow("B_ref (m):", self.src_bref)
-        form_source.addRow("S_ref (m²):", self.src_sref)
-        form_source.addRow("Q (Pa):", self.src_q)
+        lbl = QLabel("Moment Center:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self._create_vector_row(self.src_mcx, self.src_mcy, self.src_mcz))
+        lbl = QLabel("C_ref (m):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self.src_cref)
+        lbl = QLabel("B_ref (m):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self.src_bref)
+        lbl = QLabel("S_ref (m²):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self.src_sref)
+        lbl = QLabel("Q (Pa):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_source.addRow(lbl, self.src_q)
 
         self.grp_source.setLayout(form_source)
         self.grp_source.setVisible(False)
@@ -811,31 +833,36 @@ class IntegratedAeroGUI(QMainWindow):
         # Variant 索引已移除（始终使用第 0 个 variant）
 
         # Target 坐标系
-        self.tgt_ox = self._create_input("0.0")
-        self.tgt_oy = self._create_input("0.0")
-        self.tgt_oz = self._create_input("0.0")
+        self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
 
-        self.tgt_xx = self._create_input("1.0")
-        self.tgt_xy = self._create_input("0.0")
-        self.tgt_xz = self._create_input("0.0")
+        self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
 
-        self.tgt_yx = self._create_input("0.0")
-        self.tgt_yy = self._create_input("1.0")
-        self.tgt_yz = self._create_input("0.0")
+        self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
 
-        self.tgt_zx = self._create_input("0.0")
-        self.tgt_zy = self._create_input("0.0")
-        self.tgt_zz = self._create_input("1.0")
+        self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
 
-        form_target.addRow("Orig:", self._create_vector_row(self.tgt_ox, self.tgt_oy, self.tgt_oz))
-        form_target.addRow("X:", self._create_vector_row(self.tgt_xx, self.tgt_xy, self.tgt_xz))
-        form_target.addRow("Y:", self._create_vector_row(self.tgt_yx, self.tgt_yy, self.tgt_yz))
-        form_target.addRow("Z:", self._create_vector_row(self.tgt_zx, self.tgt_zy, self.tgt_zz))
+        lbl = QLabel("Orig:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self._create_vector_row(self.tgt_ox, self.tgt_oy, self.tgt_oz))
+
+        lbl = QLabel("X:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self._create_vector_row(self.tgt_xx, self.tgt_xy, self.tgt_xz))
+
+        lbl = QLabel("Y:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self._create_vector_row(self.tgt_yx, self.tgt_yy, self.tgt_yz))
+
+        lbl = QLabel("Z:")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self._create_vector_row(self.tgt_zx, self.tgt_zy, self.tgt_zz))
 
         # Moment Center
-        self.tgt_mcx = self._create_input("0.5")
-        self.tgt_mcy = self._create_input("0.0")
-        self.tgt_mcz = self._create_input("0.0")
+        self.tgt_mcx, self.tgt_mcy, self.tgt_mcz = self._create_triple_spin(0.5, 0.0, 0.0)
         form_target.addRow("Moment Center:", self._create_vector_row(self.tgt_mcx, self.tgt_mcy, self.tgt_mcz))
 
         # Target 参考量（与 Source 对等）
@@ -844,10 +871,22 @@ class IntegratedAeroGUI(QMainWindow):
         self.tgt_sref = self._create_input("10.0")
         self.tgt_q = self._create_input("1000.0")
 
-        form_target.addRow("C_ref (m):", self.tgt_cref)
-        form_target.addRow("B_ref (m):", self.tgt_bref)
-        form_target.addRow("S_ref (m²):", self.tgt_sref)
-        form_target.addRow("Q (Pa):", self.tgt_q)
+        lbl = QLabel("C_ref (m):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self.tgt_cref)
+        lbl = QLabel("B_ref (m):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self.tgt_bref)
+        lbl = QLabel("S_ref (m²):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self.tgt_sref)
+        lbl = QLabel("Q (Pa):")
+        lbl.setFixedWidth(120)
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form_target.addRow(lbl, self.tgt_q)
         grp_target.setLayout(form_target)
 
         # === 配置操作按钮 ===
@@ -877,7 +916,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_apply = QPushButton("应用配置")
         self.btn_apply.setFixedHeight(34)
         try:
-            self.btn_apply.setObjectName('secondaryButton')
+            self.btn_apply.setObjectName('primaryButton')
             self.btn_apply.setShortcut('Ctrl+R')
             self.btn_apply.setToolTip('应用当前配置并初始化计算器 (Ctrl+Enter)')
         except Exception:
@@ -1095,7 +1134,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_batch = QPushButton("开始批量处理")
         self.btn_batch.setFixedHeight(34)
         try:
-            self.btn_batch.setObjectName('dangerButton')
+            self.btn_batch.setObjectName('primaryButton')
             self.btn_batch.setShortcut('Ctrl+R')
             self.btn_batch.setToolTip('开始批量处理。运行时会锁定配置控件。')
         except Exception:
@@ -1319,12 +1358,50 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("inp.setSizePolicy failed (non-fatal)", exc_info=True)
         return inp
 
+    def _create_triple_spin(self, a: float, b: float, c: float):
+        """创建一行三个紧凑型 QDoubleSpinBox，返回 (spin_a, spin_b, spin_c)"""
+        s1 = QDoubleSpinBox()
+        s2 = QDoubleSpinBox()
+        s3 = QDoubleSpinBox()
+        for s in (s1, s2, s3):
+            try:
+                s.setRange(-1e6, 1e6)
+                s.setDecimals(2)
+                s.setSingleStep(0.1)
+                s.setValue(0.0)
+                s.setProperty('compact', 'true')
+                s.setMaximumWidth(96)
+            except Exception:
+                logger.debug("triple spin init failed", exc_info=True)
+        s1.setValue(float(a))
+        s2.setValue(float(b))
+        s3.setValue(float(c))
+        # ToolTip 提示
+        try:
+            s1.setToolTip('X 分量')
+            s2.setToolTip('Y 分量')
+            s3.setToolTip('Z 分量')
+        except Exception:
+            pass
+        return s1, s2, s3
+
+    def _num(self, widget):
+        """从 QDoubleSpinBox 或 QLineEdit 返回 float 值的统一访问器"""
+        try:
+            if hasattr(widget, 'value'):
+                return float(widget.value())
+            else:
+                return float(widget.text())
+        except Exception as e:
+            # 若解析失败，抛出 ValueError 以便上层显示提示
+            raise ValueError(f"无法解析数值输入: {e}")
+
     def _create_vector_row(self, inp1, inp2, inp3):
         """创建向量输入行 [x, y, z]"""
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
+        layout.setSpacing(6)
 
         lb1 = QLabel("[")
         lb_comma1 = QLabel(",")
@@ -1337,12 +1414,12 @@ class IntegratedAeroGUI(QMainWindow):
                 pass
         # 对传入的输入框标记为 compact 以便样式表进行收缩
         try:
-            inp1.setProperty('compact', 'true')
-            inp2.setProperty('compact', 'true')
-            inp3.setProperty('compact', 'true')
-            inp1.setMaximumWidth(88)
-            inp2.setMaximumWidth(88)
-            inp3.setMaximumWidth(88)
+            for w in (inp1, inp2, inp3):
+                w.setProperty('compact', 'true')
+                try:
+                    w.setMaximumWidth(96)
+                except Exception:
+                    pass
         except Exception:
             pass
         layout.addWidget(lb1)
@@ -1382,22 +1459,22 @@ class IntegratedAeroGUI(QMainWindow):
     def show_visualization(self):
         """显示3D可视化窗口"""
         try:
-            # 读取当前配置
-            source_orig = [float(self.src_ox.text()), float(self.src_oy.text()), float(self.src_oz.text())]
+            # 读取当前配置（使用 _num 支持 QDoubleSpinBox 或 QLineEdit）
+            source_orig = [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)]
             source_basis = np.array([
-                [float(self.src_xx.text()), float(self.src_xy.text()), float(self.src_xz.text())],
-                [float(self.src_yx.text()), float(self.src_yy.text()), float(self.src_yz.text())],
-                [float(self.src_zx.text()), float(self.src_zy.text()), float(self.src_zz.text())]
+                [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
             ])
 
-            target_orig = [float(self.tgt_ox.text()), float(self.tgt_oy.text()), float(self.tgt_oz.text())]
+            target_orig = [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)]
             target_basis = np.array([
-                [float(self.tgt_xx.text()), float(self.tgt_xy.text()), float(self.tgt_xz.text())],
-                [float(self.tgt_yx.text()), float(self.tgt_yy.text()), float(self.tgt_yz.text())],
-                [float(self.tgt_zx.text()), float(self.tgt_zy.text()), float(self.tgt_zz.text())]
+                [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
             ])
 
-            moment_center = [float(self.tgt_mcx.text()), float(self.tgt_mcy.text()), float(self.tgt_mcz.text())]
+            moment_center = [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)]
 
             # 创建可视化窗口
             self.visualization_window = QWidget()
@@ -1572,12 +1649,12 @@ class IntegratedAeroGUI(QMainWindow):
                     {
                         "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
                         "CoordSystem": {
-                            "Orig": [float(self.src_ox.text()), float(self.src_oy.text()), float(self.src_oz.text())],
-                            "X": [float(self.src_xx.text()), float(self.src_xy.text()), float(self.src_xz.text())],
-                            "Y": [float(self.src_yx.text()), float(self.src_yy.text()), float(self.src_yz.text())],
-                            "Z": [float(self.src_zx.text()), float(self.src_zy.text()), float(self.src_zz.text())]
+                            "Orig": [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                            "X": [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                            "Y": [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                            "Z": [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
                         },
-                        "MomentCenter": [float(self.src_mcx.text()), float(self.src_mcy.text()), float(self.src_mcz.text())],
+                        "MomentCenter": [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
                         "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
                         "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
                         "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
@@ -1592,10 +1669,10 @@ class IntegratedAeroGUI(QMainWindow):
                     {
                         "PartName": self.tgt_part_name.text(),
                         "CoordSystem": {
-                            "Orig": [float(self.tgt_ox.text()), float(self.tgt_oy.text()), float(self.tgt_oz.text())],
-                            "X": [float(self.tgt_xx.text()), float(self.tgt_xy.text()), float(self.tgt_xz.text())],
-                            "Y": [float(self.tgt_yx.text()), float(self.tgt_yy.text()), float(self.tgt_yz.text())],
-                            "Z": [float(self.tgt_zx.text()), float(self.tgt_zy.text()), float(self.tgt_zz.text())]
+                            "Orig": [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
+                            "X": [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                            "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                            "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
                         },
                         "MomentCenter": [float(self.tgt_mcx.text()), float(self.tgt_mcy.text()), float(self.tgt_mcz.text())],
                         "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
@@ -1646,12 +1723,12 @@ class IntegratedAeroGUI(QMainWindow):
                 "Source": {
                     "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
                     "CoordSystem": {
-                        "Orig": [float(self.src_ox.text()), float(self.src_oy.text()), float(self.src_oz.text())],
-                        "X": [float(self.src_xx.text()), float(self.src_xy.text()), float(self.src_xz.text())],
-                        "Y": [float(self.src_yx.text()), float(self.src_yy.text()), float(self.src_yz.text())],
-                        "Z": [float(self.src_zx.text()), float(self.src_zy.text()), float(self.src_zz.text())]
+                        "Orig": [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                        "X": [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                        "Y": [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                        "Z": [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
                     },
-                    "SourceMomentCenter": [float(self.src_mcx.text()), float(self.src_mcy.text()), float(self.src_mcz.text())],
+                    "SourceMomentCenter": [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
                     "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
                     "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
                     "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
@@ -1660,12 +1737,12 @@ class IntegratedAeroGUI(QMainWindow):
                 "Target": {
                     "PartName": self.tgt_part_name.text(),
                     "CoordSystem": {
-                        "Orig": [float(self.tgt_ox.text()), float(self.tgt_oy.text()), float(self.tgt_oz.text())],
-                        "X": [float(self.tgt_xx.text()), float(self.tgt_xy.text()), float(self.tgt_xz.text())],
-                        "Y": [float(self.tgt_yx.text()), float(self.tgt_yy.text()), float(self.tgt_yz.text())],
-                        "Z": [float(self.tgt_zx.text()), float(self.tgt_zy.text()), float(self.tgt_zz.text())]
+                        "Orig": [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
+                        "X": [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                        "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                        "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
                     },
-                    "TargetMomentCenter": [float(self.tgt_mcx.text()), float(self.tgt_mcy.text()), float(self.tgt_mcz.text())],
+                    "TargetMomentCenter": [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
                     "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
                     "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
                     "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
