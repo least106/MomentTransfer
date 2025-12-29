@@ -78,7 +78,7 @@ class FrameConfiguration:
         if coord_key is None:
             raise ValueError(f"{frame_type} 定义缺少坐标系字段 (CoordSystem)")
         
-        # 力矩中心 (可选字段)
+        # 力矩中心（必需字段）
         moment_center = None
         for mc_key in ["MomentCenter", "TargetMomentCenter", "SourceMomentCenter"]:
             if mc_key in data:
@@ -86,6 +86,8 @@ class FrameConfiguration:
                 if not isinstance(moment_center, (list, tuple)) or len(moment_center) != 3:
                     raise ValueError(f"{mc_key} 必须是长度为 3 的列表")
                 break
+        if moment_center is None:
+            raise ValueError(f"{frame_type} 定义必须包含 MomentCenter 字段（长度为3的列表）")
         
         # 获取数值参数 (都是可选的)
         c_ref = data.get("Cref")
@@ -117,10 +119,22 @@ class FrameConfiguration:
                     raise ValueError(f"字段 {name} 必须为非负数 (>=0)，当前值: {val}")
             return f
 
-        c_ref = parse_numeric_value("Cref", c_ref, strictly_positive=True)
-        b_ref = parse_numeric_value("Bref", b_ref, strictly_positive=True)
+        c_ref = parse_numeric_value("Cref", c_ref, strictly_positive=True) if c_ref is not None else None
+        b_ref = parse_numeric_value("Bref", b_ref, strictly_positive=True) if b_ref is not None else None
         s_ref = parse_numeric_value("S", s_ref, strictly_positive=True)
         q = parse_numeric_value("Q", q, strictly_positive=False)
+
+        # 强制要求 Q 与 S
+        if q is None:
+            raise ValueError(f"{frame_type} 定义必须包含动压 Q（数值）")
+        if s_ref is None:
+            raise ValueError(f"{frame_type} 定义必须包含参考面积 S（数值）")
+
+        # 若 Cref 或 Bref 缺失，使用默认值 1.0 并不报错（但建议在配置中显式提供）
+        if c_ref is None:
+            c_ref = 1.0
+        if b_ref is None:
+            b_ref = 1.0
         
         return cls(
             part_name=data["PartName"],
@@ -158,21 +172,19 @@ class ProjectData:
     def _parse_parts_section(cls, section: Any, section_name: str) -> Dict[str, List[FrameConfiguration]]:
         """解析 Source/Target 部分，支持新格式（含 Parts 列表）和旧格式（单个对象）。"""
         parts: Dict[str, List[FrameConfiguration]] = {}
+        # 新格式：必须包含 Parts 列表（严格模式：不再支持旧的直接对象格式）
+        if not (isinstance(section, dict) and 'Parts' in section and isinstance(section['Parts'], list)):
+            raise ValueError(f"{section_name} 必须为对象且包含 'Parts' 列表。示例: {{'Parts':[{{'PartName':'Name','Variants':[{{...}}]}}]}}")
 
-        # 新格式：包含 Parts 列表
-        if isinstance(section, dict) and 'Parts' in section and isinstance(section['Parts'], list):
+        if isinstance(section['Parts'], list):
             for p in section['Parts']:
                 if not isinstance(p, dict):
                     raise ValueError(f"{section_name}.Parts 中的元素必须为对象")
                 part_name = p.get('PartName') or 'Unnamed'
                 variants_raw = p.get('Variants')
                 variants: List[FrameConfiguration] = []
-                if variants_raw is None:
-                    # 允许单个变体直接放在 part 对象中（向后兼容）
-                    if any(k in p for k in ('CoordSystem', 'SourceCoordSystem', 'TargetCoordSystem')):
-                        variants_raw = [p]
-                    else:
-                        variants_raw = []
+                if variants_raw is None or not isinstance(variants_raw, list) or len(variants_raw) == 0:
+                    raise ValueError(f"{section_name} Part '{part_name}' 必须包含非空的 'Variants' 列表或至少一个变体对象")
 
                 for v in variants_raw:
                     if not isinstance(v, dict):
@@ -181,24 +193,15 @@ class ProjectData:
                     v_copy = dict(v)
                     if 'PartName' not in v_copy:
                         v_copy['PartName'] = part_name
+                    # FrameConfiguration.from_dict 已会对 CoordSystem 和必需字段进行校验
                     variants.append(FrameConfiguration.from_dict(v_copy, frame_type=f"{section_name}.{part_name}"))
 
                 parts[part_name] = variants
 
             return parts
 
-        # 旧格式：直接给出单个对象（可能包含 CoordSystem 等字段）
-        if isinstance(section, dict):
-            # 如果该对象直接是一个完整的 FrameConfiguration（含 CoordSystem），则把它封装进默认 part 名称
-            src_obj = dict(section)
-            part_name = src_obj.get('PartName') or (section_name + '_Default')
-            # 确保 PartName 存在以兼容 FrameConfiguration.from_dict
-            if 'PartName' not in src_obj:
-                src_obj['PartName'] = part_name
-            parts[part_name] = [FrameConfiguration.from_dict(src_obj, frame_type=section_name)]
-            return parts
-
-        raise ValueError(f"{section_name} 部分结构不受支持：期望对象或包含 Parts 列表的对象。")
+        # 解析完成后返回
+        return parts
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):

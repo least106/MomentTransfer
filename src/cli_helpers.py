@@ -4,7 +4,7 @@
 """
 import logging
 import json
-from src.data_loader import load_data
+from src.data_loader import load_data, ProjectData
 from src.physics import AeroCalculator
 from pathlib import Path
 from datetime import datetime
@@ -261,6 +261,9 @@ def load_project_calculator(config_path: str, *, source_part: str = None, source
     """
     try:
         project_data = load_data(config_path)
+        # 强制要求在使用多 Part 格式时显式指定 target_part/target_variant
+        if isinstance(project_data, ProjectData) and target_part is None:
+            raise ValueError("配置文件包含多 Part 定义，请使用 --target-part 与 --target-variant 显式指定要使用的目标 variant。示例: --target-part TestModel --target-variant 0")
         calculator = AeroCalculator(project_data, source_part=source_part, source_variant=source_variant, target_part=target_part, target_variant=target_variant)
         return project_data, calculator
     except FileNotFoundError as e:

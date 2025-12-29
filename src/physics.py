@@ -38,17 +38,17 @@ class AeroCalculator:
         # 支持传入单个 FrameConfiguration（视为 target）或完整的 ProjectData
         if isinstance(config, ProjectData):
             project: ProjectData = config
-            # 选择 source frame
+            # 使用 ProjectData 时必须显式提供 target_part/target_variant
+            if target_part is None:
+                raise ValueError("当传入 ProjectData 时，必须显式指定 target_part 和 target_variant（使用 --target-part/--target-variant）。")
+            # 选择 source frame（可选）
             if source_part is not None:
                 source_frame = project.get_source_part(source_part, source_variant)
             else:
                 source_frame = project.source_config
 
-            # 选择 target frame
-            if target_part is not None:
-                target_frame = project.get_target_part(target_part, target_variant)
-            else:
-                target_frame = project.target_config
+            # 选择 target frame（已确保不为 None）
+            target_frame = project.get_target_part(target_part, target_variant)
         elif isinstance(config, FrameConfiguration):
             # 仅提供单个 FrameConfiguration：把它视为 target_frame，source 使用同一配置的坐标系（向后兼容）
             source_frame = config
@@ -73,6 +73,14 @@ class AeroCalculator:
             target_moment_center=self.target_frame.moment_center,
         )
         self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+
+        # 构造时验证 target 必需字段
+        if self.target_frame.moment_center is None:
+            raise ValueError("目标 variant 必须包含 MomentCenter 字段（长度为3的列表）")
+        if self.target_frame.q is None:
+            raise ValueError("目标 variant 必须包含动压 Q（数值）")
+        if self.target_frame.s_ref is None:
+            raise ValueError("目标 variant 必须包含参考面积 S（数值）")
 
     def _safe_divide(self, numerator: np.ndarray, denominator, warn_msg: str = None) -> np.ndarray:
         """安全除法，处理标量或按轴数组的分母。
@@ -157,11 +165,11 @@ class AeroCalculator:
         F_final = F_rotated
         M_final = M_rotated + M_transfer
 
-        # 4. 无量纲化
-        q = self.cfg.target_config.q
-        s = self.cfg.target_config.s_ref
-        b = self.cfg.target_config.b_ref
-        c = self.cfg.target_config.c_ref
+        # 4. 无量纲化（使用选定的 target_frame）
+        q = getattr(self.target_frame, 'q', None)
+        s = getattr(self.target_frame, 's_ref', None)
+        b = getattr(self.target_frame, 'b_ref', None)
+        c = getattr(self.target_frame, 'c_ref', None)
         denom_force = q * s
         # 使用统一的安全除法处理标量/按轴分母的各种场景
         C_F = self._safe_divide(
