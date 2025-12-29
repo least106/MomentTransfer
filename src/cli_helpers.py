@@ -253,14 +253,15 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     return logger
 
 
-def load_project_calculator(config_path: str):
+def load_project_calculator(config_path: str, *, source_part: str = None, source_variant: int = 0, target_part: str = None, target_variant: int = 0):
     """加载几何/项目配置并返回 (project_data, AeroCalculator)
 
+    支持可选的 part/variant 指定以便直接构造使用特定 variant 的计算器。
     若加载失败会抛出 ValueError，消息对用户更友好。
     """
     try:
         project_data = load_data(config_path)
-        calculator = AeroCalculator(project_data)
+        calculator = AeroCalculator(project_data, source_part=source_part, source_variant=source_variant, target_part=target_part, target_variant=target_variant)
         return project_data, calculator
     except FileNotFoundError as e:
         raise ValueError(f"配置文件未找到: {config_path}") from e

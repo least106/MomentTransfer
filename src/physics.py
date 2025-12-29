@@ -1,10 +1,10 @@
 import numpy as np
 import warnings
 from dataclasses import dataclass
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 
 # 保持原有的 import
-from src.data_loader import ProjectData
+from src.data_loader import ProjectData, FrameConfiguration
 from src import geometry
 
 
@@ -18,20 +18,59 @@ class AeroResult:
 
 
 class AeroCalculator:
-    def __init__(self, config: ProjectData):
-        self.cfg = config
+    def __init__(
+        self,
+        config: Union[ProjectData, FrameConfiguration],
+        *,
+        source_part: Optional[str] = None,
+        source_variant: int = 0,
+        target_part: Optional[str] = None,
+        target_variant: int = 0,
+    ):
+        """
+        初始化 AeroCalculator。
 
-        # --- 几何初始化 (保持不变) ---
-        src = self.cfg.source_coord
-        tgt = self.cfg.target_config.coord_system
+        参数支持多种用法以保持向后兼容：
+        - 传入一个 `ProjectData`：使用其第一个 source/target，或通过 `source_part`/`target_part` 指定特定 part/variant。
+        - 传入 `FrameConfiguration`：被视为 target 配置（source 将使用 target 的坐标系作为回退，保持旧行为）。
+        - 也可以直接传入两个 `FrameConfiguration`（通过在外部先获得）并分别创建计算器。
+        """
+        # 支持传入单个 FrameConfiguration（视为 target）或完整的 ProjectData
+        if isinstance(config, ProjectData):
+            project: ProjectData = config
+            # 选择 source frame
+            if source_part is not None:
+                source_frame = project.get_source_part(source_part, source_variant)
+            else:
+                source_frame = project.source_config
+
+            # 选择 target frame
+            if target_part is not None:
+                target_frame = project.get_target_part(target_part, target_variant)
+            else:
+                target_frame = project.target_config
+        elif isinstance(config, FrameConfiguration):
+            # 仅提供单个 FrameConfiguration：把它视为 target_frame，source 使用同一配置的坐标系（向后兼容）
+            source_frame = config
+            target_frame = config
+        else:
+            raise TypeError("AeroCalculator 的第一个参数必须是 ProjectData 或 FrameConfiguration")
+
+        self.source_frame = source_frame
+        self.target_frame = target_frame
+
+        # --- 几何初始化 ---
+        src = self.source_frame.coord_system
+        tgt = self.target_frame.coord_system
         self.basis_source = geometry.construct_basis_matrix(src.x_axis, src.y_axis, src.z_axis)
         self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
         self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+
         # 计算力臂时优先使用 Source 的 MomentCenter（如果定义），否则退回到 Source 的 origin
-        source_moment_ref = self.cfg.source_config.moment_center if self.cfg.source_config.moment_center is not None else src.origin
+        source_moment_ref = self.source_frame.moment_center if self.source_frame.moment_center is not None else src.origin
         self.r_global = geometry.compute_moment_arm_global(
             source_origin=source_moment_ref,
-            target_moment_center=self.cfg.target_config.moment_center
+            target_moment_center=self.target_frame.moment_center,
         )
         self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
