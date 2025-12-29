@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox, QFormLayout, QFileDialog,
     QTextEdit, QMessageBox, QProgressBar, QSplitter, QCheckBox, QSpinBox,
+    QComboBox,
     QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout
 )
 from PySide6.QtGui import QFont
@@ -576,6 +577,18 @@ class IntegratedAeroGUI(QMainWindow):
         self.tgt_part_name = QLineEdit("TestModel")
         form_target.addRow("Part Name:", self.tgt_part_name)
 
+        # 当加载 ProjectData 时，展示可选的 Part 下拉框与 Variant 索引选择器
+        self.cmb_target_parts = QComboBox()
+        self.cmb_target_parts.setVisible(False)
+        self.spin_target_variant = QSpinBox()
+        self.spin_target_variant.setRange(0, 100)
+        self.spin_target_variant.setValue(0)
+        self.spin_target_variant.setVisible(False)
+        # 当选择不同 part 时，更新 variant 最大值（在 load_config 中设置）
+        self.cmb_target_parts.currentTextChanged.connect(lambda _: self._on_target_part_changed())
+        form_target.addRow("选择 Target Part:", self.cmb_target_parts)
+        form_target.addRow("Variant 索引:", self.spin_target_variant)
+
         # Target 坐标系
         self.tgt_ox = self._create_input("0.0")
         self.tgt_oy = self._create_input("0.0")
@@ -1020,98 +1033,63 @@ class IntegratedAeroGUI(QMainWindow):
             with open(fname, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-                # 填充 Source（兼容旧/新格式）
-                src_section = data.get('Source')
-                if src_section and 'CoordSystem' in src_section:
-                    src = src_section['CoordSystem']
-                    part_name = src_section.get('PartName', 'Global')
-                else:
-                    # 兼容旧版仅包含 SourceCoordSystem 的情况
-                    src = data.get('SourceCoordSystem')
-                    part_name = 'Global'
+            # 解析为严格的 ProjectData（新版格式，包含 Parts）
+            project = ProjectData.from_dict(data)
+            self.current_config = project
 
-                if src:
-                    if hasattr(self, 'src_part_name'):
-                        self.src_part_name.setText(str(part_name))
+            # 填充下拉列表与 variant 控件
+            self.cmb_target_parts.clear()
+            for part in project.target_parts.keys():
+                self.cmb_target_parts.addItem(part)
+            if self.cmb_target_parts.count() > 0:
+                self.cmb_target_parts.setVisible(True)
+                self.spin_target_variant.setVisible(True)
+                first = self.cmb_target_parts.currentText() or self.cmb_target_parts.itemText(0)
+                variants = project.target_parts.get(first, [])
+                self.spin_target_variant.setRange(0, max(0, len(variants) - 1))
 
-                    self.src_ox.setText(str(src['Orig'][0]))
-                    self.src_oy.setText(str(src['Orig'][1]))
-                    self.src_oz.setText(str(src['Orig'][2]))
+            # 使用选定的 variant 填充 Target 表单
+            try:
+                sel_part = self.cmb_target_parts.currentText() or self.cmb_target_parts.itemText(0)
+                sel_variant = int(self.spin_target_variant.value())
+                frame = project.get_target_part(sel_part, sel_variant)
+                cs = frame.coord_system
+                mc = frame.moment_center or [0.0, 0.0, 0.0]
 
-                    self.src_xx.setText(str(src['X'][0]))
-                    self.src_xy.setText(str(src['X'][1]))
-                    self.src_xz.setText(str(src['X'][2]))
+                self.tgt_part_name.setText(frame.part_name)
+                self.tgt_ox.setText(str(cs.origin[0]))
+                self.tgt_oy.setText(str(cs.origin[1]))
+                self.tgt_oz.setText(str(cs.origin[2]))
+                self.tgt_xx.setText(str(cs.x_axis[0]))
+                self.tgt_xy.setText(str(cs.x_axis[1]))
+                self.tgt_xz.setText(str(cs.x_axis[2]))
+                self.tgt_yx.setText(str(cs.y_axis[0]))
+                self.tgt_yy.setText(str(cs.y_axis[1]))
+                self.tgt_yz.setText(str(cs.y_axis[2]))
+                self.tgt_zx.setText(str(cs.z_axis[0]))
+                self.tgt_zy.setText(str(cs.z_axis[1]))
+                self.tgt_zz.setText(str(cs.z_axis[2]))
+                self.tgt_mcx.setText(str(mc[0]))
+                self.tgt_mcy.setText(str(mc[1]))
+                self.tgt_mcz.setText(str(mc[2]))
+                self.tgt_cref.setText(str(frame.c_ref or 1.0))
+                self.tgt_bref.setText(str(frame.b_ref or 1.0))
+                self.tgt_sref.setText(str(frame.s_ref or 10.0))
+                self.tgt_q.setText(str(frame.q or 1000.0))
 
-                    self.src_yx.setText(str(src['Y'][0]))
-                    self.src_yy.setText(str(src['Y'][1]))
-                    self.src_yz.setText(str(src['Y'][2]))
-
-                    self.src_zx.setText(str(src['Z'][0]))
-                    self.src_zy.setText(str(src['Z'][1]))
-                    self.src_zz.setText(str(src['Z'][2]))
-                    # Source 的力矩中心与参考量（若存在），稳健解析并容错
-                    mc_src = None
-                    if src_section and isinstance(src_section, dict):
-                        try:
-                            mc_src = src_section.get('SourceMomentCenter') or src_section.get('MomentCenter')
-                        except (IndexError, TypeError, ValueError):
-                            mc_src = None
-
-                    if mc_src and hasattr(self, 'src_mcx'):
-                        try:
-                            self.src_mcx.setText(str(mc_src[0]))
-                            self.src_mcy.setText(str(mc_src[1]))
-                            self.src_mcz.setText(str(mc_src[2]))
-                        except (IndexError, TypeError, ValueError) as ex:
-                            logger.debug("部分力矩中心字段格式异常，已忽略: %s", ex, exc_info=True)
-
-                    if hasattr(self, 'src_cref') and src_section and isinstance(src_section, dict):
-                        # 使用 get 并提供默认值以防缺失
-                        self.src_cref.setText(str(src_section.get('Cref', 1.0)))
-                        self.src_bref.setText(str(src_section.get('Bref', 1.0)))
-                        self.src_sref.setText(str(src_section.get('S', 10.0)))
-                        self.src_q.setText(str(src_section.get('Q', 1000.0)))
-
-            # 填充 Target
-            tgt = data['Target']
-            self.tgt_part_name.setText(tgt['PartName'])
-
-            tgt_coord = tgt.get('TargetCoordSystem') or tgt.get('CoordSystem')
-            self.tgt_ox.setText(str(tgt_coord['Orig'][0]))
-            self.tgt_oy.setText(str(tgt_coord['Orig'][1]))
-            self.tgt_oz.setText(str(tgt_coord['Orig'][2]))
-
-            self.tgt_xx.setText(str(tgt_coord['X'][0]))
-            self.tgt_xy.setText(str(tgt_coord['X'][1]))
-            self.tgt_xz.setText(str(tgt_coord['X'][2]))
-
-            self.tgt_yx.setText(str(tgt_coord['Y'][0]))
-            self.tgt_yy.setText(str(tgt_coord['Y'][1]))
-            self.tgt_yz.setText(str(tgt_coord['Y'][2]))
-
-            self.tgt_zx.setText(str(tgt_coord['Z'][0]))
-            self.tgt_zy.setText(str(tgt_coord['Z'][1]))
-            self.tgt_zz.setText(str(tgt_coord['Z'][2]))
-
-            mc = tgt.get('TargetMomentCenter') or tgt.get('MomentCenter')
-            self.tgt_mcx.setText(str(mc[0]))
-            self.tgt_mcy.setText(str(mc[1]))
-            self.tgt_mcz.setText(str(mc[2]))
-
-            # Target 的参考量
-            if hasattr(self, 'tgt_cref'):
-                self.tgt_cref.setText(str(tgt.get('Cref', 1.0)))
-                self.tgt_bref.setText(str(tgt.get('Bref', 1.0)))
-                self.tgt_sref.setText(str(tgt.get('S', 10.0)))
-                self.tgt_q.setText(str(tgt.get('Q', 1000.0)))
+            except Exception as e:
+                logger.debug("在填充 Target 表单时发生错误: %s", e, exc_info=True)
 
             QMessageBox.information(self, "成功", f"配置已加载:\n{fname}")
             self.statusBar().showMessage(f"已加载: {fname}")
 
-            # 自动应用
-            self.apply_config()
+            # 自动应用（会使用 project + 选定的 target part/variant）
             try:
-                # 记录最近打开项目
+                self.apply_config()
+            except Exception:
+                logger.debug("自动应用配置时出错（忽略）", exc_info=True)
+
+            try:
                 self.add_recent_project(fname)
             except Exception:
                 logger.debug("add_recent_project failed", exc_info=True)
@@ -1122,36 +1100,50 @@ class IntegratedAeroGUI(QMainWindow):
     def save_config(self):
         """保存配置到JSON"""
         try:
-            # 保存为对等的 Source / Target 配置，便于在 GUI 中保持一致性
+            # 按新版 Parts/Variants 格式保存（保证与 data_loader 的严格解析兼容）
+            src_part = {
+                "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
+                "Variants": [
+                    {
+                        "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
+                        "CoordSystem": {
+                            "Orig": [float(self.src_ox.text()), float(self.src_oy.text()), float(self.src_oz.text())],
+                            "X": [float(self.src_xx.text()), float(self.src_xy.text()), float(self.src_xz.text())],
+                            "Y": [float(self.src_yx.text()), float(self.src_yy.text()), float(self.src_yz.text())],
+                            "Z": [float(self.src_zx.text()), float(self.src_zy.text()), float(self.src_zz.text())]
+                        },
+                        "MomentCenter": [float(self.src_mcx.text()), float(self.src_mcy.text()), float(self.src_mcz.text())],
+                        "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
+                        "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
+                        "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
+                        "S": float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
+                    }
+                ]
+            }
+
+            tgt_part = {
+                "PartName": self.tgt_part_name.text(),
+                "Variants": [
+                    {
+                        "PartName": self.tgt_part_name.text(),
+                        "CoordSystem": {
+                            "Orig": [float(self.tgt_ox.text()), float(self.tgt_oy.text()), float(self.tgt_oz.text())],
+                            "X": [float(self.tgt_xx.text()), float(self.tgt_xy.text()), float(self.tgt_xz.text())],
+                            "Y": [float(self.tgt_yx.text()), float(self.tgt_yy.text()), float(self.tgt_yz.text())],
+                            "Z": [float(self.tgt_zx.text()), float(self.tgt_zy.text()), float(self.tgt_zz.text())]
+                        },
+                        "MomentCenter": [float(self.tgt_mcx.text()), float(self.tgt_mcy.text()), float(self.tgt_mcz.text())],
+                        "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
+                        "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
+                        "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
+                        "S": float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
+                    }
+                ]
+            }
+
             data = {
-                "Source": {
-                    "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
-                    "CoordSystem": {
-                        "Orig": [float(self.src_ox.text()), float(self.src_oy.text()), float(self.src_oz.text())],
-                        "X": [float(self.src_xx.text()), float(self.src_xy.text()), float(self.src_xz.text())],
-                        "Y": [float(self.src_yx.text()), float(self.src_yy.text()), float(self.src_yz.text())],
-                        "Z": [float(self.src_zx.text()), float(self.src_zy.text()), float(self.src_zz.text())]
-                    },
-                    "SourceMomentCenter": [float(self.src_mcx.text()), float(self.src_mcy.text()), float(self.src_mcz.text())],
-                    "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
-                    "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
-                    "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
-                    "S": float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
-                },
-                "Target": {
-                    "PartName": self.tgt_part_name.text(),
-                    "CoordSystem": {
-                        "Orig": [float(self.tgt_ox.text()), float(self.tgt_oy.text()), float(self.tgt_oz.text())],
-                        "X": [float(self.tgt_xx.text()), float(self.tgt_xy.text()), float(self.tgt_xz.text())],
-                        "Y": [float(self.tgt_yx.text()), float(self.tgt_yy.text()), float(self.tgt_yz.text())],
-                        "Z": [float(self.tgt_zx.text()), float(self.tgt_zy.text()), float(self.tgt_zz.text())]
-                    },
-                    "TargetMomentCenter": [float(self.tgt_mcx.text()), float(self.tgt_mcy.text()), float(self.tgt_mcz.text())],
-                    "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
-                    "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
-                    "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
-                    "S": float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
-                }
+                "Source": {"Parts": [src_part]},
+                "Target": {"Parts": [tgt_part]}
             }
 
             fname, _ = QFileDialog.getSaveFileName(self, '保存配置', 'config.json', 'JSON Files (*.json)')
@@ -1203,10 +1195,21 @@ class IntegratedAeroGUI(QMainWindow):
                 }
             }
 
+            # 解析为 ProjectData（严格格式），并使用显式的 target part/variant 构造计算器
             self.current_config = ProjectData.from_dict(data)
-            self.calculator = AeroCalculator(self.current_config)
 
-            part_name = self.tgt_part_name.text()
+            # 决定要使用的 target part 与 variant（优先使用 GUI 下拉框）
+            if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
+                sel_part = self.cmb_target_parts.currentText()
+                sel_variant = int(self.spin_target_variant.value())
+            else:
+                sel_part = self.tgt_part_name.text()
+                sel_variant = 0
+
+            # 构造时传入 project + 显式 target_part/variant，由 AeroCalculator 再次校验
+            self.calculator = AeroCalculator(self.current_config, target_part=sel_part, target_variant=sel_variant)
+
+            part_name = sel_part
             self.lbl_status.setText(f"已加载配置: {part_name}")
             self.lbl_status.setStyleSheet("color: green; font-weight: bold; font-size: 13px;")
             self.statusBar().showMessage(f"配置已应用: {part_name}")
@@ -2212,10 +2215,27 @@ class IntegratedAeroGUI(QMainWindow):
                 self.lbl_preview_qs.setText('Q/S: -')
                 return
 
-            part = getattr(cfg.target_config, 'part_name', None)
-            mc = getattr(cfg.target_config, 'moment_center', None)
-            q = getattr(cfg.target_config, 'q', None)
-            s = getattr(cfg.target_config, 's_ref', None) if hasattr(cfg.target_config, 's_ref') else getattr(cfg.target_config, 'S', None)
+            # 如果当前为 ProjectData 并且 GUI 上有选定的 part，则使用选定 variant 的信息进行预览
+            part = None
+            mc = None
+            q = None
+            s = None
+            try:
+                if isinstance(cfg, ProjectData) and hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
+                    sel_part = self.cmb_target_parts.currentText()
+                    sel_variant = int(self.spin_target_variant.value())
+                    tf = cfg.get_target_part(sel_part, sel_variant)
+                    part = tf.part_name
+                    mc = tf.moment_center
+                    q = tf.q
+                    s = tf.s_ref
+                else:
+                    part = getattr(cfg.target_config, 'part_name', None)
+                    mc = getattr(cfg.target_config, 'moment_center', None)
+                    q = getattr(cfg.target_config, 'q', None)
+                    s = getattr(cfg.target_config, 's_ref', None) if hasattr(cfg.target_config, 's_ref') else getattr(cfg.target_config, 'S', None)
+            except Exception:
+                logger.debug("在预览选定 target 时出现异常", exc_info=True)
 
             # Part 名称
             self.lbl_preview_part.setText(f"Part: {part}")
@@ -2267,6 +2287,50 @@ class IntegratedAeroGUI(QMainWindow):
                 self.inp_default_output.setText(d)
         except Exception:
             logger.debug("_browse_default_output failed", exc_info=True)
+
+    def _on_target_part_changed(self):
+        """当用户在下拉框选择不同 Part 时，更新 Variant 的上限并刷新 Target 表单。"""
+        try:
+            if not hasattr(self, 'current_config') or self.current_config is None:
+                return
+            if not isinstance(self.current_config, ProjectData):
+                return
+            sel = self.cmb_target_parts.currentText()
+            variants = self.current_config.target_parts.get(sel, [])
+            max_idx = max(0, len(variants) - 1)
+            self.spin_target_variant.setRange(0, max_idx)
+            # 尝试用第一个 variant 填充 Target 表单
+            if variants:
+                frame = variants[0]
+                cs = frame.coord_system
+                mc = frame.moment_center or [0.0, 0.0, 0.0]
+                self.tgt_part_name.setText(frame.part_name)
+                self.tgt_ox.setText(str(cs.origin[0]))
+                self.tgt_oy.setText(str(cs.origin[1]))
+                self.tgt_oz.setText(str(cs.origin[2]))
+                self.tgt_xx.setText(str(cs.x_axis[0]))
+                self.tgt_xy.setText(str(cs.x_axis[1]))
+                self.tgt_xz.setText(str(cs.x_axis[2]))
+                self.tgt_yx.setText(str(cs.y_axis[0]))
+                self.tgt_yy.setText(str(cs.y_axis[1]))
+                self.tgt_yz.setText(str(cs.y_axis[2]))
+                self.tgt_zx.setText(str(cs.z_axis[0]))
+                self.tgt_zy.setText(str(cs.z_axis[1]))
+                self.tgt_zz.setText(str(cs.z_axis[2]))
+                self.tgt_mcx.setText(str(mc[0]))
+                self.tgt_mcy.setText(str(mc[1]))
+                self.tgt_mcz.setText(str(mc[2]))
+                self.tgt_cref.setText(str(frame.c_ref or 1.0))
+                self.tgt_bref.setText(str(frame.b_ref or 1.0))
+                self.tgt_sref.setText(str(frame.s_ref or 10.0))
+                self.tgt_q.setText(str(frame.q or 1000.0))
+            # 更新预览
+            try:
+                self.update_config_preview()
+            except Exception:
+                logger.debug("update_config_preview failed in _on_target_part_changed", exc_info=True)
+        except Exception:
+            logger.debug("_on_target_part_changed failed", exc_info=True)
 
     def one_click_process(self):
         """使用当前配置和默认输出目录快速启动批处理（单次、非交互）。"""
