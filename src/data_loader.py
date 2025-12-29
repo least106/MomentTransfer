@@ -216,8 +216,17 @@ class ProjectData:
         source_parts = cls._parse_parts_section(data['Source'], 'Source')
         target_parts = cls._parse_parts_section(data['Target'], 'Target')
 
-        # 对于 target，进行基础校验：每个 variant 应包含必需的数值字段（在 FrameConfiguration.from_dict 中已校验部分字段）
-        # 对于兼容性，若某些可选字段未给出，FrameConfiguration.from_dict 已会返回 None 或默认值处理
+        # 对 target_parts 做额外的严格校验，确保每个 variant 包含必需字段并给出清晰错误提示
+        for part_name, variants in target_parts.items():
+            if not variants:
+                raise ValueError(f"Target 部件 '{part_name}' 必须包含至少一个 Variant")
+            for idx, var in enumerate(variants):
+                if var.moment_center is None or not isinstance(var.moment_center, (list, tuple)) or len(var.moment_center) != 3:
+                    raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少有效的 MomentCenter（长度为3的列表）")
+                if var.q is None:
+                    raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少动压 Q（数值）")
+                if var.s_ref is None:
+                    raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少参考面积 S（数值）")
 
         return cls(source_parts=source_parts, target_parts=target_parts)
 
