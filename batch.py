@@ -77,8 +77,12 @@ from src.cli_helpers import (
 
 
 
-def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) -> Path:
-    """根据模板与时间戳生成输出路径，处理冲突和可写性检查。"""
+def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig, create_placeholder: bool = True) -> Path:
+    """根据模板与时间戳生成输出路径，处理冲突和可写性检查。
+
+    如果 `create_placeholder` 为 False，此函数仅计算并返回一个可用的输出路径（不在磁盘上创建占位文件），
+    这在 dry-run 或预览场景中很有用以避免产生空文件。
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,14 +99,30 @@ def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig) ->
     max_trials = min(DEFAULT_MAX_COLLISION_TRIALS, MAX_FILE_COLLISION_RETRIES)
     candidate = out_path
 
-    # 如果用户允许覆盖，直接尝试删除旧文件（若删除失败，则视为不可写）
-    if cfg.overwrite and candidate.exists():
+    # 如果用户允许覆盖并且已存在目标文件，先处理覆盖语义（不在 dry-run 时删除）
+    if cfg.overwrite and candidate.exists() and create_placeholder:
         try:
             candidate.unlink()
         except Exception as e:
             raise IOError(f"无法覆盖已存在的输出文件: {candidate} -> {e}") from e
 
-    # 尝试以 O_EXCL 原子方式创建占位文件以预占名字，避免并发冲突
+    # 如果不需要在磁盘上创建占位文件（例如 dry-run），仅计算一个不会冲突的名称并返回
+    if not create_placeholder:
+        chosen = None
+        for i in range(0, max_trials + 1):
+            if i == 0:
+                c = output_dir / name
+            else:
+                c = output_dir / f"{base}_{i}{suf}"
+            if cfg.overwrite or not c.exists():
+                chosen = c
+                break
+        if chosen is None:
+            unique = uuid.uuid4().hex
+            chosen = output_dir / f"{base}_{unique}{suf}"
+        return chosen
+
+    # 尝试以 O_EXCL 原子方式创建占位文件以预占名字，避免并发冲突（默认行为）
     created = False
     last_err = None
     for i in range(0, max_trials + 1):
@@ -665,7 +685,7 @@ def _worker_process(args):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0):
     """增强版批处理主函数
 
     使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
@@ -680,8 +700,11 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
     # 1. 加载配置（支持新版对等的 Source/Target 结构，向后兼容旧的 SourceCoordSystem）
     logger.info("[1/5] 加载几何配置: %s", config_path)
     try:
-        project_data, calculator = load_project_calculator(config_path)
-        logger.info("  ✓ 配置加载成功: %s", project_data.target_config.part_name)
+        project_data, calculator = load_project_calculator(config_path, target_part=target_part, target_variant=target_variant)
+        # 显示实际使用的 Target part 名称
+        used_target = getattr(calculator, 'target_frame', None)
+        used_target_name = getattr(used_target, 'part_name', None) if used_target is not None else None
+        logger.info("  ✓ 配置加载成功: %s", used_target_name)
     except Exception as e:
         logger.error("  ✗ 配置加载失败: %s", e)
         logger.error("  提示: 请检查 JSON 是否包含 Target 的 CoordSystem/MomentCenter/Q/S 或使用 GUI/creator.py 生成兼容的配置。")
@@ -760,7 +783,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             except Exception as e:
                 logger.warning("解析文件 %s 的格式失败：%s", fp, e)
                 cfg_local = data_config
-            out_path = generate_output_path(fp, output_dir, cfg_local)
+            out_path = generate_output_path(fp, output_dir, cfg_local, create_placeholder=False)
             logger.info("将处理: %s -> %s (format: %s)", fp, out_path, cfg_local.column_mappings)
         return
     
@@ -874,6 +897,8 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--timestamp-format', 'timestamp_format', default=None, help='时间戳格式，用于 {timestamp} 占位符，默认 %%Y%%m%%d_%%H%%M%%S')
 @click.option('--treat-non-numeric', 'treat_non_numeric', type=click.Choice(['zero','nan','drop']), default=None, help='如何处理非数值输入: zero|nan|drop')
 @click.option('--sample-rows', 'sample_rows', type=int, default=None, help='记录非数值示例的行数上限 (默认5)')
+@click.option('--part', 'part_name', default=None, help='目标 part 名称（默认使用第一个 Part）')
+@click.option('--variant', 'variant_index', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
 @click.option('--registry-db', 'registry_db', default=None, help='SQLite registry 数据库路径（优先用于按文件映射格式）')
 @click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
 @click.option('--dry-run', 'dry_run', is_flag=True, help='仅解析并显示将处理的文件与输出路径，但不实际写入')
@@ -897,6 +922,8 @@ def main(**cli_options):
     timestamp_format = cli_options.get('timestamp_format')
     treat_non_numeric = cli_options.get('treat_non_numeric')
     sample_rows = cli_options.get('sample_rows')
+    part_name = cli_options.get('part_name')
+    variant_index = cli_options.get('variant_index')
     registry_db = cli_options.get('registry_db')
     strict = cli_options.get('strict')
     dry_run = cli_options.get('dry_run')
@@ -905,27 +932,28 @@ def main(**cli_options):
     summary = cli_options.get('summary')
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
-
     # 读取数据格式配置
-    if non_interactive:
+    data_config = None
+    # 优先使用命令行提供的格式文件（无论是否为非交互模式）以避免不必要的交互
+    if format_file:
+        try:
+            data_config = load_format_from_file(format_file)
+            logger.info(f'使用格式文件: {format_file}')
+        except Exception as e:
+            logger.exception('读取格式文件失败')
+            _error_exit_json(f"读取格式文件失败: {e}", code=3)
+
+    if non_interactive and data_config is None:
         # 非交互模式下要求提供全局格式文件或 registry_db 用于按文件解析格式
-        if not format_file and not registry_db:
+        if not registry_db:
             _error_exit_json("--non-interactive 模式下必须提供 --format-file 或 --registry-db", code=2,
                              hint="传入 --format-file 或 --registry-db 以在非交互模式下解析每个文件的格式。")
+        # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 registry / sidecar / 目录 默认覆盖
+        data_config = BatchConfig()
+        logger.info('非交互模式且未提供 --format-file，使用默认 BatchConfig 并依赖 registry/sidecar/目录默认进行每文件解析')
 
-        if format_file:
-            try:
-                data_config = load_format_from_file(format_file)
-                logger.info(f'使用格式文件: {format_file}')
-            except Exception as e:
-                logger.exception('读取格式文件失败')
-                _error_exit_json(f"读取格式文件失败: {e}", code=3)
-        else:
-            # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 registry / sidecar / 目录 默认覆盖
-            data_config = BatchConfig()
-            logger.info('非交互模式且未提供 --format-file，使用默认 BatchConfig 并依赖 registry/sidecar/目录默认进行每文件解析')
-    else:
-        # 交互式
+    if data_config is None:
+        # 交互式获取格式配置
         data_config = get_user_file_format()
 
     # 命令行参数覆盖格式文件中的设置（若提供）
@@ -1109,6 +1137,8 @@ def main(**cli_options):
                 show_progress=show_progress,
                 output_json=output_json,
                 summary=summary,
+                target_part=part_name,
+                target_variant=variant_index,
             )
             sys.exit(0)
     except Exception:

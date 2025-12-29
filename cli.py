@@ -64,7 +64,10 @@ def cli(ctx, verbose, log_file):
 @click.option('--moment', type=(float, float, float), default=None,
               help='输入力矩向量 (例如: --moment 0 500 0)')
 @click.pass_context
-def main(ctx, config_path, input_path, output_path, force, moment, json_errors):
+@click.option('--part', 'part_name', default=None, help='目标 part 名称（默认使用第一个 Part）')
+@click.option('--variant', 'variant_index', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
+@click.pass_context
+def main(ctx, config_path, input_path, output_path, force, moment, json_errors, part_name, variant_index):
     """气动载荷坐标变换工具（click CLI）
 
     支持非交互模式通过 `--force` 与 `--moment` 指定载荷。
@@ -125,7 +128,11 @@ def main(ctx, config_path, input_path, output_path, force, moment, json_errors):
             project_data = loaded
 
         from src.physics import AeroCalculator
-        calculator = AeroCalculator(project_data)
+        # 若指定了 part/variant，则构造带选择的计算器
+        if part_name is not None:
+            calculator = AeroCalculator(project_data, target_part=part_name, target_variant=variant_index)
+        else:
+            calculator = AeroCalculator(project_data)
     except Exception as e:
         _error_exit(f"无法加载配置: {str(e)}", code=4, hint="配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。")
 
@@ -135,7 +142,10 @@ def main(ctx, config_path, input_path, output_path, force, moment, json_errors):
     click.echo('-' * 40)
     click.echo(f"输入载荷: F={raw_forces}, M={raw_moments}")
     click.echo('-' * 40)
-    click.echo(f"转换结果 (Target: {project_data.target_config.part_name})")
+    # 输出实际使用的 target 信息
+    used_target = getattr(calculator, 'target_frame', None)
+    used_target_name = getattr(used_target, 'part_name', None) if used_target is not None else None
+    click.echo(f"转换结果 (Target: {used_target_name})")
 
     def round_values(values):
         return [round(x, 4) for x in values]
