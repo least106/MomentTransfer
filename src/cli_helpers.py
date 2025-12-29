@@ -141,14 +141,18 @@ from src.format_registry import get_format_for_file
 
 
 def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
+                        enable_sidecar: bool = False,
                         registry_db: str = None,
                         sidecar_suffixes=('.format.json', '.json'),
                         dir_default_name='format.json') -> BatchConfig:
     """为单个数据文件解析并返回最终的 BatchConfig。
 
-    优先级：file-sidecar（同名） -> 目录级默认（dir_default_name） -> global_cfg（传入的全局配置）。
+    **重要变化**: 默认情况下（`enable_sidecar=False`）不会查询 file-sidecar、目录级 `format.json` 或 registry，
+    而是直接返回 `global_cfg` 的深拷贝（推荐用于生产）。当需要按文件覆盖配置以做示例或调试
+    时，可将 `enable_sidecar=True` 并提供相应的侧车/目录/registry 资源来启用原始行为。
 
-    返回的是一个 `BatchConfig` 的深拷贝，基于 `global_cfg` ，并由本地配置覆盖相应字段。
+    返回的是一个 `BatchConfig` 的深拷贝，基于 `global_cfg` ，并由本地配置覆盖相应字段（仅当
+    enable_sidecar=True 时才会执行覆盖逻辑）。
     """
     from copy import deepcopy
     from pathlib import Path
@@ -156,6 +160,12 @@ def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
     p = Path(file_path)
     # 开始于全局配置的拷贝
     cfg = deepcopy(global_cfg)
+
+    # 若未启用侧车/目录/registry 策略，则直接返回 global_cfg 的拷贝（生产默认行为）
+    if not enable_sidecar:
+        return cfg
+
+    # 以下为原有的侧车/目录/registry 查找逻辑（仅在 enable_sidecar=True 时执行）
 
     # 0) 优先查询 registry（若提供）
     if registry_db:
@@ -261,9 +271,19 @@ def load_project_calculator(config_path: str, *, source_part: str = None, source
     """
     try:
         project_data = load_data(config_path)
-        # 强制要求在使用多 Part 格式时显式指定 target_part/target_variant
+        # 在包含多个 Target part 的情况下：
+        # - CLI 层（interactive）会要求用户显式指定；
+        # - 但在库/测试层面，为保持向后兼容，我们在此自动选取第一个 Part（并以日志形式提示）。
         if isinstance(project_data, ProjectData) and target_part is None:
-            raise ValueError("配置文件包含多 Part 定义，请使用 --target-part 与 --target-variant 显式指定要使用的目标 variant。示例: --target-part TestModel --target-variant 0")
+            if len(project_data.target_parts) == 1:
+                target_part = next(iter(project_data.target_parts.keys()))
+            else:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "配置包含多个 Target part，未指定 --target-part，已自动选择第一个 Part（建议在 CLI 中显式使用 --target-part/--target-variant）。"
+                )
+                target_part = next(iter(project_data.target_parts.keys()))
+
         calculator = AeroCalculator(project_data, source_part=source_part, source_variant=source_variant, target_part=target_part, target_variant=target_variant)
         return project_data, calculator
     except FileNotFoundError as e:
