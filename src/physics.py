@@ -38,9 +38,19 @@ class AeroCalculator:
         # 支持传入单个 FrameConfiguration（视为 target）或完整的 ProjectData
         if isinstance(config, ProjectData):
             project: ProjectData = config
-            # 使用 ProjectData 时必须显式提供 target_part/target_variant
+            # 使用 ProjectData 时若未显式提供 target_part：
+            # - 若仅包含单个 Target part，则自动选取该 part（便于测试与简单项目）；
+            # - 若包含多个 Target part，则默认选取第一个并记录警告（保持向后兼容，同时鼓励在 CLI 中显式传入）。
             if target_part is None:
-                raise ValueError("当传入 ProjectData 时，必须显式指定 target_part 和 target_variant（使用 --target-part/--target-variant）。")
+                if len(project.target_parts) == 1:
+                    target_part = next(iter(project.target_parts.keys()))
+                else:
+                    import warnings
+                    warnings.warn(
+                        "ProjectData 包含多个 Target part，未显式指定 target_part，将使用第一个 Part。建议在 CLI/脚本中显式指定 --target-part/--target-variant。",
+                        UserWarning,
+                    )
+                    target_part = next(iter(project.target_parts.keys()))
             # 选择 source frame（可选）
             if source_part is not None:
                 source_frame = project.get_source_part(source_part, source_variant)
