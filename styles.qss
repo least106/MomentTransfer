@@ -15,126 +15,145 @@ QWidget {
 
 /* GroupBox 卡片化外观 */
 QGroupBox {
-  /* 全局样式表 - styles.qss
-     主题：主色 #0078d7，强调 #28a745，危险 #ff6b6b，中性色 #f5f5f5 / #333
-     用法：在 main() 里使用 app.setStyleSheet(open('styles.qss').read())
-  */
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #fbfcfe);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 8px;
+  margin-top: 6px;
+  padding: 12px;
+  /* box-shadow 已移除，Qt QSS 不支持该属性 */
+}
+QGroupBox::title {
+  subcontrol-origin: margin;
+  left: 10px;
+  padding: 0 4px;
+  color: #444;
+  font-weight: 700;
+  font-size: 12px;
+}
 
-  /* 字体与全局间距 */
-  * {
-    font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
-  }
+/* 标签与标题 */
+QLabel { font-size: 11pt; }
+QLabel#panelTitle { font-size: 16px; font-weight: 700; color: #333; }
+QCheckBox#sectionToggle { font-weight: 700; color: #0078d7; }
 
-  QWidget {
-    background: #f7f9fb;
-    color: #2f2f2f;
-  }
+/* 输入控件 */
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
 
-  /* GroupBox 卡片化外观 */
-  QGroupBox {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.07);
-    border-radius: 6px;
-    margin-top: 6px;
-    padding: 10px;
-  }
-  QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 10px;
-    padding: 0 4px;
-    color: #444;
-    font-weight: 600;
-  }
+QTextEdit {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 4px;
+  padding: 8px;
+}
 
-  /* 标签与标题 */
-  QLabel { font-size: 11pt; }
-  QLabel#panelTitle { font-size: 16px; font-weight: 700; color: #333; }
-  QCheckBox#sectionToggle { font-weight: 700; color: #0078d7; }
+/* 按钮基色与变体，通过 objectName 精确选择 */
+QPushButton {
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-height: 30px;
+  min-width: 90px;
+}
 
-  /* 输入控件 */
-  QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 4px;
-    padding: 6px 8px;
-  }
+QPushButton#primaryButton {
+  background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #1580d6, stop:1 #0078d7);
+  color: white;
+  border: none;
+}
+QPushButton#primaryButton:hover { background: #0f6fbf; }
 
-  QTextEdit {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 4px;
-    padding: 8px;
-  }
+QPushButton#secondaryButton {
+  background: transparent;
+  border: 1px solid rgba(0,0,0,0.12);
+  color: #333;
+}
+QPushButton#secondaryButton:hover { background: rgba(0,0,0,0.03); }
 
-  /* 按钮基色与变体，通过 objectName 精确选择 */
-  QPushButton {
-    border-radius: 6px;
-    padding: 8px 12px;
-    min-height: 30px;
-  }
+QPushButton#dangerButton {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+}
+QPushButton#dangerButton:hover { background: #e05555; }
 
-  QPushButton#primaryButton {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #1580d6, stop:1 #0078d7);
-    color: white;
-    border: none;
-  }
-  QPushButton#primaryButton:hover { background: #0f6fbf; }
+QPushButton#smallButton {
+  min-width: 72px;
+  padding: 6px 8px;
+  font-size: 10pt;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: transparent;
+}
+QPushButton#smallButton:hover { background: rgba(0,0,0,0.03); }
 
-  QPushButton#secondaryButton {
-    background: transparent;
-    border: 1px solid rgba(0,0,0,0.12);
-    color: #333;
-  }
-  QPushButton#secondaryButton:hover { background: rgba(0,0,0,0.03); }
+/* 小提示样式 */
+QToolTip { background: #333; color: #fff; border: none; padding: 6px; border-radius: 4px; }
 
-  QPushButton#dangerButton {
-    background: #ff6b6b;
-    color: white;
-    border: none;
-  }
-  QPushButton#dangerButton:hover { background: #e05555; }
+/* Dialog 按钮布局更紧凑 */
+QDialog QPushButton { min-width: 72px; }
 
-  /* 小提示样式 */
-  QToolTip { background: #333; color: #fff; border: none; padding: 6px; border-radius: 4px; }
+/* 仅在按钮容器内为按钮添加间距，避免影响全局布局 */
+QWidget#btnWidget QPushButton { margin: 6px; }
 
-  /* Dialog 按钮布局更紧凑 */
-  QDialog QPushButton { min-width: 72px; }
+/* CheckBox 微调 */
+QCheckBox { spacing: 6px; }
 
-  /* 进度条样式 */
-  QProgressBar {
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 6px;
-    text-align: center;
-    padding: 2px;
-  }
-  QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5fb0ff, stop:1 #0078d7);
-  }
+/* 进度条样式 */
+QProgressBar {
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 6px;
+  text-align: center;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5fb0ff, stop:1 #0078d7);
+}
 
-  /* 表格/列表微调 */
-  QListWidget, QTableView {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 4px;
-  }
+/* 表格/列表微调 */
+QListWidget, QTableView {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 4px;
+}
 
-  /* 让复选框/单选按钮的点击目标更明显 */
-  QCheckBox, QRadioButton { padding: 4px; }
+/* 让复选框/单选按钮的点击目标更明显 */
+QCheckBox, QRadioButton { padding: 4px; }
 
-  /* 右侧状态标签与配置预览文本 */
-  QLabel#statusLabel { color: #d9534f; font-weight: 700; }
-  QLabel#previewText { font-size: 12px; color: #333; }
-  QLabel#previewText[state="error"] { color: #d9534f; font-weight: 700; }
-  QLabel#previewText[state="normal"] { color: #333; font-weight: 400; }
+/* 右侧状态标签与配置预览文本 */
+QLabel#statusLabel { color: #6c757d; font-weight: 700; }
+QLabel#statusLabel[state="loaded"] { color: #28a745; }
+QLabel#statusLabel[state="error"] { color: #dc3545; }
+QLabel#previewText { font-size: 12px; color: #333; }
+QLabel#previewText[state="error"] { color: #d9534f; font-weight: 700; }
+QLabel#previewText[state="normal"] { color: #333; font-weight: 400; }
 
-  /* 文件来源标签（可根据 variant 改变颜色） */
-  QLabel#fileSrcLabel { font-size: 11px; }
-  QLabel#fileSrcLabel[variant="muted"] { color: #6c757d; }
-  QLabel#fileSrcLabel[variant="normal"] { color: #333; }
-  QLabel#fileSrcLabel[variant="error"] { color: #dc3545; font-weight: 700; }
+/* 文件来源标签（可根据 variant 改变颜色） */
+QLabel#fileSrcLabel { font-size: 11px; }
+QLabel#fileSrcLabel[variant="muted"] { color: #6c757d; }
+QLabel#fileSrcLabel[variant="normal"] { color: #333; }
+QLabel#fileSrcLabel[variant="error"] { color: #dc3545; font-weight: 700; }
 
-  /* 3D 可视化中的信息标签 */
-  QLabel#infoLabel { background-color: #f0f0f0; padding: 8px; border-radius: 4px; font-size: 10px; }
+/* 3D 可视化中的信息标签 */
+QLabel#infoLabel { background-color: #f0f0f0; padding: 8px; border-radius: 4px; font-size: 10px; }
 
-  /* 小型辅助标签 */
-  QLabel#smallLabel { color: #666; font-size: 11px; }
+/* 小型辅助标签 */
+QLabel#smallLabel { color: #666; font-size: 11px; }
+
+/* 紧凑型向量输入 */
+QLineEdit[compact="true"], QSpinBox[compact="true"], QDoubleSpinBox[compact="true"] {
+  max-width: 96px;
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
+/* 日志区域 */
+QTextEdit#batchLog {
+  background: #eef4fa;
+  color: #222;
+  font-family: "Consolas", "Courier New", monospace;
+  padding: 8px;
+}
