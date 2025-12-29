@@ -303,38 +303,77 @@ class ColumnMappingDialog(QDialog):
             QMessageBox.warning(self, '加载失败', f'无法加载格式: {e}')
 
     def _on_src_partname_changed(self, new_text: str):
-        """当用户编辑 Source 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。"""
+        """当用户编辑 Source 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。
+
+        限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
+        """
         try:
-            # 更新下拉中的当前项文本
+            new_text = (new_text or '').strip()
+            old = getattr(self, '_current_source_part_name', None)
+            # 当 current_config 可用时，检查重名（允许与自身相同）
+            try:
+                if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
+                    if new_text in self.current_config.source_parts and new_text != old:
+                        QMessageBox.warning(self, "重复的部件名", "另一个 Source Part 已使用相同的名称，请使用不同的名称。")
+                        # 恢复旧值
+                        try:
+                            if old is not None:
+                                self.src_part_name.blockSignals(True)
+                                self.src_part_name.setText(old)
+                                self.src_part_name.blockSignals(False)
+                        except Exception:
+                            pass
+                        return
+            except Exception:
+                logger.debug("source part duplicate check failed", exc_info=True)
+
+            # 若下拉可见，更新下拉项文本
             if hasattr(self, 'cmb_source_parts') and self.cmb_source_parts.isVisible() and self.cmb_source_parts.count() > 0:
                 idx = self.cmb_source_parts.currentIndex()
                 if idx >= 0:
-                    # 获取旧名字（记录或下拉之前的文本）
-                    old = getattr(self, '_current_source_part_name', None)
-                    # 更新下拉项
                     try:
                         self.cmb_source_parts.setItemText(idx, new_text)
                     except Exception:
                         pass
-                    # 如果 current_config 中存在旧 key，尝试重命名 key
+                    # 若 current_config 中存在旧 key，尝试重命名 key
                     try:
                         if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
                             if old in self.current_config.source_parts:
                                 self.current_config.source_parts[new_text] = self.current_config.source_parts.pop(old)
                     except Exception:
                         logger.debug("重命名 current_config.source_parts 失败", exc_info=True)
-                    # 更新记录的当前名
-                    self._current_source_part_name = new_text
+            # 更新记录的当前名
+            self._current_source_part_name = new_text
         except Exception:
             logger.debug("_on_src_partname_changed failed", exc_info=True)
 
     def _on_tgt_partname_changed(self, new_text: str):
-        """当用户编辑 Target 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。"""
+        """当用户编辑 Target 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。
+
+        限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
+        """
         try:
+            new_text = (new_text or '').strip()
+            old = getattr(self, '_current_target_part_name', None)
+            # 重名检查
+            try:
+                if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
+                    if new_text in self.current_config.target_parts and new_text != old:
+                        QMessageBox.warning(self, "重复的部件名", "另一个 Target Part 已使用相同的名称，请使用不同的名称。")
+                        try:
+                            if old is not None:
+                                self.tgt_part_name.blockSignals(True)
+                                self.tgt_part_name.setText(old)
+                                self.tgt_part_name.blockSignals(False)
+                        except Exception:
+                            pass
+                        return
+            except Exception:
+                logger.debug("target part duplicate check failed", exc_info=True)
+
             if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
                 idx = self.cmb_target_parts.currentIndex()
                 if idx >= 0:
-                    old = getattr(self, '_current_target_part_name', None)
                     try:
                         self.cmb_target_parts.setItemText(idx, new_text)
                     except Exception:
@@ -675,6 +714,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 允许在垂直方向扩展以填充空间，使底部按钮保持在窗口底部
         self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_source = QFormLayout()
+        try:
+            form_source.setLabelAlignment(Qt.AlignRight)
+        except Exception:
+            pass
 
         self.src_ox = self._create_input("0.0")
         self.src_oy = self._create_input("0.0")
@@ -716,7 +759,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 当有多个 source part 时显示下拉；否则使用自由文本框
         form_source.addRow("Part Name:", self.src_part_name)
         form_source.addRow("选择 Source Part:", self.cmb_source_parts)
-        form_source.addRow("Source Variant:", self.spin_source_variant)
+        # Variant 索引已移除（始终使用第 0 个 variant）；避免用户混淆，因此不在表单中显示
         form_source.addRow("Orig:", self._create_vector_row(self.src_ox, self.src_oy, self.src_oz))
         form_source.addRow("X:", self._create_vector_row(self.src_xx, self.src_xy, self.src_xz))
         form_source.addRow("Y:", self._create_vector_row(self.src_yx, self.src_yy, self.src_yz))
@@ -742,6 +785,10 @@ class IntegratedAeroGUI(QMainWindow):
         grp_target = QGroupBox("Target Configuration")
         grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_target = QFormLayout()
+        try:
+            form_target.setLabelAlignment(Qt.AlignRight)
+        except Exception:
+            pass
 
         # Part Name
         self.tgt_part_name = QLineEdit("TestModel")
@@ -761,7 +808,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 当选择不同 part 时，更新 variant 最大值（在 load_config 中设置）
         self.cmb_target_parts.currentTextChanged.connect(lambda _: self._on_target_part_changed())
         form_target.addRow("选择 Target Part:", self.cmb_target_parts)
-        form_target.addRow("Variant 索引:", self.spin_target_variant)
+        # Variant 索引已移除（始终使用第 0 个 variant）
 
         # Target 坐标系
         self.tgt_ox = self._create_input("0.0")
@@ -808,22 +855,31 @@ class IntegratedAeroGUI(QMainWindow):
 
         self.btn_load = QPushButton("加载配置")
         self.btn_load.setFixedHeight(34)
+        try:
+            self.btn_load.setObjectName('secondaryButton')
+            self.btn_load.setToolTip('从磁盘加载配置文件')
+        except Exception:
+            pass
         self.btn_load.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_load.clicked.connect(self.load_config)
 
         self.btn_save = QPushButton("保存配置")
         self.btn_save.setFixedHeight(34)
-        self.btn_save.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.btn_save.clicked.connect(self.save_config)
         try:
-            self.btn_save.setObjectName('secondaryButton')
+            self.btn_save.setObjectName('primaryButton')
+            self.btn_save.setToolTip('将当前配置保存到磁盘 (Ctrl+S)')
+            self.btn_save.setShortcut('Ctrl+S')
         except Exception:
             pass
+        self.btn_save.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_save.clicked.connect(self.save_config)
 
         self.btn_apply = QPushButton("应用配置")
         self.btn_apply.setFixedHeight(34)
         try:
-            self.btn_apply.setObjectName('primaryButton')
+            self.btn_apply.setObjectName('secondaryButton')
+            self.btn_apply.setShortcut('Ctrl+R')
+            self.btn_apply.setToolTip('应用当前配置并初始化计算器 (Ctrl+Enter)')
         except Exception:
             pass
         self.btn_apply.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -881,6 +937,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
         btn_browse_input = QPushButton("浏览")
         btn_browse_input.setMaximumWidth(80)
+        try:
+            btn_browse_input.setObjectName('smallButton')
+            btn_browse_input.setToolTip('选择输入文件或目录')
+        except Exception:
+            pass
         btn_browse_input.clicked.connect(self.browse_batch_input)
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(btn_browse_input)
@@ -903,6 +964,11 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("Failed to connect inp_registry_db.textChanged signal", exc_info=True)
         btn_browse_registry = QPushButton("浏览")
         btn_browse_registry.setMaximumWidth(80)
+        try:
+            btn_browse_registry.setObjectName('smallButton')
+            btn_browse_registry.setToolTip('选择 format registry (.sqlite) 文件')
+        except Exception:
+            pass
         btn_browse_registry.clicked.connect(self.browse_registry_db)
         registry_row.addWidget(QLabel("格式注册表 (实验):"))
         registry_row.addWidget(self.inp_registry_db)
@@ -936,9 +1002,19 @@ class IntegratedAeroGUI(QMainWindow):
         self.inp_registry_format.setPlaceholderText("Format 文件路径 (JSON)")
         btn_browse_format = QPushButton("浏览格式文件")
         btn_browse_format.setMaximumWidth(90)
+        try:
+            btn_browse_format.setObjectName('smallButton')
+            btn_browse_format.setToolTip('浏览并选择 JSON 格式文件')
+        except Exception:
+            pass
         btn_browse_format.clicked.connect(self._browse_registry_format)
         btn_preview_format = QPushButton("预览格式")
         btn_preview_format.setMaximumWidth(90)
+        try:
+            btn_preview_format.setObjectName('smallButton')
+            btn_preview_format.setToolTip('展示所选格式的关键信息')
+        except Exception:
+            pass
         btn_preview_format.clicked.connect(self._on_preview_format)
         reg_form.addWidget(self.inp_registry_pattern)
         reg_form.addWidget(self.inp_registry_format)
@@ -950,6 +1026,15 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_registry_register = QPushButton("注册映射")
         self.btn_registry_edit = QPushButton("编辑选中")
         self.btn_registry_remove = QPushButton("删除选中")
+        try:
+            self.btn_registry_register.setObjectName('primaryButton')
+            self.btn_registry_register.setToolTip('将当前 pattern -> format 条目注册到 registry（可选）')
+            self.btn_registry_edit.setObjectName('secondaryButton')
+            self.btn_registry_edit.setToolTip('编辑选中的 registry 映射')
+            self.btn_registry_remove.setObjectName('dangerButton')
+            self.btn_registry_remove.setToolTip('从 registry 中删除选中项（不可逆）')
+        except Exception:
+            pass
         self.btn_registry_register.clicked.connect(self._on_registry_register)
         self.btn_registry_edit.clicked.connect(self._on_registry_edit)
         self.btn_registry_remove.clicked.connect(self._on_registry_remove)
@@ -996,6 +1081,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_config_format = QPushButton("⚙ 配置数据格式")
         try:
             self.btn_config_format.setObjectName('secondaryButton')
+            self.btn_config_format.setShortcut('Ctrl+Shift+F')
         except Exception:
             pass
         self.btn_config_format.setToolTip("设置跳过行数、列映射等")
@@ -1010,6 +1096,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_batch.setFixedHeight(34)
         try:
             self.btn_batch.setObjectName('dangerButton')
+            self.btn_batch.setShortcut('Ctrl+R')
+            self.btn_batch.setToolTip('开始批量处理。运行时会锁定配置控件。')
         except Exception:
             pass
         self.btn_batch.clicked.connect(self.run_batch_processing)
@@ -1019,6 +1107,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_cancel.setFixedHeight(34)
         try:
             self.btn_cancel.setObjectName('secondaryButton')
+            self.btn_cancel.setToolTip('取消正在运行的批处理任务')
+            self.btn_cancel.setShortcut('Ctrl+.')
         except Exception:
             pass
         self.btn_cancel.clicked.connect(self.request_cancel_batch)
@@ -1027,6 +1117,10 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 日志
         self.txt_batch_log = QTextEdit()
+        try:
+            self.txt_batch_log.setObjectName('batchLog')
+        except Exception:
+            pass
         self.txt_batch_log.setReadOnly(True)
         self.txt_batch_log.setFont(QFont("Consolas", 9))
         self.txt_batch_log.setMinimumHeight(160)
@@ -1034,6 +1128,10 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 按钮容器（使用 QGridLayout，后续由 update_button_layout 切换位置）
         self.btn_widget = QWidget()
+        try:
+            self.btn_widget.setObjectName('btnWidget')
+        except Exception:
+            pass
         # 确保按钮区域在布局收缩时仍可见，允许在垂直方向上保留最小高度但可在必要时伸缩
         self.btn_widget.setMinimumHeight(44)
         self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -1063,17 +1161,29 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === 实验性功能组（包含 3D 可视化与 per-file 覆盖相关控件） ===
         self.grp_experimental = QGroupBox("实验性功能（实验）")
-        self.grp_experimental.setVisible(False)
+        try:
+            # 使用可折叠的 GroupBox（checkable），默认收起
+            self.grp_experimental.setCheckable(True)
+            self.grp_experimental.setChecked(False)
+            self.grp_experimental.setToolTip("实验性功能：包含 3D 可视化与 per-file 覆盖，默认收起，谨慎使用。")
+            # 当 groupbox 切换时，同步外部复选框（若存在）并切换可见性
+            self.grp_experimental.toggled.connect(lambda v: self.grp_experimental.setVisible(v))
+            self.chk_show_experimental.toggled.connect(lambda v: self.grp_experimental.setChecked(v))
+            self.grp_experimental.toggled.connect(lambda v: self.chk_show_experimental.setChecked(v))
+            # 初始为折叠状态
+            self.grp_experimental.setVisible(False)
+        except Exception:
+            pass
         exp_layout = QVBoxLayout()
 
         # 3D 可视化按钮（移入实验组）
         self.btn_visualize = QPushButton("3D可视化")
         self.btn_visualize.setMaximumWidth(120)
         try:
-            self.btn_visualize.setObjectName('secondaryButton')
+            self.btn_visualize.setObjectName('smallButton')
+            self.btn_visualize.setToolTip("打开3D坐标系可视化窗口（实验）")
         except Exception:
             pass
-        self.btn_visualize.setToolTip("打开3D坐标系可视化窗口（实验）")
         self.btn_visualize.clicked.connect(self.toggle_visualization)
         exp_layout.addWidget(self.btn_visualize)
 
@@ -1149,6 +1259,11 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 一键处理按钮
         self.btn_quick = QPushButton("一键处理")
+        try:
+            self.btn_quick.setObjectName('primaryButton')
+            self.btn_quick.setShortcut('Ctrl+Shift+R')
+        except Exception:
+            pass
         self.btn_quick.setToolTip("使用当前配置与默认输出目录快速开始批处理")
         self.btn_quick.clicked.connect(self.one_click_process)
         recent_layout.addWidget(self.btn_quick)
@@ -1211,16 +1326,34 @@ class IntegratedAeroGUI(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
 
-        layout.addWidget(QLabel("["))
+        lb1 = QLabel("[")
+        lb_comma1 = QLabel(",")
+        lb_comma2 = QLabel(",")
+        lb2 = QLabel("]")
+        for lb in (lb1, lb_comma1, lb_comma2, lb2):
+            try:
+                lb.setObjectName('smallLabel')
+            except Exception:
+                pass
+        # 对传入的输入框标记为 compact 以便样式表进行收缩
+        try:
+            inp1.setProperty('compact', 'true')
+            inp2.setProperty('compact', 'true')
+            inp3.setProperty('compact', 'true')
+            inp1.setMaximumWidth(88)
+            inp2.setMaximumWidth(88)
+            inp3.setMaximumWidth(88)
+        except Exception:
+            pass
+        layout.addWidget(lb1)
         layout.addWidget(inp1)
-        layout.addWidget(QLabel(","))
+        layout.addWidget(lb_comma1)
         layout.addWidget(inp2)
-        layout.addWidget(QLabel(","))
+        layout.addWidget(lb_comma2)
         layout.addWidget(inp3)
-        layout.addWidget(QLabel("]"))
+        layout.addWidget(lb2)
         # 使用小间距替代 stretch，避免把右侧控件挤出可见区域
         layout.addSpacing(6)
-
         return row
 
     def toggle_source_visibility(self, state):
@@ -1320,12 +1453,11 @@ class IntegratedAeroGUI(QMainWindow):
             for part in project.target_parts.keys():
                 self.cmb_target_parts.addItem(part)
             if self.cmb_target_parts.count() > 0:
-                self.cmb_target_parts.setVisible(True)
-                self.spin_target_variant.setVisible(True)
-                first = self.cmb_target_parts.currentText() or self.cmb_target_parts.itemText(0)
-                variants = project.target_parts.get(first, [])
-                self.spin_target_variant.setRange(0, max(0, len(variants) - 1))
-
+                    self.cmb_target_parts.setVisible(True)
+                    # Variant 控件保持隐藏；仍更新范围以保持内部一致性
+                    first = self.cmb_target_parts.currentText() or self.cmb_target_parts.itemText(0)
+                    variants = project.target_parts.get(first, [])
+                    self.spin_target_variant.setRange(0, max(0, len(variants) - 1))
             # 填充 Source 下拉列表与 variant 控件（若存在多 Part）
             try:
                 self.cmb_source_parts.clear()
@@ -1333,7 +1465,7 @@ class IntegratedAeroGUI(QMainWindow):
                     self.cmb_source_parts.addItem(part)
                 if self.cmb_source_parts.count() > 0:
                     self.cmb_source_parts.setVisible(True)
-                    self.spin_source_variant.setVisible(True)
+                    # Variant 控件保持隐藏（始终使用第 0 个 variant）
                     firsts = self.cmb_source_parts.currentText() or self.cmb_source_parts.itemText(0)
                     s_variants = project.source_parts.get(firsts, [])
                     self.spin_source_variant.setRange(0, max(0, len(s_variants) - 1))
@@ -1345,7 +1477,8 @@ class IntegratedAeroGUI(QMainWindow):
             try:
                 # Target
                 sel_part = self.cmb_target_parts.currentText() or self.cmb_target_parts.itemText(0)
-                sel_variant = int(self.spin_target_variant.value())
+                # Variant 已隐藏，始终使用第 0 个 variant
+                sel_variant = 0
                 frame = project.get_target_part(sel_part, sel_variant)
                 cs = frame.coord_system
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
@@ -1374,7 +1507,8 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     if self.cmb_source_parts.count() > 0 and self.cmb_source_parts.isVisible():
                         s_part = self.cmb_source_parts.currentText() or self.cmb_source_parts.itemText(0)
-                        s_variant = int(self.spin_source_variant.value())
+                        # Variant 已隐藏，始终使用第 0 个 variant
+                        s_variant = 0
                         sframe = project.get_source_part(s_part, s_variant)
                     else:
                         # 退回到兼容访问器
@@ -1545,7 +1679,8 @@ class IntegratedAeroGUI(QMainWindow):
             # 决定要使用的 target part 与 variant（优先使用 GUI 下拉框）
             if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
                 sel_part = self.cmb_target_parts.currentText()
-                sel_variant = int(self.spin_target_variant.value())
+                # Variant 控件已隐藏，始终使用第 0 个 variant
+                sel_variant = 0
             else:
                 sel_part = self.tgt_part_name.text()
                 sel_variant = 0
@@ -1555,6 +1690,10 @@ class IntegratedAeroGUI(QMainWindow):
 
             part_name = sel_part
             self.lbl_status.setText(f"已加载配置: {part_name}")
+            try:
+                self.lbl_status.setProperty('state', 'loaded')
+            except Exception:
+                pass
             self.statusBar().showMessage(f"配置已应用: {part_name}")
 
             QMessageBox.information(self, "成功", f"配置已应用!\n组件: {part_name}\n现在可以进行计算了。")
@@ -2326,8 +2465,25 @@ class IntegratedAeroGUI(QMainWindow):
             self._set_controls_locked(False)
         except Exception:
             logger.debug("Failed to unlock controls on batch finished", exc_info=True)
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ {message}")
-        self.statusBar().showMessage("批量处理完成")
+        # 在状态栏显示完成信息并标注时间（短暂显示）
+        try:
+            self.statusBar().showMessage(f"批量处理完成 - {timestamp}", 8000)
+        except Exception:
+            pass
+        # 同时弹出非模态通知以便用户注意
+        try:
+            msg = QMessageBox(self)
+            msg.setWindowTitle('批量处理完成')
+            msg.setText(message)
+            msg.setIcon(QMessageBox.Information)
+            msg.setModal(False)
+            msg.show()
+            # 保持引用，防止被垃圾回收
+            self._last_nonmodal_msg = msg
+        except Exception:
+            logger.debug("无法显示非模态完成消息", exc_info=True)
         # 隐藏取消按钮并禁用
         try:
             if hasattr(self, 'btn_cancel'):
@@ -2335,8 +2491,6 @@ class IntegratedAeroGUI(QMainWindow):
                 self.btn_cancel.setEnabled(False)
         except Exception:
             logger.debug("Failed to hide/disable cancel button", exc_info=True)
-
-        QMessageBox.information(self, "完成", message)
 
     def on_batch_error(self, error_msg):
         """批处理出错"""
