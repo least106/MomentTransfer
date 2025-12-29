@@ -31,9 +31,8 @@ def create_test_project_data(q=100.0, s_ref=1.0, c_ref=1.0, b_ref=2.0, source_or
 class TestAeroCalculatorProcessFrame:
     def test_identity_transformation(self):
         project = create_test_project_data(q=100.0, s_ref=1.0, source_origin=[0, 0, 0], target_moment_center=[0, 0, 0])
-        calc = AeroCalculator(project)
-        # 注入 cfg 以兼容新版实现
-        calc.cfg = project
+        # 显式指定 target_part/variant
+        calc = AeroCalculator(project, target_part='TestPart', target_variant=0)
 
         force = [100.0, 0.0, 1000.0]
         moment = [0.0, 50.0, 0.0]
@@ -46,8 +45,7 @@ class TestAeroCalculatorProcessFrame:
 
     def test_moment_transfer(self):
         project = create_test_project_data(q=100.0, s_ref=1.0, source_origin=[1.0, 0.0, 0.0], target_moment_center=[0.0, 0.0, 0.0])
-        calc = AeroCalculator(project)
-        calc.cfg = project
+        calc = AeroCalculator(project, target_part='TestPart', target_variant=0)
 
         force = [0.0, 0.0, 100.0]
         moment = [0.0, 0.0, 0.0]

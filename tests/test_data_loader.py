@@ -134,29 +134,51 @@ class TestLoadData:
     def test_load_valid_json(self):
         """测试加载合法的 JSON 文件"""
         # 使用新版 ProjectData 的格式（包含 Source / Target 部分）
+        # 使用新版 Parts/Variants 结构
         valid_data = {
             "Source": {
-                "PartName": "SrcPart",
-                "CoordSystem": {
-                    "Orig": [0, 0, 0],
-                    "X": [1, 0, 0],
-                    "Y": [0, 1, 0],
-                    "Z": [0, 0, 1]
-                }
+                "Parts": [
+                    {
+                        "PartName": "SrcPart",
+                        "Variants": [
+                            {
+                                "CoordSystem": {
+                                    "Orig": [0, 0, 0],
+                                    "X": [1, 0, 0],
+                                    "Y": [0, 1, 0],
+                                    "Z": [0, 0, 1]
+                                },
+                                "MomentCenter": [0, 0, 0],
+                                "Q": 100.0,
+                                "S": 1.0,
+                                "Cref": 1.0,
+                                "Bref": 2.0
+                            }
+                        ]
+                    }
+                ]
             },
             "Target": {
-                "PartName": "TestPart",
-                "TargetCoordSystem": {
-                    "Orig": [1, 1, 1],
-                    "X": [1, 0, 0],
-                    "Y": [0, 1, 0],
-                    "Z": [0, 0, 1]
-                },
-                "TargetMomentCenter": [0, 0, 0],
-                "Q": 100.0,
-                "S": 1.0,
-                "Cref": 1.0,
-                "Bref": 2.0
+                "Parts": [
+                    {
+                        "PartName": "TestPart",
+                        "Variants": [
+                            {
+                                "CoordSystem": {
+                                    "Orig": [1, 1, 1],
+                                    "X": [1, 0, 0],
+                                    "Y": [0, 1, 0],
+                                    "Z": [0, 0, 1]
+                                },
+                                "MomentCenter": [0, 0, 0],
+                                "Q": 100.0,
+                                "S": 1.0,
+                                "Cref": 1.0,
+                                "Bref": 2.0
+                            }
+                        ]
+                    }
+                ]
             }
         }
         
