@@ -262,13 +262,50 @@ class BatchProcessThread(QThread):
         self._stop_requested = False
 
     def process_file(self, file_path):
-        """处理单个文件并返回输出路径"""
-        if file_path.suffix.lower() == '.csv':
-            df = pd.read_csv(file_path, header=None, skiprows=self.data_config.get('skip_rows', 0))
-        else:
-            df = pd.read_excel(file_path, header=None, skiprows=self.data_config.get('skip_rows', 0))
+        """处理单个文件并返回输出路径
 
-        cols = self.data_config.get('columns', {})
+        若线程属性 `enable_sidecar` 为 True，则按文件计算最终的 `data_config`（通过 `resolve_file_format`），
+        否则使用 `self.data_config`。
+        """
+        # 若启用了 per-file 覆盖，则为当前文件解析最终的 data_config
+        cfg_to_use = self.data_config
+        if getattr(self, 'enable_sidecar', False):
+            try:
+                from src.cli_helpers import resolve_file_format, BatchConfig as _BatchConfig
+                # 将现有 self.data_config（可能为 dict）转换为 BatchConfig
+                base_cfg = _BatchConfig()
+                if isinstance(self.data_config, dict):
+                    # 只覆盖部分字段（常用的 skip_rows, columns, passthrough, chunksize, sample_rows）
+                    base_cfg.skip_rows = int(self.data_config.get('skip_rows', base_cfg.skip_rows))
+                    cols = self.data_config.get('columns') or {}
+                    for k in base_cfg.column_mappings.keys():
+                        if k in cols and cols.get(k) is not None:
+                            base_cfg.column_mappings[k] = int(cols.get(k))
+                    base_cfg.passthrough_columns = [int(x) for x in self.data_config.get('passthrough', base_cfg.passthrough_columns)]
+                    if 'chunksize' in self.data_config:
+                        try:
+                            base_cfg.chunksize = int(self.data_config.get('chunksize'))
+                        except Exception:
+                            base_cfg.chunksize = None
+                    if 'sample_rows' in self.data_config:
+                        try:
+                            base_cfg.sample_rows = int(self.data_config.get('sample_rows'))
+                        except Exception:
+                            base_cfg.sample_rows = base_cfg.sample_rows
+                else:
+                    base_cfg = self.data_config
+
+                cfg_to_use = resolve_file_format(str(file_path), base_cfg, enable_sidecar=True, registry_db=self.registry_db)
+            except Exception as e:
+                self.log_message.emit(f"为文件 {file_path.name} 解析 per-file 配置失败: {e}")
+                raise
+
+        if file_path.suffix.lower() == '.csv':
+            df = pd.read_csv(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
+        else:
+            df = pd.read_excel(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
+
+        cols = cfg_to_use.get('columns', {})
 
         def _col_to_numeric(df_local, col_idx, name):
             if col_idx is None:
@@ -497,15 +534,23 @@ class IntegratedAeroGUI(QMainWindow):
         title = QLabel("配置编辑器")
         title.setStyleSheet("font-size: 16px; font-weight: bold; color: #333;")
 
-        btn_visualize = QPushButton("3D可视化")
-        btn_visualize.setMaximumWidth(120)
-        btn_visualize.setStyleSheet("background-color: #6c757d; color: white; font-weight: bold;")
-        btn_visualize.setToolTip("打开3D坐标系可视化窗口")
-        btn_visualize.clicked.connect(self.toggle_visualization)
+        # 允许用户显示实验性选项（默认隐藏）
+        self.chk_show_experimental = QCheckBox("显示实验性选项（实验）")
+        self.chk_show_experimental.setToolTip("显示/隐藏实验性功能：包括 3D 可视化 与 per-file 覆盖（仅用于调试/示例）")
+        try:
+            self.chk_show_experimental.stateChanged.connect(lambda _: self._toggle_experimental_visibility())
+        except Exception:
+            logger.debug("Failed to connect chk_show_experimental signal", exc_info=True)
 
         header_layout.addWidget(title)
         header_layout.addStretch()
-        header_layout.addWidget(btn_visualize)
+        header_layout.addWidget(self.chk_show_experimental)
+
+        # 当实验选项切换时刷新布局显示
+        try:
+            self.chk_show_experimental.stateChanged.connect(lambda _: self._toggle_experimental_visibility())
+        except Exception:
+            logger.debug("Failed to connect chk_show_experimental (second)", exc_info=True)
 
         layout.addLayout(header_layout)
 
@@ -709,10 +754,10 @@ class IntegratedAeroGUI(QMainWindow):
         pattern_row.addWidget(QLabel("匹配模式:"))
         pattern_row.addWidget(self.inp_pattern)
 
-        # Registry DB 输入行（可选）
+        # Registry DB 输入行（可选，实验性）
         registry_row = QHBoxLayout()
         self.inp_registry_db = QLineEdit()
-        self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.sqlite)")
+        self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.sqlite) - 实验性")
         # 当 registry 路径变化时刷新文件来源标签（实时反馈）
         try:
             self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
@@ -721,9 +766,18 @@ class IntegratedAeroGUI(QMainWindow):
         btn_browse_registry = QPushButton("浏览")
         btn_browse_registry.setMaximumWidth(80)
         btn_browse_registry.clicked.connect(self.browse_registry_db)
-        registry_row.addWidget(QLabel("格式注册表:"))
+        registry_row.addWidget(QLabel("格式注册表 (实验):"))
         registry_row.addWidget(self.inp_registry_db)
         registry_row.addWidget(btn_browse_registry)
+
+        # 启用 per-file 覆盖（启用后会使用侧车/目录/registry 覆盖每个文件的格式）
+        self.chk_enable_sidecar = QCheckBox("启用 per-file 覆盖（sidecar/registry，实验）")
+        self.chk_enable_sidecar.setChecked(False)
+        self.chk_enable_sidecar.setToolTip("默认关闭；启用后会按文件尝试使用侧车/目录或 registry 来覆盖全局配置。建议仅在需要时启用。")
+        registry_row.addWidget(self.chk_enable_sidecar)
+
+        # 注意：不要把 registry_row 直接添加到 file_form（我们会把它放到实验性组中）
+        # file_form.addRow("", registry_row)  # 已移至实验性组
 
         # Registry 映射管理区（列表 + 注册/删除）
         self.grp_registry_list = QGroupBox("Registry 映射管理 (可选)")
@@ -772,7 +826,7 @@ class IntegratedAeroGUI(QMainWindow):
 
         file_form.addRow("输入路径:", input_row)
         file_form.addRow("", pattern_row)
-        file_form.addRow("", registry_row)
+        # registry_row 已放入实验性功能组，避免在主表单重复显示
 
         # 文件列表（可复选、可滚动），默认位于数据格式配置之上
         self.grp_file_list = QGroupBox("找到的文件列表")
@@ -857,6 +911,26 @@ class IntegratedAeroGUI(QMainWindow):
         layout_batch.addWidget(self.grp_file_list)
         layout_batch.addWidget(self.progress_bar)
         layout_batch.addWidget(self.btn_widget)
+
+        # === 实验性功能组（包含 3D 可视化与 per-file 覆盖相关控件） ===
+        self.grp_experimental = QGroupBox("实验性功能（实验）")
+        self.grp_experimental.setVisible(False)
+        exp_layout = QVBoxLayout()
+
+        # 3D 可视化按钮（移入实验组）
+        self.btn_visualize = QPushButton("3D可视化")
+        self.btn_visualize.setMaximumWidth(120)
+        self.btn_visualize.setStyleSheet("background-color: #6c757d; color: white; font-weight: bold;")
+        self.btn_visualize.setToolTip("打开3D坐标系可视化窗口（实验）")
+        self.btn_visualize.clicked.connect(self.toggle_visualization)
+        exp_layout.addWidget(self.btn_visualize)
+
+        # 把 registry_row 放到实验组
+        exp_layout.addLayout(registry_row)
+
+        self.grp_experimental.setLayout(exp_layout)
+        layout_batch.addWidget(self.grp_experimental)
+
         layout_batch.addWidget(QLabel("处理日志:"))
         layout_batch.addWidget(self.txt_batch_log)
         # 让日志框占据剩余垂直空间，从而使外部 groupbox 底部贴近窗口底部
@@ -871,12 +945,19 @@ class IntegratedAeroGUI(QMainWindow):
         grp_batch.setLayout(layout_batch)
 
         # === 配置预览（在状态栏下方）===
-        self.grp_config_preview = QGroupBox("配置预览")
+        self.grp_config_preview = QGroupBox("数据格式预览")
+        # 限制预览面板高度，避免在右侧占用过多空间
+        try:
+            self.grp_config_preview.setMaximumHeight(140)
+            self.grp_config_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        except Exception:
+            pass
         pv_layout = QVBoxLayout()
-        self.lbl_preview_part = QLabel("Part: -")
-        self.lbl_preview_moment = QLabel("MomentCenter: -")
-        self.lbl_preview_qs = QLabel("Q/S: -")
-        for w in (self.lbl_preview_part, self.lbl_preview_moment, self.lbl_preview_qs):
+        # 显示当前数据格式的关键信息：跳过行、列映射摘要、保留列
+        self.lbl_preview_skip = QLabel("跳过行: -")
+        self.lbl_preview_columns = QLabel("列映射: -")
+        self.lbl_preview_passthrough = QLabel("保留列: -")
+        for w in (self.lbl_preview_skip, self.lbl_preview_columns, self.lbl_preview_passthrough):
             w.setStyleSheet("font-size:12px;")
             pv_layout.addWidget(w)
         self.grp_config_preview.setLayout(pv_layout)
@@ -910,13 +991,36 @@ class IntegratedAeroGUI(QMainWindow):
 
         layout.addWidget(status_group)
         layout.addWidget(self.grp_config_preview)
-        layout.addWidget(recent_group)
+        # 将最近项目与快捷操作移动到实验性组，避免在默认界面显示
+        try:
+            if hasattr(self, 'grp_experimental') and self.grp_experimental is not None:
+                exp_layout.addWidget(recent_group)
+            else:
+                layout.addWidget(recent_group)
+        except Exception:
+            # 若实验组不可用，退回到主布局以保证可访问性
+            layout.addWidget(recent_group)
         layout.addWidget(grp_batch)
         # 为了让右侧的 grp_batch 在垂直方向上拉伸并触底，设置 layout 的 stretch
         try:
             # status_group 在顶部不拉伸，grp_batch 占据剩余空间
-            layout.setStretch(0, 0)
-            layout.setStretch(1, 1)
+            try:
+                idx_status = layout.indexOf(status_group)
+                if idx_status >= 0:
+                    layout.setStretch(idx_status, 0)
+            except Exception:
+                pass
+            try:
+                idx_batch = layout.indexOf(grp_batch)
+                if idx_batch >= 0:
+                    layout.setStretch(idx_batch, 1)
+            except Exception:
+                # 备用：如果 indexOf 不可用，尝试保守设置原来的索引
+                try:
+                    layout.setStretch(0, 0)
+                    layout.setStretch(1, 1)
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
         # 保留一个小的伸缩因子以兼容不同平台的行为
@@ -1386,67 +1490,89 @@ class IntegratedAeroGUI(QMainWindow):
 
         if dialog.exec() == QDialog.Accepted:
             self.data_config = dialog.get_config()
-            # 将编辑后的配置写回到选定的格式文件（若存在），并在必要时注册/更新 registry
+            try:
+                self.update_config_preview()
+            except Exception:
+                logger.debug("update_config_preview failed after configure_data_format", exc_info=True)
+
+            # 在写文件/注册前询问用户意图，避免自动注册到 registry（registry 为实验性功能）
             try:
                 cfg_to_write = self.data_config
 
-                # 如果用户是基于 registry 条目打开并选择了 registry 映射
+                resp = QMessageBox.question(
+                    self,
+                    '保存数据格式',
+                    '请选择保存方式：\n是: 保存并注册到 registry\n否: 仅保存为格式文件\n取消: 不保存',
+                    QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                )
+
+                if resp == QMessageBox.Cancel:
+                    self.txt_batch_log.append('已取消保存格式文件')
+                    return
+
+                # Helper to write cfg to path
+                def _write_json(pth: Path):
+                    pth.parent.mkdir(parents=True, exist_ok=True)
+                    with open(pth, 'w', encoding='utf-8') as fh:
+                        json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
+
+                # 若用户选择基于已有 registry 条目进行编辑（selected_registry_entry），总是写回到该 format 文件
                 if selected_registry_entry is not None:
-                    dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
                     try:
-                        # 覆写映射指向的 format 文件
                         fmtp = Path(selected_registry_entry['format_path'])
-                        fmtp.parent.mkdir(parents=True, exist_ok=True)
-                        with open(fmtp, 'w', encoding='utf-8') as fh:
-                            json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
-                        # 刷新映射的时间戳（保持 pattern 不变）
-                        try:
-                            update_mapping(dbp, int(selected_registry_entry['id']), selected_registry_entry['pattern'], str(fmtp))
-                            # 刷新 UI 中的 registry 列表以展示最新信息
+                        _write_json(fmtp)
+                        # 仅在用户选择 "保存并注册" 时更新映射（触发 timestamp 刷新）
+                        if resp == QMessageBox.Yes:
                             try:
-                                self._refresh_registry_list()
+                                dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+                                update_mapping(dbp, int(selected_registry_entry['id']), selected_registry_entry['pattern'], str(fmtp))
+                                try:
+                                    self._refresh_registry_list()
+                                except Exception:
+                                    pass
                             except Exception:
                                 pass
-                        except Exception:
-                            pass
-                        self.txt_batch_log.append(f"已保存并更新 registry 映射 id={selected_registry_entry['id']}: {fmtp}")
+                        self.txt_batch_log.append(f"已保存格式文件: {fmtp} (编辑 registry 条目 id={selected_registry_entry.get('id')})")
                     except Exception as e:
                         QMessageBox.warning(self, '保存失败', f'无法保存到 registry 指向的文件: {e}')
+                        return
 
                 else:
-                    # 未基于 registry 映射：写为 sidecar（chosen file 的同名 .format.json），并尝试注册到默认 registry
+                    # 未基于 registry 映射：写为 sidecar（chosen file 的同名 .format.json）或 data 下的 timestamp 文件
                     try:
                         if chosen_fp:
                             sidecar = chosen_fp.parent / f"{chosen_fp.stem}.format.json"
                         else:
-                            # 无所选文件，保存到项目 data 目录，使用 timestamp 名称
                             sidecar = Path('data') / f"format_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                        sidecar.parent.mkdir(parents=True, exist_ok=True)
-                        with open(sidecar, 'w', encoding='utf-8') as fh:
-                            json.dump(cfg_to_write, fh, indent=2, ensure_ascii=False)
+                        _write_json(sidecar)
+                        self.txt_batch_log.append(f"已保存格式文件: {sidecar}")
 
-                        # 默认注册到项目的 data/formats.sqlite（若存在或可创建）
-                        default_db = Path('data') / 'formats.sqlite'
-                        try:
-                            init_db(str(default_db))
-                            # pattern 使用文件名作为默认值
-                            default_pattern = chosen_fp.name if chosen_fp else sidecar.name
-                            register_mapping(str(default_db), default_pattern, str(sidecar))
-                            self.txt_batch_log.append(f"已将格式保存为 {sidecar} 并注册到默认 registry: {default_db} (pattern={default_pattern})")
-                        except Exception:
-                            # 若注册失败，仅提醒用户文件已保存
-                            self.txt_batch_log.append(f"已保存格式文件: {sidecar} (但未能注册到默认 registry)")
+                        # 仅在用户选择保存并注册时尝试注册到 registry
+                        if resp == QMessageBox.Yes:
+                            # 如果用户在界面中指定了 registry 路径，优先使用；否则使用项目默认 data/formats.sqlite
+                            dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+                            if not dbp:
+                                dbp = str(Path('data') / 'formats.sqlite')
+                            try:
+                                init_db(str(dbp))
+                                default_pattern = chosen_fp.name if chosen_fp else sidecar.name
+                                register_mapping(str(dbp), default_pattern, str(sidecar))
+                                self.txt_batch_log.append(f"已注册到 registry: {dbp} (pattern={default_pattern})")
+                            except Exception:
+                                self.txt_batch_log.append(f"已保存格式文件: {sidecar} (注册到 registry 失败)")
+
                     except Exception as e:
                         QMessageBox.warning(self, '保存失败', f'无法保存格式文件: {e}')
+                        return
 
             except Exception as e:
                 QMessageBox.warning(self, '错误', f'保存格式时出错: {e}')
 
-            QMessageBox.information(self, "成功", 
-                f"数据格式配置已保存:\n"
-                f"- 跳过 {self.data_config['skip_rows']} 行\n"
-                f"- Fx 列: {self.data_config['columns']['fx']}\n"
-                f"- 保留列: {self.data_config['passthrough']}")
+            # 提示用户保存结果摘要
+            try:
+                QMessageBox.information(self, "完成", "数据格式配置已处理（已写入/已注册的详情见处理日志）。")
+            except Exception:
+                pass
 
     def browse_batch_input(self):
         """选择输入文件或目录（单一对话框，支持切换文件/目录模式）。"""
@@ -1944,16 +2070,22 @@ class IntegratedAeroGUI(QMainWindow):
         self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 开始批量处理...")
         self.txt_batch_log.append(f"共 {len(files_to_process)} 个文件")
 
-        # 读取可选的 registry DB 路径
+        # 读取可选的 registry DB 路径（仅当启用 per-file 覆盖时生效）
         registry_db_path = None
-        if hasattr(self, 'inp_registry_db'):
-            val = self.inp_registry_db.text().strip()
-            if val:
-                registry_db_path = val
+        enable_sidecar = False
+        if hasattr(self, 'chk_enable_sidecar') and self.chk_enable_sidecar.isChecked():
+            enable_sidecar = True
+            if hasattr(self, 'inp_registry_db'):
+                val = self.inp_registry_db.text().strip()
+                if val:
+                    registry_db_path = val
 
         self.batch_thread = BatchProcessThread(
             self.calculator, files_to_process, output_dir, self.data_config, registry_db=registry_db_path
         )
+        # 将 enable_sidecar 状态附到线程上以便日志或后续使用（线程内部使用 registry_db 来决定是否启用覆盖）
+        self.batch_thread.enable_sidecar = enable_sidecar
+
         self.batch_thread.progress.connect(self.progress_bar.setValue)
         self.batch_thread.log_message.connect(
             lambda msg: self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
@@ -2206,56 +2338,51 @@ class IntegratedAeroGUI(QMainWindow):
 
     # ----- 新增辅助方法：配置预览 / 最近项目 / 快速处理 -----
     def update_config_preview(self):
-        """根据 self.current_config 更新预览面板，并高亮缺失或异常值"""
+        """根据当前的 `self.data_config` 显示数据格式预览（跳过行、列映射、保留列）。"""
         try:
-            cfg = getattr(self, 'current_config', None)
+            cfg = getattr(self, 'data_config', None)
             if cfg is None:
-                self.lbl_preview_part.setText('Part: -')
-                self.lbl_preview_moment.setText('MomentCenter: -')
-                self.lbl_preview_qs.setText('Q/S: -')
+                self.lbl_preview_skip.setText('跳过行: -')
+                self.lbl_preview_columns.setText('列映射: -')
+                self.lbl_preview_passthrough.setText('保留列: -')
                 return
 
-            # 如果当前为 ProjectData 并且 GUI 上有选定的 part，则使用选定 variant 的信息进行预览
-            part = None
-            mc = None
-            q = None
-            s = None
+            # 支持 dict 或具有属性的对象
+            if isinstance(cfg, dict):
+                skip = cfg.get('skip_rows')
+                cols = cfg.get('columns', {}) or {}
+                passth = cfg.get('passthrough', []) or []
+            else:
+                skip = getattr(cfg, 'skip_rows', None)
+                cols = getattr(cfg, 'columns', {}) or {}
+                # 兼容不同命名
+                passth = getattr(cfg, 'passthrough', None) or getattr(cfg, 'passthrough_columns', []) or []
+
+            # 跳过行
+            self.lbl_preview_skip.setText(f"跳过行: {skip if skip is not None else '-'}")
+
+            # 列映射摘要
+            def _col_val(k):
+                v = cols.get(k)
+                return str(v) if v is not None else '缺失'
+
+            col_keys = ['alpha', 'fx', 'fy', 'fz', 'mx', 'my', 'mz']
+            col_parts = [f"{k.upper()}={_col_val(k)}" for k in col_keys]
+            cols_text = ", ".join(col_parts)
+            # 若关键力列缺失，标红提示
+            if cols.get('fx') is None or cols.get('fy') is None or cols.get('fz') is None:
+                self.lbl_preview_columns.setStyleSheet('color: red; font-size:12px;')
+            else:
+                self.lbl_preview_columns.setStyleSheet('color: black; font-size:12px;')
+            self.lbl_preview_columns.setText(f"列映射: {cols_text}")
+
+            # 保留列
             try:
-                if isinstance(cfg, ProjectData) and hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
-                    sel_part = self.cmb_target_parts.currentText()
-                    sel_variant = int(self.spin_target_variant.value())
-                    tf = cfg.get_target_part(sel_part, sel_variant)
-                    part = tf.part_name
-                    mc = tf.moment_center
-                    q = tf.q
-                    s = tf.s_ref
-                else:
-                    part = getattr(cfg.target_config, 'part_name', None)
-                    mc = getattr(cfg.target_config, 'moment_center', None)
-                    q = getattr(cfg.target_config, 'q', None)
-                    s = getattr(cfg.target_config, 's_ref', None) if hasattr(cfg.target_config, 's_ref') else getattr(cfg.target_config, 'S', None)
+                pt_display = ','.join(str(int(x)) for x in (passth or [])) if passth else '-'
             except Exception:
-                logger.debug("在预览选定 target 时出现异常", exc_info=True)
+                pt_display = str(passth)
+            self.lbl_preview_passthrough.setText(f"保留列: {pt_display}")
 
-            # Part 名称
-            self.lbl_preview_part.setText(f"Part: {part}")
-            # 力矩中心
-            if mc is None or not isinstance(mc, (list, tuple)) or len(mc) != 3:
-                self.lbl_preview_moment.setText("MomentCenter: 缺失或格式错误")
-                self.lbl_preview_moment.setStyleSheet("color: red; font-size:12px;")
-            else:
-                self.lbl_preview_moment.setText(f"MomentCenter: {mc}")
-                self.lbl_preview_moment.setStyleSheet("color: black; font-size:12px;")
-
-            # Q/S
-            q_text = f"Q={q}" if q is not None else "Q=缺失"
-            s_text = f"S={s}" if s is not None else "S=缺失"
-            qs_text = f"{q_text} / {s_text}"
-            if q is None or s is None:
-                self.lbl_preview_qs.setStyleSheet("color: red; font-size:12px;")
-            else:
-                self.lbl_preview_qs.setStyleSheet("color: black; font-size:12px;")
-            self.lbl_preview_qs.setText(qs_text)
         except Exception:
             logger.debug("update_config_preview failed", exc_info=True)
 
@@ -2287,6 +2414,19 @@ class IntegratedAeroGUI(QMainWindow):
                 self.inp_default_output.setText(d)
         except Exception:
             logger.debug("_browse_default_output failed", exc_info=True)
+
+    def _toggle_experimental_visibility(self):
+        """显示或隐藏实验性组，并刷新布局。"""
+        try:
+            visible = bool(self.chk_show_experimental.isChecked())
+            if hasattr(self, 'grp_experimental'):
+                self.grp_experimental.setVisible(visible)
+            try:
+                self._refresh_layouts()
+            except Exception:
+                logger.debug("_refresh_layouts failed after toggling experimental", exc_info=True)
+        except Exception:
+            logger.debug("_toggle_experimental_visibility failed", exc_info=True)
 
     def _on_target_part_changed(self):
         """当用户在下拉框选择不同 Part 时，更新 Variant 的上限并刷新 Target 表单。"""
