@@ -7,6 +7,7 @@ from typing import Any
 
 # 标准导入 (因为 cli.py 在项目根目录，Python 会自动识别 src 包)
 from src.cli_helpers import attempt_load_project_data, configure_logging
+from src.data_loader import ProjectData
 from src.registry_cli import registry as registry_cmd
 
 
@@ -128,12 +129,23 @@ def main(ctx, config_path, input_path, output_path, force, moment, json_errors, 
             project_data = loaded
 
         from src.physics import AeroCalculator
-        # 若指定了 target_part/target_variant，则构造带选择的计算器
-        if target_part is not None:
-            calculator = AeroCalculator(project_data, target_part=target_part, target_variant=target_variant)
-        else:
-            # 当配置为多 Part 时，load_project_calculator / AeroCalculator 会要求显式提供 target_part
-            calculator = AeroCalculator(project_data)
+
+        # 如果加载到的是 ProjectData 类型，且包含多个 target parts，则必须显式指定 --target-part
+        if isinstance(project_data, ProjectData):
+            if target_part is None:
+                # 若仅包含单个 Part，则自动选取该 Part 的第一个 variant
+                if len(project_data.target_parts) == 1:
+                    target_part = next(iter(project_data.target_parts))
+                    target_variant = target_variant or 0
+                else:
+                    _error_exit(
+                        "配置包含多个 Target part，请使用 --target-part 与 --target-variant 显式指定要使用的目标 variant。",
+                        code=4,
+                        hint="示例: --target-part TestModel --target-variant 0",
+                    )
+
+        # 传入 AeroCalculator 时统一提供 target_part/target_variant（AeroCalculator 本身也会再次校验）
+        calculator = AeroCalculator(project_data, target_part=target_part, target_variant=target_variant)
     except Exception as e:
         _error_exit(f"无法加载配置: {str(e)}", code=4, hint="配置文件应包含对等的 'Source' 与 'Target' 节点，或使用 creator.py 生成兼容的配置。")
 
