@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout
 )
+from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from PySide6.QtGui import QFont
@@ -302,6 +303,175 @@ class ColumnMappingDialog(QDialog):
             QMessageBox.information(self, '已加载', f'已从 {fname} 加载格式并填充对话框')
         except Exception as e:
             QMessageBox.warning(self, '加载失败', f'无法加载格式: {e}')
+
+
+class ExperimentalDialog(QDialog):
+    """实验性功能对话框：包含 per-file/registry/可视化等实验性设置。"""
+    def __init__(self, parent=None, initial_settings: dict = None):
+        super().__init__(parent)
+        self.setWindowTitle('实验性功能')
+        self.resize(700, 480)
+        self.initial_settings = initial_settings or {}
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+
+        # per-file 开关
+        self.chk_enable_sidecar = QCheckBox('启用 per-file 覆盖（sidecar/registry）')
+        self.chk_enable_sidecar.setToolTip('启用后批处理会尝试使用文件侧车或 registry 覆盖全局配置')
+        layout.addWidget(self.chk_enable_sidecar)
+
+        # registry DB 行
+        reg_row = QHBoxLayout()
+        reg_row.addWidget(QLabel('格式注册表 (.sqlite):'))
+        self.inp_registry_db = QLineEdit()
+        self.inp_registry_db.setPlaceholderText('可选: registry 数据库 (.sqlite)')
+        reg_row.addWidget(self.inp_registry_db)
+        btn_browse = QPushButton('浏览')
+        btn_browse.setMaximumWidth(90)
+        btn_browse.clicked.connect(self._browse_registry_db)
+        reg_row.addWidget(btn_browse)
+        layout.addLayout(reg_row)
+
+        # registry 映射列表与操作
+        self.lst_registry = QListWidget()
+        self.lst_registry.setMinimumHeight(120)
+        layout.addWidget(QLabel('Registry 映射:'))
+        layout.addWidget(self.lst_registry)
+
+        reg_ops = QHBoxLayout()
+        self.inp_registry_pattern = QLineEdit()
+        self.inp_registry_pattern.setPlaceholderText('Pattern，例如: *.csv')
+        self.inp_registry_format = QLineEdit()
+        self.inp_registry_format.setPlaceholderText('Format JSON 文件')
+        reg_ops.addWidget(self.inp_registry_pattern)
+        reg_ops.addWidget(self.inp_registry_format)
+        btn_browse_fmt = QPushButton('浏览格式')
+        btn_browse_fmt.setMaximumWidth(90)
+        btn_browse_fmt.clicked.connect(self._browse_format_file)
+        reg_ops.addWidget(btn_browse_fmt)
+        layout.addLayout(reg_ops)
+
+        btn_row = QHBoxLayout()
+        self.btn_registry_register = QPushButton('注册映射')
+        self.btn_registry_edit = QPushButton('编辑选中')
+        self.btn_registry_remove = QPushButton('删除选中')
+        btn_row.addStretch()
+        btn_row.addWidget(self.btn_registry_register)
+        btn_row.addWidget(self.btn_registry_edit)
+        btn_row.addWidget(self.btn_registry_remove)
+        layout.addLayout(btn_row)
+
+        # 最近项目与 3D 可视化 开关（简要）
+        self.chk_show_visual = QCheckBox('启用 3D 可视化（实验）')
+        layout.addWidget(self.chk_show_visual)
+        layout.addWidget(QLabel('最近项目（只作展示）'))
+        self.lst_recent = QListWidget()
+        self.lst_recent.setMaximumHeight(80)
+        layout.addWidget(self.lst_recent)
+
+        # 按钮
+        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        box.accepted.connect(self.accept)
+        box.rejected.connect(self.reject)
+        layout.addWidget(box)
+
+        # 连接按钮
+        self.btn_registry_register.clicked.connect(self._on_registry_register)
+        self.btn_registry_edit.clicked.connect(self._on_registry_edit)
+        self.btn_registry_remove.clicked.connect(self._on_registry_remove)
+
+        # 如果有初始化设置，填充
+        self._load_initial()
+
+    def _load_initial(self):
+        s = self.initial_settings
+        try:
+            self.chk_enable_sidecar.setChecked(bool(s.get('enable_sidecar', False)))
+            self.inp_registry_db.setText(s.get('registry_db', '') or '')
+            for rp in s.get('recent_projects', [])[:10]:
+                self.lst_recent.addItem(rp)
+        except Exception:
+            pass
+        # 刷新 registry 列表
+        self._refresh_registry_list()
+
+    def _browse_registry_db(self):
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 registry 数据库', '.', 'SQLite Files (*.sqlite *.db);;All Files (*)')
+        if fname:
+            self.inp_registry_db.setText(fname)
+            self._refresh_registry_list()
+
+    def _browse_format_file(self):
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 format JSON', '.', 'JSON Files (*.json);;All Files (*)')
+        if fname:
+            self.inp_registry_format.setText(fname)
+
+    def _refresh_registry_list(self):
+        dbp = self.inp_registry_db.text().strip()
+        self.lst_registry.clear()
+        if not dbp:
+            self.lst_registry.addItem('(未选择 registry)')
+            return
+        try:
+            mappings = list_mappings(dbp)
+            if not mappings:
+                self.lst_registry.addItem('(空)')
+            else:
+                for m in mappings:
+                    self.lst_registry.addItem(f"[{m['id']}] {m['pattern']} -> {m['format_path']}")
+        except Exception as e:
+            self.lst_registry.addItem(f'无法读取 registry: {e}')
+
+    def _on_registry_register(self):
+        dbp = self.inp_registry_db.text().strip()
+        pat = self.inp_registry_pattern.text().strip()
+        fmt = self.inp_registry_format.text().strip()
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        if not pat or not fmt:
+            QMessageBox.warning(self, '错误', '请填写 pattern 与 format 文件路径')
+            return
+        try:
+            register_mapping(dbp, pat, fmt)
+            QMessageBox.information(self, '已注册', f'{pat} -> {fmt}')
+            self._refresh_registry_list()
+        except Exception as e:
+            QMessageBox.critical(self, '注册失败', str(e))
+
+    def _on_registry_edit(self):
+        QMessageBox.information(self, '提示', '请在主界面中编辑后再注册（简化实现）')
+
+    def _on_registry_remove(self):
+        dbp = self.inp_registry_db.text().strip()
+        sel = self.lst_registry.selectedItems()
+        if not dbp or not sel:
+            QMessageBox.warning(self, '错误', '请先选择 registry 与项目')
+            return
+        text = sel[0].text()
+        try:
+            if text.startswith('['):
+                end = text.find(']')
+                mapping_id = int(text[1:end])
+            else:
+                raise ValueError('无法解析选中项 ID')
+            resp = QMessageBox.question(self, '确认删除', f'确认删除映射 id={mapping_id}?', QMessageBox.Yes | QMessageBox.No)
+            if resp != QMessageBox.Yes:
+                return
+            delete_mapping(dbp, mapping_id)
+            self._refresh_registry_list()
+        except Exception as e:
+            QMessageBox.critical(self, '删除失败', str(e))
+
+    def get_settings(self) -> dict:
+        return {
+            'enable_sidecar': bool(self.chk_enable_sidecar.isChecked()),
+            'registry_db': self.inp_registry_db.text().strip(),
+            'recent_projects': [self.lst_recent.item(i).text() for i in range(self.lst_recent.count())]
+        }
+
 
 class BatchProcessThread(QThread):
     """在后台线程中执行批量处理，发出进度与日志信号"""
@@ -597,23 +767,18 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
 
-        # 允许用户显示实验性选项（默认隐藏）
-        self.chk_show_experimental = QCheckBox("显示实验性选项（实验）")
-        self.chk_show_experimental.setToolTip("显示/隐藏实验性功能：包括 3D 可视化 与 per-file 覆盖（仅用于调试/示例）")
+        # 实验功能按钮（打开独立对话框）
+        btn_exp = QPushButton('实验功能')
+        btn_exp.setToolTip('打开实验性功能对话框（包含 per-file/registry 等实验项）')
         try:
-            self.chk_show_experimental.stateChanged.connect(lambda _: self._toggle_experimental_visibility())
+            btn_exp.setObjectName('smallButton')
         except Exception:
-            logger.debug("Failed to connect chk_show_experimental signal", exc_info=True)
+            pass
+        btn_exp.clicked.connect(lambda: self.open_experimental_dialog())
 
         header_layout.addWidget(title)
         header_layout.addStretch()
-        header_layout.addWidget(self.chk_show_experimental)
-
-        # 当实验选项切换时刷新布局显示
-        try:
-            self.chk_show_experimental.stateChanged.connect(lambda _: self._toggle_experimental_visibility())
-        except Exception:
-            logger.debug("Failed to connect chk_show_experimental (second)", exc_info=True)
+        header_layout.addWidget(btn_exp)
 
         layout.addLayout(header_layout)
 
@@ -1152,8 +1317,7 @@ class IntegratedAeroGUI(QMainWindow):
             self.grp_experimental.setChecked(False)
             self.grp_experimental.setToolTip("实验性功能：包含 3D 可视化与 per-file 覆盖，默认收起，谨慎使用。")
             self.grp_experimental.toggled.connect(lambda v: self.grp_experimental.setVisible(v))
-            self.chk_show_experimental.toggled.connect(lambda v: self.grp_experimental.setChecked(v))
-            self.grp_experimental.toggled.connect(lambda v: self.chk_show_experimental.setChecked(v))
+            # 原先与主界面的复选框联动的逻辑已移至独立对话框
             self.grp_experimental.setVisible(False)
         except Exception:
             pass
@@ -1375,6 +1539,42 @@ class IntegratedAeroGUI(QMainWindow):
         else:
             self.visualization_window.close()
             self.visualization_window = None
+
+    def open_experimental_dialog(self):
+        """打开实验性功能对话框，用户确认后保存设置到 self.experimental_settings 并同步相关控件"""
+        try:
+            init = getattr(self, 'experimental_settings', None) or {}
+            dlg = ExperimentalDialog(self, initial_settings=init)
+            if dlg.exec() == QDialog.Accepted:
+                s = dlg.get_settings()
+                # 保存到实例属性以便其它逻辑读取
+                self.experimental_settings = s
+                # 将设置同步到界面上（若相应控件存在）
+                try:
+                    if hasattr(self, 'inp_registry_db'):
+                        self.inp_registry_db.setText(s.get('registry_db', '') or '')
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self, 'chk_enable_sidecar'):
+                        self.chk_enable_sidecar.setChecked(bool(s.get('enable_sidecar', False)))
+                        # 保持内部标志同步
+                        try:
+                            self._set_perfile_enabled(bool(s.get('enable_sidecar', False)))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    # 刷新 registry 显示与文件来源标签
+                    if hasattr(self, '_refresh_registry_list'):
+                        self._refresh_registry_list()
+                    if hasattr(self, '_refresh_format_labels'):
+                        self._refresh_format_labels()
+                except Exception:
+                    pass
+        except Exception as e:
+            QMessageBox.warning(self, '错误', f'打开实验性对话框失败: {e}')
 
     def show_visualization(self):
         """显示3D可视化窗口"""
@@ -2114,10 +2314,15 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             # 若 per-file 覆盖未显式启用，则统一视作全局（不检查 registry/sidecar）
             try:
-                if hasattr(self, 'chk_enable_sidecar') and not self.chk_enable_sidecar.isChecked():
-                    return ("global", None)
+                # 优先使用 experimental_settings（若用户通过对话框设置了实验项）
+                if hasattr(self, 'experimental_settings'):
+                    if not bool(self.experimental_settings.get('enable_sidecar', False)):
+                        return ("global", None)
+                else:
+                    # 兼容旧控件（已被移入对话框）：若存在且未选中则视为关闭
+                    if hasattr(self, 'chk_enable_sidecar') and not self.chk_enable_sidecar.isChecked():
+                        return ("global", None)
             except Exception:
-                # 若查询开关失败，按兼容方式继续执行检测
                 pass
 
             # 1) registry 优先（若界面提供了 db 路径）
