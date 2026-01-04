@@ -1517,6 +1517,88 @@ class IntegratedAeroGUI(QMainWindow):
         layout.addSpacing(6)
         return row
 
+    def _save_current_source_part(self):
+        """将当前 Source 表单保存回 self._raw_project_dict 中对应的 Part（只更新第一个 Variant）。"""
+        try:
+            old = getattr(self, '_current_source_part_name', None)
+            if not old:
+                return
+            if not getattr(self, '_raw_project_dict', None) or not isinstance(self._raw_project_dict, dict):
+                return
+            parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
+            for p in parts:
+                if p.get('PartName') == old:
+                    vars = p.setdefault('Variants', [])
+                    if not vars:
+                        vars.append({})
+                    v = vars[0]
+                    try:
+                        v['PartName'] = self.src_part_name.text()
+                    except Exception:
+                        pass
+                    v['CoordSystem'] = {
+                        'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                        'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                        'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                        'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                    }
+                    v['MomentCenter'] = [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)]
+                    try:
+                        v['Cref'] = float(self.src_cref.text())
+                        v['Bref'] = float(self.src_bref.text())
+                        v['Q'] = float(self.src_q.text())
+                        v['S'] = float(self.src_sref.text())
+                    except Exception:
+                        pass
+                    break
+            try:
+                self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_save_current_source_part failed", exc_info=True)
+
+    def _save_current_target_part(self):
+        """将当前 Target 表单保存回 self._raw_project_dict 中对应的 Part（只更新第一个 Variant）。"""
+        try:
+            old = getattr(self, '_current_target_part_name', None)
+            if not old:
+                return
+            if not getattr(self, '_raw_project_dict', None) or not isinstance(self._raw_project_dict, dict):
+                return
+            parts = self._raw_project_dict.get('Target', {}).get('Parts', [])
+            for p in parts:
+                if p.get('PartName') == old:
+                    vars = p.setdefault('Variants', [])
+                    if not vars:
+                        vars.append({})
+                    v = vars[0]
+                    try:
+                        v['PartName'] = self.tgt_part_name.text()
+                    except Exception:
+                        pass
+                    v['CoordSystem'] = {
+                        'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
+                        'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                        'Y': [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                        'Z': [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
+                    }
+                    v['MomentCenter'] = [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)]
+                    try:
+                        v['Cref'] = float(self.tgt_cref.text())
+                        v['Bref'] = float(self.tgt_bref.text())
+                        v['Q'] = float(self.tgt_q.text())
+                        v['S'] = float(self.tgt_sref.text())
+                    except Exception:
+                        pass
+                    break
+            try:
+                self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_save_current_target_part failed", exc_info=True)
+
     def toggle_source_visibility(self, state):
         """切换 Source 坐标系的显示/隐藏"""
         self.grp_source.setVisible(state == Qt.Checked)
@@ -1686,7 +1768,15 @@ class IntegratedAeroGUI(QMainWindow):
                 cs = frame.coord_system
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
 
-                self.tgt_part_name.setText(frame.part_name)
+                # 程序性设置文本时屏蔽信号，避免触发重名检测
+                try:
+                    self.tgt_part_name.blockSignals(True)
+                    self.tgt_part_name.setText(frame.part_name)
+                finally:
+                    try:
+                        self.tgt_part_name.blockSignals(False)
+                    except Exception:
+                        pass
                 self.tgt_ox.setValue(float(cs.origin[0]))
                 self.tgt_oy.setValue(float(cs.origin[1]))
                 self.tgt_oz.setValue(float(cs.origin[2]))
@@ -1715,9 +1805,7 @@ class IntegratedAeroGUI(QMainWindow):
                             self.tgt_mcz.setText(str(mc[2]))
                     except Exception:
                         pass
-                self.tgt_mcx.setValue(float(mc[0]))
-                self.tgt_mcy.setValue(float(mc[1]))
-                self.tgt_mcz.setValue(float(mc[2]))
+
                 self.tgt_cref.setText(str(frame.c_ref or 1.0))
                 self.tgt_bref.setText(str(frame.b_ref or 1.0))
                 self.tgt_sref.setText(str(frame.s_ref or 10.0))
@@ -1735,7 +1823,15 @@ class IntegratedAeroGUI(QMainWindow):
 
                     scs = sframe.coord_system
                     smc = sframe.moment_center or [0.0, 0.0, 0.0]
-                    self.src_part_name.setText(sframe.part_name)
+                    # 程序性设置文本时屏蔽信号，避免触发重名检测
+                    try:
+                        self.src_part_name.blockSignals(True)
+                        self.src_part_name.setText(sframe.part_name)
+                    finally:
+                        try:
+                            self.src_part_name.blockSignals(False)
+                        except Exception:
+                            pass
                     self.src_ox.setValue(float(scs.origin[0]))
                     self.src_oy.setValue(float(scs.origin[1]))
                     self.src_oz.setValue(float(scs.origin[2]))
@@ -2629,9 +2725,9 @@ class IntegratedAeroGUI(QMainWindow):
             dlg.setText("批处理过程中发生错误，已记录到日志。请检查输入文件与数据格式配置。")
             dlg.setInformativeText("建议：检查数据格式映射（列索引）、Target 配置中的 MomentCenter/Q/S，或在 GUI 中打开“配置数据格式”进行修正。")
             dlg.setDetailedText(str(error_msg))
-
+            dlg.exec()
         except Exception:
-            logger.debug("Failed to show error dialog", exc_info=True)
+            logger.debug("无法显示错误对话框", exc_info=True)
 
     BUTTON_LAYOUT_THRESHOLD = 720
     def update_button_layout(self, threshold=None):
@@ -2921,6 +3017,11 @@ class IntegratedAeroGUI(QMainWindow):
                 return
             if not isinstance(self.current_config, ProjectData):
                 return
+            # 在切换前保存当前正在编辑的 Target Part，避免丢失修改
+            try:
+                self._save_current_target_part()
+            except Exception:
+                pass
             sel = self.cmb_target_parts.currentText()
             variants = self.current_config.target_parts.get(sel, [])
             max_idx = max(0, len(variants) - 1)
@@ -2930,7 +3031,15 @@ class IntegratedAeroGUI(QMainWindow):
                 frame = variants[0]
                 cs = frame.coord_system
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
-                self.tgt_part_name.setText(frame.part_name)
+                # 程序性设置文本时屏蔽信号，避免触发重名检测
+                try:
+                    self.tgt_part_name.blockSignals(True)
+                    self.tgt_part_name.setText(frame.part_name)
+                finally:
+                    try:
+                        self.tgt_part_name.blockSignals(False)
+                    except Exception:
+                        pass
                 self.tgt_ox.setValue(float(cs.origin[0]))
                 self.tgt_oy.setValue(float(cs.origin[1]))
                 self.tgt_oz.setValue(float(cs.origin[2]))
@@ -2988,6 +3097,44 @@ class IntegratedAeroGUI(QMainWindow):
             existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
             name = preferred_name
             if name in existing_names:
+                # 名称已存在，提示用户选择：覆盖 / 创建唯一名 / 取消
+                msg = QMessageBox(self)
+                msg.setWindowTitle('已存在的 Part')
+                msg.setText(f"Source Part 名称 '{preferred_name}' 已存在。请选择操作：")
+                btn_overwrite = msg.addButton('覆盖', QMessageBox.AcceptRole)
+                btn_unique = msg.addButton('创建唯一名', QMessageBox.DestructiveRole)
+                btn_cancel = msg.addButton('取消', QMessageBox.RejectRole)
+                msg.exec()
+                clicked = msg.clickedButton()
+                if clicked == btn_cancel:
+                    return
+                if clicked == btn_overwrite:
+                    # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
+                    for p in parts:
+                        if p.get('PartName') == preferred_name:
+                            p['Variants'] = [
+                                {
+                                    'PartName': preferred_name,
+                                    'CoordSystem': {
+                                        'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                                        'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                                        'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                                        'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                                    },
+                                    'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                                    'Cref': float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
+                                    'Bref': float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
+                                    'Q': float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
+                                    'S': float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
+                                }
+                            ]
+                            break
+                    try:
+                        self.current_config = ProjectData.from_dict(self._raw_project_dict)
+                    except Exception:
+                        pass
+                    return
+                # 创建唯一名
                 i = 1
                 while f"{preferred_name}_{i}" in existing_names:
                     i += 1
@@ -3060,6 +3207,44 @@ class IntegratedAeroGUI(QMainWindow):
             existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
             name = preferred_name
             if name in existing_names:
+                # 名称已存在，提示用户选择：覆盖 / 创建唯一名 / 取消
+                msg = QMessageBox(self)
+                msg.setWindowTitle('已存在的 Part')
+                msg.setText(f"Target Part 名称 '{preferred_name}' 已存在。请选择操作：")
+                btn_overwrite = msg.addButton('覆盖', QMessageBox.AcceptRole)
+                btn_unique = msg.addButton('创建唯一名', QMessageBox.DestructiveRole)
+                btn_cancel = msg.addButton('取消', QMessageBox.RejectRole)
+                msg.exec()
+                clicked = msg.clickedButton()
+                if clicked == btn_cancel:
+                    return
+                if clicked == btn_overwrite:
+                    # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
+                    for p in parts:
+                        if p.get('PartName') == preferred_name:
+                            p['Variants'] = [
+                                {
+                                    'PartName': preferred_name,
+                                    'CoordSystem': {
+                                        'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
+                                        'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                                        'Y': [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                                        'Z': [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
+                                    },
+                                    'MomentCenter': [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
+                                    'Cref': float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
+                                    'Bref': float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
+                                    'Q': float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
+                                    'S': float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
+                                }
+                            ]
+                            break
+                    try:
+                        self.current_config = ProjectData.from_dict(self._raw_project_dict)
+                    except Exception:
+                        pass
+                    return
+                # 创建唯一名
                 i = 1
                 while f"{preferred_name}_{i}" in existing_names:
                     i += 1
@@ -3122,6 +3307,11 @@ class IntegratedAeroGUI(QMainWindow):
     def _on_source_part_changed(self):
         """当用户在 Source 下拉选择不同 Part 时，更新 Variant 上限并刷新 Source 表单。"""
         try:
+            # 在切换前先保存当前正在编辑的 Source Part，避免数据丢失
+            try:
+                self._save_current_source_part()
+            except Exception:
+                pass
             if not hasattr(self, 'current_config') or self.current_config is None:
                 return
             if not isinstance(self.current_config, ProjectData):
@@ -3134,7 +3324,15 @@ class IntegratedAeroGUI(QMainWindow):
                 frame = variants[0]
                 cs = frame.coord_system
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
-                self.src_part_name.setText(frame.part_name)
+                # 程序性设置文本时屏蔽信号，避免触发重名检测
+                try:
+                    self.src_part_name.blockSignals(True)
+                    self.src_part_name.setText(frame.part_name)
+                finally:
+                    try:
+                        self.src_part_name.blockSignals(False)
+                    except Exception:
+                        pass
 
                 # 设置 Source 原点与基向量
                 try:
@@ -3216,23 +3414,9 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 logger.debug("source part duplicate check failed", exc_info=True)
 
-            # 若下拉可见，更新下拉项文本
-            if hasattr(self, 'cmb_source_parts') and self.cmb_source_parts.isVisible() and self.cmb_source_parts.count() > 0:
-                idx = self.cmb_source_parts.currentIndex()
-                if idx >= 0:
-                    try:
-                        self.cmb_source_parts.setItemText(idx, new_text)
-                    except Exception:
-                        pass
-                    # 若 current_config 中存在旧 key，尝试重命名 key
-                    try:
-                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
-                            if old in self.current_config.source_parts:
-                                self.current_config.source_parts[new_text] = self.current_config.source_parts.pop(old)
-                    except Exception:
-                        logger.debug("重命名 current_config.source_parts 失败", exc_info=True)
-            # 更新记录的当前名
-            # 同步到原始字典（若存在）以便保存
+            # 不再实时把文本框改名同步到下拉与 current_config（避免连锁重命名错误）
+            # 仅在内部记录新名称，并在原始字典中更新 PartName，以便后续显式保存或切换时持久化。
+            # 更新记录的当前名，并同步到原始字典（若存在）以便保存
             old_name = old
             self._current_source_part_name = new_text
             try:
@@ -3275,20 +3459,9 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 logger.debug("target part duplicate check failed", exc_info=True)
 
-            if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
-                idx = self.cmb_target_parts.currentIndex()
-                if idx >= 0:
-                    try:
-                        self.cmb_target_parts.setItemText(idx, new_text)
-                    except Exception:
-                        pass
-                    try:
-                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
-                            if old in self.current_config.target_parts:
-                                self.current_config.target_parts[new_text] = self.current_config.target_parts.pop(old)
-                    except Exception:
-                        logger.debug("重命名 current_config.target_parts 失败", exc_info=True)
-                    self._current_target_part_name = new_text
+            # 不再实时把文本框改名同步到下拉与 current_config（避免连锁重命名错误）
+            # 仅记录新名称，稍后显式保存或在切换时写回原始字典
+            self._current_target_part_name = new_text
             # 同步到原始字典以便保存
             try:
                 old_name = old
