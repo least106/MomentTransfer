@@ -627,7 +627,7 @@ class BatchProcessThread(QThread):
 class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("MomentTransfer v2.0 - 气动载荷坐标变换工具")
+        self.setWindowTitle("MomentTransfer")
         self.resize(1400, 850)
 
         self.calculator = None
@@ -1014,10 +1014,39 @@ class IntegratedAeroGUI(QMainWindow):
         registry_row.addWidget(btn_browse_registry)
 
         # 启用 per-file 覆盖（启用后会使用侧车/目录/registry 覆盖每个文件的格式）
+        # 启用 per-file 覆盖（仅在实验性组中可见，并需要显式开启）
         self.chk_enable_sidecar = QCheckBox("启用 per-file 覆盖（sidecar/registry，实验）")
         self.chk_enable_sidecar.setChecked(False)
-        self.chk_enable_sidecar.setToolTip("默认关闭；启用后会按文件尝试使用侧车/目录或 registry 来覆盖全局配置。建议仅在需要时启用。")
+        self.chk_enable_sidecar.setToolTip("默认关闭；需在实验性功能中显式启用；启用后批处理将按文件尝试使用侧车/registry 覆盖全局配置。")
         registry_row.addWidget(self.chk_enable_sidecar)
+        try:
+            # 当开关切换时启/禁 registry 相关控件，默认禁用
+            self.chk_enable_sidecar.toggled.connect(self._set_perfile_enabled)
+            # 初始禁用 registry 列表（仅在显式开启后可用）
+            self._set_perfile_enabled(False)
+        except Exception:
+            logger.debug("Failed to connect chk_enable_sidecar toggled signal", exc_info=True)
+
+    def _set_perfile_enabled(self, enabled: bool):
+        """启用或禁用 per-file（sidecar/registry）相关 UI 与标签刷新"""
+        try:
+            # 允许传入 signal 的 int 状态（Qt.Checked -> 2）或 bool
+            is_enabled = bool(enabled)
+        except Exception:
+            try:
+                is_enabled = bool(getattr(self, 'chk_enable_sidecar') and self.chk_enable_sidecar.isChecked())
+            except Exception:
+                is_enabled = False
+        try:
+            if hasattr(self, 'grp_registry_list'):
+                self.grp_registry_list.setEnabled(is_enabled)
+            # 立即刷新文件来源标签以反映当前开关状态
+            try:
+                self._refresh_format_labels()
+            except Exception:
+                logger.debug("_refresh_format_labels failed", exc_info=True)
+        except Exception:
+            logger.debug("_set_perfile_enabled failed", exc_info=True)
 
         # 注意：不要把 registry_row 直接添加到 file_form（我们会把它放到实验性组中）
         # file_form.addRow("", registry_row)  # 已移至实验性组
@@ -1085,6 +1114,11 @@ class IntegratedAeroGUI(QMainWindow):
         reg_layout.addLayout(reg_form)
         reg_layout.addLayout(ops_row)
         self.grp_registry_list.setLayout(reg_layout)
+        # 初始禁用 registry 列表，避免误用；仅在用户显式开启 per-file 开关后启用
+        try:
+            self.grp_registry_list.setEnabled(False)
+        except Exception:
+            pass
 
         file_form.addRow("输入路径:", input_row)
         file_form.addRow("", pattern_row)
@@ -1123,7 +1157,7 @@ class IntegratedAeroGUI(QMainWindow):
             self.btn_config_format.setShortcut('Ctrl+Shift+F')
         except Exception:
             pass
-        self.btn_config_format.setToolTip("设置跳过行数、列映射等")
+        self.btn_config_format.setToolTip("设置会话级别的全局数据格式（仅全局，不再按每个文件查找侧车/registry）")
         self.btn_config_format.clicked.connect(self.configure_data_format)
 
         # 进度条（隐藏，运行时显示）
@@ -1132,7 +1166,6 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 执行按钮（作为实例属性）
         self.btn_batch = QPushButton("开始批量处理")
-        self.btn_batch.setFixedHeight(34)
         try:
             self.btn_batch.setObjectName('primaryButton')
             self.btn_batch.setShortcut('Ctrl+R')
@@ -1172,16 +1205,22 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         # 确保按钮区域在布局收缩时仍可见，允许在垂直方向上保留最小高度但可在必要时伸缩
-        self.btn_widget.setMinimumHeight(44)
-        self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        BTN_CONTENT_HEIGHT = 50  # 按钮实际高度（px）
+        V_PADDING = 12           # 上下内边距合计（px）
+        self.btn_widget.setMinimumHeight(BTN_CONTENT_HEIGHT + V_PADDING)
+        self.btn_widget.setFixedHeight(BTN_CONTENT_HEIGHT + V_PADDING)
+        self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid = QGridLayout(self.btn_widget)
-        grid.setSpacing(8)
+        grid.setSpacing(0)
+        # 给按钮区域留出内边距，避免按钮看起来被裁切
         grid.setContentsMargins(0, 0, 0, 0)
+        
         # 平分列的伸缩因子，避免第二列在窗口恢复时被挤出可见区域
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
-        self.btn_config_format.setFixedHeight(34)
+        self.btn_config_format.setFixedHeight(100)
         self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_batch.setFixedHeight(100)
         self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         # （已移除）原先放在主界面的“加载数据格式”按钮已移入配置对话框，
         # 避免与其他按钮重叠并提升可点击性。
@@ -1191,7 +1230,6 @@ class IntegratedAeroGUI(QMainWindow):
         grid.addWidget(self.btn_cancel, 1, 1)
         # 固定并复用这个 grid，避免后续替换 layout 导致 Qt 布局对象延迟删除出现几何错误
         self.btn_grid = grid
-
         layout_batch.addLayout(file_form)
         layout_batch.addWidget(self.grp_registry_list)
         layout_batch.addWidget(self.grp_file_list)
@@ -1786,174 +1824,39 @@ class IntegratedAeroGUI(QMainWindow):
             QMessageBox.critical(self, "应用失败", f"配置应用失败:\n{str(e)}")
 
     def configure_data_format(self):
-        """配置数据格式
-
-        行为说明：
-        - 如果在文件列表中选择了一个或多个文件，会尝试基于所选第一个文件查找可用的格式定义（优先级：registry -> file-sidecar -> dir -> global）。
-        - 若找到多个候选格式文件，弹出候选选择对话让用户选择要加载的格式。
-        - 若未找到任何格式文件，则打开空白/默认的列映射对话。
-        """
-        # 1) 确定目标文件（优先使用文件列表中勾选的项）
-        chosen_fp = None
+        """配置全局会话级别的数据格式（不会对单个文件进行侧车/registry 查找或编辑）。"""
         try:
-            items = getattr(self, '_file_check_items', None)
-            if items:
-                checked = [fp for cb, fp, *_ in items if cb.isChecked()]
-                if len(checked) == 1:
-                    chosen_fp = checked[0]
-                elif len(checked) > 1:
-                    # 多选时使用第一个作为配置目标，并提示用户
-                    chosen_fp = checked[0]
-                    self.txt_batch_log.append(f"注意：有多个文件被选中，正在为第一个选中项配置格式: {chosen_fp.name}")
-        except (AttributeError, IndexError, TypeError) as e:
-            logger.debug("Failed to determine chosen_fp", exc_info=True)
-            chosen_fp = None
-
-        # 1.5) 检查用户是否在 registry 列表中选中了某条映射；若有则优先作为编辑目标
-        selected_registry_entry = None
-        selected_format_path = None
-        selected_source = None  # 'registry' | 'candidate' | None
-        try:
-            sel_entry = None
-            if hasattr(self, 'lst_registry'):
-                sel_items = self.lst_registry.selectedItems()
-                if sel_items:
-                    # 解析选中项的 id（格式为 [id] ...）
-                    text = sel_items[0].text()
-                    try:
-                        if text.startswith('['):
-                            end = text.find(']')
-                            mid = text[1:end]
-                            sel_id = int(mid)
-                            dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
-                            if dbp:
-                                try:
-                                    mappings = list_mappings(dbp)
-                                    sel_entry = next((m for m in mappings if m['id'] == sel_id), None)
-                                except (OSError, ValueError) as e:
-                                    logger.debug("list_mappings failed while selecting registry entry: %s", e, exc_info=True)
-                                    sel_entry = None
-                    except (ValueError, IndexError, TypeError) as e:
-                        logger.debug("Failed to parse selected registry item text", exc_info=True)
-                        sel_entry = None
-            if sel_entry:
-                # 将选中 registry 映射作为预选格式
-                selected_registry_entry = sel_entry
-                selected_source = 'registry'
-                try:
-                    pf = Path(sel_entry['format_path'])
-                    if pf.exists():
-                        selected_format_path = pf
-                except (OSError, KeyError, TypeError, ValueError) as e:
-                    logger.debug("Failed to stat selected format path: %s", e, exc_info=True)
-                    selected_format_path = None
-        except (OSError, ValueError, TypeError) as e:
-            logger.debug("Error while resolving selected registry entry", exc_info=True)
-
-        # 2) 收集候选格式文件路径（仅在用户未显式选中 registry 映射时进行）
-        candidate_paths = []
-        try:
-            if chosen_fp and selected_source != 'registry':
-                # registry 优先查询（若用户提供了 registry 路径）
-                try:
-                    dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
-                    if dbp:
+            dlg = ColumnMappingDialog(self)
+            # 若已有全局 data_config（字典或类似结构），尝试填充对话框
+            try:
+                if hasattr(self, 'data_config') and self.data_config:
+                    if isinstance(self.data_config, dict):
+                        dlg.set_config(self.data_config)
+                    else:
+                        # 兼容具有属性的配置对象
+                        cfg = {}
                         try:
-                            fmtp = get_format_for_file(dbp, str(chosen_fp))
-                            if fmtp:
-                                p = Path(fmtp)
-                                if p.exists():
-                                    candidate_paths.append(p)
+                            cfg['skip_rows'] = getattr(self.data_config, 'skip_rows', None)
+                            cols = getattr(self.data_config, 'columns', None) or getattr(self.data_config, 'column_mappings', None)
+                            cfg['columns'] = cols or {}
+                            cfg['passthrough'] = getattr(self.data_config, 'passthrough', None) or getattr(self.data_config, 'passthrough_columns', [])
+                            dlg.set_config(cfg)
                         except Exception:
-                            logger.debug("get_format_for_file failed", exc_info=True)
-                except Exception:
-                    logger.debug("Error while checking registry DB path", exc_info=True)
-
-                # sidecar 文件优先级（.format.json, .json）
-                for suf in ('.format.json', '.json'):
-                    cand = chosen_fp.parent / f"{chosen_fp.stem}{suf}"
-                    if cand.exists():
-                        candidate_paths.append(cand)
-
-                # 目录级默认
-                dir_cand = chosen_fp.parent / 'format.json'
-                if dir_cand.exists():
-                    candidate_paths.append(dir_cand)
-        except Exception as e:
-            logger.debug("Error while collecting candidate paths (outer)", exc_info=True)
-
-        # 3) 如果找到多个候选，弹出选择对话
-        try:
-            if selected_source == 'registry':
-                # 已有明确 registry 选择，跳过候选收集/选择
-                pass
-            elif len(candidate_paths) > 1:
-                # 创建一个简易选择对话
-                dlg = QDialog(self)
-                dlg.setWindowTitle('选择要加载的格式文件')
-                v = QVBoxLayout(dlg)
-                from PySide6.QtWidgets import QListWidget, QListWidgetItem
-                lw = QListWidget()
-                for p in candidate_paths:
-                    lw.addItem(str(p))
-                v.addWidget(QLabel('找到多个格式定义，请选择要用于该文件的格式：'))
-                v.addWidget(lw)
-                btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-                btns.accepted.connect(dlg.accept)
-                btns.rejected.connect(dlg.reject)
-                v.addWidget(btns)
-                dlg.resize(600, 300)
-                if dlg.exec() == QDialog.Accepted:
-                    sel = lw.currentItem()
-                    if sel:
-                        selected_format_path = Path(sel.text())
-                        selected_source = 'candidate'
-                else:
-                    # 用户取消选择：退回，不打开配置对话
-                    return
-            elif len(candidate_paths) == 1:
-                selected_format_path = candidate_paths[0]
-                selected_source = 'candidate'
-        except Exception:
-            selected_format_path = None
-
-        # 4) 如果找到格式文件则尝试解析并用其内容预填充对话框
-        initial_cfg = None
-        if selected_format_path:
-            try:
-                fmt_path = Path(selected_format_path)
-                with open(fmt_path, 'r', encoding='utf-8') as fh:
-                    initial_cfg = json.load(fh)
-                # 若 source 为 registry 但 selected_registry_entry 尚未指明（可能是通过 format_path 设置），尝试同步 entry
-                if selected_source == 'registry' and selected_registry_entry is None:
-                    try:
-                        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
-                        if dbp:
-                            mappings = list_mappings(dbp)
-                            sel = next((m for m in mappings if Path(m['format_path']) == fmt_path), None)
-                            if sel:
-                                selected_registry_entry = sel
-                    except Exception:
-                        pass
-            except Exception as e:
-                QMessageBox.warning(self, '警告', f'无法加载格式文件: {selected_format_path}\n{e}')
-
-        # 5) 打开 ColumnMappingDialog，并在可能时预填充
-        dialog = ColumnMappingDialog(self)
-        if initial_cfg:
-            dialog.set_config(initial_cfg)
-
-        if dialog.exec() == QDialog.Accepted:
-            # 仅将对话框中的配置加载到当前会话并更新预览。
-            # 保存/注册操作由对话框内的“保存”按钮或 Registry 管理区显式触发，
-            # 因此移除自动弹窗询问，避免重复或令人困惑的确认框。
-            self.data_config = dialog.get_config()
-            try:
-                self.update_config_preview()
+                            pass
             except Exception:
-                logger.debug("update_config_preview failed after configure_data_format", exc_info=True)
+                logger.debug('Failed to prefill ColumnMappingDialog with global data_config', exc_info=True)
 
-            self.txt_batch_log.append('已设置当前会话的数据格式（如需保存请在对话框点击“保存”或使用 Registry 操作）')
+            if dlg.exec() == QDialog.Accepted:
+                cfg = dlg.get_config()
+                self.data_config = cfg
+                QMessageBox.information(self, '已更新', '会话级全局数据格式已更新')
+                try:
+                    self.update_config_preview()
+                except Exception:
+                    logger.debug('update_config_preview failed after configure_data_format', exc_info=True)
+        except Exception as e:
+            QMessageBox.critical(self, '错误', f'无法配置数据格式: {e}')
+
 
     def browse_batch_input(self):
         """选择输入文件或目录（单一对话框，支持切换文件/目录模式）。"""
@@ -2288,8 +2191,17 @@ class IntegratedAeroGUI(QMainWindow):
 
         label: 'registry' | 'sidecar' | 'dir' | 'global' | 'unknown'
         path_or_None: 指向具体的 format 文件（Path）或 None
+        注意：当界面上的 per-file 覆盖开关未启用时（默认），函数将直接返回 'global'，避免在 UI 上暴露侧车/registry 信息。
         """
         try:
+            # 若 per-file 覆盖未显式启用，则统一视作全局（不检查 registry/sidecar）
+            try:
+                if hasattr(self, 'chk_enable_sidecar') and not self.chk_enable_sidecar.isChecked():
+                    return ("global", None)
+            except Exception:
+                # 若查询开关失败，按兼容方式继续执行检测
+                pass
+
             # 1) registry 优先（若界面提供了 db 路径）
             if hasattr(self, 'inp_registry_db'):
                 dbp = self.inp_registry_db.text().strip()
