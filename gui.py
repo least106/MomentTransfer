@@ -80,7 +80,7 @@ if _HAS_MPL:
                 max_range = 2.0
                 # 可根据需要改为日志记录或 GUI 提示，这里使用 logging 记录
                 logger.warning("coordinate systems are nearly coincident; using default visualization range.")
-            else:
+            else:  
                 max_range = max_span * 0.6
                 max_range = max(max_range, 2.0)
 
@@ -665,7 +665,25 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 当有多个 source part 时显示下拉；否则使用自由文本框
         form_source.addRow("Part Name:", self.src_part_name)
-        form_source.addRow("选择 Source Part:", self.cmb_source_parts)
+        # 使用带新增/删除按钮的组合控件以便在未加载文件时也能管理 Parts
+        src_part_widget = QWidget()
+        src_part_h = QHBoxLayout(src_part_widget)
+        src_part_h.setContentsMargins(0, 0, 0, 0)
+        src_part_h.addWidget(self.cmb_source_parts)
+        self.btn_add_source_part = QPushButton("+")
+        self.btn_add_source_part.setMaximumWidth(28)
+        self.btn_remove_source_part = QPushButton("−")
+        self.btn_remove_source_part.setMaximumWidth(28)
+        try:
+            self.btn_add_source_part.setObjectName('smallButton')
+            self.btn_remove_source_part.setObjectName('smallButton')
+        except Exception:
+            pass
+        self.btn_add_source_part.clicked.connect(self._add_source_part)
+        self.btn_remove_source_part.clicked.connect(self._remove_source_part)
+        src_part_h.addWidget(self.btn_add_source_part)
+        src_part_h.addWidget(self.btn_remove_source_part)
+        form_source.addRow("选择 Source Part:", src_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）；避免用户混淆，因此不在表单中显示
         # 使用一致宽度的 QLabel 以避免表单断行并保持对齐
         lbl = QLabel("Orig:")
@@ -745,7 +763,25 @@ class IntegratedAeroGUI(QMainWindow):
         self.spin_target_variant.setVisible(False)
         # 当选择不同 part 时，更新 variant 最大值（在 load_config 中设置）
         self.cmb_target_parts.currentTextChanged.connect(lambda _: self._on_target_part_changed())
-        form_target.addRow("选择 Target Part:", self.cmb_target_parts)
+        # 目标 Part 下拉也使用带新增/删除的组合控件
+        tgt_part_widget = QWidget()
+        tgt_part_h = QHBoxLayout(tgt_part_widget)
+        tgt_part_h.setContentsMargins(0, 0, 0, 0)
+        tgt_part_h.addWidget(self.cmb_target_parts)
+        self.btn_add_target_part = QPushButton("+")
+        self.btn_add_target_part.setMaximumWidth(28)
+        self.btn_remove_target_part = QPushButton("−")
+        self.btn_remove_target_part.setMaximumWidth(28)
+        try:
+            self.btn_add_target_part.setObjectName('smallButton')
+            self.btn_remove_target_part.setObjectName('smallButton')
+        except Exception:
+            pass
+        self.btn_add_target_part.clicked.connect(self._add_target_part)
+        self.btn_remove_target_part.clicked.connect(self._remove_target_part)
+        tgt_part_h.addWidget(self.btn_add_target_part)
+        tgt_part_h.addWidget(self.btn_remove_target_part)
+        form_target.addRow("选择 Target Part:", tgt_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）
 
         # Target 坐标系
@@ -1084,7 +1120,7 @@ class IntegratedAeroGUI(QMainWindow):
             self.btn_widget.setObjectName('btnWidget')
         except Exception:
             pass
-        BTN_CONTENT_HEIGHT = 50
+        BTN_CONTENT_HEIGHT = 30
         V_PADDING = 12
         self.btn_widget.setMinimumHeight(BTN_CONTENT_HEIGHT + V_PADDING)
         self.btn_widget.setFixedHeight(BTN_CONTENT_HEIGHT + V_PADDING)
@@ -1094,9 +1130,9 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_grid.setContentsMargins(0, 0, 0, 0)
         self.btn_grid.setColumnStretch(0, 1)
         self.btn_grid.setColumnStretch(1, 1)
-        self.btn_config_format.setFixedHeight(100)
+        self.btn_config_format.setFixedHeight(40)
         self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.btn_batch.setFixedHeight(100)
+        self.btn_batch.setFixedHeight(40)
         self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_grid.addWidget(self.btn_config_format, 0, 0)
         self.btn_grid.addWidget(self.btn_batch, 0, 1)
@@ -1399,6 +1435,12 @@ class IntegratedAeroGUI(QMainWindow):
             with open(fname, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
+            # 保存原始字典以便在 GUI 中允许编辑并按需写回
+            try:
+                self._raw_project_dict = data
+            except Exception:
+                self._raw_project_dict = None
+
             # 解析为严格的 ProjectData（新版格式，包含 Parts）
             project = ProjectData.from_dict(data)
             self.current_config = project
@@ -1618,39 +1660,53 @@ class IntegratedAeroGUI(QMainWindow):
     def apply_config(self):
         """应用当前配置到计算器"""
         try:
-            # 使用对等结构构建配置，方便 ProjectData.from_dict 解析
-            data = {
-                "Source": {
-                    "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
-                    "CoordSystem": {
-                        "Orig": [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                        "X": [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                        "Y": [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                        "Z": [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
-                    },
-                    "SourceMomentCenter": [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                    "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
-                    "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
-                    "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
-                    "S": float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
-                },
-                "Target": {
-                    "PartName": self.tgt_part_name.text(),
-                    "CoordSystem": {
-                        "Orig": [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
-                        "X": [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                        "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                        "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
-                    },
-                    "TargetMomentCenter": [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
-                    "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
-                    "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
-                    "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
-                    "S": float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
-                }
+            # 构建新版格式：Source/Target 下包含 Parts 列表，保证兼容 ProjectData.from_dict
+            src_part = {
+                "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
+                "Variants": [
+                    {
+                        "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
+                        "CoordSystem": {
+                            "Orig": [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                            "X": [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                            "Y": [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                            "Z": [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                        },
+                        "MomentCenter": [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                        "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
+                        "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
+                        "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
+                        "S": float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
+                    }
+                ]
             }
 
-            # 解析为 ProjectData（严格格式），并使用显式的 target part/variant 构造计算器
+            tgt_part = {
+                "PartName": self.tgt_part_name.text(),
+                "Variants": [
+                    {
+                        "PartName": self.tgt_part_name.text(),
+                        "CoordSystem": {
+                            "Orig": [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
+                            "X": [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                            "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                            "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
+                        },
+                        "MomentCenter": [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
+                        "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
+                        "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
+                        "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
+                        "S": float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
+                    }
+                ]
+            }
+
+            data = {
+                "Source": {"Parts": [src_part]},
+                "Target": {"Parts": [tgt_part]}
+            }
+
+            # 解析为 ProjectData（严格格式）
             self.current_config = ProjectData.from_dict(data)
 
             # 决定要使用的 target part 与 variant（优先使用 GUI 下拉框）
@@ -2714,6 +2770,132 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("_on_target_part_changed failed", exc_info=True)
 
+    def _add_source_part(self):
+        """在原始项目或内存结构中添加一个新的 Source Part，并刷新下拉列表。"""
+        try:
+            # 确保有原始 dict
+            if not getattr(self, '_raw_project_dict', None):
+                # 构建一个基础结构
+                self._raw_project_dict = {'Source': {'Parts': []}, 'Target': {'Parts': []}}
+            parts = self._raw_project_dict.setdefault('Source', {}).setdefault('Parts', [])
+            # 基于当前 UI 构造一个新 part
+            new_part = {
+                'PartName': self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource',
+                'Variants': [
+                    {
+                        'PartName': self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource',
+                        'CoordSystem': {
+                            'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                            'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                            'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                            'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                        },
+                        'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                        'Cref': float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
+                        'Bref': float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
+                        'Q': float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
+                        'S': float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
+                    }
+                ]
+            }
+            parts.append(new_part)
+            # 更新 combo
+            self.cmb_source_parts.addItem(new_part['PartName'])
+            self.cmb_source_parts.setVisible(True)
+            # 解析为 ProjectData
+            try:
+                self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_add_source_part failed", exc_info=True)
+
+    def _remove_source_part(self):
+        """从原始项目或内存结构中移除当前选中的 Source Part 并刷新下拉列表。"""
+        try:
+            sel = self.cmb_source_parts.currentText() if self.cmb_source_parts.count() > 0 else None
+            if not sel:
+                return
+            if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
+                parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
+                idx = next((i for i, p in enumerate(parts) if p.get('PartName') == sel), None)
+                if idx is not None:
+                    parts.pop(idx)
+            # 从 combo 中移除
+            try:
+                i = self.cmb_source_parts.currentIndex()
+                self.cmb_source_parts.removeItem(i)
+            except Exception:
+                pass
+            if self.cmb_source_parts.count() == 0:
+                self.cmb_source_parts.setVisible(False)
+            try:
+                if getattr(self, '_raw_project_dict', None):
+                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_remove_source_part failed", exc_info=True)
+
+    def _add_target_part(self):
+        try:
+            if not getattr(self, '_raw_project_dict', None):
+                self._raw_project_dict = {'Source': {'Parts': []}, 'Target': {'Parts': []}}
+            parts = self._raw_project_dict.setdefault('Target', {}).setdefault('Parts', [])
+            new_part = {
+                'PartName': self.tgt_part_name.text() if hasattr(self, 'tgt_part_name') else 'NewTarget',
+                'Variants': [
+                    {
+                        'PartName': self.tgt_part_name.text() if hasattr(self, 'tgt_part_name') else 'NewTarget',
+                        'CoordSystem': {
+                            'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
+                            'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
+                            'Y': [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
+                            'Z': [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
+                        },
+                        'MomentCenter': [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
+                        'Cref': float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
+                        'Bref': float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
+                        'Q': float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
+                        'S': float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
+                    }
+                ]
+            }
+            parts.append(new_part)
+            self.cmb_target_parts.addItem(new_part['PartName'])
+            self.cmb_target_parts.setVisible(True)
+            try:
+                self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_add_target_part failed", exc_info=True)
+
+    def _remove_target_part(self):
+        try:
+            sel = self.cmb_target_parts.currentText() if self.cmb_target_parts.count() > 0 else None
+            if not sel:
+                return
+            if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
+                parts = self._raw_project_dict.get('Target', {}).get('Parts', [])
+                idx = next((i for i, p in enumerate(parts) if p.get('PartName') == sel), None)
+                if idx is not None:
+                    parts.pop(idx)
+            try:
+                i = self.cmb_target_parts.currentIndex()
+                self.cmb_target_parts.removeItem(i)
+            except Exception:
+                pass
+            if self.cmb_target_parts.count() == 0:
+                self.cmb_target_parts.setVisible(False)
+            try:
+                if getattr(self, '_raw_project_dict', None):
+                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_remove_target_part failed", exc_info=True)
+
     def _on_source_part_changed(self):
         """当用户在 Source 下拉选择不同 Part 时，更新 Variant 上限并刷新 Source 表单。"""
         try:
@@ -2827,7 +3009,22 @@ class IntegratedAeroGUI(QMainWindow):
                     except Exception:
                         logger.debug("重命名 current_config.source_parts 失败", exc_info=True)
             # 更新记录的当前名
+            # 同步到原始字典（若存在）以便保存
+            old_name = old
             self._current_source_part_name = new_text
+            try:
+                if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
+                    parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
+                    for p in parts:
+                        if p.get('PartName') == old_name:
+                            p['PartName'] = new_text
+                            # 也更新第一个 Variant 的 PartName 若存在
+                            vars = p.get('Variants') or []
+                            if vars and isinstance(vars, list) and 'PartName' in vars[0]:
+                                vars[0]['PartName'] = new_text
+                            break
+            except Exception:
+                pass
         except Exception:
             logger.debug("_on_src_partname_changed failed", exc_info=True)
 
@@ -2869,6 +3066,20 @@ class IntegratedAeroGUI(QMainWindow):
                     except Exception:
                         logger.debug("重命名 current_config.target_parts 失败", exc_info=True)
                     self._current_target_part_name = new_text
+            # 同步到原始字典以便保存
+            try:
+                old_name = old
+                if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
+                    parts = self._raw_project_dict.get('Target', {}).get('Parts', [])
+                    for p in parts:
+                        if p.get('PartName') == old_name:
+                            p['PartName'] = new_text
+                            vars = p.get('Variants') or []
+                            if vars and isinstance(vars, list) and 'PartName' in vars[0]:
+                                vars[0]['PartName'] = new_text
+                            break
+            except Exception:
+                pass
         except Exception:
             logger.debug("_on_tgt_partname_changed failed", exc_info=True)
 
