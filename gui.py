@@ -28,8 +28,9 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout
 )
-from PySide6.QtGui import QFont
+
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
+from PySide6.QtGui import QFont
 from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 from typing import Optional, List, Tuple
@@ -302,91 +303,6 @@ class ColumnMappingDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, '加载失败', f'无法加载格式: {e}')
 
-    def _on_src_partname_changed(self, new_text: str):
-        """当用户编辑 Source 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。
-
-        限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
-        """
-        try:
-            new_text = (new_text or '').strip()
-            old = getattr(self, '_current_source_part_name', None)
-            # 当 current_config 可用时，检查重名（允许与自身相同）
-            try:
-                if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
-                    if new_text in self.current_config.source_parts and new_text != old:
-                        QMessageBox.warning(self, "重复的部件名", "另一个 Source Part 已使用相同的名称，请使用不同的名称。")
-                        # 恢复旧值
-                        try:
-                            if old is not None:
-                                self.src_part_name.blockSignals(True)
-                                self.src_part_name.setText(old)
-                                self.src_part_name.blockSignals(False)
-                        except Exception:
-                            pass
-                        return
-            except Exception:
-                logger.debug("source part duplicate check failed", exc_info=True)
-
-            # 若下拉可见，更新下拉项文本
-            if hasattr(self, 'cmb_source_parts') and self.cmb_source_parts.isVisible() and self.cmb_source_parts.count() > 0:
-                idx = self.cmb_source_parts.currentIndex()
-                if idx >= 0:
-                    try:
-                        self.cmb_source_parts.setItemText(idx, new_text)
-                    except Exception:
-                        pass
-                    # 若 current_config 中存在旧 key，尝试重命名 key
-                    try:
-                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
-                            if old in self.current_config.source_parts:
-                                self.current_config.source_parts[new_text] = self.current_config.source_parts.pop(old)
-                    except Exception:
-                        logger.debug("重命名 current_config.source_parts 失败", exc_info=True)
-            # 更新记录的当前名
-            self._current_source_part_name = new_text
-        except Exception:
-            logger.debug("_on_src_partname_changed failed", exc_info=True)
-
-    def _on_tgt_partname_changed(self, new_text: str):
-        """当用户编辑 Target 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。
-
-        限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
-        """
-        try:
-            new_text = (new_text or '').strip()
-            old = getattr(self, '_current_target_part_name', None)
-            # 重名检查
-            try:
-                if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
-                    if new_text in self.current_config.target_parts and new_text != old:
-                        QMessageBox.warning(self, "重复的部件名", "另一个 Target Part 已使用相同的名称，请使用不同的名称。")
-                        try:
-                            if old is not None:
-                                self.tgt_part_name.blockSignals(True)
-                                self.tgt_part_name.setText(old)
-                                self.tgt_part_name.blockSignals(False)
-                        except Exception:
-                            pass
-                        return
-            except Exception:
-                logger.debug("target part duplicate check failed", exc_info=True)
-
-            if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
-                idx = self.cmb_target_parts.currentIndex()
-                if idx >= 0:
-                    try:
-                        self.cmb_target_parts.setItemText(idx, new_text)
-                    except Exception:
-                        pass
-                    try:
-                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
-                            if old in self.current_config.target_parts:
-                                self.current_config.target_parts[new_text] = self.current_config.target_parts.pop(old)
-                    except Exception:
-                        logger.debug("重命名 current_config.target_parts 失败", exc_info=True)
-                    self._current_target_part_name = new_text
-        except Exception:
-            logger.debug("_on_tgt_partname_changed failed", exc_info=True)
 class BatchProcessThread(QThread):
     """在后台线程中执行批量处理，发出进度与日志信号"""
     progress = Signal(int)
@@ -946,13 +862,13 @@ class IntegratedAeroGUI(QMainWindow):
     def create_operation_panel(self):
         """创建右侧操作面板"""
         panel = QWidget()
-        # 给右侧操作面板设定最小宽度，保证批处理控件可见性
         panel.setMinimumWidth(600)
         layout = QVBoxLayout(panel)
         layout.setSpacing(15)
 
-        # === 配置状态显示 ===
-        status_group = QGroupBox("当前配置状态")
+        # 将关键 UI 对象设为实例属性以确保在函数内所有分支和外部方法中均可访问，避免静态分析误报
+        # 基本状态与批处理容器
+        self.status_group = QGroupBox("当前配置状态")
         status_layout = QHBoxLayout()
         self.lbl_status = QLabel("未加载配置")
         try:
@@ -961,17 +877,17 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         status_layout.addWidget(self.lbl_status)
         status_layout.addStretch()
-        status_group.setLayout(status_layout)
+        self.status_group.setLayout(status_layout)
 
-        # === 批量处理区 ===
-        grp_batch = QGroupBox("批量处理 (Batch Processing)")
-        grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout_batch = QVBoxLayout()
+        self.grp_batch = QGroupBox("批量处理 (Batch Processing)")
+        self.grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # 右侧批处理的主布局（作为实例属性以便在其它方法中引用）
+        self.layout_batch = QVBoxLayout()
 
-        # 文件选择
-        file_form = QFormLayout()
+        # 文件选择表单（作为实例属性供后续方法访问）
+        self.file_form = QFormLayout()
 
-        input_row = QHBoxLayout()
+        # 输入行：文件路径 + 浏览
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
         btn_browse_input = QPushButton("浏览")
@@ -982,21 +898,20 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         btn_browse_input.clicked.connect(self.browse_batch_input)
+        input_row = QHBoxLayout()
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(btn_browse_input)
 
         # 文件匹配模式
-        pattern_row = QHBoxLayout()
         self.inp_pattern = QLineEdit("*.csv")
         self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv, data_*.xlsx")
+        pattern_row = QHBoxLayout()
         pattern_row.addWidget(QLabel("匹配模式:"))
         pattern_row.addWidget(self.inp_pattern)
 
         # Registry DB 输入行（可选，实验性）
-        registry_row = QHBoxLayout()
         self.inp_registry_db = QLineEdit()
         self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.sqlite) - 实验性")
-        # 当 registry 路径变化时刷新文件来源标签（实时反馈）
         try:
             self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
         except Exception:
@@ -1009,60 +924,34 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         btn_browse_registry.clicked.connect(self.browse_registry_db)
+        registry_row = QHBoxLayout()
         registry_row.addWidget(QLabel("格式注册表 (实验):"))
         registry_row.addWidget(self.inp_registry_db)
         registry_row.addWidget(btn_browse_registry)
 
-        # 启用 per-file 覆盖（启用后会使用侧车/目录/registry 覆盖每个文件的格式）
-        # 启用 per-file 覆盖（仅在实验性组中可见，并需要显式开启）
+        # per-file 开关（实验性）
         self.chk_enable_sidecar = QCheckBox("启用 per-file 覆盖（sidecar/registry，实验）")
         self.chk_enable_sidecar.setChecked(False)
         self.chk_enable_sidecar.setToolTip("默认关闭；需在实验性功能中显式启用；启用后批处理将按文件尝试使用侧车/registry 覆盖全局配置。")
         registry_row.addWidget(self.chk_enable_sidecar)
+        # 记录 per-file 开关状态，并提供实例级回调以避免 AttributeError
+        self._perfile_enabled = False
+        self._set_perfile_enabled = lambda checked: setattr(self, "_perfile_enabled", bool(checked))
         try:
-            # 当开关切换时启/禁 registry 相关控件，默认禁用
             self.chk_enable_sidecar.toggled.connect(self._set_perfile_enabled)
-            # 初始禁用 registry 列表（仅在显式开启后可用）
             self._set_perfile_enabled(False)
         except Exception:
             logger.debug("Failed to connect chk_enable_sidecar toggled signal", exc_info=True)
-
-    def _set_perfile_enabled(self, enabled: bool):
-        """启用或禁用 per-file（sidecar/registry）相关 UI 与标签刷新"""
-        try:
-            # 允许传入 signal 的 int 状态（Qt.Checked -> 2）或 bool
-            is_enabled = bool(enabled)
-        except Exception:
-            try:
-                is_enabled = bool(getattr(self, 'chk_enable_sidecar') and self.chk_enable_sidecar.isChecked())
-            except Exception:
-                is_enabled = False
-        try:
-            if hasattr(self, 'grp_registry_list'):
-                self.grp_registry_list.setEnabled(is_enabled)
-            # 立即刷新文件来源标签以反映当前开关状态
-            try:
-                self._refresh_format_labels()
-            except Exception:
-                logger.debug("_refresh_format_labels failed", exc_info=True)
-        except Exception:
-            logger.debug("_set_perfile_enabled failed", exc_info=True)
-
-        # 注意：不要把 registry_row 直接添加到 file_form（我们会把它放到实验性组中）
-        # file_form.addRow("", registry_row)  # 已移至实验性组
 
         # Registry 映射管理区（列表 + 注册/删除）
         self.grp_registry_list = QGroupBox("Registry 映射管理 (可选)")
         self.grp_registry_list.setVisible(False)
         reg_layout = QVBoxLayout()
-
-        # 列表
-        from PySide6.QtWidgets import QListWidget, QListWidgetItem
+        from PySide6.QtWidgets import QListWidget
         self.lst_registry = QListWidget()
         self.lst_registry.setSelectionMode(QListWidget.SingleSelection)
         self.lst_registry.setMinimumHeight(100)
 
-        # 注册行：pattern + format path + browse + 预览
         reg_form = QHBoxLayout()
         self.inp_registry_pattern = QLineEdit()
         self.inp_registry_pattern.setPlaceholderText("Pattern，例如: sample.csv 或 *.csv")
@@ -1089,7 +978,6 @@ class IntegratedAeroGUI(QMainWindow):
         reg_form.addWidget(btn_browse_format)
         reg_form.addWidget(btn_preview_format)
 
-        # 操作按钮
         ops_row = QHBoxLayout()
         self.btn_registry_register = QPushButton("注册映射")
         self.btn_registry_edit = QPushButton("编辑选中")
@@ -1114,17 +1002,16 @@ class IntegratedAeroGUI(QMainWindow):
         reg_layout.addLayout(reg_form)
         reg_layout.addLayout(ops_row)
         self.grp_registry_list.setLayout(reg_layout)
-        # 初始禁用 registry 列表，避免误用；仅在用户显式开启 per-file 开关后启用
         try:
             self.grp_registry_list.setEnabled(False)
         except Exception:
             pass
 
-        file_form.addRow("输入路径:", input_row)
-        file_form.addRow("", pattern_row)
-        # registry_row 已放入实验性功能组，避免在主表单重复显示
+        # 将文件表单行添加到会话级文件_form
+        self.file_form.addRow("输入路径:", input_row)
+        self.file_form.addRow("", pattern_row)
 
-        # 文件列表（可复选、可滚动），默认位于数据格式配置之上
+        # 文件列表（可复选、可滚动）
         self.grp_file_list = QGroupBox("找到的文件列表")
         self.grp_file_list.setVisible(False)
         file_list_layout = QVBoxLayout()
@@ -1132,25 +1019,20 @@ class IntegratedAeroGUI(QMainWindow):
         self.file_scroll.setWidgetResizable(True)
         self.file_list_widget = QWidget()
         self.file_list_layout_inner = QVBoxLayout(self.file_list_widget)
-        # 保证复选框列表从顶部开始排列
         try:
             self.file_list_layout_inner.setAlignment(Qt.AlignTop)
-        except Exception as e:
+        except Exception:
             logger.debug("Error while setting file list layout alignment", exc_info=True)
         self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
         self.file_scroll.setWidget(self.file_list_widget)
-        # 给文件滚动区域一个最小高度，避免在窄窗口或重排时过度收缩
         self.file_scroll.setMinimumHeight(180)
         file_list_layout.addWidget(self.file_scroll)
         self.grp_file_list.setLayout(file_list_layout)
 
-        # 存储文件复选框相关信息的元组列表。
-        # 每个元素为 (checkbox: QCheckBox, path: Path, label: Optional[QLabel])，
-        # 其中 label 可选，因此在使用处可能通过 *rest 等方式解包。
+        # 存储文件复选框相关信息的元组列表
         self._file_check_items: List[Tuple[QCheckBox, Path, Optional[QLabel]]] = []
 
-
-        # 数据格式配置按钮（并作为实例属性，放入可切换的容器）
+        # 数据格式配置按钮
         self.btn_config_format = QPushButton("⚙ 配置数据格式")
         try:
             self.btn_config_format.setObjectName('secondaryButton')
@@ -1160,11 +1042,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_config_format.setToolTip("设置会话级别的全局数据格式（仅全局，不再按每个文件查找侧车/registry）")
         self.btn_config_format.clicked.connect(self.configure_data_format)
 
-        # 进度条（隐藏，运行时显示）
+        # 进度条（隐藏）
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
 
-        # 执行按钮（作为实例属性）
+        # 执行/取消等按钮与日志
         self.btn_batch = QPushButton("开始批量处理")
         try:
             self.btn_batch.setObjectName('primaryButton')
@@ -1174,7 +1056,6 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         self.btn_batch.clicked.connect(self.run_batch_processing)
 
-        # 取消按钮（仅在任务运行时显示并可用）
         self.btn_cancel = QPushButton("取消")
         self.btn_cancel.setFixedHeight(34)
         try:
@@ -1187,7 +1068,6 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_cancel.setVisible(False)
         self.btn_cancel.setEnabled(False)
 
-        # 日志
         self.txt_batch_log = QTextEdit()
         try:
             self.txt_batch_log.setObjectName('batchLog')
@@ -1198,62 +1078,51 @@ class IntegratedAeroGUI(QMainWindow):
         self.txt_batch_log.setMinimumHeight(160)
         self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # 按钮容器（使用 QGridLayout，后续由 update_button_layout 切换位置）
+        # 按钮容器（grid）
         self.btn_widget = QWidget()
         try:
             self.btn_widget.setObjectName('btnWidget')
         except Exception:
             pass
-        # 确保按钮区域在布局收缩时仍可见，允许在垂直方向上保留最小高度但可在必要时伸缩
-        BTN_CONTENT_HEIGHT = 50  # 按钮实际高度（px）
-        V_PADDING = 12           # 上下内边距合计（px）
+        BTN_CONTENT_HEIGHT = 50
+        V_PADDING = 12
         self.btn_widget.setMinimumHeight(BTN_CONTENT_HEIGHT + V_PADDING)
         self.btn_widget.setFixedHeight(BTN_CONTENT_HEIGHT + V_PADDING)
         self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        grid = QGridLayout(self.btn_widget)
-        grid.setSpacing(0)
-        # 给按钮区域留出内边距，避免按钮看起来被裁切
-        grid.setContentsMargins(0, 0, 0, 0)
-        
-        # 平分列的伸缩因子，避免第二列在窗口恢复时被挤出可见区域
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        self.btn_grid = QGridLayout(self.btn_widget)
+        self.btn_grid.setSpacing(0)
+        self.btn_grid.setContentsMargins(0, 0, 0, 0)
+        self.btn_grid.setColumnStretch(0, 1)
+        self.btn_grid.setColumnStretch(1, 1)
         self.btn_config_format.setFixedHeight(100)
         self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_batch.setFixedHeight(100)
         self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        # （已移除）原先放在主界面的“加载数据格式”按钮已移入配置对话框，
-        # 避免与其他按钮重叠并提升可点击性。
-        # 初始放置为一行两列（取消按钮放在第二行右侧）
-        grid.addWidget(self.btn_config_format, 0, 0)
-        grid.addWidget(self.btn_batch, 0, 1)
-        grid.addWidget(self.btn_cancel, 1, 1)
-        # 固定并复用这个 grid，避免后续替换 layout 导致 Qt 布局对象延迟删除出现几何错误
-        self.btn_grid = grid
-        layout_batch.addLayout(file_form)
-        layout_batch.addWidget(self.grp_registry_list)
-        layout_batch.addWidget(self.grp_file_list)
-        layout_batch.addWidget(self.progress_bar)
-        layout_batch.addWidget(self.btn_widget)
+        self.btn_grid.addWidget(self.btn_config_format, 0, 0)
+        self.btn_grid.addWidget(self.btn_batch, 0, 1)
+        self.btn_grid.addWidget(self.btn_cancel, 1, 1)
 
-        # === 实验性功能组（包含 3D 可视化与 per-file 覆盖相关控件） ===
+        # 把文件表单、registry 列表、文件列表、进度条、按钮区加入 layout_batch（实例属性）
+        self.layout_batch.addLayout(self.file_form)
+        self.layout_batch.addWidget(self.grp_registry_list)
+        self.layout_batch.addWidget(self.grp_file_list)
+        self.layout_batch.addWidget(self.progress_bar)
+        self.layout_batch.addWidget(self.btn_widget)
+
+        # 实验性功能组
         self.grp_experimental = QGroupBox("实验性功能（实验）")
         try:
-            # 使用可折叠的 GroupBox（checkable），默认收起
             self.grp_experimental.setCheckable(True)
             self.grp_experimental.setChecked(False)
             self.grp_experimental.setToolTip("实验性功能：包含 3D 可视化与 per-file 覆盖，默认收起，谨慎使用。")
-            # 当 groupbox 切换时，同步外部复选框（若存在）并切换可见性
             self.grp_experimental.toggled.connect(lambda v: self.grp_experimental.setVisible(v))
             self.chk_show_experimental.toggled.connect(lambda v: self.grp_experimental.setChecked(v))
             self.grp_experimental.toggled.connect(lambda v: self.chk_show_experimental.setChecked(v))
-            # 初始为折叠状态
             self.grp_experimental.setVisible(False)
         except Exception:
             pass
         exp_layout = QVBoxLayout()
 
-        # 3D 可视化按钮（移入实验组）
         self.btn_visualize = QPushButton("3D可视化")
         self.btn_visualize.setMaximumWidth(120)
         try:
@@ -1263,46 +1132,35 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         self.btn_visualize.clicked.connect(self.toggle_visualization)
         exp_layout.addWidget(self.btn_visualize)
-
-        # 把 registry_row 放到实验组
         exp_layout.addLayout(registry_row)
-
         self.grp_experimental.setLayout(exp_layout)
-        layout_batch.addWidget(self.grp_experimental)
+        self.layout_batch.addWidget(self.grp_experimental)
 
-        layout_batch.addWidget(QLabel("处理日志:"))
-        layout_batch.addWidget(self.txt_batch_log)
-        # 让日志框占据剩余垂直空间，从而使外部 groupbox 底部贴近窗口底部
-        # 对应索引: 0=file_form,1=grp_registry_list,2=grp_file_list,3=progress_bar,4=btn_widget,5=Label,6=txt_batch_log
+        self.layout_batch.addWidget(QLabel("处理日志:"))
+        self.layout_batch.addWidget(self.txt_batch_log)
+
+        # 设置伸缩：日志拉伸，文件列表不拉伸
         try:
-            # 按实际索引设置伸缩：让日志框占据剩余空间，文件列表不拉伸
-            try:
-                idx_file_list = layout_batch.indexOf(self.grp_file_list)
-                if idx_file_list >= 0:
-                    layout_batch.setStretch(idx_file_list, 0)
-            except Exception:
-                pass
-            try:
-                idx_log = layout_batch.indexOf(self.txt_batch_log)
-                if idx_log >= 0:
-                    layout_batch.setStretch(idx_log, 1)
-            except Exception:
-                pass
+            idx_file_list = self.layout_batch.indexOf(self.grp_file_list)
+            if idx_file_list >= 0:
+                self.layout_batch.setStretch(idx_file_list, 0)
+            idx_log = self.layout_batch.indexOf(self.txt_batch_log)
+            if idx_log >= 0:
+                self.layout_batch.setStretch(idx_log, 1)
         except Exception:
             logger.debug("layout_batch.setStretch failed (non-fatal)", exc_info=True)
 
-        grp_batch.setLayout(layout_batch)
+        # 将布局应用到 grp_batch
+        self.grp_batch.setLayout(self.layout_batch)
 
-        # === 配置预览（在状态栏下方）===
+        # 配置预览
         self.grp_config_preview = QGroupBox("数据格式预览")
-        # 限制预览面板高度，避免在右侧占用过多空间
         try:
             self.grp_config_preview.setMaximumHeight(140)
             self.grp_config_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         except Exception:
             pass
         pv_layout = QVBoxLayout()
-        # 显示当前数据格式的关键信息：跳过行、列映射摘要、保留列
         self.lbl_preview_skip = QLabel("跳过行: -")
         self.lbl_preview_columns = QLabel("列映射: -")
         self.lbl_preview_passthrough = QLabel("保留列: -")
@@ -1314,7 +1172,7 @@ class IntegratedAeroGUI(QMainWindow):
             pv_layout.addWidget(w)
         self.grp_config_preview.setLayout(pv_layout)
 
-        # === 最近项目与快捷操作 ===
+        # 最近项目与快捷操作
         recent_group = QGroupBox("最近项目 & 快捷操作")
         recent_layout = QVBoxLayout()
         from PySide6.QtWidgets import QListWidget
@@ -1324,7 +1182,6 @@ class IntegratedAeroGUI(QMainWindow):
         recent_layout.addWidget(QLabel("最近打开的配置/项目（双击以填充输入路径）:"))
         recent_layout.addWidget(self.lst_recent)
 
-        # 默认输出目录行
         out_row = QHBoxLayout()
         self.inp_default_output = QLineEdit()
         self.inp_default_output.setPlaceholderText("默认输出目录，可选")
@@ -1334,7 +1191,6 @@ class IntegratedAeroGUI(QMainWindow):
         out_row.addWidget(btn_browse_default_out)
         recent_layout.addLayout(out_row)
 
-        # 一键处理按钮
         self.btn_quick = QPushButton("一键处理")
         try:
             self.btn_quick.setObjectName('primaryButton')
@@ -1346,41 +1202,31 @@ class IntegratedAeroGUI(QMainWindow):
         recent_layout.addWidget(self.btn_quick)
         recent_group.setLayout(recent_layout)
 
-        layout.addWidget(status_group)
+        layout.addWidget(self.status_group)
         layout.addWidget(self.grp_config_preview)
-        # 将最近项目与快捷操作移动到实验性组，避免在默认界面显示
         try:
             if hasattr(self, 'grp_experimental') and self.grp_experimental is not None:
                 exp_layout.addWidget(recent_group)
             else:
                 layout.addWidget(recent_group)
         except Exception:
-            # 若实验组不可用，退回到主布局以保证可访问性
             layout.addWidget(recent_group)
-        layout.addWidget(grp_batch)
-        # 为了让右侧的 grp_batch 在垂直方向上拉伸并触底，设置 layout 的 stretch
+        layout.addWidget(self.grp_batch)
+
         try:
-            # status_group 在顶部不拉伸，grp_batch 占据剩余空间
+            idx_status = layout.indexOf(self.status_group)
+            if idx_status >= 0:
+                layout.setStretch(idx_status, 0)
+            idx_batch = layout.indexOf(self.grp_batch)
+            if idx_batch >= 0:
+                layout.setStretch(idx_batch, 1)
+        except Exception:
             try:
-                idx_status = layout.indexOf(status_group)
-                if idx_status >= 0:
-                    layout.setStretch(idx_status, 0)
+                layout.setStretch(0, 0)
+                layout.setStretch(1, 1)
             except Exception:
                 pass
-            try:
-                idx_batch = layout.indexOf(grp_batch)
-                if idx_batch >= 0:
-                    layout.setStretch(idx_batch, 1)
-            except Exception:
-                # 备用：如果 indexOf 不可用，尝试保守设置原来的索引
-                try:
-                    layout.setStretch(0, 0)
-                    layout.setStretch(1, 1)
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
-        # 保留一个小的伸缩因子以兼容不同平台的行为
+
         layout.addStretch()
 
         return panel
@@ -1599,21 +1445,37 @@ class IntegratedAeroGUI(QMainWindow):
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
 
                 self.tgt_part_name.setText(frame.part_name)
-                self.tgt_ox.setText(str(cs.origin[0]))
-                self.tgt_oy.setText(str(cs.origin[1]))
-                self.tgt_oz.setText(str(cs.origin[2]))
-                self.tgt_xx.setText(str(cs.x_axis[0]))
-                self.tgt_xy.setText(str(cs.x_axis[1]))
-                self.tgt_xz.setText(str(cs.x_axis[2]))
-                self.tgt_yx.setText(str(cs.y_axis[0]))
-                self.tgt_yy.setText(str(cs.y_axis[1]))
-                self.tgt_yz.setText(str(cs.y_axis[2]))
-                self.tgt_zx.setText(str(cs.z_axis[0]))
-                self.tgt_zy.setText(str(cs.z_axis[1]))
-                self.tgt_zz.setText(str(cs.z_axis[2]))
-                self.tgt_mcx.setText(str(mc[0]))
-                self.tgt_mcy.setText(str(mc[1]))
-                self.tgt_mcz.setText(str(mc[2]))
+                self.tgt_ox.setValue(float(cs.origin[0]))
+                self.tgt_oy.setValue(float(cs.origin[1]))
+                self.tgt_oz.setValue(float(cs.origin[2]))
+                self.tgt_xx.setValue(float(cs.x_axis[0]))
+                self.tgt_xy.setValue(float(cs.x_axis[1]))
+                self.tgt_xz.setValue(float(cs.x_axis[2]))
+                self.tgt_yx.setValue(float(cs.y_axis[0]))
+                self.tgt_yy.setValue(float(cs.y_axis[1]))
+                self.tgt_yz.setValue(float(cs.y_axis[2]))
+                self.tgt_zx.setValue(float(cs.z_axis[0]))
+                self.tgt_zy.setValue(float(cs.z_axis[1]))
+                self.tgt_zz.setValue(float(cs.z_axis[2]))
+                # 设置力矩中心坐标
+                try:
+                    self.tgt_mcx.setValue(float(mc[0]))
+                    self.tgt_mcy.setValue(float(mc[1]))
+                    self.tgt_mcz.setValue(float(mc[2]))
+                except Exception:
+                    # 兼容控件可能为 QLineEdit 的情况
+                    try:
+                        if hasattr(self, 'tgt_mcx') and hasattr(self.tgt_mcx, 'setText'):
+                            self.tgt_mcx.setText(str(mc[0]))
+                        if hasattr(self, 'tgt_mcy') and hasattr(self.tgt_mcy, 'setText'):
+                            self.tgt_mcy.setText(str(mc[1]))
+                        if hasattr(self, 'tgt_mcz') and hasattr(self.tgt_mcz, 'setText'):
+                            self.tgt_mcz.setText(str(mc[2]))
+                    except Exception:
+                        pass
+                self.tgt_mcx.setValue(float(mc[0]))
+                self.tgt_mcy.setValue(float(mc[1]))
+                self.tgt_mcz.setValue(float(mc[2]))
                 self.tgt_cref.setText(str(frame.c_ref or 1.0))
                 self.tgt_bref.setText(str(frame.b_ref or 1.0))
                 self.tgt_sref.setText(str(frame.s_ref or 10.0))
@@ -1632,21 +1494,21 @@ class IntegratedAeroGUI(QMainWindow):
                     scs = sframe.coord_system
                     smc = sframe.moment_center or [0.0, 0.0, 0.0]
                     self.src_part_name.setText(sframe.part_name)
-                    self.src_ox.setText(str(scs.origin[0]))
-                    self.src_oy.setText(str(scs.origin[1]))
-                    self.src_oz.setText(str(scs.origin[2]))
-                    self.src_xx.setText(str(scs.x_axis[0]))
-                    self.src_xy.setText(str(scs.x_axis[1]))
-                    self.src_xz.setText(str(scs.x_axis[2]))
-                    self.src_yx.setText(str(scs.y_axis[0]))
-                    self.src_yy.setText(str(scs.y_axis[1]))
-                    self.src_yz.setText(str(scs.y_axis[2]))
-                    self.src_zx.setText(str(scs.z_axis[0]))
-                    self.src_zy.setText(str(scs.z_axis[1]))
-                    self.src_zz.setText(str(scs.z_axis[2]))
-                    self.src_mcx.setText(str(smc[0]))
-                    self.src_mcy.setText(str(smc[1]))
-                    self.src_mcz.setText(str(smc[2]))
+                    self.src_ox.setValue(float(scs.origin[0]))
+                    self.src_oy.setValue(float(scs.origin[1]))
+                    self.src_oz.setValue(float(scs.origin[2]))
+                    self.src_xx.setValue(float(scs.x_axis[0]))
+                    self.src_xy.setValue(float(scs.x_axis[1]))
+                    self.src_xz.setValue(float(scs.x_axis[2]))
+                    self.src_yx.setValue(float(scs.y_axis[0]))
+                    self.src_yy.setValue(float(scs.y_axis[1]))
+                    self.src_yz.setValue(float(scs.y_axis[2]))
+                    self.src_zx.setValue(float(scs.z_axis[0]))
+                    self.src_zy.setValue(float(scs.z_axis[1]))
+                    self.src_zz.setValue(float(scs.z_axis[2]))
+                    self.src_mcx.setValue(float(smc[0]))
+                    self.src_mcy.setValue(float(smc[1]))
+                    self.src_mcz.setValue(float(smc[2]))
                     self.src_cref.setText(str(sframe.c_ref or 1.0))
                     self.src_bref.setText(str(sframe.b_ref or 1.0))
                     self.src_sref.setText(str(sframe.s_ref or 10.0))
@@ -1712,11 +1574,11 @@ class IntegratedAeroGUI(QMainWindow):
                             "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
                             "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
                         },
-                        "MomentCenter": [float(self.tgt_mcx.text()), float(self.tgt_mcy.text()), float(self.tgt_mcz.text())],
-                        "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
-                        "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
-                        "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
-                        "S": float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
+                        "MomentCenter": [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
+                        "Cref": self._num(self.tgt_cref) if hasattr(self, 'tgt_cref') else 1.0,
+                        "Bref": self._num(self.tgt_bref) if hasattr(self, 'tgt_bref') else 1.0,
+                        "Q": self._num(self.tgt_q) if hasattr(self, 'tgt_q') else 1000.0,
+                        "S": self._num(self.tgt_sref) if hasattr(self, 'tgt_sref') else 10.0
                     }
                 ]
             }
@@ -2808,25 +2670,37 @@ class IntegratedAeroGUI(QMainWindow):
                 cs = frame.coord_system
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
                 self.tgt_part_name.setText(frame.part_name)
-                self.tgt_ox.setText(str(cs.origin[0]))
-                self.tgt_oy.setText(str(cs.origin[1]))
-                self.tgt_oz.setText(str(cs.origin[2]))
-                self.tgt_xx.setText(str(cs.x_axis[0]))
-                self.tgt_xy.setText(str(cs.x_axis[1]))
-                self.tgt_xz.setText(str(cs.x_axis[2]))
-                self.tgt_yx.setText(str(cs.y_axis[0]))
-                self.tgt_yy.setText(str(cs.y_axis[1]))
-                self.tgt_yz.setText(str(cs.y_axis[2]))
-                self.tgt_zx.setText(str(cs.z_axis[0]))
-                self.tgt_zy.setText(str(cs.z_axis[1]))
-                self.tgt_zz.setText(str(cs.z_axis[2]))
-                self.tgt_mcx.setText(str(mc[0]))
-                self.tgt_mcy.setText(str(mc[1]))
-                self.tgt_mcz.setText(str(mc[2]))
-                self.tgt_cref.setText(str(frame.c_ref or 1.0))
-                self.tgt_bref.setText(str(frame.b_ref or 1.0))
-                self.tgt_sref.setText(str(frame.s_ref or 10.0))
-                self.tgt_q.setText(str(frame.q or 1000.0))
+                self.tgt_ox.setValue(float(cs.origin[0]))
+                self.tgt_oy.setValue(float(cs.origin[1]))
+                self.tgt_oz.setValue(float(cs.origin[2]))
+                self.tgt_xx.setValue(float(cs.x_axis[0]))
+                self.tgt_xy.setValue(float(cs.x_axis[1]))
+                self.tgt_xz.setValue(float(cs.x_axis[2]))
+                self.tgt_yx.setValue(float(cs.y_axis[0]))
+                self.tgt_yy.setValue(float(cs.y_axis[1]))
+                self.tgt_yz.setValue(float(cs.y_axis[2]))
+                self.tgt_zx.setValue(float(cs.z_axis[0]))
+                self.tgt_zy.setValue(float(cs.z_axis[1]))
+                self.tgt_zz.setValue(float(cs.z_axis[2]))
+                # 根据控件类型（QLineEdit 或 QDoubleSpinBox）设置 cref/bref/sref/q
+                cref_text = str(float(frame.c_ref or 1.0))
+                bref_text = str(float(frame.b_ref or 1.0))
+                sref_text = str(frame.s_ref or 10.0)
+                q_text = str(float(frame.q or 1000.0))
+                cref_val = float(frame.c_ref or 1.0)
+                bref_val = float(frame.b_ref or 1.0)
+                sref_val = float(frame.s_ref or 10.0)
+                q_val = float(frame.q or 1000.0)
+                for widget, text, value in [
+                    (self.tgt_cref, cref_text, cref_val),
+                    (self.tgt_bref, bref_text, bref_val),
+                    (self.tgt_sref, sref_text, sref_val),
+                    (self.tgt_q, q_text, q_val),
+                ]:
+                    if hasattr(widget, "setValue"):
+                        widget.setValue(value)
+                    elif hasattr(widget, "setText"):
+                        widget.setText(text)
             # 更新预览
             try:
                 self.update_config_preview()
@@ -2856,28 +2730,50 @@ class IntegratedAeroGUI(QMainWindow):
                 cs = frame.coord_system
                 mc = frame.moment_center or [0.0, 0.0, 0.0]
                 self.src_part_name.setText(frame.part_name)
-                self.src_ox.setText(str(cs.origin[0]))
-                self.src_oy.setText(str(cs.origin[1]))
-                self.src_oz.setText(str(cs.origin[2]))
-                self.src_xx.setText(str(cs.x_axis[0]))
-                self.src_xy.setText(str(cs.x_axis[1]))
-                self.src_xz.setText(str(cs.x_axis[2]))
-                self.src_yx.setText(str(cs.y_axis[0]))
-                self.src_yy.setText(str(cs.y_axis[1]))
-                self.src_yz.setText(str(cs.y_axis[2]))
-                self.src_zx.setText(str(cs.z_axis[0]))
-                self.src_zy.setText(str(cs.z_axis[1]))
-                self.src_zz.setText(str(cs.z_axis[2]))
-                self.src_mcx.setText(str(mc[0]))
-                self.src_mcy.setText(str(mc[1]))
-                self.src_mcz.setText(str(mc[2]))
-                self.src_cref.setText(str(frame.c_ref or 1.0))
-                self.src_bref.setText(str(frame.b_ref or 1.0))
-                self.src_sref.setText(str(frame.s_ref or 10.0))
+
+                # 设置 Source 原点与基向量
                 try:
-                    self.src_q.setText(str(frame.q or 1000.0))
+                    self.src_ox.setValue(float(cs.origin[0]))
+                    self.src_oy.setValue(float(cs.origin[1]))
+                    self.src_oz.setValue(float(cs.origin[2]))
                 except Exception:
-                    pass
+                    try:
+                        if hasattr(self, 'src_ox') and hasattr(self.src_ox, 'setText'):
+                            self.src_ox.setText(str(cs.origin[0]))
+                        if hasattr(self, 'src_oy') and hasattr(self.src_oy, 'setText'):
+                            self.src_oy.setText(str(cs.origin[1]))
+                        if hasattr(self, 'src_oz') and hasattr(self.src_oz, 'setText'):
+                            self.src_oz.setText(str(cs.origin[2]))
+                    except Exception:
+                        pass
+
+                self.src_xx.setValue(float(cs.x_axis[0]))
+                self.src_xy.setValue(float(cs.x_axis[1]))
+                self.src_xz.setValue(float(cs.x_axis[2]))
+                self.src_yx.setValue(float(cs.y_axis[0]))
+                self.src_yy.setValue(float(cs.y_axis[1]))
+                self.src_yz.setValue(float(cs.y_axis[2]))
+                self.src_zx.setValue(float(cs.z_axis[0]))
+                self.src_zy.setValue(float(cs.z_axis[1]))
+                self.src_zz.setValue(float(cs.z_axis[2]))
+                # 设置 Source 的力矩中心
+                try:
+                    self.src_mcx.setValue(float(mc[0]))
+                    self.src_mcy.setValue(float(mc[1]))
+                    self.src_mcz.setValue(float(mc[2]))
+                except Exception:
+                    try:
+                        if hasattr(self, 'src_mcx') and hasattr(self.src_mcx, 'setText'):
+                            self.src_mcx.setText(str(mc[0]))
+                        if hasattr(self, 'src_mcy') and hasattr(self.src_mcy, 'setText'):
+                            self.src_mcy.setText(str(mc[1]))
+                        if hasattr(self, 'src_mcz') and hasattr(self.src_mcz, 'setText'):
+                            self.src_mcz.setText(str(mc[2]))
+                    except Exception:
+                        pass
+                self.src_cref.setText(str(float(frame.c_ref or 1.0)))
+                self.src_bref.setText(str(float(frame.b_ref or 1.0)))
+                self.src_sref.setText(str(float(frame.s_ref or 10.0)))
             try:
                 self.update_config_preview()
             except Exception:
@@ -2889,6 +2785,92 @@ class IntegratedAeroGUI(QMainWindow):
             self._current_source_part_name = self.cmb_source_parts.currentText()
         except Exception:
             self._current_source_part_name = None
+
+    def _on_src_partname_changed(self, new_text: str):
+        """当用户编辑 Source 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。
+
+        限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
+        """
+        try:
+            new_text = (new_text or '').strip()
+            old = getattr(self, '_current_source_part_name', None)
+            # 当 current_config 可用时，检查重名（允许与自身相同）
+            try:
+                if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
+                    if new_text in self.current_config.source_parts and new_text != old:
+                        QMessageBox.warning(self, "重复的部件名", "另一个 Source Part 已使用相同的名称，请使用不同的名称。")
+                        # 恢复旧值
+                        try:
+                            if old is not None and hasattr(self, 'src_part_name'):
+                                self.src_part_name.blockSignals(True)
+                                self.src_part_name.setText(old)
+                                self.src_part_name.blockSignals(False)
+                        except Exception:
+                            pass
+                        return
+            except Exception:
+                logger.debug("source part duplicate check failed", exc_info=True)
+
+            # 若下拉可见，更新下拉项文本
+            if hasattr(self, 'cmb_source_parts') and self.cmb_source_parts.isVisible() and self.cmb_source_parts.count() > 0:
+                idx = self.cmb_source_parts.currentIndex()
+                if idx >= 0:
+                    try:
+                        self.cmb_source_parts.setItemText(idx, new_text)
+                    except Exception:
+                        pass
+                    # 若 current_config 中存在旧 key，尝试重命名 key
+                    try:
+                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
+                            if old in self.current_config.source_parts:
+                                self.current_config.source_parts[new_text] = self.current_config.source_parts.pop(old)
+                    except Exception:
+                        logger.debug("重命名 current_config.source_parts 失败", exc_info=True)
+            # 更新记录的当前名
+            self._current_source_part_name = new_text
+        except Exception:
+            logger.debug("_on_src_partname_changed failed", exc_info=True)
+
+    def _on_tgt_partname_changed(self, new_text: str):
+        """当用户编辑 Target 的 Part Name 文本框时，实时更新下拉项与 current_config 的 key。
+
+        限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
+        """
+        try:
+            new_text = (new_text or '').strip()
+            old = getattr(self, '_current_target_part_name', None)
+            # 重名检查
+            try:
+                if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
+                    if new_text in self.current_config.target_parts and new_text != old:
+                        QMessageBox.warning(self, "重复的部件名", "另一个 Target Part 已使用相同的名称，请使用不同的名称。")
+                        try:
+                            if old is not None and hasattr(self, 'tgt_part_name'):
+                                self.tgt_part_name.blockSignals(True)
+                                self.tgt_part_name.setText(old)
+                                self.tgt_part_name.blockSignals(False)
+                        except Exception:
+                            pass
+                        return
+            except Exception:
+                logger.debug("target part duplicate check failed", exc_info=True)
+
+            if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
+                idx = self.cmb_target_parts.currentIndex()
+                if idx >= 0:
+                    try:
+                        self.cmb_target_parts.setItemText(idx, new_text)
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData) and old:
+                            if old in self.current_config.target_parts:
+                                self.current_config.target_parts[new_text] = self.current_config.target_parts.pop(old)
+                    except Exception:
+                        logger.debug("重命名 current_config.target_parts 失败", exc_info=True)
+                    self._current_target_part_name = new_text
+        except Exception:
+            logger.debug("_on_tgt_partname_changed failed", exc_info=True)
 
     def one_click_process(self):
         """使用当前配置和默认输出目录快速启动批处理（单次、非交互）。"""
