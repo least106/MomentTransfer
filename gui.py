@@ -2778,12 +2778,21 @@ class IntegratedAeroGUI(QMainWindow):
                 # 构建一个基础结构
                 self._raw_project_dict = {'Source': {'Parts': []}, 'Target': {'Parts': []}}
             parts = self._raw_project_dict.setdefault('Source', {}).setdefault('Parts', [])
-            # 基于当前 UI 构造一个新 part
+            # 基于当前 UI 构造一个新 part，先生成不重复的 PartName
+            preferred_name = self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource'
+            existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
+            name = preferred_name
+            if name in existing_names:
+                i = 1
+                while f"{preferred_name}_{i}" in existing_names:
+                    i += 1
+                name = f"{preferred_name}_{i}"
+
             new_part = {
-                'PartName': self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource',
+                'PartName': name,
                 'Variants': [
                     {
-                        'PartName': self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource',
+                        'PartName': name,
                         'CoordSystem': {
                             'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
                             'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
@@ -2842,11 +2851,20 @@ class IntegratedAeroGUI(QMainWindow):
             if not getattr(self, '_raw_project_dict', None):
                 self._raw_project_dict = {'Source': {'Parts': []}, 'Target': {'Parts': []}}
             parts = self._raw_project_dict.setdefault('Target', {}).setdefault('Parts', [])
+            preferred_name = self.tgt_part_name.text() if hasattr(self, 'tgt_part_name') else 'NewTarget'
+            existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
+            name = preferred_name
+            if name in existing_names:
+                i = 1
+                while f"{preferred_name}_{i}" in existing_names:
+                    i += 1
+                name = f"{preferred_name}_{i}"
+
             new_part = {
-                'PartName': self.tgt_part_name.text() if hasattr(self, 'tgt_part_name') else 'NewTarget',
+                'PartName': name,
                 'Variants': [
                     {
-                        'PartName': self.tgt_part_name.text() if hasattr(self, 'tgt_part_name') else 'NewTarget',
+                        'PartName': name,
                         'CoordSystem': {
                             'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
                             'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
