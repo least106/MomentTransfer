@@ -594,7 +594,8 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("Error while setting file list layout alignment", exc_info=True)
         self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
         self.file_scroll.setWidget(self.file_list_widget)
-        self.file_scroll.setMinimumHeight(180)
+        # 初始最小高度较小，实际高度会根据文件数量在 _scan_and_populate_files 中调整
+        self.file_scroll.setMinimumHeight(60)
         file_list_layout.addWidget(self.file_scroll)
         self.grp_file_list.setLayout(file_list_layout)
 
@@ -1389,6 +1390,23 @@ class IntegratedAeroGUI(QMainWindow):
             self.file_list_layout_inner.addWidget(row)
             # 存储三元组 (checkbox, Path, label) 以便后续使用或更新
             self._file_check_items.append((cb, fp, src_label))
+
+        # 根据文件数量自适应高度：当文件少时收缩至合适高度，当文件多时限制最大高度并显示滚动条
+        try:
+            row_count = len(files)
+            row_height = 28  # 近似每行高度（像素）
+            padding = 36     # 标题/内边距等额外高度
+            min_h = 80
+            max_h = 420
+            desired = min(max_h, max(min_h, row_count * row_height + padding))
+            # 设置为固定高度以便在弹性布局中不会无限拉伸
+            self.file_scroll.setFixedHeight(int(desired))
+        except Exception:
+            # 发生异常时回退到默认显示高度
+            try:
+                self.file_scroll.setMinimumHeight(180)
+            except Exception:
+                pass
 
         # 显示并自动滚动到顶部
         self.grp_file_list.setVisible(True)
