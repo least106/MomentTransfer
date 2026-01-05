@@ -1,0 +1,15 @@
+# 依赖安全扫描配置
+# 这是 safety 工具的配置文件，用于检查已知的安全漏洞
+
+[settings]
+# 要忽略的已知漏洞 ID（用空格分隔）
+# 格式: 39611 (Safety 漏洞 ID)
+# 示例: ignore_ids = 39611 40291
+
+ignore_ids =
+    
+# 要扫描的包（空列表表示扫描所有）
+packages =
+
+# 日志级别
+log_level = INFO

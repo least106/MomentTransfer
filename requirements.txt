@@ -6,3 +6,4 @@ openpyxl
 matplotlib
 click
 portalocker>=2.8
+safety>=2.0.0
