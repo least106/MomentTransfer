@@ -700,6 +700,8 @@ def _worker_process(args):
         if registry_db:
             try:
                 from src.cli_helpers import resolve_file_format
+                # 从传入的 args 中读取 enable_sidecar 标志（默认为 False）
+                enable_sidecar = bool(args.get('enable_sidecar', False))
                 cfg = resolve_file_format(str(file_path), cfg, enable_sidecar=enable_sidecar, registry_db=registry_db)
             except Exception as e:
                 logger = logging.getLogger(__name__)
@@ -727,7 +729,7 @@ def _worker_process(args):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, enable_sidecar: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0):
     """增强版批处理主函数
 
     使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
@@ -1075,6 +1077,7 @@ def main(**cli_options):
                         'output_dir': str(output_dir),
                         'registry_db': registry_db,
                         'strict': strict,
+                        'enable_sidecar': enable_sidecar,
                     }
                     fut = exe.submit(_worker_process, worker_args)
                     futures[fut] = fp
@@ -1177,6 +1180,7 @@ def main(**cli_options):
                 data_config,
                 registry_db=registry_db,
                 strict=strict,
+                enable_sidecar=enable_sidecar,
                 dry_run=dry_run,
                 show_progress=show_progress,
                 output_json=output_json,

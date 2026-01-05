@@ -19,6 +19,10 @@ class PartManager:
     
     def add_source_part(self):
         """添加新的 Source Part"""
+        # 初始化期间禁止添加操作，避免误触发弹窗
+        if getattr(self.gui, '_is_initializing', False):
+            logger.debug("初始化期间跳过 add_source_part")
+            return
         try:
             default_name = "NewSourcePart"
             try:
@@ -163,6 +167,10 @@ class PartManager:
     
     def add_target_part(self):
         """添加新的 Target Part"""
+        # 初始化期间禁止添加操作，避免误触发弹窗
+        if getattr(self.gui, '_is_initializing', False):
+            logger.debug("初始化期间跳过 add_target_part")
+            return
         try:
             default_name = "NewTargetPart"
             try:

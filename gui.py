@@ -64,9 +64,16 @@ LAYOUT_SPACING = 8
 class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.layout_manager = None
+        self.visualization_manager = None
+        self.batch_manager = None
+        self.part_manager = None
+        self.config_manager = None
         self.setWindowTitle("MomentTransfer")
         self.resize(1400, 850)
 
+        self._is_initializing = True  # 标记正在初始化，禁止弹窗
+        self._show_event_fired = False  # 标记 showEvent 是否已触发过
         self.calculator = None
         self.current_config = None
         self.data_config = None
@@ -74,6 +81,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.visualization_window = None
 
         self.init_ui()
+        # 注意：不在这里设置 _is_initializing = False
+        # 将在 show() 之后通过延迟定时器设置，以避免 showEvent 期间的弹窗
 
     def init_ui(self):
         """初始化界面"""
@@ -93,18 +102,10 @@ class IntegratedAeroGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self.create_config_panel())
-        splitter.addWidget(self.create_operation_panel())
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 5)
-        # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
-        try:
-            splitter.setSizes([520, 880])
-        except Exception:
-            logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
-
-        main_layout.addWidget(splitter)
+        # 创建splitter容器，但延迟添加panel
+        self.splitter = QSplitter(Qt.Horizontal)
+        
+        main_layout.addWidget(self.splitter)
         self.statusBar().showMessage("就绪 - 请加载或创建配置")
 
         # 根据当前窗口宽度设置按钮初始布局
@@ -113,9 +114,41 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             # 若方法尚未定义或出现异常，记录调试堆栈以便诊断，但不阻止 UI 启动
             logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
+        
+        # 延迟创建真实的panel，避免初始化期间的干扰
+        QTimer.singleShot(50, self._create_panels_delayed)
+
+    def _create_panels_delayed(self):
+        """延迟创建panel，等待初始化完成后再创建，避免初始化期间的干扰"""
+        try:
+            config_panel = self.create_config_panel()
+            operation_panel = self.create_operation_panel()
+            
+            self.splitter.addWidget(config_panel)
+            self.splitter.addWidget(operation_panel)
+            self.splitter.setStretchFactor(0, 5)
+            self.splitter.setStretchFactor(1, 5)
+            
+            # 设置 splitter 大小
+            try:
+                self.splitter.setSizes([520, 880])
+            except Exception:
+                logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
+            
+            logger.debug("延迟panel创建完成")
+        except Exception as e:
+            logger.error(f"延迟panel创建失败: {e}", exc_info=True)
 
     def create_config_panel(self):
         """创建左侧配置编辑面板"""
+        # 在整个panel构建期间禁用应用级别的信号，避免任何误触发
+        try:
+            app = QApplication.instance()
+            if app:
+                app.blockSignals(True)
+        except Exception:
+            pass
+        
         panel = QWidget()
         # 给左侧配置面板一个合理的最小宽度，避免在窄窗口时完全压扁
         panel.setMinimumWidth(420)
@@ -168,13 +201,18 @@ class IntegratedAeroGUI(QMainWindow):
 
         # Source Part Name（与 Target 对等）
         # 支持多 Part/Variant 的下拉选择（当从 ProjectData 加载时会显示）
-        self.src_part_name = self._create_input("Global")
+        self.src_part_name = self._create_input("")  # 先设置空字符串避免触发信号
+        self.src_part_name.blockSignals(True)  # 阻止信号在初始化期间触发
+        self.src_part_name.setText("Global")
+        self._current_source_part_name = "Global"  # 初始化当前名称
         # 当用户直接编辑 Part Name 时，实时更新下拉列表（若可见）与 current_config 的键名
         try:
             self.src_part_name.textChanged.connect(self._on_src_partname_changed)
         except Exception:
             logger.debug("无法连接 src_part_name.textChanged", exc_info=True)
+        # 注意：信号恢复延迟到 panel 返回前，避免在构建期间触发
         self.cmb_source_parts = QComboBox()
+        self.cmb_source_parts.blockSignals(True)  # 初始也阻止信号
         self.cmb_source_parts.setVisible(True)
         self.spin_source_variant = QSpinBox()
         self.spin_source_variant.setRange(0, 100)
@@ -276,15 +314,20 @@ class IntegratedAeroGUI(QMainWindow):
 
         # Part Name
         # 使用 _create_input 以保持与 Source 的输入框样式与宽度一致
-        self.tgt_part_name = self._create_input("TestModel")
+        self.tgt_part_name = self._create_input("")  # 先设置空字符串避免触发信号
+        self.tgt_part_name.blockSignals(True)  # 阻止信号在初始化期间触发
+        self.tgt_part_name.setText("TestModel")
+        self._current_target_part_name = "TestModel"  # 初始化当前名称
         try:
             self.tgt_part_name.textChanged.connect(self._on_tgt_partname_changed)
         except Exception:
             logger.debug("无法连接 tgt_part_name.textChanged", exc_info=True)
+        # 注意：信号恢复延迟到 panel 返回前，避免在构建期间触发
         form_target.addRow("Part Name:", self.tgt_part_name)
 
         # 当加载 ProjectData 时，展示可选的 Part 下拉框与 Variant 索引选择器
         self.cmb_target_parts = QComboBox()
+        self.cmb_target_parts.blockSignals(True)  # 初始也阻止信号
         self.cmb_target_parts.setVisible(True)
         self.spin_target_variant = QSpinBox()
         self.spin_target_variant.setRange(0, 100)
@@ -422,10 +465,36 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
         layout.addStretch()
 
+        # 在返回前统一恢复所有被阻止的信号，此时UI已完全构建
+        # 这样可以避免在构建过程中触发信号导致的弹窗
+        try:
+            self.src_part_name.blockSignals(False)
+            self.tgt_part_name.blockSignals(False)
+            self.cmb_source_parts.blockSignals(False)
+            self.cmb_target_parts.blockSignals(False)
+        except Exception:
+            logger.debug("恢复信号失败", exc_info=True)
+        
+        # 恢复应用级别的信号
+        try:
+            app = QApplication.instance()
+            if app:
+                app.blockSignals(False)
+        except Exception:
+            pass
+
         return panel
 
     def create_operation_panel(self):
         """创建右侧操作面板"""
+        # 在整个panel构建期间禁用应用级别的信号，避免任何误触发
+        try:
+            app = QApplication.instance()
+            if app:
+                app.blockSignals(True)
+        except Exception:
+            pass
+        
         panel = QWidget()
         panel.setMinimumWidth(600)
         layout = QVBoxLayout(panel)
@@ -816,6 +885,14 @@ class IntegratedAeroGUI(QMainWindow):
                 pass
 
         layout.addStretch()
+        
+        # 恢复应用级别的信号
+        try:
+            app = QApplication.instance()
+            if app:
+                app.blockSignals(False)
+        except Exception:
+            pass
 
         return panel
 
@@ -1655,11 +1732,19 @@ class IntegratedAeroGUI(QMainWindow):
 
     def showEvent(self, event):
         """在窗口首次显示后延迟触发一次布局更新以确保初始可见性。"""
-        try:
-            QTimer.singleShot(50, self.update_button_layout)
-            QTimer.singleShot(120, self._force_layout_refresh)
-        except Exception:
-            logger.debug("showEvent scheduling failed", exc_info=True)
+        # 只在首次显示时执行初始化布局操作
+        if not self._show_event_fired:
+            self._show_event_fired = True
+            try:
+                QTimer.singleShot(50, self.update_button_layout)
+                QTimer.singleShot(120, self._force_layout_refresh)
+                # 在所有初始化定时器完成后（150ms）才重置 _is_initializing
+                # 这样可以确保 showEvent 期间的任何操作都不会触发弹窗
+                QTimer.singleShot(150, lambda: setattr(self, '_is_initializing', False))
+            except Exception:
+                logger.debug("showEvent scheduling failed", exc_info=True)
+                # 如果定时器设置失败，立即重置标志以免永久阻塞弹窗
+                self._is_initializing = False
         return super().showEvent(event)
 
     def _force_layout_refresh(self):
@@ -1821,6 +1906,9 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _on_target_part_changed(self):
         """当用户在下拉框选择不同 Part 时 - 委托给 PartManager"""
+        # 初始化期间跳过所有逻辑
+        if getattr(self, '_is_initializing', False):
+            return
         try:
             self.part_manager.on_target_part_changed()
         except AttributeError:
@@ -1830,6 +1918,9 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _add_source_part(self):
         """在原始项目或内存结构中添加一个新的 Source Part - 委托给 PartManager"""
+        # 初始化期间禁止添加操作，避免误触发弹窗
+        if getattr(self, '_is_initializing', False):
+            return
         try:
             self.part_manager.add_source_part()
             return  # 成功则直接返回
@@ -1848,136 +1939,137 @@ class IntegratedAeroGUI(QMainWindow):
         
         # 只有在 AttributeError 时才执行以下 fallback 逻辑
         raw_project = getattr(self, '_raw_project_dict', None)
-            if not isinstance(raw_project, dict):
-                logger.debug(
-                    "_add_source_part fallback aborted: _raw_project_dict 未初始化或不是 dict"
-                )
+        if not isinstance(raw_project, dict):
+            logger.debug(
+                "_add_source_part fallback aborted: _raw_project_dict 未初始化或不是 dict"
+            )
+            return
+        parts = raw_project.setdefault('Source', {}).setdefault('Parts', [])
+        # 基于当前 UI 构造一个新 part，先生成不重复的 PartName
+        preferred_name = self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource'
+        existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
+        name = preferred_name
+        if name in existing_names:
+            # 名称已存在，提示用户选择：覆盖 / 创建唯一名 / 取消
+            msg = QMessageBox(self)
+            msg.setWindowTitle('已存在的 Part')
+            msg.setText(f"Source Part 名称 '{preferred_name}' 已存在。请选择操作：")
+            btn_overwrite = msg.addButton('覆盖', QMessageBox.AcceptRole)
+            btn_unique = msg.addButton('创建唯一名', QMessageBox.DestructiveRole)
+            btn_cancel = msg.addButton('取消', QMessageBox.RejectRole)
+            msg.exec()
+            clicked = msg.clickedButton()
+            if clicked == btn_cancel:
                 return
-            parts = raw_project.setdefault('Source', {}).setdefault('Parts', [])
-            # 基于当前 UI 构造一个新 part，先生成不重复的 PartName
-            preferred_name = self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource'
-            existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
-            name = preferred_name
-            if name in existing_names:
-                # 名称已存在，提示用户选择：覆盖 / 创建唯一名 / 取消
-                msg = QMessageBox(self)
-                msg.setWindowTitle('已存在的 Part')
-                msg.setText(f"Source Part 名称 '{preferred_name}' 已存在。请选择操作：")
-                btn_overwrite = msg.addButton('覆盖', QMessageBox.AcceptRole)
-                btn_unique = msg.addButton('创建唯一名', QMessageBox.DestructiveRole)
-                btn_cancel = msg.addButton('取消', QMessageBox.RejectRole)
-                msg.exec()
-                clicked = msg.clickedButton()
-                if clicked == btn_cancel:
-                    return
-                if clicked == btn_overwrite:
-                    # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
-                    for p in parts:
-                        if p.get('PartName') == preferred_name:
-                            try:
-                                cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
-                            except (ValueError, AttributeError):
-                                logger.warning(f"无效的 Cref 值: {getattr(self.src_cref, 'text', lambda: 'N/A')()}，使用默认值 1.0")
-                                cref_val = 1.0
-                            try:
-                                bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
-                            except (ValueError, AttributeError):
-                                logger.warning(f"无效的 Bref 值，使用默认值 1.0")
-                                bref_val = 1.0
-                            try:
-                                q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
-                            except (ValueError, AttributeError):
-                                logger.warning(f"无效的 Q 值，使用默认值 1000.0")
-                                q_val = 1000.0
-                            try:
-                                s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
-                            except (ValueError, AttributeError):
-                                logger.warning(f"无效的 S 值，使用默认值 10.0")
-                                s_val = 10.0
-                            
-                            p['Variants'] = [
-                                {
-                                    'PartName': preferred_name,
-                                    'CoordSystem': {
-                                        'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                                        'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                                        'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                                        'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
-                                    },
-                                    'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                                    'Cref': cref_val,
-                                    'Bref': bref_val,
-                                    'Q': q_val,
-                                    'S': s_val
-                                }
-                            ]
-                            break
-                    try:
-                        self.current_config = ProjectData.from_dict(self._raw_project_dict)
-                    except Exception:
-                        pass
-                    return
-                # 创建唯一名
-                i = 1
-                while f"{preferred_name}_{i}" in existing_names:
-                    i += 1
-                name = f"{preferred_name}_{i}"
+            if clicked == btn_overwrite:
+                # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
+                for p in parts:
+                    if p.get('PartName') == preferred_name:
+                        try:
+                            cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
+                        except (ValueError, AttributeError):
+                            logger.warning(f"无效的 Cref 值: {getattr(self.src_cref, 'text', lambda: 'N/A')()}，使用默认值 1.0")
+                            cref_val = 1.0
+                        try:
+                            bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
+                        except (ValueError, AttributeError):
+                            logger.warning(f"无效的 Bref 值，使用默认值 1.0")
+                            bref_val = 1.0
+                        try:
+                            q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
+                        except (ValueError, AttributeError):
+                            logger.warning(f"无效的 Q 值，使用默认值 1000.0")
+                            q_val = 1000.0
+                        try:
+                            s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
+                        except (ValueError, AttributeError):
+                            logger.warning(f"无效的 S 值，使用默认值 10.0")
+                            s_val = 10.0
 
-            # 安全获取参数值，带错误处理
-            try:
-                cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
-            except (ValueError, AttributeError):
-                logger.warning(f"无效的 Cref 值，使用默认值 1.0")
-                cref_val = 1.0
-            try:
-                bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
-            except (ValueError, AttributeError):
-                logger.warning(f"无效的 Bref 值，使用默认值 1.0")
-                bref_val = 1.0
-            try:
-                q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
-            except (ValueError, AttributeError):
-                logger.warning(f"无效的 Q 值，使用默认值 1000.0")
-                q_val = 1000.0
-            try:
-                s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
-            except (ValueError, AttributeError):
-                logger.warning(f"无效的 S 值，使用默认值 10.0")
-                s_val = 10.0
-            
-            new_part = {
-                'PartName': name,
-                'Variants': [
-                    {
-                        'PartName': name,
-                        'CoordSystem': {
-                            'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                            'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                            'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                            'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
-                        },
-                        'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                        'Cref': cref_val,
-                        'Bref': bref_val,
-                        'Q': q_val,
-                        'S': s_val
-                    }
-                ]
-            }
-            parts.append(new_part)
-            # 更新 combo
-            self.cmb_source_parts.addItem(new_part['PartName'])
-            self.cmb_source_parts.setVisible(True)
-            # 解析为 ProjectData
-            try:
-                self.current_config = ProjectData.from_dict(self._raw_project_dict)
-            except Exception:
-                pass
+                        p['Variants'] = [
+                            {
+                                'PartName': preferred_name,
+                                'CoordSystem': {
+                                    'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                                    'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                                    'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                                    'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                                },
+                                'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                                'Cref': cref_val,
+                                'Bref': bref_val,
+                                'Q': q_val,
+                                'S': s_val
+                            }
+                        ]
+                        break
+                try:
+                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
+                except Exception:
+                    pass
+                return
+            # 创建唯一名
+            i = 1
+            while f"{preferred_name}_{i}" in existing_names:
+                i += 1
+            name = f"{preferred_name}_{i}"
+
+        # 安全获取参数值，带错误处理
+        try:
+            cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
+        except (ValueError, AttributeError):
+            logger.warning(f"无效的 Cref 值，使用默认值 1.0")
+            cref_val = 1.0
+        try:
+            bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
+        except (ValueError, AttributeError):
+            logger.warning(f"无效的 Bref 值，使用默认值 1.0")
+            bref_val = 1.0
+        try:
+            q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
+        except (ValueError, AttributeError):
+            logger.warning(f"无效的 Q 值，使用默认值 1000.0")
+            q_val = 1000.0
+        try:
+            s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
+        except (ValueError, AttributeError):
+            logger.warning(f"无效的 S 值，使用默认值 10.0")
+            s_val = 10.0
+
+        new_part = {
+            'PartName': name,
+            'Variants': [
+                {
+                    'PartName': name,
+                    'CoordSystem': {
+                        'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
+                        'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
+                        'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
+                        'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                    },
+                    'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                    'Cref': cref_val,
+                    'Bref': bref_val,
+                    'Q': q_val,
+                    'S': s_val
+                }
+            ]
+        }
+        parts.append(new_part)
+        # 更新 combo
+        self.cmb_source_parts.addItem(new_part['PartName'])
+        self.cmb_source_parts.setVisible(True)
+        # 解析为 ProjectData
+        try:
+            self.current_config = ProjectData.from_dict(self._raw_project_dict)
         except Exception:
             logger.debug("_add_source_part failed", exc_info=True)
 
     def _remove_source_part(self):
         """从原始项目或内存结构中移除当前选中的 Source Part - 委托给 PartManager"""
+        # 初始化期间禁止删除操作
+        if getattr(self, '_is_initializing', False):
+            return
         try:
             self.part_manager.remove_source_part()
         except AttributeError:
@@ -1987,6 +2079,9 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _add_target_part(self):
         """添加新 Target Part - 委托给 PartManager"""
+        # 初始化期间禁止添加操作，避免误触发弹窗
+        if getattr(self, '_is_initializing', False):
+            return
         try:
             self.part_manager.add_target_part()
         except AttributeError:
@@ -1996,6 +2091,9 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _remove_target_part(self):
         """删除当前 Target Part - 委托给 PartManager"""
+        # 初始化期间禁止删除操作
+        if getattr(self, '_is_initializing', False):
+            return
         try:
             self.part_manager.remove_target_part()
         except AttributeError:
@@ -2005,6 +2103,9 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _on_source_part_changed(self):
         """当用户在 Source 下拉选择不同 Part 时 - 委托给 PartManager"""
+        # 初始化期间跳过所有逻辑
+        if getattr(self, '_is_initializing', False):
+            return
         try:
             self.part_manager.on_source_part_changed()
         except AttributeError:
@@ -2019,8 +2120,18 @@ class IntegratedAeroGUI(QMainWindow):
         限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
         """
         try:
+            # 初始化期间跳过所有逻辑
+            if getattr(self, '_is_initializing', False):
+                return
+            
             new_text = (new_text or '').strip()
             old = getattr(self, '_current_source_part_name', None)
+            
+            # 如果是初始设置（old 为 None 且新值为 "Global"），跳过检查
+            if old is None and new_text == "Global":
+                self._current_source_part_name = new_text
+                return
+            
             # 当 current_config 可用时，检查重名（允许与自身相同）
             try:
                 if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
@@ -2044,20 +2155,16 @@ class IntegratedAeroGUI(QMainWindow):
             old_name = old
             self._current_source_part_name = new_text
             try:
-                if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
-                            if (
-                                vars
-                                and isinstance(vars, list)
-                                and isinstance(vars[0], dict)
-                                and 'PartName' in vars[0]
-                            ):
+                raw = getattr(self, '_raw_project_dict', None)
+                if isinstance(raw, dict):
+                    parts = raw.get('Source', {}).get('Parts', [])
                     for p in parts:
                         if p.get('PartName') == old_name:
                             p['PartName'] = new_text
                             # 也更新第一个 Variant 的 PartName 若存在
-                            vars = p.get('Variants') or []
-                            if vars and isinstance(vars, list) and 'PartName' in vars[0]:
-                                vars[0]['PartName'] = new_text
+                            vars_ = p.get('Variants') or []
+                            if vars_ and isinstance(vars_[0], dict) and 'PartName' in vars_[0]:
+                                vars_[0]['PartName'] = new_text
                             break
             except Exception:
                 pass
@@ -2070,8 +2177,18 @@ class IntegratedAeroGUI(QMainWindow):
         限制：禁止重名（若输入的新名字已经被另一个 Part 使用，会回退并弹窗警告）。
         """
         try:
+            # 初始化期间跳过所有逻辑
+            if getattr(self, '_is_initializing', False):
+                return
+            
             new_text = (new_text or '').strip()
             old = getattr(self, '_current_target_part_name', None)
+            
+            # 如果是初始设置（old 为 None 且新值为 "TestModel"），跳过检查
+            if old is None and new_text == "TestModel":
+                self._current_target_part_name = new_text
+                return
+            
             # 重名检查
             try:
                 if hasattr(self, 'current_config') and isinstance(self.current_config, ProjectData):
@@ -2198,7 +2315,34 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("Failed to set btn_cancel visibility/state in _set_controls_locked", exc_info=True)
 
 
+def _initialize_exception_hook():
+    """设置初始化期间的异常钩子，用于在初始化期间阻止异常弹窗"""
+    original_excepthook = sys.excepthook
+    
+    def custom_excepthook(exc_type, exc_value, traceback_obj):
+        """在初始化期间，仅记录异常而不显示弹窗"""
+        # 获取当前正在执行的主窗口实例（如果存在）
+        main_window = None
+        for obj in list(QApplication.topLevelWidgets()):
+            if isinstance(obj, IntegratedAeroGUI):
+                main_window = obj
+                break
+        
+        # 如果主窗口正在初始化，记录异常但不显示弹窗
+        if main_window and getattr(main_window, '_is_initializing', False):
+            logger.debug(f"初始化期间捕获异常（被抑制）: {exc_type.__name__}: {exc_value}")
+            return
+        
+        # 否则使用原始钩子显示异常
+        original_excepthook(exc_type, exc_value, traceback_obj)
+    
+    sys.excepthook = custom_excepthook
+
+
 def main():
+    # 设置初始化异常钩子
+    _initialize_exception_hook()
+    
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     # 设置统一字体与样式表（styles.qss）以实现统一主题与可维护的样式
