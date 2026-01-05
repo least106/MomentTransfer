@@ -116,26 +116,48 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
         
         # 延迟创建真实的panel，避免初始化期间的干扰
-        QTimer.singleShot(50, self._create_panels_delayed)
+        # 等待showEvent完全执行后再创建panel，这样可以避免任何初始化期间的弹窗
+        QTimer.singleShot(200, self._create_panels_delayed)
 
     def _create_panels_delayed(self):
         """延迟创建panel，等待初始化完成后再创建，避免初始化期间的干扰"""
         try:
-            config_panel = self.create_config_panel()
-            operation_panel = self.create_operation_panel()
+            # 再次禁用应用信号，确保panel创建期间没有信号触发
+            app = QApplication.instance()
+            app_blocked = False
+            if app:
+                app.blockSignals(True)
+                app_blocked = True
             
-            self.splitter.addWidget(config_panel)
-            self.splitter.addWidget(operation_panel)
-            self.splitter.setStretchFactor(0, 5)
-            self.splitter.setStretchFactor(1, 5)
-            
-            # 设置 splitter 大小
             try:
-                self.splitter.setSizes([520, 880])
-            except Exception:
-                logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
-            
-            logger.debug("延迟panel创建完成")
+                config_panel = self.create_config_panel()
+                operation_panel = self.create_operation_panel()
+                
+                # 关闭任何意外出现的顶层窗口（除了主窗口）
+                for widget in QApplication.topLevelWidgets():
+                    if widget is not self and isinstance(widget, QDialog):
+                        logger.debug(f"发现意外的顶层对话框，正在关闭: {widget.windowTitle()}")
+                        try:
+                            widget.close()
+                        except Exception:
+                            pass
+                
+                self.splitter.addWidget(config_panel)
+                self.splitter.addWidget(operation_panel)
+                self.splitter.setStretchFactor(0, 5)
+                self.splitter.setStretchFactor(1, 5)
+                
+                # 设置 splitter 大小
+                try:
+                    self.splitter.setSizes([520, 880])
+                except Exception:
+                    logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
+                
+                logger.debug("延迟panel创建完成")
+            finally:
+                # 恢复应用信号
+                if app_blocked and app:
+                    app.blockSignals(False)
         except Exception as e:
             logger.error(f"延迟panel创建失败: {e}", exc_info=True)
 
