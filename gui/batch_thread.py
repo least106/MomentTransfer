@@ -67,6 +67,37 @@ class BatchProcessThread(QThread):
 
         cols = cfg_to_use.get('columns', {})
 
+        # 自动检测并跳过可能的表头行：
+        # 如果在映射的关键力/力矩列中多数值在第一行无法解析为数值，判断第一行为表头并丢弃。
+        try:
+            required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
+            mapped = [cols.get(k) for k in required_keys if cols.get(k) is not None]
+            mapped = [int(x) for x in mapped if isinstance(x, (int, float)) or (isinstance(x, str) and str(x).isdigit())]
+            if mapped:
+                non_numeric_count = 0
+                checked = 0
+                for idx in mapped:
+                    if 0 <= idx < len(df.columns):
+                        checked += 1
+                        val = df.iloc[0, idx]
+                        # 使用 pandas 尝试转换为数值判断
+                        try:
+                            nv = pd.to_numeric(pd.Series([val]), errors='coerce').iloc[0]
+                        except Exception:
+                            nv = None
+                        if pd.isna(nv) and pd.notna(val):
+                            non_numeric_count += 1
+
+                # 若大多数（>=60%）映射列在首行为非数值，则认为首行为表头并跳过
+                if checked > 0 and non_numeric_count / checked >= 0.6:
+                    try:
+                        self.log_message.emit(f"检测到可能的表头，已跳过首行: {file_path.name}")
+                    except Exception:
+                        logger.debug("无法发送跳过表头的日志消息", exc_info=True)
+                    df = df.iloc[1:].reset_index(drop=True)
+        except Exception:
+            logger.debug("表头自动检测发生异常，继续按原始数据处理", exc_info=True)
+
         def _col_to_numeric(df_local, col_idx, name):
             if col_idx is None:
                 raise ValueError(f"缺失必需的列映射: {name}")
