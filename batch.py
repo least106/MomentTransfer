@@ -205,8 +205,9 @@ def process_df_chunk(chunk_df: pd.DataFrame,
     # 解析力/力矩列并检测非数值
     # 一次性按位置提取所有 6 列并复制，避免多次切片与复制
     selected_cols = chunk_df.iloc[:, [fx_i, fy_i, fz_i, mx_i, my_i, mz_i]].copy()
-    forces_df = selected_cols.iloc[:, :3]
-    moments_df = selected_cols.iloc[:, 3:]
+    # 明确复制切片，避免之后对切片赋值触发 SettingWithCopyWarning
+    forces_df = selected_cols.iloc[:, :3].copy()
+    moments_df = selected_cols.iloc[:, 3:].copy()
     for col in forces_df.columns:
         forces_df[col] = pd.to_numeric(forces_df[col], errors='coerce')
     for col in moments_df.columns:
