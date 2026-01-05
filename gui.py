@@ -23,7 +23,8 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QGroupBox, QFormLayout, QFileDialog,
     QTextEdit, QMessageBox, QProgressBar, QSplitter, QCheckBox, QSpinBox,
     QComboBox,
-    QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout,
+    QTabWidget
 )
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
@@ -95,8 +96,8 @@ class IntegratedAeroGUI(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.create_config_panel())
         splitter.addWidget(self.create_operation_panel())
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 6)
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 5)
         # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
         try:
             splitter.setSizes([520, 880])
@@ -428,7 +429,7 @@ class IntegratedAeroGUI(QMainWindow):
         panel = QWidget()
         panel.setMinimumWidth(600)
         layout = QVBoxLayout(panel)
-        layout.setSpacing(15)
+        layout.setSpacing(8)  # 从 15 减为 8，更紧凑
 
         # 将关键 UI 对象设为实例属性以确保在函数内所有分支和外部方法中均可访问，避免静态分析误报
         # 基本状态与批处理容器
@@ -447,9 +448,13 @@ class IntegratedAeroGUI(QMainWindow):
         self.grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         # 右侧批处理的主布局（作为实例属性以便在其它方法中引用）
         self.layout_batch = QVBoxLayout()
+        self.layout_batch.setSpacing(6)  # 更紧凑的间距
+        self.layout_batch.setContentsMargins(8, 8, 8, 8)  # 减少外边距
 
         # 文件选择表单（作为实例属性供后续方法访问）
         self.file_form = QFormLayout()
+        self.file_form.setSpacing(4)  # 更小的间距
+        self.file_form.setContentsMargins(2, 2, 2, 2)  # 减少内边距
 
         # 输入行：文件路径 + 浏览
         self.inp_batch_input = QLineEdit()
@@ -672,12 +677,31 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_grid.addWidget(self.btn_batch, 0, 1)
         self.btn_grid.addWidget(self.btn_cancel, 1, 1)
 
-        # 把文件表单、registry 列表、文件列表、进度条、按钮区加入 layout_batch（实例属性）
+        # 把文件表单、registry 列表加入 layout_batch（实例属性）
         self.layout_batch.addLayout(self.file_form)
         self.layout_batch.addWidget(self.grp_registry_list)
-        self.layout_batch.addWidget(self.grp_file_list)
         self.layout_batch.addWidget(self.progress_bar)
         self.layout_batch.addWidget(self.btn_widget)
+
+        # 创建 Tab 容器：分离"文件列表"和"处理日志"
+        self.tab_files_logs = QTabWidget()
+        try:
+            self.tab_files_logs.setObjectName('filesLogsTab')
+        except Exception:
+            pass
+        
+        # Tab 1: 文件列表
+        self.tab_files_logs.addTab(self.grp_file_list, "文件列表")
+        
+        # Tab 2: 处理日志
+        self.tab_logs_widget = QWidget()
+        tab_logs_layout = QVBoxLayout(self.tab_logs_widget)
+        tab_logs_layout.setContentsMargins(0, 0, 0, 0)
+        tab_logs_layout.addWidget(self.txt_batch_log)
+        self.tab_files_logs.addTab(self.tab_logs_widget, "处理日志")
+        
+        # 添加 Tab 到批处理布局
+        self.layout_batch.addWidget(self.tab_files_logs)
 
         # 实验性功能组
         self.grp_experimental = QGroupBox("实验性功能（实验）")
@@ -705,19 +729,13 @@ class IntegratedAeroGUI(QMainWindow):
         self.grp_experimental.setLayout(exp_layout)
         self.layout_batch.addWidget(self.grp_experimental)
 
-        self.layout_batch.addWidget(QLabel("处理日志:"))
-        self.layout_batch.addWidget(self.txt_batch_log)
-
-        # 设置伸缩：日志拉伸，文件列表不拉伸
+        # 设置伸缩：Tab 拉伸占满空间
         try:
-            idx_file_list = self.layout_batch.indexOf(self.grp_file_list)
-            if idx_file_list >= 0:
-                self.layout_batch.setStretch(idx_file_list, 0)
-            idx_log = self.layout_batch.indexOf(self.txt_batch_log)
-            if idx_log >= 0:
-                self.layout_batch.setStretch(idx_log, 1)
+            idx_tab = self.layout_batch.indexOf(self.tab_files_logs)
+            if idx_tab >= 0:
+                self.layout_batch.setStretch(idx_tab, 1)
         except Exception:
-            logger.debug("layout_batch.setStretch failed (non-fatal)", exc_info=True)
+            logger.debug("layout_batch.setStretch for tab failed (non-fatal)", exc_info=True)
 
         # 将布局应用到 grp_batch
         self.grp_batch.setLayout(self.layout_batch)
