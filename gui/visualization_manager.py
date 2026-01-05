@@ -4,7 +4,7 @@
 import logging
 import numpy as np
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QMessageBox
-from gui.canvas import Mpl3DCanvas
+# Mpl3DCanvas 延迟导入以加快GUI启动速度
 from gui.ui_utils import get_numeric_value
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,9 @@ class VisualizationManager:
             self.gui.visualization_window.resize(800, 600)
             
             layout = QVBoxLayout(self.gui.visualization_window)
+            
+            # 延迟导入 Mpl3DCanvas 以优化启动性能
+            from gui.canvas import Mpl3DCanvas
             
             # 创建 3D 画布
             self.gui.canvas3d = Mpl3DCanvas(self.gui.visualization_window, width=8, height=6, dpi=100)

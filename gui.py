@@ -36,7 +36,7 @@ from typing import Optional, List, Tuple
 from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping, update_mapping, init_db
 
 # 从模块化包导入组件
-from gui.canvas import Mpl3DCanvas
+# Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
 from gui.dialogs import ColumnMappingDialog, ExperimentalDialog
 from gui.batch_thread import BatchProcessThread
 
