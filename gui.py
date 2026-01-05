@@ -1,3 +1,13 @@
+﻿"""
+MomentTransfer GUI 主窗口模块
+向后兼容入口：从 gui 包导入模块化的组件
+
+重构说明：
+- Mpl3DCanvas -> gui/canvas.py
+- ColumnMappingDialog, ExperimentalDialog -> gui/dialogs.py
+- BatchProcessThread -> gui/batch_thread.py
+- IntegratedAeroGUI -> 保留在此文件（待进一步拆分）
+"""
 import sys
 import logging
 
@@ -7,19 +17,6 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 import fnmatch
-_HAS_MPL = False
-try:
-    import matplotlib
-    matplotlib.use('Qt5Agg')
-
-    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    _HAS_MPL = True
-except Exception:
-    # 在测试或无 GUI/绘图库环境中，避免在模块导入时抛出异常。
-    # 提供最小占位符，实际使用时会抛出运行时错误。
-    FigureCanvas = object
-    Figure = object
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -37,6 +34,19 @@ from src.data_loader import ProjectData
 from typing import Optional, List, Tuple
 from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping, update_mapping, init_db
 
+# 从模块化包导入组件
+from gui.canvas import Mpl3DCanvas
+from gui.dialogs import ColumnMappingDialog, ExperimentalDialog
+from gui.batch_thread import BatchProcessThread
+
+# 导入管理器和工具
+from gui.ui_utils import create_input, create_triple_spin, get_numeric_value, create_vector_row
+from gui.config_manager import ConfigManager
+from gui.part_manager import PartManager
+from gui.batch_manager import BatchManager
+from gui.visualization_manager import VisualizationManager
+from gui.layout_manager import LayoutManager
+
 logger = logging.getLogger(__name__)
 
 # 主题常量（便于代码中引用）
@@ -47,668 +57,8 @@ THEME_BG = '#f7f9fb'
 LAYOUT_MARGIN = 12
 LAYOUT_SPACING = 8
 
-if _HAS_MPL:
-    class Mpl3DCanvas(FigureCanvas):
-        """3D坐标系可视化画布"""
-
-        def __init__(self, parent=None, width=5, height=4, dpi=100):
-            self.fig = Figure(figsize=(width, height), dpi=dpi)
-            self.axes = self.fig.add_subplot(111, projection='3d')
-            super().__init__(self.fig)
-            self.setParent(parent)
-
-        def plot_systems(self, source_orig, source_basis, target_orig, target_basis, moment_center):
-            self.axes.clear()
-
-            # 源坐标系（灰色虚线）
-            self._draw_frame(source_orig, source_basis, "Source", color=['gray'] * 3, alpha=0.3, linestyle='--')
-
-            # 目标坐标系（彩色实线）
-            self._draw_frame(target_orig, target_basis, "Target", color=['r', 'g', 'b'], length=1.5)
-
-            # 力矩中心（紫色点）
-            self.axes.scatter(moment_center[0], moment_center[1], moment_center[2],
-                              c='m', marker='o', s=80, label='Moment Center', edgecolors='black', linewidths=1)
-
-            # 自动调整显示范围
-            all_points = np.array([source_orig, target_orig, moment_center], dtype=float)
-            # 计算每个轴的范围，并检测坐标是否几乎重合，避免数值问题
-            ranges = np.ptp(all_points, axis=0)
-            max_span = float(np.max(ranges)) if ranges.size > 0 else 0.0
-            eps = 1e-6  # 判断“几乎重合”的数值阈值
-            if max_span < eps:
-                # 所有点几乎在同一位置：使用默认可视化范围
-                max_range = 2.0
-                # 可根据需要改为日志记录或 GUI 提示，这里使用 logging 记录
-                logger.warning("coordinate systems are nearly coincident; using default visualization range.")
-            else:  
-                max_range = max_span * 0.6
-                max_range = max(max_range, 2.0)
-
-            center = np.mean(all_points, axis=0)
-            self.axes.set_xlim([center[0] - max_range, center[0] + max_range])
-            self.axes.set_ylim([center[1] - max_range, center[1] + max_range])
-            self.axes.set_zlim([center[2] - max_range, center[2] + max_range])
-
-            self.axes.set_xlabel('X', fontsize=10, fontweight='bold')
-            self.axes.set_ylabel('Y', fontsize=10, fontweight='bold')
-            self.axes.set_zlabel('Z', fontsize=10, fontweight='bold')
-            self.axes.legend(loc='upper right', fontsize=9)
-            self.axes.set_title('Coordinate Systems Visualization', fontsize=11, fontweight='bold')
-            self.draw()
-
-        def _draw_frame(self, o, basis, label_prefix, color, length=1.0, alpha=1.0, linestyle='-'):
-            labels = ['X', 'Y', 'Z']
-            for i in range(3):
-                vec = basis[i] * length
-                self.axes.quiver(o[0], o[1], o[2],
-                                 vec[0], vec[1], vec[2],
-                                 color=color[i], alpha=alpha, arrow_length_ratio=0.15,
-                                 linewidth=2 if linestyle == '-' else 1,
-                                 linestyle=linestyle)
-                self.axes.text(o[0] + vec[0] * 1.1, o[1] + vec[1] * 1.1, o[2] + vec[2] * 1.1,
-                               f"{label_prefix}_{labels[i]}", color=color[i], fontsize=9, fontweight='bold')
-else:
-    class Mpl3DCanvas:
-        def __init__(self, *args, **kwargs):
-            raise RuntimeError("matplotlib not available or failed to initialize; 3D canvas is disabled")
-
-
-class ColumnMappingDialog(QDialog):
-    """列映射配置对话框"""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("数据格式配置")
-        self.resize(500, 600)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-
-        # 跳过行数
-        grp_skip = QGroupBox("表头设置")
-        form_skip = QFormLayout()
-        self.spin_skip_rows = QSpinBox()
-        self.spin_skip_rows.setRange(0, 100)
-        self.spin_skip_rows.setValue(0)
-        form_skip.addRow("跳过行数:", self.spin_skip_rows)
-        grp_skip.setLayout(form_skip)
-
-        # 列映射
-        grp_columns = QGroupBox("数据列映射 (列号从0开始)")
-        form_cols = QFormLayout()
-
-        self.col_alpha = QSpinBox()
-        self.col_alpha.setRange(-1, 1000)
-        self.col_alpha.setValue(-1)
-        self.col_alpha.setSpecialValueText("不存在")
-
-        self.col_fx = QSpinBox()
-        self.col_fy = QSpinBox()
-        self.col_fz = QSpinBox()
-        self.col_mx = QSpinBox()
-        self.col_my = QSpinBox()
-        self.col_mz = QSpinBox()
-
-        for spin in [self.col_fx, self.col_fy, self.col_fz,
-                     self.col_mx, self.col_my, self.col_mz]:
-            spin.setRange(0, 1000)
-            spin.setValue(0)
-
-        form_cols.addRow("迎角 Alpha (可选):", self.col_alpha)
-        form_cols.addRow("轴向力 Fx:", self.col_fx)
-        form_cols.addRow("侧向力 Fy:", self.col_fy)
-        form_cols.addRow("法向力 Fz:", self.col_fz)
-        form_cols.addRow("滚转力矩 Mx:", self.col_mx)
-        form_cols.addRow("俯仰力矩 My:", self.col_my)
-        form_cols.addRow("偏航力矩 Mz:", self.col_mz)
-
-        grp_columns.setLayout(form_cols)
-
-        # 保留列
-        grp_pass = QGroupBox("需要保留输出的其他列")
-        layout_pass = QVBoxLayout()
-        self.txt_passthrough = QLineEdit()
-        self.txt_passthrough.setPlaceholderText("用逗号分隔列号，如: 0,1,2")
-        layout_pass.addWidget(QLabel("列号:"))
-        layout_pass.addWidget(self.txt_passthrough)
-        grp_pass.setLayout(layout_pass)
-
-        # 标准按钮 OK/Cancel
-        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btn_box.accepted.connect(self.accept)
-        btn_box.rejected.connect(self.reject)
-
-        # 额外的保存按钮，允许用户把当前列映射直接保存为 JSON 文件（便于复用）
-        self.btn_save_format = QPushButton("保存")
-        self.btn_save_format.setToolTip("将当前数据格式保存为 JSON 文件")
-        self.btn_save_format.clicked.connect(self._on_dialog_save)
-        try:
-            self.btn_save_format.setObjectName('secondaryButton')
-        except Exception:
-            pass
-
-        # 额外的加载按钮，允许用户从 JSON 文件加载数据格式到对话框（不关闭对话）
-        self.btn_load_format = QPushButton("加载")
-        self.btn_load_format.setToolTip("从 JSON 文件加载数据格式到当前对话框")
-        self.btn_load_format.clicked.connect(self._on_dialog_load)
-
-        # 按钮行：保存 | 加载 | OK | Cancel
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(self.btn_save_format)
-        btn_row.addWidget(self.btn_load_format)
-        btn_row.addWidget(btn_box)
-
-        layout.addWidget(grp_skip)
-        layout.addWidget(grp_columns)
-        layout.addWidget(grp_pass)
-        layout.addLayout(btn_row)
-
-    def get_config(self):
-        """获取并返回配置字典"""
-        passthrough = []
-        text = self.txt_passthrough.text().strip()
-        if text:
-            toks = [t.strip() for t in text.split(',') if t.strip()]
-            invalid = []
-            for tok in toks:
-                try:
-                    passthrough.append(int(tok))
-                except ValueError:
-                    invalid.append(tok)
-            if invalid:
-                QMessageBox.warning(self, "透传列解析警告",
-                                    f"以下透传列索引无法解析，已被忽略：{', '.join(invalid)}")
-
-        return {
-            'skip_rows': self.spin_skip_rows.value(),
-            'columns': {
-                'alpha': self.col_alpha.value() if self.col_alpha.value() >= 0 else None,
-                'fx': self.col_fx.value(),
-                'fy': self.col_fy.value(),
-                'fz': self.col_fz.value(),
-                'mx': self.col_mx.value(),
-                'my': self.col_my.value(),
-                'mz': self.col_mz.value()
-            },
-            'passthrough': passthrough
-        }
-
-    def set_config(self, cfg: dict):
-        """用已有配置填充对话框控件，兼容部分字段缺失的情况。"""
-        if not isinstance(cfg, dict):
-            return
-
-        if 'skip_rows' in cfg:
-            try:
-                self.spin_skip_rows.setValue(int(cfg.get('skip_rows', 0)))
-            except (ValueError, TypeError) as e:
-                logger.warning("Invalid skip_rows value %r: %s", cfg.get('skip_rows'), e, exc_info=True)
-
-        cols = cfg.get('columns') or cfg.get('Columns') or {}
-        try:
-            if 'alpha' in cols and cols.get('alpha') is not None:
-                self.col_alpha.setValue(int(cols.get('alpha')))
-            if 'fx' in cols and cols.get('fx') is not None:
-                self.col_fx.setValue(int(cols.get('fx')))
-            if 'fy' in cols and cols.get('fy') is not None:
-                self.col_fy.setValue(int(cols.get('fy')))
-            if 'fz' in cols and cols.get('fz') is not None:
-                self.col_fz.setValue(int(cols.get('fz')))
-            if 'mx' in cols and cols.get('mx') is not None:
-                self.col_mx.setValue(int(cols.get('mx')))
-            if 'my' in cols and cols.get('my') is not None:
-                self.col_my.setValue(int(cols.get('my')))
-            if 'mz' in cols and cols.get('mz') is not None:
-                self.col_mz.setValue(int(cols.get('mz')))
-        except (ValueError, TypeError) as e:
-            logger.warning("Invalid column indices in %r: %s", cols, e, exc_info=True)
-
-        passthrough = cfg.get('passthrough') or cfg.get('Passthrough') or []
-        try:
-            if isinstance(passthrough, (list, tuple)):
-                self.txt_passthrough.setText(','.join(str(int(x)) for x in passthrough))
-            elif isinstance(passthrough, str):
-                self.txt_passthrough.setText(passthrough)
-        except (ValueError, TypeError) as e:
-            logger.warning("Invalid passthrough values %r: %s", passthrough, e, exc_info=True)
-
-    def _on_dialog_save(self):
-        """把当前对话框配置另存为 JSON 文件（不关闭对话）。"""
-        try:
-            cfg = self.get_config()
-            fname, _ = QFileDialog.getSaveFileName(self, '保存格式为', 'format.json', 'JSON Files (*.json)')
-            if not fname:
-                return
-            p = Path(fname)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            with open(p, 'w', encoding='utf-8') as fh:
-                json.dump(cfg, fh, indent=2, ensure_ascii=False)
-            QMessageBox.information(self, '已保存', f'格式已保存到: {fname}')
-        except Exception as e:
-            QMessageBox.warning(self, '保存失败', f'无法保存格式: {e}')
-
-    def _on_dialog_load(self):
-        """从 JSON 文件加载数据格式并填充对话框（不关闭对话）。"""
-        try:
-            fname, _ = QFileDialog.getOpenFileName(self, '加载格式文件', '', 'JSON Files (*.json)')
-            if not fname:
-                return
-            with open(fname, 'r', encoding='utf-8') as fh:
-                cfg = json.load(fh)
-            if not isinstance(cfg, dict):
-                raise ValueError('格式文件应为 JSON 对象')
-            self.set_config(cfg)
-            QMessageBox.information(self, '已加载', f'已从 {fname} 加载格式并填充对话框')
-        except Exception as e:
-            QMessageBox.warning(self, '加载失败', f'无法加载格式: {e}')
-
-
-class ExperimentalDialog(QDialog):
-    """实验性功能对话框：包含 per-file/registry/可视化等实验性设置。"""
-    def __init__(self, parent=None, initial_settings: dict = None):
-        super().__init__(parent)
-        self.setWindowTitle('实验性功能')
-        self.resize(700, 480)
-        self.initial_settings = initial_settings or {}
-        self._init_ui()
-
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-
-        # per-file 开关
-        self.chk_enable_sidecar = QCheckBox('启用 per-file 覆盖（sidecar/registry）')
-        self.chk_enable_sidecar.setToolTip('启用后批处理会尝试使用文件侧车或 registry 覆盖全局配置')
-        layout.addWidget(self.chk_enable_sidecar)
-
-        # registry DB 行
-        reg_row = QHBoxLayout()
-        reg_row.addWidget(QLabel('格式注册表 (.sqlite):'))
-        self.inp_registry_db = QLineEdit()
-        self.inp_registry_db.setPlaceholderText('可选: registry 数据库 (.sqlite)')
-        reg_row.addWidget(self.inp_registry_db)
-        btn_browse = QPushButton('浏览')
-        btn_browse.setMaximumWidth(90)
-        btn_browse.clicked.connect(self._browse_registry_db)
-        reg_row.addWidget(btn_browse)
-        layout.addLayout(reg_row)
-
-        # registry 映射列表与操作
-        self.lst_registry = QListWidget()
-        self.lst_registry.setMinimumHeight(120)
-        layout.addWidget(QLabel('Registry 映射:'))
-        layout.addWidget(self.lst_registry)
-
-        reg_ops = QHBoxLayout()
-        self.inp_registry_pattern = QLineEdit()
-        self.inp_registry_pattern.setPlaceholderText('Pattern，例如: *.csv')
-        self.inp_registry_format = QLineEdit()
-        self.inp_registry_format.setPlaceholderText('Format JSON 文件')
-        reg_ops.addWidget(self.inp_registry_pattern)
-        reg_ops.addWidget(self.inp_registry_format)
-        btn_browse_fmt = QPushButton('浏览格式')
-        btn_browse_fmt.setMaximumWidth(90)
-        btn_browse_fmt.clicked.connect(self._browse_format_file)
-        reg_ops.addWidget(btn_browse_fmt)
-        layout.addLayout(reg_ops)
-
-        btn_row = QHBoxLayout()
-        self.btn_registry_register = QPushButton('注册映射')
-        self.btn_registry_edit = QPushButton('编辑选中')
-        self.btn_registry_remove = QPushButton('删除选中')
-        btn_row.addStretch()
-        btn_row.addWidget(self.btn_registry_register)
-        btn_row.addWidget(self.btn_registry_edit)
-        btn_row.addWidget(self.btn_registry_remove)
-        layout.addLayout(btn_row)
-
-        # 最近项目与 3D 可视化 开关（简要）
-        self.chk_show_visual = QCheckBox('启用 3D 可视化（实验）')
-        layout.addWidget(self.chk_show_visual)
-        layout.addWidget(QLabel('最近项目（只作展示）'))
-        self.lst_recent = QListWidget()
-        self.lst_recent.setMaximumHeight(80)
-        layout.addWidget(self.lst_recent)
-
-        # 按钮
-        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        box.accepted.connect(self.accept)
-        box.rejected.connect(self.reject)
-        layout.addWidget(box)
-
-        # 连接按钮
-        self.btn_registry_register.clicked.connect(self._on_registry_register)
-        self.btn_registry_edit.clicked.connect(self._on_registry_edit)
-        self.btn_registry_remove.clicked.connect(self._on_registry_remove)
-
-        # 如果有初始化设置，填充
-        self._load_initial()
-
-    def _load_initial(self):
-        s = self.initial_settings
-        try:
-            self.chk_enable_sidecar.setChecked(bool(s.get('enable_sidecar', False)))
-            self.inp_registry_db.setText(s.get('registry_db', '') or '')
-            for rp in s.get('recent_projects', [])[:10]:
-                self.lst_recent.addItem(rp)
-        except Exception:
-            pass
-        # 刷新 registry 列表
-        self._refresh_registry_list()
-
-    def _browse_registry_db(self):
-        fname, _ = QFileDialog.getOpenFileName(self, '选择 registry 数据库', '.', 'SQLite Files (*.sqlite *.db);;All Files (*)')
-        if fname:
-            self.inp_registry_db.setText(fname)
-            self._refresh_registry_list()
-
-    def _browse_format_file(self):
-        fname, _ = QFileDialog.getOpenFileName(self, '选择 format JSON', '.', 'JSON Files (*.json);;All Files (*)')
-        if fname:
-            self.inp_registry_format.setText(fname)
-
-    def _refresh_registry_list(self):
-        dbp = self.inp_registry_db.text().strip()
-        self.lst_registry.clear()
-        if not dbp:
-            self.lst_registry.addItem('(未选择 registry)')
-            return
-        try:
-            mappings = list_mappings(dbp)
-            if not mappings:
-                self.lst_registry.addItem('(空)')
-            else:
-                for m in mappings:
-                    self.lst_registry.addItem(f"[{m['id']}] {m['pattern']} -> {m['format_path']}")
-        except Exception as e:
-            self.lst_registry.addItem(f'无法读取 registry: {e}')
-
-    def _on_registry_register(self):
-        dbp = self.inp_registry_db.text().strip()
-        pat = self.inp_registry_pattern.text().strip()
-        fmt = self.inp_registry_format.text().strip()
-        if not dbp:
-            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
-            return
-        if not pat or not fmt:
-            QMessageBox.warning(self, '错误', '请填写 pattern 与 format 文件路径')
-            return
-        try:
-            register_mapping(dbp, pat, fmt)
-            QMessageBox.information(self, '已注册', f'{pat} -> {fmt}')
-            self._refresh_registry_list()
-        except Exception as e:
-            QMessageBox.critical(self, '注册失败', str(e))
-
-    def _on_registry_edit(self):
-        QMessageBox.information(self, '提示', '请在主界面中编辑后再注册（简化实现）')
-
-    def _on_registry_remove(self):
-        dbp = self.inp_registry_db.text().strip()
-        sel = self.lst_registry.selectedItems()
-        if not dbp or not sel:
-            QMessageBox.warning(self, '错误', '请先选择 registry 与项目')
-            return
-        text = sel[0].text()
-        try:
-            if text.startswith('['):
-                end = text.find(']')
-                mapping_id = int(text[1:end])
-            else:
-                raise ValueError('无法解析选中项 ID')
-            resp = QMessageBox.question(self, '确认删除', f'确认删除映射 id={mapping_id}?', QMessageBox.Yes | QMessageBox.No)
-            if resp != QMessageBox.Yes:
-                return
-            delete_mapping(dbp, mapping_id)
-            self._refresh_registry_list()
-        except Exception as e:
-            QMessageBox.critical(self, '删除失败', str(e))
-
-    def get_settings(self) -> dict:
-        return {
-            'enable_sidecar': bool(self.chk_enable_sidecar.isChecked()),
-            'registry_db': self.inp_registry_db.text().strip(),
-            'recent_projects': [self.lst_recent.item(i).text() for i in range(self.lst_recent.count())]
-        }
-
-
-class BatchProcessThread(QThread):
-    """在后台线程中执行批量处理，发出进度与日志信号"""
-    progress = Signal(int)
-    log_message = Signal(str)
-    finished = Signal(str)
-    error = Signal(str)
-
-    def __init__(self, calculator, file_list, output_dir, data_config, registry_db=None):
-        super().__init__()
-        self.calculator = calculator
-        self.file_list = file_list
-        self.output_dir = Path(output_dir)
-        self.data_config = data_config
-        # 可选的 format registry 数据库路径（字符串或 None）
-        self.registry_db = registry_db
-        # 取消标志，用于请求优雅停止（线程内检查）
-        self._stop_requested = False
-
-    def process_file(self, file_path):
-        """处理单个文件并返回输出路径
-
-        若线程属性 `enable_sidecar` 为 True，则按文件计算最终的 `data_config`（通过 `resolve_file_format`），
-        否则使用 `self.data_config`。
-        """
-        # 若启用了 per-file 覆盖，则为当前文件解析最终的 data_config
-        cfg_to_use = self.data_config
-        if getattr(self, 'enable_sidecar', False):
-            try:
-                from src.cli_helpers import resolve_file_format, BatchConfig as _BatchConfig
-                # 将现有 self.data_config（可能为 dict）转换为 BatchConfig
-                base_cfg = _BatchConfig()
-                if isinstance(self.data_config, dict):
-                    # 只覆盖部分字段（常用的 skip_rows, columns, passthrough, chunksize, sample_rows）
-                    base_cfg.skip_rows = int(self.data_config.get('skip_rows', base_cfg.skip_rows))
-                    cols = self.data_config.get('columns') or {}
-                    for k in base_cfg.column_mappings.keys():
-                        if k in cols and cols.get(k) is not None:
-                            base_cfg.column_mappings[k] = int(cols.get(k))
-                    base_cfg.passthrough_columns = [int(x) for x in self.data_config.get('passthrough', base_cfg.passthrough_columns)]
-                    if 'chunksize' in self.data_config:
-                        try:
-                            base_cfg.chunksize = int(self.data_config.get('chunksize'))
-                        except Exception:
-                            base_cfg.chunksize = None
-                    if 'sample_rows' in self.data_config:
-                        try:
-                            base_cfg.sample_rows = int(self.data_config.get('sample_rows'))
-                        except Exception:
-                            base_cfg.sample_rows = base_cfg.sample_rows
-                else:
-                    base_cfg = self.data_config
-
-                cfg_to_use = resolve_file_format(str(file_path), base_cfg, enable_sidecar=True, registry_db=self.registry_db)
-            except Exception as e:
-                self.log_message.emit(f"为文件 {file_path.name} 解析 per-file 配置失败: {e}")
-                raise
-
-        if file_path.suffix.lower() == '.csv':
-            df = pd.read_csv(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
-        else:
-            df = pd.read_excel(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
-
-        cols = cfg_to_use.get('columns', {})
-
-        def _col_to_numeric(df_local, col_idx, name):
-            if col_idx is None:
-                raise ValueError(f"缺失必需的列映射: {name}")
-            if not (0 <= col_idx < len(df_local.columns)):
-                raise IndexError(f"列索引越界: {name} -> {col_idx}")
-            orig_col = df_local.iloc[:, col_idx]
-            ser = pd.to_numeric(orig_col, errors='coerce')
-            bad_mask = ser.isna() & orig_col.notna()
-            if bad_mask.any():
-                try:
-                    bad_indices = orig_col.index[bad_mask].tolist()
-                    sample_indices = bad_indices[:5]
-                    sample_values = [str(v) for v in orig_col[bad_mask].head(5).tolist()]
-                    self.log_message.emit(
-                        f"列 {name} 有 {bad_mask.sum()} 个值无法解析为数值，示例索引: {sample_indices}，示例值: {sample_values}")
-                except (IndexError, AttributeError, ValueError) as ex:
-                    logger.debug("构建非数值示例时出错（忽略示例）: %s", ex, exc_info=True)
-            return ser.values.astype(float)
-
-        try:
-            fx = _col_to_numeric(df, cols.get('fx'), 'Fx')
-            fy = _col_to_numeric(df, cols.get('fy'), 'Fy')
-            fz = _col_to_numeric(df, cols.get('fz'), 'Fz')
-
-            mx = _col_to_numeric(df, cols.get('mx'), 'Mx')
-            my = _col_to_numeric(df, cols.get('my'), 'My')
-            mz = _col_to_numeric(df, cols.get('mz'), 'Mz')
-
-            forces = np.vstack([fx, fy, fz]).T
-            moments = np.vstack([mx, my, mz]).T
-        except (ValueError, IndexError, TypeError, OSError) as e:
-            try:
-                self.log_message.emit(f"数据列提取或转换失败: {e}")
-            except Exception:
-                logger.debug("无法通过 signal 发送失败消息: %s", e, exc_info=True)
-            raise
-
-        results = self.calculator.process_batch(forces, moments)
-
-        output_df = pd.DataFrame()
-
-        for col_idx in self.data_config.get('passthrough', []):
-            try:
-                idx = int(col_idx)
-            except (ValueError, TypeError):
-                try:
-                    self.log_message.emit(f"透传列索引无效（非整数）：{col_idx}")
-                except Exception:
-                    logger.debug("无法通过 signal 发送透传列无效消息: %s", col_idx, exc_info=True)
-                continue
-            if 0 <= idx < len(df.columns):
-                output_df[f'Col_{idx}'] = df.iloc[:, idx]
-            else:
-                try:
-                    self.log_message.emit(f"透传列索引越界: {idx}")
-                except Exception:
-                    logger.debug("无法通过 signal 发送透传列越界消息: %s", idx, exc_info=True)
-
-        if cols.get('alpha') is not None and cols.get('alpha') < len(df.columns):
-            output_df['Alpha'] = df.iloc[:, cols['alpha']]
-
-        output_df['Fx_new'] = results['force_transformed'][:, 0]
-        output_df['Fy_new'] = results['force_transformed'][:, 1]
-        output_df['Fz_new'] = results['force_transformed'][:, 2]
-        output_df['Mx_new'] = results['moment_transformed'][:, 0]
-        output_df['My_new'] = results['moment_transformed'][:, 1]
-        output_df['Mz_new'] = results['moment_transformed'][:, 2]
-        output_df['Cx'] = results['coeff_force'][:, 0]
-        output_df['Cy'] = results['coeff_force'][:, 1]
-        output_df['Cz'] = results['coeff_force'][:, 2]
-        output_df['Cl'] = results['coeff_moment'][:, 0]
-        output_df['Cm'] = results['coeff_moment'][:, 1]
-        output_df['Cn'] = results['coeff_moment'][:, 2]
-
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_file = self.output_dir / f"{file_path.stem}_result_{timestamp}.csv"
-        output_df.to_csv(output_file, index=False)
-        return output_file
-
-    def request_stop(self):
-        """请求停止后台线程的处理（线程在处理间检查此标志）。"""
-        self._stop_requested = True
-
-    def run(self):
-        try:
-            total = len(self.file_list)
-            success = 0
-            elapsed_list = []
-
-            if self.registry_db:
-                try:
-                    self.log_message.emit(f"使用 format registry: {self.registry_db}")
-                except RuntimeError as re:
-                    logger.debug("Signal emit failed for registry_db message: %s", re, exc_info=True)
-                except Exception:
-                    logger.exception("Unexpected error when emitting registry message")
-
-            for i, file_path in enumerate(self.file_list):
-                # 在每个文件开始前检查取消请求
-                if self._stop_requested:
-                    try:
-                        self.log_message.emit("用户取消：正在停止批处理")
-                    except Exception:
-                        logger.debug("Cannot emit cancel log message", exc_info=True)
-                    break
-                # per-file timing
-                file_start = datetime.now()
-                try:
-                    self.log_message.emit(f"处理 [{i+1}/{total}]: {file_path.name}")
-                except Exception:
-                    logger.debug("无法发出开始处理消息: %s", file_path, exc_info=True)
-
-                try:
-                    output_file = self.process_file(file_path)
-                    file_elapsed = (datetime.now() - file_start).total_seconds()
-                    elapsed_list.append(file_elapsed)
-                    avg = sum(elapsed_list) / len(elapsed_list)
-                    remaining = total - (i + 1)
-                    eta = int(avg * remaining)
-
-                    try:
-                        self.log_message.emit(f"  ✓ 完成: {output_file.name} (耗时: {file_elapsed:.2f}s)")
-                    except Exception:
-                        logger.debug("Cannot emit success message for %s", file_path, exc_info=True)
-
-                    # 记录 ETA 与平均耗时
-                    try:
-                        self.log_message.emit(f"已完成 {i+1}/{total}，平均每文件耗时 {avg:.2f}s，预计剩余 {eta}s")
-                    except Exception:
-                        logger.debug("无法发出 ETA 消息", exc_info=True)
-
-                    success += 1
-
-                except (ValueError, IndexError, OSError) as e:
-                    file_elapsed = (datetime.now() - file_start).total_seconds()
-                    elapsed_list.append(file_elapsed)
-                    logger.debug("File processing failed for %s: %s", file_path, e, exc_info=True)
-                    try:
-                        self.log_message.emit(f"  ✗ 失败: {e} (耗时: {file_elapsed:.2f}s)")
-                    except Exception:
-                        logger.debug("Cannot emit failure message for %s: %s", file_path, e, exc_info=True)
-
-                except Exception as e:
-                    file_elapsed = (datetime.now() - file_start).total_seconds()
-                    elapsed_list.append(file_elapsed)
-                    logger.exception("Unexpected error processing file %s", file_path)
-                    try:
-                        self.log_message.emit(f"  ✗ 未知错误: 请查看日志以获取详细信息 (耗时: {file_elapsed:.2f}s)")
-                    except Exception:
-                        logger.debug("Cannot emit unknown error message for %s", file_path, exc_info=True)
-
-                # 更新进度条
-                try:
-                    pct = int((i + 1) / total * 100)
-                    self.progress.emit(pct)
-                except Exception:
-                    logger.debug("Unable to emit progress value for %s", file_path, exc_info=True)
-
-            # 结束
-            total_elapsed = sum(elapsed_list)
-            try:
-                msg = f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
-                if self._stop_requested:
-                    msg = f"已取消：已处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
-                self.finished.emit(msg)
-            except Exception:
-                logger.debug("Cannot emit finished signal", exc_info=True)
-
-        except Exception as e:
-            logger.exception("BatchProcessThread.run 出现未处理异常")
-            self.error.emit(str(e))
-
+# 注意：Mpl3DCanvas, ColumnMappingDialog, ExperimentalDialog, BatchProcessThread
+# 已从 gui 包中导入，不再在此文件中定义
 
 class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
@@ -726,6 +76,18 @@ class IntegratedAeroGUI(QMainWindow):
 
     def init_ui(self):
         """初始化界面"""
+        # 初始化各个管理器
+        try:
+            self.config_manager = ConfigManager(self)
+            self.part_manager = PartManager(self)
+            self.batch_manager = BatchManager(self)
+            self.visualization_manager = VisualizationManager(self)
+            self.layout_manager = LayoutManager(self)
+            logger.info("所有管理器初始化成功")
+        except Exception as e:
+            logger.error(f"管理器初始化失败: {e}")
+            # 继续运行，即使管理器初始化失败
+        
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
@@ -1615,12 +977,13 @@ class IntegratedAeroGUI(QMainWindow):
             logger.exception("调度 _refresh_layouts 时出现意外异常")
 
     def toggle_visualization(self):
-        """切换3D可视化窗口"""
-        if self.visualization_window is None or not self.visualization_window.isVisible():
-            self.show_visualization()
-        else:
-            self.visualization_window.close()
-            self.visualization_window = None
+        """切换3D可视化窗口 - 委托给 VisualizationManager"""
+        try:
+            self.visualization_manager.toggle_visualization()
+        except AttributeError:
+            logger.warning("VisualizationManager 未初始化")
+        except Exception as e:
+            logger.error(f"切换可视化窗口失败: {e}")
 
     def open_experimental_dialog(self):
         """打开实验性功能对话框，用户确认后保存设置到 self.experimental_settings 并同步相关控件"""
@@ -1659,63 +1022,23 @@ class IntegratedAeroGUI(QMainWindow):
             QMessageBox.warning(self, '错误', f'打开实验性对话框失败: {e}')
 
     def show_visualization(self):
-        """显示3D可视化窗口"""
+        """显示3D可视化窗口 - 委托给 VisualizationManager"""
         try:
-            # 读取当前配置（使用 _num 支持 QDoubleSpinBox 或 QLineEdit）
-            source_orig = [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)]
-            source_basis = np.array([
-                [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
-            ])
-
-            target_orig = [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)]
-            target_basis = np.array([
-                [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
-            ])
-
-            moment_center = [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)]
-
-            # 创建可视化窗口
-            self.visualization_window = QWidget()
-            self.visualization_window.setWindowTitle(f"3D坐标系可视化 - {self.tgt_part_name.text()}")
-            self.visualization_window.resize(800, 600)
-
-            layout = QVBoxLayout(self.visualization_window)
-
-            # 创建3D画布
-            self.canvas3d = Mpl3DCanvas(self.visualization_window, width=8, height=6, dpi=100)
-            self.canvas3d.plot_systems(source_orig, source_basis, target_orig, target_basis, moment_center)
-
-            # 添加说明文本
-            info_label = QLabel(
-                "灰色虚线: Source坐标系 | 彩色实线: Target坐标系 | 紫色点: 力矩中心\n"
-                "提示: 可以使用鼠标拖动旋转视角"
-            )
-            try:
-                info_label.setObjectName('infoLabel')
-            except Exception:
-                pass
-
-            layout.addWidget(info_label)
-            layout.addWidget(self.canvas3d)
-
-            self.visualization_window.show()
-
-        except ValueError as e:
-            QMessageBox.warning(self, "输入错误", f"请检查坐标系数值输入:\n{str(e)}")
+            self.visualization_manager.show_visualization()
+        except AttributeError:
+            logger.warning("VisualizationManager 未初始化")
+        except Exception as e:
+            logger.error(f"显示可视化窗口失败: {e}")
 
     def load_config(self):
-        """加载配置文件"""
+        """加载配置文件 - 委托给 ConfigManager"""
         try:
-            fname, _ = QFileDialog.getOpenFileName(self, '打开配置', '.', 'JSON Files (*.json)')
-            if not fname:
-                # 用户取消选择时不进行任何操作
-                return
-            with open(fname, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            self.config_manager.load_config()
+        except AttributeError:
+            # 如果管理器未初始化，记录警告
+            logger.warning("ConfigManager 未初始化，无法加载配置")
+        except Exception as e:
+            logger.error(f"加载配置失败: {e}")
 
             # 保存原始字典以便在 GUI 中允许编辑并按需写回
             try:
@@ -1878,164 +1201,24 @@ class IntegratedAeroGUI(QMainWindow):
             QMessageBox.critical(self, "加载失败", f"无法加载配置文件:\n{str(e)}")
 
     def save_config(self):
-        """保存配置到JSON"""
+        """保存配置到JSON - 委托给 ConfigManager"""
         try:
-            # 按新版 Parts/Variants 格式保存（保证与 data_loader 的严格解析兼容）
-            src_part = {
-                "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
-                "Variants": [
-                    {
-                        "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
-                        "CoordSystem": {
-                            "Orig": [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                            "X": [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                            "Y": [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                            "Z": [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
-                        },
-                        "MomentCenter": [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                        "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
-                        "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
-                        "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
-                        "S": float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
-                    }
-                ]
-            }
-
-            tgt_part = {
-                "PartName": self.tgt_part_name.text(),
-                "Variants": [
-                    {
-                        "PartName": self.tgt_part_name.text(),
-                        "CoordSystem": {
-                            "Orig": [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
-                            "X": [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                            "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                            "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
-                        },
-                        "MomentCenter": [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
-                        "Cref": self._num(self.tgt_cref) if hasattr(self, 'tgt_cref') else 1.0,
-                        "Bref": self._num(self.tgt_bref) if hasattr(self, 'tgt_bref') else 1.0,
-                        "Q": self._num(self.tgt_q) if hasattr(self, 'tgt_q') else 1000.0,
-                        "S": self._num(self.tgt_sref) if hasattr(self, 'tgt_sref') else 10.0
-                    }
-                ]
-            }
-
-            data = {
-                "Source": {"Parts": [src_part]},
-                "Target": {"Parts": [tgt_part]}
-            }
-
-            # 如果此前通过 "加载配置" 打开了一个文件，则优先直接覆盖该文件
-            try:
-                last = getattr(self, '_last_loaded_config_path', None)
-                if last:
-                    with open(last, 'w', encoding='utf-8') as f:
-                        json.dump(data, f, indent=2)
-                    QMessageBox.information(self, "成功", f"配置已覆盖保存:\n{last}")
-                    self.statusBar().showMessage(f"已保存: {last}")
-                    return
-            except Exception:
-                # 如果直接覆盖失败，回退到另存为对话框
-                logger.debug("直接覆盖上次加载文件失败，退回到另存为", exc_info=True)
-
-            fname, _ = QFileDialog.getSaveFileName(self, '保存配置', 'config.json', 'JSON Files (*.json)')
-            # 用户取消保存时立即返回，避免继续执行或触发异常处理逻辑
-            if not fname:
-                return
-            with open(fname, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
-            QMessageBox.information(self, "成功", f"配置已保存:\n{fname}")
-            self.statusBar().showMessage(f"已保存: {fname}")
-
-        except ValueError as e:
-            QMessageBox.warning(self, "输入错误", f"请检查数值输入是否正确:\n{str(e)}")
+            self.config_manager.save_config()
+        except AttributeError:
+            # 如果管理器未初始化，记录警告
+            logger.warning("ConfigManager 未初始化，无法保存配置")
         except Exception as e:
-            QMessageBox.critical(self, "保存失败", str(e))
+            logger.error(f"保存配置失败: {e}")
 
     def apply_config(self):
-        """应用当前配置到计算器"""
+        """应用当前配置到计算器 - 委托给 ConfigManager"""
         try:
-            # 构建新版格式：Source/Target 下包含 Parts 列表，保证兼容 ProjectData.from_dict
-            src_part = {
-                "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
-                "Variants": [
-                    {
-                        "PartName": self.src_part_name.text() if hasattr(self, 'src_part_name') else "Global",
-                        "CoordSystem": {
-                            "Orig": [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                            "X": [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                            "Y": [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                            "Z": [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
-                        },
-                        "MomentCenter": [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                        "Cref": float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
-                        "Bref": float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
-                        "Q": float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
-                        "S": float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
-                    }
-                ]
-            }
-
-            tgt_part = {
-                "PartName": self.tgt_part_name.text(),
-                "Variants": [
-                    {
-                        "PartName": self.tgt_part_name.text(),
-                        "CoordSystem": {
-                            "Orig": [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
-                            "X": [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                            "Y": [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                            "Z": [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
-                        },
-                        "MomentCenter": [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
-                        "Cref": float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
-                        "Bref": float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
-                        "Q": float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
-                        "S": float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
-                    }
-                ]
-            }
-
-            data = {
-                "Source": {"Parts": [src_part]},
-                "Target": {"Parts": [tgt_part]}
-            }
-
-            # 解析为 ProjectData（严格格式）
-            self.current_config = ProjectData.from_dict(data)
-
-            # 决定要使用的 target part 与 variant（优先使用 GUI 下拉框）
-            if hasattr(self, 'cmb_target_parts') and self.cmb_target_parts.isVisible() and self.cmb_target_parts.count() > 0:
-                sel_part = self.cmb_target_parts.currentText()
-                # Variant 控件已隐藏，始终使用第 0 个 variant
-                sel_variant = 0
-            else:
-                sel_part = self.tgt_part_name.text()
-                sel_variant = 0
-
-            # 构造时传入 project + 显式 target_part/variant，由 AeroCalculator 再次校验
-            self.calculator = AeroCalculator(self.current_config, target_part=sel_part, target_variant=sel_variant)
-
-            part_name = sel_part
-            self.lbl_status.setText(f"已加载配置: {part_name}")
-            try:
-                self.lbl_status.setProperty('state', 'loaded')
-            except Exception:
-                pass
-            self.statusBar().showMessage(f"配置已应用: {part_name}")
-
-            QMessageBox.information(self, "成功", f"配置已应用!\n组件: {part_name}\n现在可以进行计算了。")
-            try:
-                # 更新 GUI 的配置预览
-                self.update_config_preview()
-            except Exception:
-                logger.debug("update_config_preview failed", exc_info=True)
-
-        except ValueError as e:
-            QMessageBox.warning(self, "输入错误", f"请检查数值输入:\n{str(e)}")
+            self.config_manager.apply_config()
+        except AttributeError:
+            # 如果管理器未初始化，记录警告
+            logger.warning("ConfigManager 未初始化，无法应用配置")
         except Exception as e:
-            QMessageBox.critical(self, "应用失败", f"配置应用失败:\n{str(e)}")
+            logger.error(f"应用配置失败: {e}")
 
     def configure_data_format(self):
         """配置全局会话级别的数据格式（不会对单个文件进行侧车/registry 查找或编辑）。"""
@@ -2073,48 +1256,13 @@ class IntegratedAeroGUI(QMainWindow):
 
 
     def browse_batch_input(self):
-        """选择输入文件或目录（单一对话框，支持切换文件/目录模式）。"""
-        dlg = QFileDialog(self, '选择输入文件或目录')
-        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
-        # 默认允许选择单个文件
-        dlg.setFileMode(QFileDialog.ExistingFile)
-        dlg.setNameFilter('Data Files (*.csv *.xlsx *.xls);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls)')
-
-        # 添加切换目录选择的复选框（仅在非原生对话框时可用）
-        chk_dir = QCheckBox('选择目录（切换到目录选择模式）')
-        chk_dir.setToolTip('勾选后可以直接选择文件夹；不勾选则选择单个数据文件。')
-
-        layout = dlg.layout()
+        """选择输入文件或目录 - 委托给 BatchManager"""
         try:
-            layout.addWidget(chk_dir)
-        except Exception:
-            # 若布局操作失败，忽略并继续（兼容不同平台）
-            pass
-
-        def on_toggle_dir(checked):
-            if checked:
-                dlg.setFileMode(QFileDialog.Directory)
-                dlg.setOption(QFileDialog.ShowDirsOnly, True)
-            else:
-                dlg.setFileMode(QFileDialog.ExistingFile)
-                dlg.setOption(QFileDialog.ShowDirsOnly, False)
-
-        chk_dir.toggled.connect(on_toggle_dir)
-
-        if dlg.exec() != QDialog.Accepted:
-            return
-
-        selected = dlg.selectedFiles()
-        if not selected:
-            return
-
-        chosen_path = selected[0]
-        self.inp_batch_input.setText(chosen_path)
-        # 扫描并在界面上列出文件，用户可勾选要处理的文件
-        try:
-            self._scan_and_populate_files(chosen_path)
+            self.batch_manager.browse_batch_input()
+        except AttributeError:
+            logger.warning("BatchManager 未初始化")
         except Exception as e:
-            QMessageBox.warning(self, "扫描失败", f"扫描文件失败: {e}")
+            logger.error(f"浏览批处理输入失败: {e}")
 
     def browse_registry_db(self):
         """选择 format registry 数据库文件（可选）"""
@@ -2546,171 +1694,31 @@ class IntegratedAeroGUI(QMainWindow):
                 logger.debug("Failed to hide grp_registry_list after error", exc_info=True)
 
     def run_batch_processing(self):
-        """运行批处理"""
-        if not self.calculator:
-            QMessageBox.warning(self, "警告", '请先点击"应用配置"按钮!')
-            return
-
-        if not self.data_config:
-            reply = QMessageBox.question(
-                self, "未配置数据格式", 
-                '尚未配置数据格式，是否使用默认配置?\n\n'
-                '默认: 跳过0行, Fx-Fz=列0-2, Mx-Mz=列3-5',
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if reply == QMessageBox.Yes:
-                self.data_config = {
-                    'skip_rows': 0,
-                    'columns': {'alpha': None, 'fx': 0, 'fy': 1, 'fz': 2, 'mx': 3, 'my': 4, 'mz': 5},
-                    'passthrough': []
-                }
-            else:
-                return
-
-        input_path = Path(self.inp_batch_input.text())
-        if not input_path.exists():
-            QMessageBox.warning(self, "错误", "输入路径不存在")
-            return
-
-        # 确定文件列表
-        files_to_process = []
-        if input_path.is_file():
-            files_to_process = [input_path]
-            # 优先使用由浏览操作设置的 output_dir（self.output_dir），否则使用文件所在目录
-            output_dir = getattr(self, 'output_dir', input_path.parent)
-
-        elif input_path.is_dir():
-            # 若界面上存在由 _scan_and_populate_files 填充的复选框列表，则以复选框选择为准
-            if getattr(self, '_file_check_items', None):
-                files_to_process = []
-                for item in self._file_check_items:
-                    # 兼容可能只包含 cb 或 (cb, fp) 等不同结构的条目
-                    if not item:
-                        continue
-                    try:
-                        cb = item[0]
-                        fp = item[1]
-                    except (TypeError, IndexError):
-                        # 条目结构不符合预期时跳过，避免批处理直接崩溃
-                        continue
-                    if cb.isChecked():
-                        files_to_process.append(fp)
-                output_dir = getattr(self, 'output_dir', input_path)
-            else:
-                pattern = self.inp_pattern.text()
-                for file_path in input_path.rglob('*'):
-                    if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
-                        files_to_process.append(file_path)
-                output_dir = input_path
-
-            if not files_to_process:
-                QMessageBox.warning(self, "警告", f"未找到匹配 '{self.inp_pattern.text()}' 的文件或未选择任何文件")
-                return
-        else:
-            QMessageBox.warning(self, "错误", "无效的输入路径")
-            return
-
-        # 确认处理：先展示找到的文件列表，用户确认后再执行
-        file_list_text = "\n".join([str(p) for p in files_to_process])
-        confirm_dlg = QMessageBox(self)
-        confirm_dlg.setWindowTitle("确认处理")
-        confirm_dlg.setText(f"准备处理 {len(files_to_process)} 个文件\n输出目录: {output_dir}\n\n确认开始?")
-        # 将完整文件列表放在可展开的详细文本中，便于查看长列表
-        confirm_dlg.setDetailedText(file_list_text)
-        confirm_dlg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        reply = confirm_dlg.exec()
-
-        if reply != QMessageBox.Yes:
-            self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 已取消：用户未确认文件列表。")
-            return
-
-        # 开始处理
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
-        self.txt_batch_log.clear()
-        self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 开始批量处理...")
-        self.txt_batch_log.append(f"共 {len(files_to_process)} 个文件")
-
-        # 读取可选的 registry DB 路径（仅当启用 per-file 覆盖时生效）
-        registry_db_path = None
-        enable_sidecar = False
-        if hasattr(self, 'chk_enable_sidecar') and self.chk_enable_sidecar.isChecked():
-            enable_sidecar = True
-            if hasattr(self, 'inp_registry_db'):
-                val = self.inp_registry_db.text().strip()
-                if val:
-                    registry_db_path = val
-
-        self.batch_thread = BatchProcessThread(
-            self.calculator, files_to_process, output_dir, self.data_config, registry_db=registry_db_path
-        )
-        # 将 enable_sidecar 状态附到线程上以便日志或后续使用（线程内部使用 registry_db 来决定是否启用覆盖）
-        self.batch_thread.enable_sidecar = enable_sidecar
-
-        self.batch_thread.progress.connect(self.progress_bar.setValue)
-        self.batch_thread.log_message.connect(
-            lambda msg: self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"))
-        self.batch_thread.finished.connect(self.on_batch_finished)
-        self.batch_thread.error.connect(self.on_batch_error)
-        self.batch_thread.start()
-        # 锁定配置相关控件，提示用户当前运行使用启动时的配置快照
+        """运行批处理 - 委托给 BatchManager"""
         try:
-            self._set_controls_locked(True)
-            self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 注意：当前任务使用启动时配置；在运行期间对配置/格式的修改不会影响本次任务。")
-        except Exception:
-            logger.debug("Failed to lock controls at batch start", exc_info=True)
-        # 显示并启用取消按钮
-        try:
-            if hasattr(self, 'btn_cancel'):
-                self.btn_cancel.setVisible(True)
-                self.btn_cancel.setEnabled(True)
-        except Exception:
-            logger.debug("Failed to show/enable cancel button", exc_info=True)
+            self.batch_manager.run_batch_processing()
+        except AttributeError:
+            logger.warning("BatchManager 未初始化")
+        except Exception as e:
+            logger.error(f"运行批处理失败: {e}")
 
     def on_batch_finished(self, message):
-        """批处理完成"""
+        """批处理完成 - 委托给 BatchManager"""
         try:
-            self._set_controls_locked(False)
-        except Exception:
-            logger.debug("Failed to unlock controls on batch finished", exc_info=True)
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ {message}")
-        # 在状态栏显示完成信息并标注时间（短暂显示）
-        try:
-            self.statusBar().showMessage(f"批量处理完成 - {timestamp}", 8000)
-        except Exception:
-            pass
-        # 同时弹出非模态通知以便用户注意
-        try:
-            msg = QMessageBox(self)
-            msg.setWindowTitle('批量处理完成')
-            msg.setText(message)
-            msg.setIcon(QMessageBox.Information)
-            msg.setModal(False)
-            msg.show()
-            # 保持引用，防止被垃圾回收
-            self._last_nonmodal_msg = msg
-        except Exception:
-            logger.debug("无法显示非模态完成消息", exc_info=True)
-        # 隐藏取消按钮并禁用
-        try:
-            if hasattr(self, 'btn_cancel'):
-                self.btn_cancel.setVisible(False)
-                self.btn_cancel.setEnabled(False)
-        except Exception:
-            logger.debug("Failed to hide/disable cancel button", exc_info=True)
+            self.batch_manager.on_batch_finished(message)
+        except AttributeError:
+            logger.warning("BatchManager 未初始化")
+        except Exception as e:
+            logger.error(f"处理批处理完成事件失败: {e}")
 
     def on_batch_error(self, error_msg):
-        """批处理出错"""
+        """批处理出错 - 委托给 BatchManager"""
         try:
-            self._set_controls_locked(False)
-        except Exception:
-            logger.debug("Failed to unlock controls on batch error", exc_info=True)
-        self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✗ 错误: {error_msg}")
-        self.progress_bar.setVisible(False)
-        self.statusBar().showMessage("批量处理失败")
-        # 隐藏并禁用取消按钮
-        try:
+            self.batch_manager.on_batch_error(error_msg)
+        except AttributeError:
+            logger.warning("BatchManager 未初始化")
+        except Exception as e:
+            logger.error(f"处理批处理错误事件失败: {e}")
             if hasattr(self, 'btn_cancel'):
                 self.btn_cancel.setVisible(False)
                 self.btn_cancel.setEnabled(False)
@@ -2731,117 +1739,22 @@ class IntegratedAeroGUI(QMainWindow):
 
     BUTTON_LAYOUT_THRESHOLD = 720
     def update_button_layout(self, threshold=None):
-        """根据窗口宽度在网格中切换按钮位置。
-
-        参数 `threshold` 的单位为像素（px）。当窗口宽度大于或等于阈值时，
-        按钮按一行两列排列；当宽度小于阈值时，按钮按两行单列排列（便于窄屏显示）。
-
-        默认阈值 720px 由类常量 ``BUTTON_LAYOUT_THRESHOLD`` 提供，可根据实际布局和用户屏幕密度微调该值。
-        可根据实际布局和用户屏幕密度微调该值。
-        """
-        if threshold is None:
-            threshold = self.BUTTON_LAYOUT_THRESHOLD
-        
-        if not hasattr(self, 'btn_widget'):
-            return
+        """根据窗口宽度在网格中切换按钮位置 - 委托给 LayoutManager"""
         try:
-            w = self.width()
-        except Exception:
-            w = threshold
-
-        # 取出已有按钮实例
-        btns = [getattr(self, 'btn_config_format', None), getattr(self, 'btn_batch', None), getattr(self, 'btn_cancel', None)]
-
-        # 安全地移除旧布局但保留按钮 widget 本身，避免双重删除或内存泄漏。
-        # 我们会从旧布局中取出 widget 引用并在最后调用 deleteLater() 删除旧布局对象。
-        # 我们不再替换已有的 layout 对象（self.btn_grid），而是复用并清空它的内容
-        extracted_widgets = []
-        grid = getattr(self, 'btn_grid', None)
-        if grid is None:
-            grid = QGridLayout()
-            grid.setSpacing(8)
-            grid.setContentsMargins(0, 0, 0, 0)
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-            self.btn_grid = grid
-        else:
-            # 从现有 grid 中提取 widget（不删除 layout 本身）
-            while grid.count():
-                item = grid.takeAt(0)
-                wdg = item.widget()
-                if wdg:
-                    try:
-                        grid.removeWidget(wdg)
-                    except Exception:
-                        logger.debug("grid.removeWidget failed", exc_info=True)
-                    extracted_widgets.append(wdg)
-            # 重新确保列伸缩
-            try:
-                grid.setColumnStretch(0, 1)
-                grid.setColumnStretch(1, 1)
-            except Exception:
-                logger.debug("grid.setColumnStretch failed", exc_info=True)
-
-        if w >= threshold:
-            # 宽窗口：一行两列
-            # 如果我们刚才从旧布局提取了 widgets，优先使用它们以保持实例不变
-            if extracted_widgets:
-                if len(extracted_widgets) >= 1 and extracted_widgets[0]:
-                    grid.addWidget(extracted_widgets[0], 0, 0)
-                if len(extracted_widgets) >= 2 and extracted_widgets[1]:
-                    grid.addWidget(extracted_widgets[1], 0, 1)
-            else:
-                if btns[0]:
-                    grid.addWidget(btns[0], 0, 0)
-                if btns[1]:
-                    grid.addWidget(btns[1], 0, 1)
-            self._btn_orientation = 'horizontal'
-        else:
-            # 窄窗口：两行布局（第一列靠左）
-            if extracted_widgets:
-                if len(extracted_widgets) >= 1 and extracted_widgets[0]:
-                    grid.addWidget(extracted_widgets[0], 0, 0)
-                if len(extracted_widgets) >= 2 and extracted_widgets[1]:
-                    grid.addWidget(extracted_widgets[1], 1, 0)
-            else:
-                if btns[0]:
-                    grid.addWidget(btns[0], 0, 0)
-                if btns[1]:
-                    grid.addWidget(btns[1], 1, 0)
-            self._btn_orientation = 'vertical'
-
-        # 将清理后的 grid 重新应用到 btn_widget（若尚未设置）
-        if self.btn_widget.layout() is not grid:
-            try:
-                self.btn_widget.setLayout(grid)
-            except Exception:
-                logger.debug("btn_widget.setLayout failed", exc_info=True)
-        # 确保按钮容器在布局更改后更新尺寸与几何，以免在窗口状态切换时被临时挤出视口
-        try:
-            self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-            # 尝试通过标准方式强制刷新布局：使布局失效并激活布局，更新几何信息
-            cw = self.centralWidget()
-            if cw:
-                layout = cw.layout()
-                if layout:
-                    layout.invalidate()
-                    layout.activate()
-                cw.updateGeometry()
-                for child in cw.findChildren(QWidget):
-                    child.updateGeometry()
-            try:
-                from PySide6.QtWidgets import QApplication
-                QApplication.processEvents()
-            except Exception:
-                logger.debug("QApplication.processEvents failed in update_button_layout", exc_info=True)
-        except Exception:
-            logger.debug("update_button_layout failed during size policy/layout refresh", exc_info=True)
+            self.layout_manager.update_button_layout(threshold)
+        except AttributeError:
+            logger.warning("LayoutManager 未初始化")
+        except Exception as e:
+            logger.error(f"更新按钮布局失败: {e}")
 
     def resizeEvent(self, event):
+        """窗口大小改变事件 - 委托给 LayoutManager"""
         try:
-            self.update_button_layout()
+            self.layout_manager.on_resize_event(event)
+        except AttributeError:
+            logger.debug("LayoutManager 未初始化")
         except Exception:
-            logger.debug("resizeEvent update_button_layout failed", exc_info=True)
+            logger.debug("resizeEvent 处理失败", exc_info=True)
         return super().resizeEvent(event)
 
     def showEvent(self, event):
@@ -3011,86 +1924,22 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("_toggle_experimental_visibility failed", exc_info=True)
 
     def _on_target_part_changed(self):
-        """当用户在下拉框选择不同 Part 时，更新 Variant 的上限并刷新 Target 表单。"""
+        """当用户在下拉框选择不同 Part 时 - 委托给 PartManager"""
         try:
-            if not hasattr(self, 'current_config') or self.current_config is None:
-                return
-            if not isinstance(self.current_config, ProjectData):
-                return
-            # 在切换前保存当前正在编辑的 Target Part，避免丢失修改
-            try:
-                self._save_current_target_part()
-            except Exception:
-                pass
-            sel = self.cmb_target_parts.currentText()
-            variants = self.current_config.target_parts.get(sel, [])
-            max_idx = max(0, len(variants) - 1)
-            self.spin_target_variant.setRange(0, max_idx)
-            # 尝试用第一个 variant 填充 Target 表单
-            if variants:
-                frame = variants[0]
-                cs = frame.coord_system
-                mc = frame.moment_center or [0.0, 0.0, 0.0]
-                # 程序性设置文本时屏蔽信号，避免触发重名检测
-                try:
-                    self.tgt_part_name.blockSignals(True)
-                    self.tgt_part_name.setText(frame.part_name)
-                finally:
-                    try:
-                        self.tgt_part_name.blockSignals(False)
-                    except Exception:
-                        pass
-                self.tgt_ox.setValue(float(cs.origin[0]))
-                self.tgt_oy.setValue(float(cs.origin[1]))
-                self.tgt_oz.setValue(float(cs.origin[2]))
-                self.tgt_xx.setValue(float(cs.x_axis[0]))
-                self.tgt_xy.setValue(float(cs.x_axis[1]))
-                self.tgt_xz.setValue(float(cs.x_axis[2]))
-                self.tgt_yx.setValue(float(cs.y_axis[0]))
-                self.tgt_yy.setValue(float(cs.y_axis[1]))
-                self.tgt_yz.setValue(float(cs.y_axis[2]))
-                self.tgt_zx.setValue(float(cs.z_axis[0]))
-                self.tgt_zy.setValue(float(cs.z_axis[1]))
-                self.tgt_zz.setValue(float(cs.z_axis[2]))
-                # 根据控件类型（QLineEdit 或 QDoubleSpinBox）设置 cref/bref/sref/q
-                cref_text = str(float(frame.c_ref or 1.0))
-                bref_text = str(float(frame.b_ref or 1.0))
-                sref_text = str(frame.s_ref or 10.0)
-                q_text = str(float(frame.q or 1000.0))
-                cref_val = float(frame.c_ref or 1.0)
-                bref_val = float(frame.b_ref or 1.0)
-                sref_val = float(frame.s_ref or 10.0)
-                q_val = float(frame.q or 1000.0)
-                for widget, text, value in [
-                    (self.tgt_cref, cref_text, cref_val),
-                    (self.tgt_bref, bref_text, bref_val),
-                    (self.tgt_sref, sref_text, sref_val),
-                    (self.tgt_q, q_text, q_val),
-                ]:
-                    if hasattr(widget, "setValue"):
-                        widget.setValue(value)
-                    elif hasattr(widget, "setText"):
-                        widget.setText(text)
-            # 更新预览
-            try:
-                self.update_config_preview()
-            except Exception:
-                logger.debug("update_config_preview failed in _on_target_part_changed", exc_info=True)
-            # 记录当前选中的 target part 名称，供外部编辑同步使用
-            try:
-                self._current_target_part_name = self.cmb_target_parts.currentText()
-            except Exception:
-                self._current_target_part_name = None
-        except Exception:
-            logger.debug("_on_target_part_changed failed", exc_info=True)
+            self.part_manager.on_target_part_changed()
+        except AttributeError:
+            logger.debug("PartManager 未初始化")
+        except Exception as e:
+            logger.debug(f"Target Part 切换失败: {e}")
 
     def _add_source_part(self):
-        """在原始项目或内存结构中添加一个新的 Source Part，并刷新下拉列表。"""
+        """在原始项目或内存结构中添加一个新的 Source Part - 委托给 PartManager"""
         try:
-            # 确保有原始 dict
-            if not getattr(self, '_raw_project_dict', None):
-                # 构建一个基础结构
-                self._raw_project_dict = {'Source': {'Parts': []}, 'Target': {'Parts': []}}
+            self.part_manager.add_source_part()
+        except AttributeError:
+            logger.warning("PartManager 未初始化")
+        except Exception as e:
+            logger.error(f"添加 Source Part 失败: {e}")
             parts = self._raw_project_dict.setdefault('Source', {}).setdefault('Parts', [])
             # 基于当前 UI 构造一个新 part，先生成不重复的 PartName
             preferred_name = self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource'
@@ -3172,152 +2021,42 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("_add_source_part failed", exc_info=True)
 
     def _remove_source_part(self):
-        """从原始项目或内存结构中移除当前选中的 Source Part 并刷新下拉列表。"""
+        """从原始项目或内存结构中移除当前选中的 Source Part - 委托给 PartManager"""
         try:
-            sel = self.cmb_source_parts.currentText() if self.cmb_source_parts.count() > 0 else None
-            if not sel:
-                return
-            if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
-                parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
-                idx = next((i for i, p in enumerate(parts) if p.get('PartName') == sel), None)
-                if idx is not None:
-                    parts.pop(idx)
-            # 从 combo 中移除
-            try:
-                i = self.cmb_source_parts.currentIndex()
-                self.cmb_source_parts.removeItem(i)
-            except Exception:
-                pass
-            if self.cmb_source_parts.count() == 0:
-                self.cmb_source_parts.setVisible(False)
-            try:
-                if getattr(self, '_raw_project_dict', None):
-                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
-            except Exception:
-                pass
-        except Exception:
-            logger.debug("_remove_source_part failed", exc_info=True)
+            self.part_manager.remove_source_part()
+        except AttributeError:
+            logger.warning("PartManager 未初始化")
+        except Exception as e:
+            logger.error(f"删除 Source Part 失败: {e}")
 
     def _add_target_part(self):
+        """添加新 Target Part - 委托给 PartManager"""
         try:
-            if not getattr(self, '_raw_project_dict', None):
-                self._raw_project_dict = {'Source': {'Parts': []}, 'Target': {'Parts': []}}
-            parts = self._raw_project_dict.setdefault('Target', {}).setdefault('Parts', [])
-            preferred_name = self.tgt_part_name.text() if hasattr(self, 'tgt_part_name') else 'NewTarget'
-            existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
-            name = preferred_name
-            if name in existing_names:
-                # 名称已存在，提示用户选择：覆盖 / 创建唯一名 / 取消
-                msg = QMessageBox(self)
-                msg.setWindowTitle('已存在的 Part')
-                msg.setText(f"Target Part 名称 '{preferred_name}' 已存在。请选择操作：")
-                btn_overwrite = msg.addButton('覆盖', QMessageBox.AcceptRole)
-                btn_unique = msg.addButton('创建唯一名', QMessageBox.DestructiveRole)
-                btn_cancel = msg.addButton('取消', QMessageBox.RejectRole)
-                msg.exec()
-                clicked = msg.clickedButton()
-                if clicked == btn_cancel:
-                    return
-                if clicked == btn_overwrite:
-                    # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
-                    for p in parts:
-                        if p.get('PartName') == preferred_name:
-                            p['Variants'] = [
-                                {
-                                    'PartName': preferred_name,
-                                    'CoordSystem': {
-                                        'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
-                                        'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                                        'Y': [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                                        'Z': [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
-                                    },
-                                    'MomentCenter': [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
-                                    'Cref': float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
-                                    'Bref': float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
-                                    'Q': float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
-                                    'S': float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
-                                }
-                            ]
-                            break
-                    try:
-                        self.current_config = ProjectData.from_dict(self._raw_project_dict)
-                    except Exception:
-                        pass
-                    return
-                # 创建唯一名
-                i = 1
-                while f"{preferred_name}_{i}" in existing_names:
-                    i += 1
-                name = f"{preferred_name}_{i}"
-
-            new_part = {
-                'PartName': name,
-                'Variants': [
-                    {
-                        'PartName': name,
-                        'CoordSystem': {
-                            'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
-                            'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                            'Y': [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                            'Z': [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
-                        },
-                        'MomentCenter': [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)],
-                        'Cref': float(self.tgt_cref.text()) if hasattr(self, 'tgt_cref') else 1.0,
-                        'Bref': float(self.tgt_bref.text()) if hasattr(self, 'tgt_bref') else 1.0,
-                        'Q': float(self.tgt_q.text()) if hasattr(self, 'tgt_q') else 1000.0,
-                        'S': float(self.tgt_sref.text()) if hasattr(self, 'tgt_sref') else 10.0
-                    }
-                ]
-            }
-            parts.append(new_part)
-            self.cmb_target_parts.addItem(new_part['PartName'])
-            self.cmb_target_parts.setVisible(True)
-            try:
-                self.current_config = ProjectData.from_dict(self._raw_project_dict)
-            except Exception:
-                pass
-        except Exception:
-            logger.debug("_add_target_part failed", exc_info=True)
+            self.part_manager.add_target_part()
+        except AttributeError:
+            logger.warning("PartManager 未初始化")
+        except Exception as e:
+            logger.error(f"添加 Target Part 失败: {e}")
 
     def _remove_target_part(self):
+        """删除当前 Target Part - 委托给 PartManager"""
         try:
-            sel = self.cmb_target_parts.currentText() if self.cmb_target_parts.count() > 0 else None
-            if not sel:
-                return
-            if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
-                parts = self._raw_project_dict.get('Target', {}).get('Parts', [])
-                idx = next((i for i, p in enumerate(parts) if p.get('PartName') == sel), None)
-                if idx is not None:
-                    parts.pop(idx)
-            try:
-                i = self.cmb_target_parts.currentIndex()
-                self.cmb_target_parts.removeItem(i)
-            except Exception:
-                pass
-            if self.cmb_target_parts.count() == 0:
-                self.cmb_target_parts.setVisible(False)
-            try:
-                if getattr(self, '_raw_project_dict', None):
-                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
-            except Exception:
-                pass
+            self.part_manager.remove_target_part()
+        except AttributeError:
+            logger.warning("PartManager 未初始化")
+        except Exception as e:
+            logger.error(f"删除 Target Part 失败: {e}")
         except Exception:
             logger.debug("_remove_target_part failed", exc_info=True)
 
     def _on_source_part_changed(self):
-        """当用户在 Source 下拉选择不同 Part 时，更新 Variant 上限并刷新 Source 表单。"""
+        """当用户在 Source 下拉选择不同 Part 时 - 委托给 PartManager"""
         try:
-            # 在切换前先保存当前正在编辑的 Source Part，避免数据丢失
-            try:
-                self._save_current_source_part()
-            except Exception:
-                pass
-            if not hasattr(self, 'current_config') or self.current_config is None:
-                return
-            if not isinstance(self.current_config, ProjectData):
-                return
-            sel = self.cmb_source_parts.currentText()
-            variants = self.current_config.source_parts.get(sel, [])
+            self.part_manager.on_source_part_changed()
+        except AttributeError:
+            logger.debug("PartManager 未初始化")
+        except Exception as e:
+            logger.debug(f"Source Part 切换失败: {e}")
             max_idx = max(0, len(variants) - 1)
             self.spin_source_variant.setRange(0, max_idx)
             if variants:
