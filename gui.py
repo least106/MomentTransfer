@@ -154,12 +154,17 @@ class IntegratedAeroGUI(QMainWindow):
                     logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
                 
                 logger.debug("延迟panel创建完成")
+                
+                # panel创建完成，重置初始化标志
+                self._is_initializing = False
             finally:
                 # 恢复应用信号
                 if app_blocked and app:
                     app.blockSignals(False)
         except Exception as e:
             logger.error(f"延迟panel创建失败: {e}", exc_info=True)
+            # 即使失败也要重置标志
+            self._is_initializing = False
 
     def create_config_panel(self):
         """创建左侧配置编辑面板"""
@@ -1760,9 +1765,9 @@ class IntegratedAeroGUI(QMainWindow):
             try:
                 QTimer.singleShot(50, self.update_button_layout)
                 QTimer.singleShot(120, self._force_layout_refresh)
-                # 在所有初始化定时器完成后（150ms）才重置 _is_initializing
-                # 这样可以确保 showEvent 期间的任何操作都不会触发弹窗
-                QTimer.singleShot(150, lambda: setattr(self, '_is_initializing', False))
+                # 在所有初始化定时器完成后（300ms，晚于panel创建的200ms）才重置 _is_initializing
+                # 这样可以确保 panel 创建期间的任何操作都不会触发弹窗
+                QTimer.singleShot(300, lambda: setattr(self, '_is_initializing', False))
             except Exception:
                 logger.debug("showEvent scheduling failed", exc_info=True)
                 # 如果定时器设置失败，立即重置标志以免永久阻塞弹窗
