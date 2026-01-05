@@ -274,7 +274,8 @@ class IntegratedAeroGUI(QMainWindow):
             pass
 
         # Part Name
-        self.tgt_part_name = QLineEdit("TestModel")
+        # 使用 _create_input 以保持与 Source 的输入框样式与宽度一致
+        self.tgt_part_name = self._create_input("TestModel")
         try:
             self.tgt_part_name.textChanged.connect(self._on_tgt_partname_changed)
         except Exception:
