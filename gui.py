@@ -174,7 +174,7 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("无法连接 src_part_name.textChanged", exc_info=True)
         self.cmb_source_parts = QComboBox()
-        self.cmb_source_parts.setVisible(False)
+        self.cmb_source_parts.setVisible(True)
         self.spin_source_variant = QSpinBox()
         self.spin_source_variant.setRange(0, 100)
         self.spin_source_variant.setValue(0)
@@ -283,7 +283,7 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 当加载 ProjectData 时，展示可选的 Part 下拉框与 Variant 索引选择器
         self.cmb_target_parts = QComboBox()
-        self.cmb_target_parts.setVisible(False)
+        self.cmb_target_parts.setVisible(True)
         self.spin_target_variant = QSpinBox()
         self.spin_target_variant.setRange(0, 100)
         self.spin_target_variant.setValue(0)
