@@ -797,8 +797,8 @@ class IntegratedAeroGUI(QMainWindow):
     def _create_input(self, default_value):
         """创建输入框"""
         inp = QLineEdit(default_value)
-        # 提高最大宽度以适配高 DPI 和更长的数值输入，同时使用合适的 sizePolicy
-        inp.setMaximumWidth(120)
+        # 提高最大宽度以适配高 DPI 和更长的文本输入，使 Source/Target 输入框长度一致
+        inp.setMaximumWidth(220)
         try:
             inp.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         except Exception:

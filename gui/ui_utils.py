@@ -20,8 +20,8 @@ def create_input(default_value: str) -> QLineEdit:
         QLineEdit 实例
     """
     inp = QLineEdit(default_value)
-    # 提高最大宽度以适配高 DPI 和更长的数值输入，同时使用合适的 sizePolicy
-    inp.setMaximumWidth(120)
+    # 提高最大宽度以适配高 DPI 和更长的文本输入，统一 Part Name 输入长度
+    inp.setMaximumWidth(220)
     try:
         inp.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
     except Exception:
