@@ -37,9 +37,13 @@ class ConfigManager:
             with open(fname, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # 保存原始字典以便编辑和写回
+            # 保存原始字典以便编辑和写回，并同步到 gui 供 PartManager/_save_current_* 使用
             self._raw_project_dict = data
-            
+            try:
+                self.gui._raw_project_dict = data
+            except Exception:
+                logger.debug("同步 _raw_project_dict 到 gui 失败", exc_info=True)
+
             # 解析为 ProjectData
             project = ProjectData.from_dict(data)
             self.gui.current_config = project
@@ -55,6 +59,10 @@ class ConfigManager:
             if self.gui.cmb_target_parts.count() > 0:
                 self.gui.cmb_target_parts.setVisible(True)
                 first = self.gui.cmb_target_parts.currentText() or self.gui.cmb_target_parts.itemText(0)
+                try:
+                    self.gui._current_target_part_name = first
+                except Exception:
+                    pass
                 variants = project.target_parts.get(first, [])
                 self.gui.spin_target_variant.setRange(0, max(0, len(variants) - 1))
             
@@ -67,6 +75,10 @@ class ConfigManager:
                 if self.gui.cmb_source_parts.count() > 0:
                     self.gui.cmb_source_parts.setVisible(True)
                     firsts = self.gui.cmb_source_parts.currentText() or self.gui.cmb_source_parts.itemText(0)
+                    try:
+                        self.gui._current_source_part_name = firsts
+                    except Exception:
+                        pass
                     s_variants = project.source_parts.get(firsts, [])
                     self.gui.spin_source_variant.setRange(0, max(0, len(s_variants) - 1))
             except Exception:
