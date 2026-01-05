@@ -102,10 +102,19 @@ class IntegratedAeroGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # 创建splitter容器，但延迟添加panel
-        self.splitter = QSplitter(Qt.Horizontal)
-        
-        main_layout.addWidget(self.splitter)
+        # 立即创建splitter和panel，避免延迟加载导致的启动缓慢
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(self.create_config_panel())
+        splitter.addWidget(self.create_operation_panel())
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 5)
+        # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
+        try:
+            splitter.setSizes([520, 880])
+        except Exception:
+            logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
+
+        main_layout.addWidget(splitter)
         self.statusBar().showMessage("就绪 - 请加载或创建配置")
 
         # 根据当前窗口宽度设置按钮初始布局
@@ -114,57 +123,6 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             # 若方法尚未定义或出现异常，记录调试堆栈以便诊断，但不阻止 UI 启动
             logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
-        
-        # 延迟创建真实的panel，避免初始化期间的干扰
-        # 等待showEvent完全执行后再创建panel，这样可以避免任何初始化期间的弹窗
-        QTimer.singleShot(200, self._create_panels_delayed)
-
-    def _create_panels_delayed(self):
-        """延迟创建panel，等待初始化完成后再创建，避免初始化期间的干扰"""
-        try:
-            # 再次禁用应用信号，确保panel创建期间没有信号触发
-            app = QApplication.instance()
-            app_blocked = False
-            if app:
-                app.blockSignals(True)
-                app_blocked = True
-            
-            try:
-                config_panel = self.create_config_panel()
-                operation_panel = self.create_operation_panel()
-                
-                # 关闭任何意外出现的顶层窗口（除了主窗口）
-                for widget in QApplication.topLevelWidgets():
-                    if widget is not self and isinstance(widget, QDialog):
-                        logger.debug(f"发现意外的顶层对话框，正在关闭: {widget.windowTitle()}")
-                        try:
-                            widget.close()
-                        except Exception:
-                            pass
-                
-                self.splitter.addWidget(config_panel)
-                self.splitter.addWidget(operation_panel)
-                self.splitter.setStretchFactor(0, 5)
-                self.splitter.setStretchFactor(1, 5)
-                
-                # 设置 splitter 大小
-                try:
-                    self.splitter.setSizes([520, 880])
-                except Exception:
-                    logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
-                
-                logger.debug("延迟panel创建完成")
-                
-                # panel创建完成，重置初始化标志
-                self._is_initializing = False
-            finally:
-                # 恢复应用信号
-                if app_blocked and app:
-                    app.blockSignals(False)
-        except Exception as e:
-            logger.error(f"延迟panel创建失败: {e}", exc_info=True)
-            # 即使失败也要重置标志
-            self._is_initializing = False
 
     def create_config_panel(self):
         """创建左侧配置编辑面板"""
@@ -1765,9 +1723,9 @@ class IntegratedAeroGUI(QMainWindow):
             try:
                 QTimer.singleShot(50, self.update_button_layout)
                 QTimer.singleShot(120, self._force_layout_refresh)
-                # 在所有初始化定时器完成后（300ms，晚于panel创建的200ms）才重置 _is_initializing
-                # 这样可以确保 panel 创建期间的任何操作都不会触发弹窗
-                QTimer.singleShot(300, lambda: setattr(self, '_is_initializing', False))
+                # 在所有初始化定时器完成后（150ms）才重置 _is_initializing
+                # panel已经在init_ui中立即创建，所以可以较快重置标志
+                QTimer.singleShot(150, lambda: setattr(self, '_is_initializing', False))
             except Exception:
                 logger.debug("showEvent scheduling failed", exc_info=True)
                 # 如果定时器设置失败，立即重置标志以免永久阻塞弹窗
