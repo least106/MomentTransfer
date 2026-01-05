@@ -17,6 +17,7 @@ class LayoutManager:
         """初始化布局管理器"""
         self.gui = gui_instance
         self._current_threshold = self.BUTTON_LAYOUT_THRESHOLD
+        self._is_updating_layout = False  # 防止重入标志
     
     def update_button_layout(self, threshold=None):
         """根据窗口宽度在网格中切换按钮位置
@@ -27,15 +28,19 @@ class LayoutManager:
         默认阈值 720px 由类常量 ``BUTTON_LAYOUT_THRESHOLD`` 提供，
         可根据实际布局和用户屏幕密度微调该值。
         """
-        if threshold is None:
-            threshold = self._current_threshold
-        else:
-            self._current_threshold = threshold
-        
-        if not hasattr(self.gui, 'btn_widget'):
+        # 防止重入导致无限循环
+        if self._is_updating_layout:
             return
         
+        self._is_updating_layout = True
         try:
+            if threshold is None:
+                threshold = self._current_threshold
+            else:
+                self._current_threshold = threshold
+            
+            if not hasattr(self.gui, 'btn_widget'):
+                return  # 如果没有按钮容器，直接返回
             w = self.gui.width()
         except Exception:
             w = threshold
@@ -111,25 +116,28 @@ class LayoutManager:
             except Exception:
                 logger.debug("btn_widget.setLayout failed", exc_info=True)
         
-        # 确保按钮容器在布局更改后更新尺寸与几何，以免在窗口状态切换时被临时挤出视口
-        try:
-            self.gui.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-            # 尝试通过标准方式强制刷新布局：使布局失效并激活布局，更新几何信息
-            cw = self.gui.centralWidget()
-            if cw:
-                layout = cw.layout()
-                if layout:
-                    layout.invalidate()
-                    layout.activate()
-                cw.updateGeometry()
-                for child in cw.findChildren(QWidget):
-                    child.updateGeometry()
+            # 确保按钮容器在布局更改后更新尺寸与几何，以免在窗口状态切换时被临时挤出视口
             try:
-                QApplication.processEvents()
+                self.gui.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+                # 尝试通过标准方式强制刷新布局：使布局失效并激活布局，更新几何信息
+                cw = self.gui.centralWidget()
+                if cw:
+                    layout = cw.layout()
+                    if layout:
+                        layout.invalidate()
+                        layout.activate()
+                    cw.updateGeometry()
+                    # 注意：不递归更新所有子控件，避免触发级联 resize 事件导致无限循环
+                    # for child in cw.findChildren(QWidget):
+                    #     child.updateGeometry()
+                try:
+                    QApplication.processEvents()
+                except Exception:
+                    logger.debug("QApplication.processEvents failed in update_button_layout", exc_info=True)
             except Exception:
-                logger.debug("QApplication.processEvents failed in update_button_layout", exc_info=True)
-        except Exception:
-            logger.debug("update_button_layout failed during size policy/layout refresh", exc_info=True)
+                logger.debug("update_button_layout failed during size policy/layout refresh", exc_info=True)
+            finally:
+                self._is_updating_layout = False
     
     def on_resize_event(self, event):
         """窗口大小改变事件"""
