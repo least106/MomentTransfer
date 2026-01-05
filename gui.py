@@ -510,10 +510,11 @@ class IntegratedAeroGUI(QMainWindow):
         registry_row.addWidget(self.chk_enable_sidecar)
         # 记录 per-file 开关状态，并提供实例级回调以避免 AttributeError
         self._perfile_enabled = False
-        self._set_perfile_enabled = lambda checked: setattr(self, "_perfile_enabled", bool(checked))
+        def _set_perfile_enabled(checked: bool) -> None:
+            self._perfile_enabled = bool(checked)
         try:
-            self.chk_enable_sidecar.toggled.connect(self._set_perfile_enabled)
-            self._set_perfile_enabled(False)
+            self.chk_enable_sidecar.toggled.connect(_set_perfile_enabled)
+            _set_perfile_enabled(False)
         except Exception:
             logger.debug("Failed to connect chk_enable_sidecar toggled signal", exc_info=True)
 
@@ -1613,11 +1614,12 @@ class IntegratedAeroGUI(QMainWindow):
             logger.warning("BatchManager 未初始化")
         except Exception as e:
             logger.error(f"处理批处理错误事件失败: {e}")
-            if hasattr(self, 'btn_cancel'):
-                self.btn_cancel.setVisible(False)
-                self.btn_cancel.setEnabled(False)
-        except Exception:
-            logger.debug("Failed to hide/disable cancel button after error", exc_info=True)
+            try:
+                if hasattr(self, 'btn_cancel'):
+                    self.btn_cancel.setVisible(False)
+                    self.btn_cancel.setEnabled(False)
+            except Exception:
+                logger.debug("Failed to hide/disable cancel button after error", exc_info=True)
 
         # 友好的错误提示，包含可行建议
         try:
@@ -1830,11 +1832,28 @@ class IntegratedAeroGUI(QMainWindow):
         """在原始项目或内存结构中添加一个新的 Source Part - 委托给 PartManager"""
         try:
             self.part_manager.add_source_part()
+            return  # 成功则直接返回
         except AttributeError:
-            logger.warning("PartManager 未初始化")
+            # PartManager 未初始化，继续执行 fallback 逻辑
+            logger.warning("PartManager 未初始化，使用 fallback 逻辑")
         except Exception as e:
-            logger.error(f"添加 Source Part 失败: {e}")
-            parts = self._raw_project_dict.setdefault('Source', {}).setdefault('Parts', [])
+            # PartManager 存在但执行失败，记录错误并终止，不执行 fallback
+            logger.error(f"添加 Source Part 失败: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "添加失败",
+                f"添加 Source Part 时发生错误:\n{str(e)}"
+            )
+            return  # 不继续执行 fallback
+        
+        # 只有在 AttributeError 时才执行以下 fallback 逻辑
+        raw_project = getattr(self, '_raw_project_dict', None)
+            if not isinstance(raw_project, dict):
+                logger.debug(
+                    "_add_source_part fallback aborted: _raw_project_dict 未初始化或不是 dict"
+                )
+                return
+            parts = raw_project.setdefault('Source', {}).setdefault('Parts', [])
             # 基于当前 UI 构造一个新 part，先生成不重复的 PartName
             preferred_name = self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource'
             existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
@@ -1855,6 +1874,27 @@ class IntegratedAeroGUI(QMainWindow):
                     # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
                     for p in parts:
                         if p.get('PartName') == preferred_name:
+                            try:
+                                cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
+                            except (ValueError, AttributeError):
+                                logger.warning(f"无效的 Cref 值: {getattr(self.src_cref, 'text', lambda: 'N/A')()}，使用默认值 1.0")
+                                cref_val = 1.0
+                            try:
+                                bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
+                            except (ValueError, AttributeError):
+                                logger.warning(f"无效的 Bref 值，使用默认值 1.0")
+                                bref_val = 1.0
+                            try:
+                                q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
+                            except (ValueError, AttributeError):
+                                logger.warning(f"无效的 Q 值，使用默认值 1000.0")
+                                q_val = 1000.0
+                            try:
+                                s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
+                            except (ValueError, AttributeError):
+                                logger.warning(f"无效的 S 值，使用默认值 10.0")
+                                s_val = 10.0
+                            
                             p['Variants'] = [
                                 {
                                     'PartName': preferred_name,
@@ -1865,10 +1905,10 @@ class IntegratedAeroGUI(QMainWindow):
                                         'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
                                     },
                                     'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                                    'Cref': float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
-                                    'Bref': float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
-                                    'Q': float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
-                                    'S': float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
+                                    'Cref': cref_val,
+                                    'Bref': bref_val,
+                                    'Q': q_val,
+                                    'S': s_val
                                 }
                             ]
                             break
@@ -1883,6 +1923,28 @@ class IntegratedAeroGUI(QMainWindow):
                     i += 1
                 name = f"{preferred_name}_{i}"
 
+            # 安全获取参数值，带错误处理
+            try:
+                cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
+            except (ValueError, AttributeError):
+                logger.warning(f"无效的 Cref 值，使用默认值 1.0")
+                cref_val = 1.0
+            try:
+                bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
+            except (ValueError, AttributeError):
+                logger.warning(f"无效的 Bref 值，使用默认值 1.0")
+                bref_val = 1.0
+            try:
+                q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
+            except (ValueError, AttributeError):
+                logger.warning(f"无效的 Q 值，使用默认值 1000.0")
+                q_val = 1000.0
+            try:
+                s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
+            except (ValueError, AttributeError):
+                logger.warning(f"无效的 S 值，使用默认值 10.0")
+                s_val = 10.0
+            
             new_part = {
                 'PartName': name,
                 'Variants': [
@@ -1895,10 +1957,10 @@ class IntegratedAeroGUI(QMainWindow):
                             'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
                         },
                         'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
-                        'Cref': float(self.src_cref.text()) if hasattr(self, 'src_cref') else 1.0,
-                        'Bref': float(self.src_bref.text()) if hasattr(self, 'src_bref') else 1.0,
-                        'Q': float(self.src_q.text()) if hasattr(self, 'src_q') else 1000.0,
-                        'S': float(self.src_sref.text()) if hasattr(self, 'src_sref') else 10.0
+                        'Cref': cref_val,
+                        'Bref': bref_val,
+                        'Q': q_val,
+                        'S': s_val
                     }
                 ]
             }
@@ -1940,8 +2002,6 @@ class IntegratedAeroGUI(QMainWindow):
             logger.warning("PartManager 未初始化")
         except Exception as e:
             logger.error(f"删除 Target Part 失败: {e}")
-        except Exception:
-            logger.debug("_remove_target_part failed", exc_info=True)
 
     def _on_source_part_changed(self):
         """当用户在 Source 下拉选择不同 Part 时 - 委托给 PartManager"""
@@ -1985,7 +2045,12 @@ class IntegratedAeroGUI(QMainWindow):
             self._current_source_part_name = new_text
             try:
                 if getattr(self, '_raw_project_dict', None) and isinstance(self._raw_project_dict, dict):
-                    parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
+                            if (
+                                vars
+                                and isinstance(vars, list)
+                                and isinstance(vars[0], dict)
+                                and 'PartName' in vars[0]
+                            ):
                     for p in parts:
                         if p.get('PartName') == old_name:
                             p['PartName'] = new_text
