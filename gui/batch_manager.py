@@ -3,7 +3,15 @@
 """
 import logging
 from pathlib import Path
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+import sys
+import os
+import fnmatch
+
+from PySide6.QtWidgets import (
+    QFileDialog, QMessageBox, QDialog, QVBoxLayout, 
+    QCheckBox, QPushButton, QLabel
+)
+
 from src.format_registry import get_format_for_file
 
 logger = logging.getLogger(__name__)
@@ -18,20 +26,55 @@ class BatchManager:
         self.batch_thread = None
     
     def browse_batch_input(self):
-        """浏览和选择批处理输入文件或目录"""
+        """浏览并选择输入文件或目录，沿用 GUI 原有文件列表面板。"""
         try:
-            # 提供 QFileDialog 用于选择文件或目录
-            path = QFileDialog.getExistingDirectory(
-                self.gui, 
-                '选择输入目录（或直接选择文件）',
-                '.'
-            )
-            if not path:
+            dlg = QFileDialog(self.gui, '选择输入文件或目录')
+            dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+            dlg.setFileMode(QFileDialog.ExistingFile)
+            dlg.setNameFilter('Data Files (*.csv *.xlsx *.xls);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls)')
+
+            # 允许切换目录模式
+            from PySide6.QtWidgets import QCheckBox
+            chk_dir = QCheckBox('选择目录（切换到目录选择模式）')
+            chk_dir.setToolTip('勾选后可以直接选择文件夹；不勾选则选择单个数据文件。')
+            try:
+                layout = dlg.layout()
+                layout.addWidget(chk_dir)
+            except Exception:
+                pass
+
+            def on_toggle_dir(checked):
+                if checked:
+                    dlg.setFileMode(QFileDialog.Directory)
+                    dlg.setOption(QFileDialog.ShowDirsOnly, True)
+                else:
+                    dlg.setFileMode(QFileDialog.ExistingFile)
+                    dlg.setOption(QFileDialog.ShowDirsOnly, False)
+
+            chk_dir.toggled.connect(on_toggle_dir)
+
+            if dlg.exec() != QDialog.Accepted:
                 return
-            
-            # 扫描并填充文件列表
-            self.scan_and_populate_files(Path(path))
-        
+
+            selected = dlg.selectedFiles()
+            if not selected:
+                return
+
+            chosen_path = Path(selected[0])
+            if hasattr(self.gui, 'inp_batch_input'):
+                self.gui.inp_batch_input.setText(str(chosen_path))
+
+            # 调用 GUI 原有的扫描逻辑，保留复选框面板
+            try:
+                if hasattr(self.gui, '_scan_and_populate_files'):
+                    self.gui._scan_and_populate_files(chosen_path)
+                    return
+            except Exception:
+                logger.debug("调用 _scan_and_populate_files 失败，回退 BatchManager 扫描", exc_info=True)
+
+            # 回退到 BatchManager 自己的扫描逻辑
+            self.scan_and_populate_files(chosen_path)
+
         except Exception as e:
             logger.error(f"浏览输入失败: {e}")
             QMessageBox.critical(self.gui, '错误', f'浏览失败: {e}')
@@ -86,48 +129,65 @@ class BatchManager:
             QMessageBox.critical(self.gui, '错误', f'扫描失败: {e}')
     
     def run_batch_processing(self):
-        """运行批处理"""
+        """运行批处理（兼容 GUI 原有文件复选框面板与输出目录逻辑）。"""
         try:
             if not hasattr(self.gui, 'calculator') or self.gui.calculator is None:
                 QMessageBox.warning(self.gui, '提示', '请先应用配置')
                 return
-            
-            # 获取输出目录
-            if hasattr(self.gui, 'inp_batch_output'):
-                output_dir = self.gui.inp_batch_output.text() or 'data/output'
+
+            # 输入路径
+            if not hasattr(self.gui, 'inp_batch_input'):
+                QMessageBox.warning(self.gui, '提示', '缺少输入路径控件')
+                return
+            input_path = Path(self.gui.inp_batch_input.text().strip())
+            if not input_path.exists():
+                QMessageBox.warning(self.gui, '错误', '输入路径不存在')
+                return
+
+            files_to_process = []
+            output_dir = getattr(self.gui, 'output_dir', None)
+
+            if input_path.is_file():
+                files_to_process = [input_path]
+                if output_dir is None:
+                    output_dir = input_path.parent
+            elif input_path.is_dir():
+                # 优先使用 GUI 的复选框列表
+                if getattr(self.gui, '_file_check_items', None):
+                    for item in self.gui._file_check_items:
+                        try:
+                            cb, fp = item[0], item[1]
+                        except Exception:
+                            continue
+                        if cb.isChecked():
+                            files_to_process.append(fp)
+                    if output_dir is None:
+                        output_dir = input_path
+                else:
+                    pattern = getattr(self.gui, 'inp_pattern', None)
+                    pattern_text = pattern.text() if pattern else '*.csv'
+                    for file_path in input_path.rglob('*'):
+                        if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern_text):
+                            files_to_process.append(file_path)
+                    if output_dir is None:
+                        output_dir = input_path
+                if not files_to_process:
+                    QMessageBox.warning(self.gui, '提示', f"未找到匹配 '{getattr(self.gui, 'inp_pattern', None).text() if hasattr(self.gui, 'inp_pattern') else '*.csv'}' 的文件或未选择任何文件")
+                    return
             else:
-                output_dir = 'data/output'
-            
-            # 创建输出目录
+                QMessageBox.warning(self.gui, '错误', '输入路径无效')
+                return
+
+            # 输出目录
+            if output_dir is None:
+                output_dir = Path('data/output')
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
-            
-            # 收集选中的文件
-            files_to_process = []
-            if hasattr(self.gui, 'scroll_files'):
-                layout = self.gui.scroll_files.layout()
-                if layout:
-                    for i in range(layout.count()):
-                        item = layout.itemAt(i)
-                        if item and item.widget():
-                            widget = item.widget()
-                            if hasattr(widget, 'isChecked') and widget.isChecked():
-                                if hasattr(widget, 'file_path'):
-                                    files_to_process.append(widget.file_path)
-            
-            if not files_to_process:
-                QMessageBox.warning(self.gui, '提示', '请选择至少一个文件')
-                return
-            
-            # 获取数据格式配置
-            if hasattr(self.gui, 'data_config'):
-                data_config = self.gui.data_config
-            else:
-                data_config = {'skip_rows': 0, 'columns': {}, 'passthrough': []}
-            
-            # 启动后台线程
+
+            # 数据格式
+            data_config = getattr(self.gui, 'data_config', {'skip_rows': 0, 'columns': {}, 'passthrough': []})
+
             from gui.batch_thread import BatchProcessThread
-            
             self.batch_thread = BatchProcessThread(
                 self.gui.calculator,
                 files_to_process,
@@ -135,41 +195,41 @@ class BatchManager:
                 data_config,
                 registry_db=getattr(self.gui, '_registry_db', None)
             )
-            
+
             # 连接信号
             try:
-                self.batch_thread.progress.connect(self.gui.progressBar.setValue)
+                self.batch_thread.progress.connect(self.gui.progress_bar.setValue)
             except Exception:
                 pass
-            
             try:
-                self.batch_thread.log_message.connect(self._on_batch_log)
+                self.batch_thread.log_message.connect(
+                    lambda msg: self.gui.txt_batch_log.append(f"[{self._now_str()}] {msg}")
+                )
             except Exception:
                 pass
-            
             try:
                 self.batch_thread.finished.connect(self.on_batch_finished)
             except Exception:
                 pass
-            
             try:
                 self.batch_thread.error.connect(self.on_batch_error)
             except Exception:
                 pass
-            
-            # 禁用相关控件
+
             try:
                 self.gui._set_controls_locked(True)
             except Exception:
                 pass
-            
-            # 启动线程
+
             self.batch_thread.start()
             logger.info(f"开始批处理 {len(files_to_process)} 个文件")
-        
         except Exception as e:
             logger.error(f"启动批处理失败: {e}")
             QMessageBox.critical(self.gui, '错误', f'启动失败: {e}')
+
+    def _now_str(self):
+        from datetime import datetime
+        return datetime.now().strftime('%H:%M:%S')
     
     def _on_batch_log(self, message: str):
         """批处理日志回调"""
