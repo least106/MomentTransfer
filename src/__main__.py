@@ -5,7 +5,7 @@ import os
 def print_help():
     print("""
 ================================================
-   AeroTransform - 气动载荷处理工程套件
+               MomentTransform
 ================================================
 
 这是一个 Python 包，包含气动载荷坐标变换的核心算法。
@@ -24,4 +24,4 @@ def print_help():
     """)
 
 if __name__ == "__main__":
-    print_help()
+   print_help()

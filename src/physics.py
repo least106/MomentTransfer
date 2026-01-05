@@ -1,11 +1,16 @@
 import numpy as np
 import warnings
+import logging
 from dataclasses import dataclass
 from typing import List, Dict, Union, Optional
 
 # 保持原有的 import
 from src.data_loader import ProjectData, FrameConfiguration
 from src import geometry
+from src.cache import get_rotation_cache, get_transformation_cache
+from src.config import get_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -69,12 +74,34 @@ class AeroCalculator:
         self.source_frame = source_frame
         self.target_frame = target_frame
 
-        # --- 几何初始化 ---
+        # --- 几何初始化（带缓存支持）---
         src = self.source_frame.coord_system
         tgt = self.target_frame.coord_system
         self.basis_source = geometry.construct_basis_matrix(src.x_axis, src.y_axis, src.z_axis)
         self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
-        self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+        
+        # 尝试从缓存获取旋转矩阵，如果缓存未命中则计算
+        config = get_config()
+        if config.cache.enabled and 'rotation' in config.cache.cache_types:
+            rotation_cache = get_rotation_cache(config.cache.max_entries)
+            self.R_matrix = rotation_cache.get_rotation_matrix(
+                self.basis_source,
+                self.basis_target,
+                config.cache.precision_digits
+            )
+            if self.R_matrix is None:
+                self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+                rotation_cache.set_rotation_matrix(
+                    self.basis_source,
+                    self.basis_target,
+                    self.R_matrix,
+                    config.cache.precision_digits
+                )
+                logger.debug("旋转矩阵缓存未命中，已计算并缓存")
+            else:
+                logger.debug("旋转矩阵缓存命中")
+        else:
+            self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
 
         # 计算力臂时优先使用 Source 的 MomentCenter（如果定义），否则退回到 Source 的 origin
         source_moment_ref = self.source_frame.moment_center if self.source_frame.moment_center is not None else src.origin
@@ -82,7 +109,28 @@ class AeroCalculator:
             source_origin=source_moment_ref,
             target_moment_center=self.target_frame.moment_center,
         )
-        self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+        
+        # 尝试从缓存获取转换结果
+        if config.cache.enabled and 'transformation' in config.cache.cache_types:
+            transformation_cache = get_transformation_cache(config.cache.max_entries)
+            self.r_target = transformation_cache.get_transformation(
+                self.basis_target,
+                self.r_global,
+                config.cache.precision_digits
+            )
+            if self.r_target is None:
+                self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+                transformation_cache.set_transformation(
+                    self.basis_target,
+                    self.r_global,
+                    self.r_target,
+                    config.cache.precision_digits
+                )
+                logger.debug("力臂转换缓存未命中，已计算并缓存")
+            else:
+                logger.debug("力臂转换缓存命中")
+        else:
+            self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
         # 构造时验证 target 必需字段
         if self.target_frame.moment_center is None:
