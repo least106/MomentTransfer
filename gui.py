@@ -472,6 +472,11 @@ class IntegratedAeroGUI(QMainWindow):
         pattern_row = QHBoxLayout()
         pattern_row.addWidget(QLabel("匹配模式:"))
         pattern_row.addWidget(self.inp_pattern)
+        try:
+            # 实时根据模式更新文件列表（若已选择输入路径）
+            self.inp_pattern.textChanged.connect(lambda _: self._on_pattern_changed())
+        except Exception:
+            logger.debug("无法连接 inp_pattern.textChanged 信号", exc_info=True)
 
         # Registry DB 输入行（可选，实验性）
         self.inp_registry_db = QLineEdit()
@@ -1388,6 +1393,18 @@ class IntegratedAeroGUI(QMainWindow):
         # 显示并自动滚动到顶部
         self.grp_file_list.setVisible(True)
         self.file_scroll.verticalScrollBar().setValue(0)
+
+    def _on_pattern_changed(self):
+        """当匹配模式改变时，基于当前输入路径重新扫描并刷新文件列表。"""
+        try:
+            path_text = self.inp_batch_input.text().strip() if hasattr(self, 'inp_batch_input') else ''
+            if not path_text:
+                return
+            chosen = Path(path_text)
+            if chosen.exists():
+                self._scan_and_populate_files(chosen)
+        except Exception:
+            logger.debug("_on_pattern_changed 处理失败", exc_info=True)
 
     def _determine_format_source(self, fp: Path):
         """快速判断单个文件的格式来源，返回 (label, path_or_None)。
