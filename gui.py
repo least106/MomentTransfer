@@ -484,7 +484,39 @@ class IntegratedAeroGUI(QMainWindow):
         panel = QWidget()
         panel.setMinimumWidth(600)
         layout = QVBoxLayout(panel)
-        layout.setSpacing(8)  # 从 15 减为 8，更紧凑
+        layout.setSpacing(4)  # 更紧凑的间距
+        # ===== 顶部：标题和按钮 =====
+        header_layout = QHBoxLayout()
+        title = QLabel("主窗口 (Main Processing)")
+        try:
+            title.setObjectName('panelTitle')
+        except Exception:
+            pass
+        
+        # 批量处理按钮
+        btn_batch_open = QPushButton("批量处理")
+        try:
+            btn_batch_open.setObjectName('primaryButton')
+        except Exception:
+            pass
+        btn_batch_open.setMaximumWidth(120)
+        btn_batch_open.setToolTip("打开批量处理模式")
+        btn_batch_open.clicked.connect(lambda: self.tab_files_logs.setCurrentIndex(0) if hasattr(self, 'tab_files_logs') else None)
+        
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        header_layout.addWidget(btn_batch_open)
+        layout.addLayout(header_layout)
+
+        # ===== 进度条（数据集处理）=====
+        self.progress_bar_main = QProgressBar()
+        self.progress_bar_main.setVisible(False)
+        self.progress_bar_main.setMaximumHeight(16)
+        try:
+            self.progress_bar_main.setObjectName('mainProgress')
+        except Exception:
+            pass
+        layout.addWidget(self.progress_bar_main)
 
         # 将关键 UI 对象设为实例属性以确保在函数内所有分支和外部方法中均可访问
         # 信息区：合并“当前配置状态 + 数据格式预览”
