@@ -58,8 +58,6 @@ THEME_BG = '#f7f9fb'
 LAYOUT_MARGIN = 12
 LAYOUT_SPACING = 8
 
-# 注意：Mpl3DCanvas, ColumnMappingDialog, ExperimentalDialog, BatchProcessThread
-# 已从 gui 包中导入，不再在此文件中定义
 
 class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
@@ -147,21 +145,6 @@ class IntegratedAeroGUI(QMainWindow):
             title.setObjectName('panelTitle')
         except Exception:
             pass
-
-        # 实验功能按钮（打开独立对话框）
-        btn_exp = QPushButton('实验功能')
-        btn_exp.setToolTip('打开实验性功能对话框（包含 per-file/registry 等实验项）')
-        try:
-            btn_exp.setObjectName('smallButton')
-        except Exception:
-            pass
-        btn_exp.clicked.connect(lambda: self.open_experimental_dialog())
-
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header_layout.addWidget(btn_exp)
-
-        layout.addLayout(header_layout)
 
         # === Source 坐标系（可折叠） ===
         self.chk_show_source = QCheckBox("显示 Source 坐标系设置")
@@ -484,65 +467,7 @@ class IntegratedAeroGUI(QMainWindow):
         panel = QWidget()
         panel.setMinimumWidth(600)
         layout = QVBoxLayout(panel)
-        layout.setSpacing(4)  # 更紧凑的间距
-        # ===== 顶部：标题和按钮 =====
-        header_layout = QHBoxLayout()
-        title = QLabel("主窗口 (Main Processing)")
-        try:
-            title.setObjectName('panelTitle')
-        except Exception:
-            pass
-        
-        # 批量处理按钮
-        btn_batch_open = QPushButton("批量处理")
-        try:
-            btn_batch_open.setObjectName('primaryButton')
-        except Exception:
-            pass
-        btn_batch_open.setMaximumWidth(120)
-        btn_batch_open.setToolTip("打开批量处理模式")
-        btn_batch_open.clicked.connect(lambda: self.tab_files_logs.setCurrentIndex(0) if hasattr(self, 'tab_files_logs') else None)
-        
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header_layout.addWidget(btn_batch_open)
-        layout.addLayout(header_layout)
-
-        # ===== 进度条（数据集处理）=====
-        self.progress_bar_main = QProgressBar()
-        self.progress_bar_main.setVisible(False)
-        self.progress_bar_main.setMaximumHeight(16)
-        try:
-            self.progress_bar_main.setObjectName('mainProgress')
-        except Exception:
-            pass
-        layout.addWidget(self.progress_bar_main)
-
-        # 将关键 UI 对象设为实例属性以确保在函数内所有分支和外部方法中均可访问
-        # 信息区：合并“当前配置状态 + 数据格式预览”
-        self.status_group = QGroupBox("信息")
-        status_layout = QVBoxLayout()
-        status_row = QHBoxLayout()
-        self.lbl_status = QLabel("未加载配置")
-        try:
-            self.lbl_status.setObjectName('statusLabel')
-        except Exception:
-            pass
-        status_row.addWidget(self.lbl_status)
-        status_row.addStretch()
-        status_layout.addLayout(status_row)
-
-        # 数据格式预览（合并到信息区内）
-        self.lbl_preview_skip = QLabel("跳过行: -")
-        self.lbl_preview_columns = QLabel("列映射: -")
-        self.lbl_preview_passthrough = QLabel("保留列: -")
-        for w in (self.lbl_preview_skip, self.lbl_preview_columns, self.lbl_preview_passthrough):
-            try:
-                w.setObjectName('previewText')
-            except Exception:
-                pass
-            status_layout.addWidget(w)
-        self.status_group.setLayout(status_layout)
+        layout.setSpacing(8)  # 从 15 减为 8，更紧凑
 
         self.grp_batch = QGroupBox("批量处理 (Batch Processing)")
         self.grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -643,9 +568,71 @@ class IntegratedAeroGUI(QMainWindow):
 
 
 
-        # 将文件表单行添加到会话级文件_form
+        # 将文件表单和信息区域横向排列
+        form_and_info_layout = QHBoxLayout()
+        
+        # 左侧：文件表单
+        form_widget = QWidget()
+        form_layout = QVBoxLayout(form_widget)
+        form_layout.setContentsMargins(0, 0, 0, 0)
         self.file_form.addRow("输入路径:", input_row)
         self.file_form.addRow("匹配模式:", pattern_row)
+        form_layout.addLayout(self.file_form)
+        
+        # 右侧：信息区域（重新设计为紧凑布局）
+        info_widget = QWidget()
+        info_widget.setMaximumWidth(250)
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(8, 4, 8, 4)
+        info_layout.setSpacing(2)
+        
+        # 信息标题
+        info_title = QLabel("信息")
+        try:
+            info_title.setObjectName('sectionTitle')
+        except Exception:
+            pass
+        info_layout.addWidget(info_title)
+        
+        # 配置状态
+        self.lbl_status = QLabel("未加载配置")
+        try:
+            self.lbl_status.setObjectName('statusLabel')
+        except Exception:
+            pass
+        info_layout.addWidget(self.lbl_status)
+        
+        # 跳过行和保留列（同一行）
+        skip_passthrough_row = QHBoxLayout()
+        self.lbl_preview_skip = QLabel("跳过行: -")
+        self.lbl_preview_passthrough = QLabel("保留列: -")
+        for w in (self.lbl_preview_skip, self.lbl_preview_passthrough):
+            try:
+                w.setObjectName('previewText')
+            except Exception:
+                pass
+        skip_passthrough_row.addWidget(self.lbl_preview_skip)
+        skip_passthrough_row.addSpacing(10)
+        skip_passthrough_row.addWidget(self.lbl_preview_passthrough)
+        skip_passthrough_row.addStretch()
+        info_layout.addLayout(skip_passthrough_row)
+        
+        # 列映射
+        self.lbl_preview_columns = QLabel("列映射: -")
+        try:
+            self.lbl_preview_columns.setObjectName('previewText')
+        except Exception:
+            pass
+        info_layout.addWidget(self.lbl_preview_columns)
+        info_layout.addStretch()
+        
+        # 组合到横向布局
+        form_and_info_layout.addWidget(form_widget, stretch=2)
+        form_and_info_layout.addWidget(info_widget, stretch=1)
+        
+        # 添加到批处理布局
+        self.layout_batch.addLayout(form_and_info_layout)
+        # 将文件表单行添加到会话级文件_form
 
         # 文件列表（可复选、可滚动）
         self.grp_file_list = QGroupBox("找到的文件列表")
@@ -779,22 +766,16 @@ class IntegratedAeroGUI(QMainWindow):
         # 将布局应用到 grp_batch
         self.grp_batch.setLayout(self.layout_batch)
 
-
-
-        layout.addWidget(self.status_group)
         layout.addWidget(self.grp_batch)
 
+        # 设置伸缩：批处理组占据所有可用空间
         try:
-            idx_status = layout.indexOf(self.status_group)
-            if idx_status >= 0:
-                layout.setStretch(idx_status, 0)
             idx_batch = layout.indexOf(self.grp_batch)
             if idx_batch >= 0:
                 layout.setStretch(idx_batch, 1)
         except Exception:
             try:
-                layout.setStretch(0, 0)
-                layout.setStretch(1, 1)
+                layout.setStretch(0, 1)
             except Exception:
                 pass
 
