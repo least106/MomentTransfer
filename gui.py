@@ -898,6 +898,8 @@ class IntegratedAeroGUI(QMainWindow):
     def _invert_file_selection(self):
         """反选文件树中的所有文件项"""
         from PySide6.QtCore import Qt
+        # 在此处局部导入 QTreeWidgetItemIterator，避免在模块顶部遗漏导入导致未定义错误
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
         iterator = QTreeWidgetItemIterator(self.file_tree)
         while iterator.value():
             item = iterator.value()
@@ -1012,61 +1014,6 @@ class IntegratedAeroGUI(QMainWindow):
         # 使用小间距替代 stretch，避免把右侧控件挤出可见区域
         layout.addSpacing(6)
         return row
-
-    def _create_coord_table(self, default_values=None):
-        """
-        创建紧凑的坐标系表格 (4行x3列)
-        行: Orig, X, Y, Z
-        列: X, Y, Z 分量
-        返回: (table_widget, 字典{控件引用})
-        """
-        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
-        
-        if default_values is None:
-            default_values = {
-                'Orig': [0.0, 0.0, 0.0],
-                'X': [1.0, 0.0, 0.0],
-                'Y': [0.0, 1.0, 0.0],
-                'Z': [0.0, 0.0, 1.0]
-            }
-        
-        table = QTableWidget(4, 3)
-        table.setMaximumHeight(140)
-        table.setMaximumWidth(280)
-        
-        # 设置表头
-        table.setHorizontalHeaderLabels(['X', 'Y', 'Z'])
-        table.setVerticalHeaderLabels(['Orig', 'X', 'Y', 'Z'])
-        
-        # 调整列宽使表格更紧凑
-        header = table.horizontalHeader()
-        try:
-            header.setSectionResizeMode(QHeaderView.Stretch)
-        except Exception:
-            pass
-        
-        # 调整行高
-        v_header = table.verticalHeader()
-        try:
-            v_header.setSectionResizeMode(QHeaderView.Fixed)
-            v_header.setDefaultSectionSize(28)
-        except Exception:
-            pass
-        
-        # 填充表格并保存控件引用
-        refs = {}
-        row_names = ['Orig', 'X', 'Y', 'Z']
-        col_names = ['x', 'y', 'z']
-        
-        for i, row_name in enumerate(row_names):
-            refs[row_name.lower()] = {}
-            for j, col_name in enumerate(col_names):
-                value = default_values[row_name][j]
-                item = QTableWidgetItem(str(value))
-                table.setItem(i, j, item)
-                refs[row_name.lower()][col_name] = (i, j)
-        
-        return table, refs
 
     def _save_current_source_part(self):
         """将当前 Source 表单保存回 self._raw_project_dict 中对应的 Part（只更新第一个 Variant）。"""
