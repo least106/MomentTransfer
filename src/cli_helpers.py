@@ -38,7 +38,16 @@ def load_format_from_file(path: str) -> BatchConfig:
     """从 JSON 文件加载 BatchConfig（保留原有行为并提高错误说明）。"""
     p = Path(path)
     if not p.exists():
-        raise FileNotFoundError(f"格式文件未找到: {path}")
+        # 兼容测试或从不同工作目录启动时的相对路径解析
+        if not p.is_absolute():
+            repo_root = Path(__file__).resolve().parents[1]
+            alt = repo_root / p
+            if alt.exists():
+                p = alt
+            else:
+                raise FileNotFoundError(f"格式文件未找到: {path}")
+        else:
+            raise FileNotFoundError(f"格式文件未找到: {path}")
     with open(p, 'r', encoding='utf-8') as fh:
         text = fh.read()
     if not text or not text.strip():

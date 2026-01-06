@@ -33,11 +33,11 @@ from PySide6.QtGui import QFont
 from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 from typing import Optional, List, Tuple
-from src.format_registry import get_format_for_file
+from src.format_registry import get_format_for_file, list_mappings, register_mapping, delete_mapping, update_mapping, init_db
 
 # 从模块化包导入组件
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
-from gui.dialogs import ColumnMappingDialog
+from gui.dialogs import ColumnMappingDialog, ExperimentalDialog
 from gui.batch_thread import BatchProcessThread
 
 # 导入管理器和工具
@@ -486,30 +486,17 @@ class IntegratedAeroGUI(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setSpacing(8)  # 从 15 减为 8，更紧凑
 
-        # 将关键 UI 对象设为实例属性以确保在函数内所有分支和外部方法中均可访问
-        # 信息区：合并“当前配置状态 + 数据格式预览”
-        self.status_group = QGroupBox("信息")
-        status_layout = QVBoxLayout()
-        status_row = QHBoxLayout()
+        # 将关键 UI 对象设为实例属性以确保在函数内所有分支和外部方法中均可访问，避免静态分析误报
+        # 基本状态与批处理容器
+        self.status_group = QGroupBox("当前配置状态")
+        status_layout = QHBoxLayout()
         self.lbl_status = QLabel("未加载配置")
         try:
             self.lbl_status.setObjectName('statusLabel')
         except Exception:
             pass
-        status_row.addWidget(self.lbl_status)
-        status_row.addStretch()
-        status_layout.addLayout(status_row)
-
-        # 数据格式预览（合并到信息区内）
-        self.lbl_preview_skip = QLabel("跳过行: -")
-        self.lbl_preview_columns = QLabel("列映射: -")
-        self.lbl_preview_passthrough = QLabel("保留列: -")
-        for w in (self.lbl_preview_skip, self.lbl_preview_columns, self.lbl_preview_passthrough):
-            try:
-                w.setObjectName('previewText')
-            except Exception:
-                pass
-            status_layout.addWidget(w)
+        status_layout.addWidget(self.lbl_status)
+        status_layout.addStretch()
         self.status_group.setLayout(status_layout)
 
         self.grp_batch = QGroupBox("批量处理 (Batch Processing)")
@@ -539,81 +526,120 @@ class IntegratedAeroGUI(QMainWindow):
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(btn_browse_input)
 
-        # 文件匹配模式 + 预设
+        # 文件匹配模式
         self.inp_pattern = QLineEdit("*.csv")
-        self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv, data_*.xlsx；支持分号多模式：*.csv;*.xlsx")
-        self.cmb_pattern_preset = QComboBox()
-        try:
-            self.cmb_pattern_preset.setObjectName('patternPreset')
-        except Exception:
-            pass
-        self._pattern_presets = [
-            ("自定义", None),
-            ("仅 CSV", "*.csv"),
-            ("CSV + Excel", "*.csv;*.xlsx;*.xls"),
-            ("特殊格式", "*.mtfmt;*.mtdata;*.txt;*.dat"),
-            ("全部支持", "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"),
-        ]
-        for name, _pat in self._pattern_presets:
-            self.cmb_pattern_preset.addItem(name)
-
-        def _apply_preset(idx: int) -> None:
-            try:
-                if idx < 0 or idx >= len(self._pattern_presets):
-                    return
-                pat = self._pattern_presets[idx][1]
-                if not pat:
-                    return
-                try:
-                    self.inp_pattern.blockSignals(True)
-                    self.inp_pattern.setText(pat)
-                finally:
-                    self.inp_pattern.blockSignals(False)
-                # 主动触发刷新（兼容某些情况下 textChanged 未触发）
-                try:
-                    self._on_pattern_changed()
-                except Exception:
-                    pass
-            except Exception:
-                logger.debug('apply preset failed', exc_info=True)
-
-        def _mark_custom(_text: str) -> None:
-            try:
-                # 用户手动编辑时切回“自定义”
-                if self.cmb_pattern_preset.currentIndex() != 0:
-                    self.cmb_pattern_preset.blockSignals(True)
-                    self.cmb_pattern_preset.setCurrentIndex(0)
-                    self.cmb_pattern_preset.blockSignals(False)
-            except Exception:
-                pass
-
-        try:
-            self.cmb_pattern_preset.currentIndexChanged.connect(_apply_preset)
-        except Exception:
-            logger.debug('无法连接 cmb_pattern_preset 信号', exc_info=True)
-
-        try:
-            self.inp_pattern.textEdited.connect(_mark_custom)
-        except Exception:
-            pass
-
+        self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv, data_*.xlsx")
         pattern_row = QHBoxLayout()
         pattern_row.addWidget(QLabel("匹配模式:"))
         pattern_row.addWidget(self.inp_pattern)
-        pattern_row.addWidget(self.cmb_pattern_preset)
         try:
             # 实时根据模式更新文件列表（若已选择输入路径）
             self.inp_pattern.textChanged.connect(lambda _: self._on_pattern_changed())
         except Exception:
             logger.debug("无法连接 inp_pattern.textChanged 信号", exc_info=True)
 
+        # Registry DB 输入行（可选，实验性）
+        self.inp_registry_db = QLineEdit()
+        self.inp_registry_db.setPlaceholderText("可选: format registry 数据库 (.sqlite) - 实验性")
+        try:
+            self.inp_registry_db.textChanged.connect(lambda _: self._refresh_format_labels())
+        except Exception:
+            logger.debug("Failed to connect inp_registry_db.textChanged signal", exc_info=True)
+        btn_browse_registry = QPushButton("浏览")
+        btn_browse_registry.setMaximumWidth(80)
+        try:
+            btn_browse_registry.setObjectName('smallButton')
+            btn_browse_registry.setToolTip('选择 format registry (.sqlite) 文件')
+        except Exception:
+            pass
+        btn_browse_registry.clicked.connect(self.browse_registry_db)
+        registry_row = QHBoxLayout()
+        registry_row.addWidget(QLabel("格式注册表 (实验):"))
+        registry_row.addWidget(self.inp_registry_db)
+        registry_row.addWidget(btn_browse_registry)
 
+        # per-file 开关（实验性）
+        self.chk_enable_sidecar = QCheckBox("启用 per-file 覆盖（sidecar/registry，实验）")
+        self.chk_enable_sidecar.setChecked(False)
+        self.chk_enable_sidecar.setToolTip("默认关闭；需在实验性功能中显式启用；启用后批处理将按文件尝试使用侧车/registry 覆盖全局配置。")
+        registry_row.addWidget(self.chk_enable_sidecar)
+        # 记录 per-file 开关状态，并提供实例级回调以避免 AttributeError
+        self._perfile_enabled = False
+        def _set_perfile_enabled(checked: bool) -> None:
+            self._perfile_enabled = bool(checked)
+        try:
+            self.chk_enable_sidecar.toggled.connect(_set_perfile_enabled)
+            _set_perfile_enabled(False)
+        except Exception:
+            logger.debug("Failed to connect chk_enable_sidecar toggled signal", exc_info=True)
 
+        # Registry 映射管理区（列表 + 注册/删除）
+        self.grp_registry_list = QGroupBox("Registry 映射管理 (可选)")
+        self.grp_registry_list.setVisible(False)
+        reg_layout = QVBoxLayout()
+        from PySide6.QtWidgets import QListWidget
+        self.lst_registry = QListWidget()
+        self.lst_registry.setSelectionMode(QListWidget.SingleSelection)
+        self.lst_registry.setMinimumHeight(100)
 
+        reg_form = QHBoxLayout()
+        self.inp_registry_pattern = QLineEdit()
+        self.inp_registry_pattern.setPlaceholderText("Pattern，例如: sample.csv 或 *.csv")
+        self.inp_registry_format = QLineEdit()
+        self.inp_registry_format.setPlaceholderText("Format 文件路径 (JSON)")
+        btn_browse_format = QPushButton("浏览格式文件")
+        btn_browse_format.setMaximumWidth(90)
+        try:
+            btn_browse_format.setObjectName('smallButton')
+            btn_browse_format.setToolTip('浏览并选择 JSON 格式文件')
+        except Exception:
+            pass
+        btn_browse_format.clicked.connect(self._browse_registry_format)
+        btn_preview_format = QPushButton("预览格式")
+        btn_preview_format.setMaximumWidth(90)
+        try:
+            btn_preview_format.setObjectName('smallButton')
+            btn_preview_format.setToolTip('展示所选格式的关键信息')
+        except Exception:
+            pass
+        btn_preview_format.clicked.connect(self._on_preview_format)
+        reg_form.addWidget(self.inp_registry_pattern)
+        reg_form.addWidget(self.inp_registry_format)
+        reg_form.addWidget(btn_browse_format)
+        reg_form.addWidget(btn_preview_format)
+
+        ops_row = QHBoxLayout()
+        self.btn_registry_register = QPushButton("注册映射")
+        self.btn_registry_edit = QPushButton("编辑选中")
+        self.btn_registry_remove = QPushButton("删除选中")
+        try:
+            self.btn_registry_register.setObjectName('primaryButton')
+            self.btn_registry_register.setToolTip('将当前 pattern -> format 条目注册到 registry（可选）')
+            self.btn_registry_edit.setObjectName('secondaryButton')
+            self.btn_registry_edit.setToolTip('编辑选中的 registry 映射')
+            self.btn_registry_remove.setObjectName('dangerButton')
+            self.btn_registry_remove.setToolTip('从 registry 中删除选中项（不可逆）')
+        except Exception:
+            pass
+        self.btn_registry_register.clicked.connect(self._on_registry_register)
+        self.btn_registry_edit.clicked.connect(self._on_registry_edit)
+        self.btn_registry_remove.clicked.connect(self._on_registry_remove)
+        ops_row.addWidget(self.btn_registry_register)
+        ops_row.addWidget(self.btn_registry_edit)
+        ops_row.addWidget(self.btn_registry_remove)
+
+        reg_layout.addWidget(self.lst_registry)
+        reg_layout.addLayout(reg_form)
+        reg_layout.addLayout(ops_row)
+        self.grp_registry_list.setLayout(reg_layout)
+        try:
+            self.grp_registry_list.setEnabled(False)
+        except Exception:
+            pass
 
         # 将文件表单行添加到会话级文件_form
         self.file_form.addRow("输入路径:", input_row)
-        self.file_form.addRow("匹配模式:", pattern_row)
+        self.file_form.addRow("", pattern_row)
 
         # 文件列表（可复选、可滚动）
         self.grp_file_list = QGroupBox("找到的文件列表")
@@ -707,9 +733,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_grid.addWidget(self.btn_batch, 0, 1)
         self.btn_grid.addWidget(self.btn_cancel, 1, 1)
 
-        # 把文件表单加入 layout_batch（实例属性）
+        # 把文件表单、registry 列表加入 layout_batch（实例属性）
         self.layout_batch.addLayout(self.file_form)
+        self.layout_batch.addWidget(self.grp_registry_list)
         self.layout_batch.addWidget(self.progress_bar)
+        self.layout_batch.addWidget(self.btn_widget)
 
         # 创建 Tab 容器：分离"文件列表"和"处理日志"
         self.tab_files_logs = QTabWidget()
@@ -731,7 +759,31 @@ class IntegratedAeroGUI(QMainWindow):
         # 添加 Tab 到批处理布局
         self.layout_batch.addWidget(self.tab_files_logs)
 
+        # 实验性功能组
+        self.grp_experimental = QGroupBox("实验性功能（实验）")
+        try:
+            self.grp_experimental.setCheckable(True)
+            self.grp_experimental.setChecked(False)
+            self.grp_experimental.setToolTip("实验性功能：包含 3D 可视化与 per-file 覆盖，默认收起，谨慎使用。")
+            self.grp_experimental.toggled.connect(lambda v: self.grp_experimental.setVisible(v))
+            # 原先与主界面的复选框联动的逻辑已移至独立对话框
+            self.grp_experimental.setVisible(False)
+        except Exception:
+            pass
+        exp_layout = QVBoxLayout()
 
+        self.btn_visualize = QPushButton("3D可视化")
+        self.btn_visualize.setMaximumWidth(120)
+        try:
+            self.btn_visualize.setObjectName('smallButton')
+            self.btn_visualize.setToolTip("打开3D坐标系可视化窗口（实验）")
+        except Exception:
+            pass
+        self.btn_visualize.clicked.connect(self.toggle_visualization)
+        exp_layout.addWidget(self.btn_visualize)
+        exp_layout.addLayout(registry_row)
+        self.grp_experimental.setLayout(exp_layout)
+        self.layout_batch.addWidget(self.grp_experimental)
 
         # 设置伸缩：Tab 拉伸占满空间
         try:
@@ -743,6 +795,25 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 将布局应用到 grp_batch
         self.grp_batch.setLayout(self.layout_batch)
+
+        # 配置预览
+        self.grp_config_preview = QGroupBox("数据格式预览")
+        try:
+            self.grp_config_preview.setMaximumHeight(140)
+            self.grp_config_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        except Exception:
+            pass
+        pv_layout = QVBoxLayout()
+        self.lbl_preview_skip = QLabel("跳过行: -")
+        self.lbl_preview_columns = QLabel("列映射: -")
+        self.lbl_preview_passthrough = QLabel("保留列: -")
+        for w in (self.lbl_preview_skip, self.lbl_preview_columns, self.lbl_preview_passthrough):
+            try:
+                w.setObjectName('previewText')
+            except Exception:
+                pass
+            pv_layout.addWidget(w)
+        self.grp_config_preview.setLayout(pv_layout)
 
         # 最近项目与快捷操作
         recent_group = QGroupBox("最近项目 & 快捷操作")
@@ -775,9 +846,15 @@ class IntegratedAeroGUI(QMainWindow):
         recent_group.setLayout(recent_layout)
 
         layout.addWidget(self.status_group)
-        layout.addWidget(self.btn_widget)
+        layout.addWidget(self.grp_config_preview)
+        try:
+            if hasattr(self, 'grp_experimental') and self.grp_experimental is not None:
+                exp_layout.addWidget(recent_group)
+            else:
+                layout.addWidget(recent_group)
+        except Exception:
+            layout.addWidget(recent_group)
         layout.addWidget(self.grp_batch)
-        layout.addWidget(recent_group)
 
         try:
             idx_status = layout.indexOf(self.status_group)
@@ -988,6 +1065,60 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception as e:
             logger.exception("调度 _refresh_layouts 时出现意外异常")
 
+    def toggle_visualization(self):
+        """切换3D可视化窗口 - 委托给 VisualizationManager"""
+        try:
+            self.visualization_manager.toggle_visualization()
+        except AttributeError:
+            logger.warning("VisualizationManager 未初始化")
+        except Exception as e:
+            logger.error(f"切换可视化窗口失败: {e}")
+
+    def open_experimental_dialog(self):
+        """打开实验性功能对话框，用户确认后保存设置到 self.experimental_settings 并同步相关控件"""
+        try:
+            init = getattr(self, 'experimental_settings', None) or {}
+            dlg = ExperimentalDialog(self, initial_settings=init)
+            if dlg.exec() == QDialog.Accepted:
+                s = dlg.get_settings()
+                # 保存到实例属性以便其它逻辑读取
+                self.experimental_settings = s
+                # 将设置同步到界面上（若相应控件存在）
+                try:
+                    if hasattr(self, 'inp_registry_db'):
+                        self.inp_registry_db.setText(s.get('registry_db', '') or '')
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self, 'chk_enable_sidecar'):
+                        self.chk_enable_sidecar.setChecked(bool(s.get('enable_sidecar', False)))
+                        # 保持内部标志同步
+                        try:
+                            self._set_perfile_enabled(bool(s.get('enable_sidecar', False)))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    # 刷新 registry 显示与文件来源标签
+                    if hasattr(self, '_refresh_registry_list'):
+                        self._refresh_registry_list()
+                    if hasattr(self, '_refresh_format_labels'):
+                        self._refresh_format_labels()
+                except Exception:
+                    pass
+        except Exception as e:
+            QMessageBox.warning(self, '错误', f'打开实验性对话框失败: {e}')
+
+    def show_visualization(self):
+        """显示3D可视化窗口 - 委托给 VisualizationManager"""
+        try:
+            self.visualization_manager.show_visualization()
+        except AttributeError:
+            logger.warning("VisualizationManager 未初始化")
+        except Exception as e:
+            logger.error(f"显示可视化窗口失败: {e}")
+
     def load_config(self):
         """加载配置文件 - 委托给 ConfigManager"""
         try:
@@ -1062,41 +1193,463 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception as e:
             logger.error(f"浏览批处理输入失败: {e}")
 
-    def _scan_and_populate_files(self, chosen_path):
-        """扫描所选路径并刷新文件列表（委托给 BatchManager）。"""
+    def browse_registry_db(self):
+        """选择 format registry 数据库文件（可选）"""
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 format registry 数据库', '.', 'SQLite DB Files (*.sqlite *.db);;All Files (*)')
+        if fname:
+            try:
+                self.inp_registry_db.setText(fname)
+                self.txt_batch_log.append(f"已选择 registry: {fname}")
+                # 选择后刷新已有文件的来源标签
+                try:
+                    self._refresh_format_labels()
+                except Exception:
+                    pass
+                # 刷新 registry 映射显示
+                try:
+                    self._refresh_registry_list()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    def _browse_registry_format(self):
+        """选择一个 format JSON 文件以便注册映射时使用"""
+        fname, _ = QFileDialog.getOpenFileName(self, '选择 format JSON', '.', 'JSON Files (*.json);;All Files (*)')
+        if fname:
+            try:
+                self.inp_registry_format.setText(fname)
+            except Exception:
+                pass
+
+    def _on_load_data_format_file(self):
+        """从 JSON 文件加载数据格式并更新预览与当前 data_config。"""
         try:
-            self.batch_manager.scan_and_populate_files(chosen_path)
+            fname, _ = QFileDialog.getOpenFileName(self, '加载数据格式', '.', 'JSON Files (*.json);;All Files (*)')
+            if not fname:
+                return
+            with open(fname, 'r', encoding='utf-8') as fh:
+                cfg = json.load(fh)
+            # 简单验证 cfg 是 dict
+            if not isinstance(cfg, dict):
+                QMessageBox.warning(self, '错误', '格式文件内容不是有效的 JSON 对象')
+                return
+            self.data_config = cfg
+            try:
+                self.update_config_preview()
+            except Exception:
+                logger.debug('update_config_preview failed after loading format', exc_info=True)
+            self.txt_batch_log.append(f'已加载数据格式: {fname}')
+            QMessageBox.information(self, '已加载', f'数据格式已加载: {fname}')
+        except Exception as e:
+            QMessageBox.warning(self, '加载失败', f'无法加载格式文件: {e}')
+
+    def _on_registry_register(self):
+        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        pat = self.inp_registry_pattern.text().strip()
+        fmt = self.inp_registry_format.text().strip()
+        if not pat or not fmt:
+            QMessageBox.warning(self, '错误', '请填写 pattern 与 format 文件路径')
+            return
+        # 校验 format 文件是否存在且为合法 JSON
+        try:
+            fpath = Path(fmt)
+            if not fpath.exists():
+                QMessageBox.warning(self, '错误', f'格式文件不存在: {fmt}')
+                return
+            # 尝试解析 JSON
+            with open(fpath, 'r', encoding='utf-8') as _fh:
+                try:
+                    json.load(_fh)
+                except Exception as e:
+                    QMessageBox.warning(self, '错误', f'格式文件不是有效的 JSON: {e}')
+                    return
         except Exception:
-            logger.debug("_scan_and_populate_files delegated call failed", exc_info=True)
+            QMessageBox.warning(self, '错误', '无法访问或验证格式文件')
+            return
+
+        # 确认注册
+        resp = QMessageBox.question(self, '确认', f'确定要注册映射吗？\n{pat} -> {fmt}', QMessageBox.Yes | QMessageBox.No)
+        if resp != QMessageBox.Yes:
+            return
+
+        # 如果处于编辑模式（存在 _editing_mapping_id），则执行 update
+        if hasattr(self, '_editing_mapping_id') and self._editing_mapping_id is not None:
+            try:
+                update_mapping(dbp, self._editing_mapping_id, pat, fmt)
+                self.txt_batch_log.append(f"已更新映射 id={self._editing_mapping_id}: {pat} -> {fmt}")
+                # 清除编辑标识
+                self._editing_mapping_id = None
+                self._refresh_registry_list()
+                return
+            except Exception as e:
+                QMessageBox.critical(self, '更新失败', str(e))
+                return
+
+        try:
+            register_mapping(dbp, pat, fmt)
+            self.txt_batch_log.append(f"已注册: {pat} -> {fmt}")
+            self._refresh_registry_list()
+        except Exception as e:
+            QMessageBox.critical(self, '注册失败', str(e))
+
+    def _on_registry_edit(self):
+        """编辑选中映射：把选中项加载到输入框并在用户修改后更新。"""
+        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        sel = self.lst_registry.selectedItems()
+        if not sel:
+            QMessageBox.warning(self, '错误', '请先选择要编辑的映射项')
+            return
+        text = sel[0].text()
+        try:
+            if text.startswith('['):
+                end = text.find(']')
+                mid = text[1:end]
+                mapping_id = int(mid)
+            else:
+                raise ValueError('无法解析选中项 ID')
+        except Exception as e:
+            QMessageBox.critical(self, '错误', str(e))
+            return
+
+        # 把当前值填入输入框，允许用户修改并点击注册以提交（我们将把注册按钮作为新增/覆盖两用）
+        # 也可以直接弹出编辑对话；这里采用填充方式并记录待编辑 id
+        try:
+            # 从 registry 读取当前映射详情
+            mappings = list_mappings(dbp)
+            entry = next((m for m in mappings if m['id'] == mapping_id), None)
+            if not entry:
+                QMessageBox.warning(self, '错误', f'映射 id={mapping_id} 未找到')
+                return
+            self.inp_registry_pattern.setText(entry['pattern'])
+            self.inp_registry_format.setText(entry['format_path'])
+            # 将编辑 id 存入属性以供后续保存
+            self._editing_mapping_id = mapping_id
+            QMessageBox.information(self, '编辑模式', f'已加载 id={mapping_id} 到输入框，修改后点击"注册映射"以保存')
+        except Exception as e:
+            QMessageBox.critical(self, '错误', str(e))
+
+    def _on_registry_remove(self):
+        dbp = self.inp_registry_db.text().strip() if hasattr(self, 'inp_registry_db') else ''
+        if not dbp:
+            QMessageBox.warning(self, '错误', '请先选择 registry 数据库文件')
+            return
+        sel = self.lst_registry.selectedItems()
+        if not sel:
+            QMessageBox.warning(self, '错误', '请先选择要删除的映射项')
+            return
+        # 解析选中项的 id（格式为 [id] ...）
+        text = sel[0].text()
+        try:
+            if text.startswith('['):
+                end = text.find(']')
+                mid = text[1:end]
+                mapping_id = int(mid)
+            else:
+                raise ValueError('无法解析选中项 ID')
+            # 确认删除
+            resp = QMessageBox.question(self, '确认删除', f'确认要删除映射 id={mapping_id} ?', QMessageBox.Yes | QMessageBox.No)
+            if resp != QMessageBox.Yes:
+                return
+            delete_mapping(dbp, mapping_id)
+            self.txt_batch_log.append(f"已删除映射 id={mapping_id}")
+            self._refresh_registry_list()
+        except Exception as e:
+            QMessageBox.critical(self, '删除失败', str(e))
+
+    def _on_preview_format(self):
+        """显示当前输入格式文件的 JSON 摘要（前几行或 keys）。"""
+        fmt = self.inp_registry_format.text().strip()
+        if not fmt:
+            QMessageBox.warning(self, '预览', '请先填写或选择格式文件路径')
+            return
+        try:
+            p = Path(fmt)
+            if not p.exists():
+                QMessageBox.warning(self, '预览', f'格式文件不存在: {fmt}')
+                return
+            with open(p, 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
+            # 构建简短摘要
+            if isinstance(data, dict):
+                keys = list(data.keys())[:10]
+                preview = json.dumps({k: data[k] for k in keys}, indent=2, ensure_ascii=False)
+            else:
+                preview = json.dumps(data, indent=2, ensure_ascii=False)
+            dlg = QDialog(self)
+            dlg.setWindowTitle('格式文件预览')
+            v = QVBoxLayout(dlg)
+            te = QTextEdit()
+            te.setReadOnly(True)
+            te.setPlainText(preview)
+            v.addWidget(te)
+            btn = QDialogButtonBox(QDialogButtonBox.Ok)
+            btn.accepted.connect(dlg.accept)
+            v.addWidget(btn)
+            dlg.resize(600, 400)
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.warning(self, '预览失败', str(e))
+
+    def _scan_and_populate_files(self, chosen_path):
+        """扫描所选路径并在滚动区域中生成复选框列表（默认全选）。"""
+        p = Path(chosen_path)
+        files = []
+        if p.is_file():
+            files = [p]
+
+            self.output_dir = p.parent
+        elif p.is_dir():
+            pattern = self.inp_pattern.text() if hasattr(self, 'inp_pattern') else "*.csv"
+            for file_path in p.rglob('*'):
+                if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
+                    files.append(file_path)
+            self.output_dir = p
+        # 清空旧的复选框
+        # 清空旧的复选框及标签
+        for i in reversed(range(self.file_list_layout_inner.count())):
+            item = self.file_list_layout_inner.itemAt(i)
+            if item is None:
+                continue
+            w = item.widget()
+            if w:
+                w.setParent(None)
+        self._file_check_items = []
+
+        if not files:
+            self.grp_file_list.setVisible(False)
+            return
+
+        # 创建复选框
+        # 创建复选框并显示格式来源标签
+        for fp in files:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            cb = QCheckBox(fp.name)
+            cb.setChecked(True)
+            src_label = QLabel("")
+            try:
+                src_label.setObjectName('fileSrcLabel')
+                src_label.setProperty('variant', 'muted')
+            except Exception:
+                pass
+            # 解析并设置来源（同步快速判断）
+            try:
+                src, src_path = self._determine_format_source(fp)
+                disp, tip, color = self._format_label_from(src, src_path)
+                src_label.setText(disp)
+                src_label.setToolTip(tip or "")
+                # 映射返回的颜色到样式属性，样式表中根据 variant 设置颜色
+                try:
+                    if color == '#dc3545':
+                        src_label.setProperty('variant', 'error')
+                    elif color == '#6c757d':
+                        src_label.setProperty('variant', 'muted')
+                    else:
+                        src_label.setProperty('variant', 'normal')
+                except Exception:
+                    pass
+            except Exception:
+                src_label.setText("未知")
+                try:
+                    src_label.setProperty('variant', 'error')
+                except Exception:
+                    pass
+
+            row_layout.addWidget(cb)
+            # 保持标签靠近复选框，并限制标签宽度，避免在窄窗口下被推到最右侧
+            row_layout.addSpacing(8)
+            src_label.setFixedWidth(300)
+            src_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            row_layout.addWidget(src_label)
+            self.file_list_layout_inner.addWidget(row)
+            # 存储三元组 (checkbox, Path, label) 以便后续使用或更新
+            self._file_check_items.append((cb, fp, src_label))
+
+        # 根据文件数量自适应高度：当文件少时收缩至合适高度，当文件多时限制最大高度并显示滚动条
+        try:
+            row_count = len(files)
+            row_height = 28  # 近似每行高度（像素）
+            padding = 36     # 标题/内边距等额外高度
+            min_h = 80
+            max_h = 420
+            desired = min(max_h, max(min_h, row_count * row_height + padding))
+            # 设置为固定高度以便在弹性布局中不会无限拉伸
+            self.file_scroll.setFixedHeight(int(desired))
+        except Exception:
+            # 发生异常时回退到默认显示高度
+            try:
+                self.file_scroll.setMinimumHeight(180)
+            except Exception:
+                pass
+
+        # 显示并自动滚动到顶部
+        self.grp_file_list.setVisible(True)
+        self.file_scroll.verticalScrollBar().setValue(0)
 
     def _on_pattern_changed(self):
-        """当匹配模式改变时刷新文件列表（委托给 BatchManager）。"""
+        """当匹配模式改变时，基于当前输入路径重新扫描并刷新文件列表。"""
         try:
-            self.batch_manager.on_pattern_changed()
+            path_text = self.inp_batch_input.text().strip() if hasattr(self, 'inp_batch_input') else ''
+            if not path_text:
+                return
+            chosen = Path(path_text)
+            if chosen.exists():
+                self._scan_and_populate_files(chosen)
         except Exception:
-            logger.debug("_on_pattern_changed delegated call failed", exc_info=True)
+            logger.debug("_on_pattern_changed 处理失败", exc_info=True)
 
     def _determine_format_source(self, fp: Path):
-        """判断单个文件的格式来源（委托给 BatchManager）。"""
+        """快速判断单个文件的格式来源，返回 (label, path_or_None)。
+
+        label: 'registry' | 'sidecar' | 'dir' | 'global' | 'unknown'
+        path_or_None: 指向具体的 format 文件（Path）或 None
+        注意：当界面上的 per-file 覆盖开关未启用时（默认），函数将直接返回 'global'，避免在 UI 上暴露侧车/registry 信息。
+        """
         try:
-            return self.batch_manager._determine_format_source(fp)
+            # 若 per-file 覆盖未显式启用，则统一视作全局（不检查 registry/sidecar）
+            try:
+                # 优先使用 experimental_settings（若用户通过对话框设置了实验项）
+                if hasattr(self, 'experimental_settings'):
+                    if not bool(self.experimental_settings.get('enable_sidecar', False)):
+                        return ("global", None)
+                else:
+                    # 兼容旧控件（已被移入对话框）：若存在且未选中则视为关闭
+                    if hasattr(self, 'chk_enable_sidecar') and not self.chk_enable_sidecar.isChecked():
+                        return ("global", None)
+            except Exception:
+                pass
+
+            # 1) registry 优先（若界面提供了 db 路径）
+            if hasattr(self, 'inp_registry_db'):
+                dbp = self.inp_registry_db.text().strip()
+                if dbp:
+                    try:
+                        fmt = get_format_for_file(dbp, str(fp))
+                        if fmt:
+                            return ("registry", Path(fmt))
+                    except Exception:
+                        # registry 查询不应阻塞 UI，降级处理
+                        pass
+
+            # 2) file-sidecar
+            for suf in ('.format.json', '.json'):
+                cand = fp.parent / f"{fp.stem}{suf}"
+                if cand.exists():
+                    return ("sidecar", cand)
+
+            # 3) 目录级默认
+            dir_cand = fp.parent / 'format.json'
+            if dir_cand.exists():
+                return ("dir", dir_cand)
+
+            # 4) 全局
+            return ("global", None)
         except Exception:
             return ("unknown", None)
 
     def _format_label_from(self, src: str, src_path: Optional[Path]):
-        """格式来源标签格式化（委托给 BatchManager）。"""
+        """将源类型与路径格式化为显示文本、tooltip 与颜色。
+
+        返回 (display_text, tooltip_text_or_empty, css_color)
+        """
         try:
-            return self.batch_manager._format_label_from(src, src_path)
-        except Exception:
+            if src == 'registry':
+                name = Path(src_path).name if src_path else ''
+                return (f"registry ({name})" if name else "registry", str(src_path) if src_path else "", '#1f77b4')
+            if src == 'sidecar':
+                name = Path(src_path).name if src_path else ''
+                return (f"sidecar ({name})" if name else "sidecar", str(src_path) if src_path else "", '#28a745')
+            if src == 'dir':
+                name = Path(src_path).name if src_path else ''
+                return (f"dir ({name})" if name else "dir", str(src_path) if src_path else "", '#ff8c00')
+            if src == 'global':
+                return ("global", "", '#6c757d')
+            return ("unknown", "", '#dc3545')
+        except Exception as e:
+            logger.debug("_format_label_from encountered error", exc_info=True)
             return ("unknown", "", '#dc3545')
 
     def _refresh_format_labels(self):
-        """刷新文件列表的来源标签（委托给 BatchManager）。"""
+        """遍历当前文件列表，重新解析并更新每个文件旁的来源标签及 tooltip。"""
         try:
-            self.batch_manager.refresh_format_labels()
-        except Exception:
-            logger.debug("_refresh_format_labels delegated call failed", exc_info=True)
+            items = getattr(self, '_file_check_items', None)
+            if not items:
+                return
+            for tup in items:
+                # 支持旧的 (cb, fp) 形式或新的 (cb, fp, label)
+                if len(tup) == 2:
+                    # 旧结构 (cb, fp) 无标签，跳过
+                    continue
+                cb, fp, lbl = tup
+                try:
+                    src, src_path = self._determine_format_source(fp)
+                    disp, tip, color = self._format_label_from(src, src_path)
+                    lbl.setText(disp)
+                    lbl.setToolTip(tip or "")
+                    try:
+                        if color == '#dc3545':
+                            lbl.setProperty('variant', 'error')
+                        elif color == '#6c757d':
+                            lbl.setProperty('variant', 'muted')
+                        else:
+                            lbl.setProperty('variant', 'normal')
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.debug("Failed to set label text from format source", exc_info=True)
+                    try:
+                        lbl.setText('未知')
+                        lbl.setToolTip("")
+                        try:
+                            lbl.setProperty('variant', 'error')
+                        except Exception:
+                            pass
+                    except Exception:
+                        logger.debug("Failed to set fallback 'unknown' label", exc_info=True)
+        except Exception as e:
+            logger.debug("_refresh_format_labels failed", exc_info=True)
 
+
+    def _refresh_registry_list(self):
+        """将当前 registry 的映射列表渲染到 `self.lst_registry`。"""
+        try:
+            dbp = ''
+            if hasattr(self, 'inp_registry_db'):
+                dbp = self.inp_registry_db.text().strip()
+            if not dbp:
+                self.grp_registry_list.setVisible(False)
+                return
+            try:
+                mappings = list_mappings(dbp)
+            except Exception as e:
+                self.lst_registry.clear()
+                self.lst_registry.addItem(f"无法读取 registry: {e}")
+                self.grp_registry_list.setVisible(True)
+                return
+
+            self.lst_registry.clear()
+            if not mappings:
+                self.lst_registry.addItem("(空)")
+            else:
+                for m in mappings:
+                    text = f"[{m['id']}] {m['pattern']} -> {m['format_path']}  (added: {m['added_at']})"
+                    self.lst_registry.addItem(text)
+
+            self.grp_registry_list.setVisible(True)
+        except Exception as e:
+            logger.debug("_refresh_registry_list encountered error", exc_info=True)
+            try:
+                self.grp_registry_list.setVisible(False)
+            except Exception:
+                logger.debug("Failed to hide grp_registry_list after error", exc_info=True)
 
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""
@@ -1323,6 +1876,19 @@ class IntegratedAeroGUI(QMainWindow):
                 self.inp_default_output.setText(d)
         except Exception:
             logger.debug("_browse_default_output failed", exc_info=True)
+
+    def _toggle_experimental_visibility(self):
+        """显示或隐藏实验性组，并刷新布局。"""
+        try:
+            visible = bool(self.chk_show_experimental.isChecked())
+            if hasattr(self, 'grp_experimental'):
+                self.grp_experimental.setVisible(visible)
+            try:
+                self._refresh_layouts()
+            except Exception:
+                logger.debug("_refresh_layouts failed after toggling experimental", exc_info=True)
+        except Exception:
+            logger.debug("_toggle_experimental_visibility failed", exc_info=True)
 
     def _on_target_part_changed(self):
         """当用户在下拉框选择不同 Part 时 - 委托给 PartManager"""

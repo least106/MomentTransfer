@@ -1,15 +1,20 @@
-"""
-批处理管理模块 - 处理批处理相关功能
-"""
+"""批处理管理模块 - 处理批处理相关功能"""
+
+import fnmatch
 import logging
 from pathlib import Path
-import sys
-import os
-import fnmatch
+from typing import Optional, Tuple
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QFileDialog, QMessageBox, QDialog, QVBoxLayout, 
-    QCheckBox, QPushButton, QLabel
+    QCheckBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QWidget,
 )
 
 from src.format_registry import get_format_for_file
@@ -64,69 +69,170 @@ class BatchManager:
             if hasattr(self.gui, 'inp_batch_input'):
                 self.gui.inp_batch_input.setText(str(chosen_path))
 
-            # 调用 GUI 原有的扫描逻辑，保留复选框面板
-            try:
-                if hasattr(self.gui, '_scan_and_populate_files'):
-                    self.gui._scan_and_populate_files(chosen_path)
-                    return
-            except Exception:
-                logger.debug("调用 _scan_and_populate_files 失败，回退 BatchManager 扫描", exc_info=True)
-
-            # 回退到 BatchManager 自己的扫描逻辑
-            self.scan_and_populate_files(chosen_path)
+            # 统一由 BatchManager 扫描并填充文件列表
+            self._scan_and_populate_files(chosen_path)
 
         except Exception as e:
             logger.error(f"浏览输入失败: {e}")
             QMessageBox.critical(self.gui, '错误', f'浏览失败: {e}')
     
-    def scan_and_populate_files(self, chosen_path: Path):
-        """扫描路径并生成文件列表"""
+    def _scan_and_populate_files(self, chosen_path: Path):
+        """扫描所选路径并在文件列表区域生成复选框列表（默认全选）。"""
         try:
-            chosen_path = Path(chosen_path)
-            
-            if chosen_path.is_file():
-                # 单个文件
-                files = [chosen_path]
-            else:
-                # 目录 - 递归扫描常见格式文件
-                files = []
-                for pattern in ['*.csv', '*.xlsx', '*.xls', '*.mtfmt', '*.mtdata', '*.txt', '*.dat']:
-                    files.extend(chosen_path.rglob(pattern))
-                files = list(set(files))  # 去重
-                files.sort()
-            
-            if not files:
-                QMessageBox.warning(self.gui, '提示', '未找到任何支持的数据文件 (.csv/.xlsx/.mtfmt/.mtdata/.txt/.dat)')
+            p = Path(chosen_path)
+            files = []
+
+            if p.is_file():
+                files = [p]
+                try:
+                    self.gui.output_dir = p.parent
+                except Exception:
+                    pass
+            elif p.is_dir():
+                # 支持分号分隔多模式：*.csv;*.xlsx
+                pattern_text = "*.csv"
+                try:
+                    if hasattr(self.gui, 'inp_pattern') and self.gui.inp_pattern is not None:
+                        pt = self.gui.inp_pattern.text().strip()
+                        if pt:
+                            pattern_text = pt
+                except Exception:
+                    pass
+
+                patterns = [x.strip() for x in pattern_text.split(';') if x.strip()]
+                if not patterns:
+                    patterns = ["*.csv"]
+
+                for file_path in p.rglob('*'):
+                    if not file_path.is_file():
+                        continue
+                    if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
+                        files.append(file_path)
+                files = sorted(set(files))
+
+                try:
+                    self.gui.output_dir = p
+                except Exception:
+                    pass
+
+            # UI 结构要求：create_operation_panel 中的 grp_file_list/file_list_layout_inner/file_scroll
+            if not (hasattr(self.gui, 'grp_file_list') and hasattr(self.gui, 'file_list_layout_inner')):
                 return
-            
-            # 更新 GUI 中的文件列表
-            if hasattr(self.gui, 'inp_batch_input'):
-                self.gui.inp_batch_input.setText(str(chosen_path))
-            
-            # 清空并填充文件列表（假设有 scroll_files 滚动区域包含复选框）
-            if hasattr(self.gui, 'scroll_files'):
-                # 清空旧的复选框
-                layout = self.gui.scroll_files.layout()
-                if layout:
-                    while layout.count():
-                        item = layout.takeAt(0)
-                        if item.widget():
-                            item.widget().deleteLater()
-                
-                # 添加新的复选框（全选）
-                from PySide6.QtWidgets import QCheckBox
-                for fp in files:
-                    chk = QCheckBox(fp.name)
-                    chk.setChecked(True)
-                    chk.file_path = fp
-                    layout.addWidget(chk)
-            
-            logger.info(f"扫描找到 {len(files)} 个文件")
-            QMessageBox.information(self.gui, '成功', f'找到 {len(files)} 个文件')
-        
+
+            # 清空旧的复选框及标签
+            for i in reversed(range(self.gui.file_list_layout_inner.count())):
+                item = self.gui.file_list_layout_inner.itemAt(i)
+                if item is None:
+                    continue
+                w = item.widget()
+                if w:
+                    w.setParent(None)
+
+            self.gui._file_check_items = []
+
+            if not files:
+                try:
+                    self.gui.grp_file_list.setVisible(False)
+                except Exception:
+                    pass
+                return
+
+            # 创建复选框并显示格式来源标签
+            for fp in files:
+                row = QWidget()
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(8)
+
+                cb = QCheckBox(fp.name)
+                cb.setChecked(True)
+
+                src_label = QLabel("")
+                try:
+                    src_label.setObjectName('fileSrcLabel')
+                    src_label.setProperty('variant', 'muted')
+                except Exception:
+                    pass
+                try:
+                    src_label.setFont(QFont('Consolas', 8))
+                except Exception:
+                    pass
+
+                try:
+                    src, src_path = self._determine_format_source(fp)
+                    disp, tip, color = self._format_label_from(src, src_path)
+                    src_label.setText(disp)
+                    src_label.setToolTip(tip or "")
+                    try:
+                        if color == '#dc3545':
+                            src_label.setProperty('variant', 'error')
+                        elif color == '#6c757d':
+                            src_label.setProperty('variant', 'muted')
+                        else:
+                            src_label.setProperty('variant', 'normal')
+                    except Exception:
+                        pass
+                except Exception:
+                    src_label.setText('未知')
+                    try:
+                        src_label.setProperty('variant', 'error')
+                    except Exception:
+                        pass
+
+                row_layout.addWidget(cb)
+                row_layout.addStretch()
+                try:
+                    src_label.setFixedWidth(300)
+                    src_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                except Exception:
+                    pass
+                row_layout.addWidget(src_label)
+
+                self.gui.file_list_layout_inner.addWidget(row)
+                self.gui._file_check_items.append((cb, fp, src_label))
+
+            # 根据文件数量自适应高度
+            try:
+                row_count = len(files)
+                row_height = 28
+                padding = 36
+                min_h = 80
+                max_h = 420
+                desired = min(max_h, max(min_h, row_count * row_height + padding))
+                if hasattr(self.gui, 'file_scroll') and self.gui.file_scroll is not None:
+                    self.gui.file_scroll.setFixedHeight(int(desired))
+            except Exception:
+                try:
+                    if hasattr(self.gui, 'file_scroll') and self.gui.file_scroll is not None:
+                        self.gui.file_scroll.setMinimumHeight(180)
+                except Exception:
+                    pass
+
+            try:
+                self.gui.grp_file_list.setVisible(True)
+            except Exception:
+                pass
+            try:
+                if hasattr(self.gui, 'file_scroll') and self.gui.file_scroll is not None:
+                    self.gui.file_scroll.verticalScrollBar().setValue(0)
+            except Exception:
+                pass
+
         except Exception as e:
             logger.error(f"扫描文件失败: {e}")
             QMessageBox.critical(self.gui, '错误', f'扫描失败: {e}')
+
+    def _on_pattern_changed(self):
+        """当匹配模式改变时，基于当前输入路径重新扫描并刷新文件列表。"""
+        try:
+            path_text = self.gui.inp_batch_input.text().strip() if hasattr(self.gui, 'inp_batch_input') else ''
+            if not path_text:
+                return
+            chosen = Path(path_text)
+            if chosen.exists():
+                self._scan_and_populate_files(chosen)
+        except Exception:
+            logger.debug("_on_pattern_changed 处理失败", exc_info=True)
     
     def run_batch_processing(self):
         """运行批处理（兼容 GUI 原有文件复选框面板与输出目录逻辑）。"""
@@ -165,9 +271,14 @@ class BatchManager:
                         output_dir = input_path
                 else:
                     pattern = getattr(self.gui, 'inp_pattern', None)
-                    pattern_text = pattern.text() if pattern else '*.csv'
+                    pattern_text = pattern.text().strip() if pattern else '*.csv'
+                    patterns = [x.strip() for x in pattern_text.split(';') if x.strip()]
+                    if not patterns:
+                        patterns = ['*.csv']
                     for file_path in input_path.rglob('*'):
-                        if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern_text):
+                        if not file_path.is_file():
+                            continue
+                        if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
                             files_to_process.append(file_path)
                     if output_dir is None:
                         output_dir = input_path
@@ -261,69 +372,115 @@ class BatchManager:
         except Exception as e:
             logger.error(f"处理错误事件失败: {e}")
     
-    def determine_format_source(self, file_path: Path) -> str:
-        """判断文件格式来源（全局/registry/sidecar）"""
+    def _determine_format_source(self, fp: Path) -> Tuple[str, Optional[Path]]:
+        """快速判断单个文件的格式来源，返回 (label, path_or_None)。
+
+        label: 'registry' | 'sidecar' | 'dir' | 'global' | 'unknown'
+        path_or_None: 指向具体的 format 文件（Path）或 None
+        说明：当 per-file 覆盖未启用时（默认），直接返回 ('global', None)。
+        """
         try:
-            # 检查 registry
-            if hasattr(self.gui, '_registry_db') and self.gui._registry_db:
+            # 若 per-file 覆盖未显式启用，则统一视作全局（不检查 registry/sidecar）
+            try:
+                if hasattr(self.gui, 'experimental_settings'):
+                    if not bool(self.gui.experimental_settings.get('enable_sidecar', False)):
+                        return ('global', None)
+                else:
+                    if hasattr(self.gui, 'chk_enable_sidecar') and not self.gui.chk_enable_sidecar.isChecked():
+                        return ('global', None)
+            except Exception:
+                pass
+
+            # 1) registry 优先（若界面提供了 db 路径）
+            if hasattr(self.gui, 'inp_registry_db'):
+                dbp = self.gui.inp_registry_db.text().strip()
+                if dbp:
+                    try:
+                        fmt = get_format_for_file(dbp, str(fp))
+                        if fmt:
+                            return ('registry', Path(fmt))
+                    except Exception:
+                        pass
+
+            # 2) file-sidecar
+            for suf in ('.format.json', '.json'):
+                cand = fp.parent / f"{fp.stem}{suf}"
+                if cand.exists():
+                    return ('sidecar', cand)
+
+            # 3) 目录级默认
+            dir_cand = fp.parent / 'format.json'
+            if dir_cand.exists():
+                return ('dir', dir_cand)
+
+            return ('global', None)
+        except Exception:
+            return ('unknown', None)
+
+    def _format_label_from(self, src: str, src_path: Optional[Path]):
+        """将源类型与路径格式化为显示文本、tooltip 与颜色。"""
+        try:
+            if src == 'registry':
+                name = Path(src_path).name if src_path else ''
+                return (f"registry ({name})" if name else 'registry', str(src_path) if src_path else '', '#1f77b4')
+            if src == 'sidecar':
+                name = Path(src_path).name if src_path else ''
+                return (f"sidecar ({name})" if name else 'sidecar', str(src_path) if src_path else '', '#28a745')
+            if src == 'dir':
+                name = Path(src_path).name if src_path else ''
+                return (f"dir ({name})" if name else 'dir', str(src_path) if src_path else '', '#ff8c00')
+            if src == 'global':
+                return ('global', '', '#6c757d')
+            return ('unknown', '', '#dc3545')
+        except Exception:
+            logger.debug('_format_label_from encountered error', exc_info=True)
+            return ('unknown', '', '#dc3545')
+
+    def _refresh_format_labels(self):
+        """遍历当前文件列表，重新解析并更新每个文件旁的来源标签及 tooltip。"""
+        try:
+            items = getattr(self.gui, '_file_check_items', None)
+            if not items:
+                return
+            for tup in items:
+                if len(tup) == 2:
+                    continue
+                cb, fp, lbl = tup
                 try:
-                    result = get_format_for_file(str(file_path), self.gui._registry_db)
-                    if result:
-                        return 'registry'
+                    src, src_path = self._determine_format_source(fp)
+                    disp, tip, color = self._format_label_from(src, src_path)
+                    lbl.setText(disp)
+                    lbl.setToolTip(tip or '')
+                    try:
+                        if color == '#dc3545':
+                            lbl.setProperty('variant', 'error')
+                        elif color == '#6c757d':
+                            lbl.setProperty('variant', 'muted')
+                        else:
+                            lbl.setProperty('variant', 'normal')
+                    except Exception:
+                        pass
                 except Exception:
-                    pass
-            
-            # 检查 sidecar
-            sidecar_path = Path(str(file_path) + '.format.json')
-            if sidecar_path.exists():
-                return 'sidecar'
-            
-            # 默认全局
-            return 'global'
-        
-        except Exception as e:
-            logger.debug(f"判断格式来源失败: {e}")
-            return 'global'
-    
-    def format_label_from(self, src: str, src_path=None) -> str:
-        """生成格式标签"""
-        labels = {
-            'global': '（全局设置）',
-            'registry': '（Registry）',
-            'sidecar': f'（Sidecar: {src_path}）' if src_path else '（Sidecar）'
-        }
-        return labels.get(src, src)
-    
+                    logger.debug('Failed to set label text from format source', exc_info=True)
+                    try:
+                        lbl.setText('未知')
+                        lbl.setToolTip('')
+                        try:
+                            lbl.setProperty('variant', 'error')
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+        except Exception:
+            logger.debug('_refresh_format_labels failed', exc_info=True)
+
+    # 对外提供与 gui.py 同名的委托入口（供 GUI 壳方法调用）
+    def on_pattern_changed(self):
+        return self._on_pattern_changed()
+
+    def scan_and_populate_files(self, chosen_path: Path):
+        return self._scan_and_populate_files(chosen_path)
+
     def refresh_format_labels(self):
-        """刷新格式标签 - 更新 UI 中显示的格式来源标签"""
-        try:
-            if not hasattr(self.gui, 'scroll_files'):
-                return
-            
-            layout = self.gui.scroll_files.layout()
-            if not layout:
-                return
-            
-            for i in range(layout.count()):
-                item = layout.itemAt(i)
-                if item and item.widget():
-                    widget = item.widget()
-                    if hasattr(widget, 'file_path'):
-                        src = self.determine_format_source(widget.file_path)
-                        label = self.format_label_from(src, widget.file_path)
-                        # 在复选框文本后添加来源标签
-                        original_text = widget.file_path.name
-                        widget.setText(f"{original_text} {label}")
-        
-        except Exception as e:
-            logger.debug(f"刷新格式标签失败: {e}")
-    
-    def refresh_registry_list(self):
-        """刷新 registry 列表"""
-        try:
-            # 这个方法会从 ExperimentalDialog 调用
-            if hasattr(self.gui, '_refresh_registry_list'):
-                self.gui._refresh_registry_list()
-        except Exception as e:
-            logger.debug(f"刷新 registry 列表失败: {e}")
+        return self._refresh_format_labels()
 
