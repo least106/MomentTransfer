@@ -115,7 +115,8 @@ class IntegratedAeroGUI(QMainWindow):
         splitter.setStretchFactor(1, 5)  # 右侧操作面板
         # 初始 splitter 大小，考虑到最大宽度限制
         try:
-            splitter.setSizes([450, 750])  # 调整为更合理的初始比例
+            # 横向布局需要更多空间，调整左右比例
+            splitter.setSizes([900, 600])  # 左侧配置面板:右侧操作面板 = 3:2
         except Exception:
             logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
 
@@ -140,20 +141,20 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         
         panel = QWidget()
-        # 给左侧配置面板一个合理的最小宽度，避免在窄窗口时完全压扁
-        panel.setMinimumWidth(420)
-        # 设置最大宽度，防止窗口放大时过度拉伸
-        panel.setMaximumWidth(550)
+        # 横向布局需要更大的最小宽度
+        panel.setMinimumWidth(800)
+        # 移除最大宽度限制，允许横向布局充分展开
+        # panel.setMaximumWidth(550)
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
 
-        # 标题与可视化按钮
-        header_layout = QHBoxLayout()
+        # 标题
         title = QLabel("配置编辑器")
         try:
             title.setObjectName('panelTitle')
         except Exception:
             pass
+        layout.addWidget(title)
 
         # === Source 坐标系（可折叠） ===
         self.chk_show_source = QCheckBox("显示 Source 坐标系设置")
@@ -162,7 +163,6 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         self.chk_show_source.stateChanged.connect(self.toggle_source_visibility)
-        layout.addWidget(self.chk_show_source)
 
         self.grp_source = QGroupBox("Source Coordinate System")
         # 允许在垂直方向扩展以填充空间，使底部按钮保持在窗口底部
@@ -272,7 +272,6 @@ class IntegratedAeroGUI(QMainWindow):
 
         self.grp_source.setLayout(form_source)
         self.grp_source.setVisible(False)
-        layout.addWidget(self.grp_source)
 
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
@@ -370,54 +369,65 @@ class IntegratedAeroGUI(QMainWindow):
         form_target.addRow(lbl, self.tgt_q)
         grp_target.setLayout(form_target)
 
-        # === 配置操作按钮 ===
-        btn_layout = QHBoxLayout()
+        # === 配置操作按钮（竖向排列）===
+        btn_widget = QWidget()
+        btn_layout = QVBoxLayout(btn_widget)
+        btn_layout.setSpacing(8)
 
         self.btn_load = QPushButton("加载配置")
         self.btn_load.setFixedHeight(34)
+        self.btn_load.setMinimumWidth(100)
         try:
             self.btn_load.setObjectName('secondaryButton')
             self.btn_load.setToolTip('从磁盘加载配置文件')
         except Exception:
             pass
-        self.btn_load.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_load.clicked.connect(self.load_config)
 
         self.btn_save = QPushButton("保存配置")
         self.btn_save.setFixedHeight(34)
+        self.btn_save.setMinimumWidth(100)
         try:
             self.btn_save.setObjectName('primaryButton')
             self.btn_save.setToolTip('将当前配置保存到磁盘 (Ctrl+S)')
             self.btn_save.setShortcut('Ctrl+S')
         except Exception:
             pass
-        self.btn_save.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_save.clicked.connect(self.save_config)
 
         self.btn_apply = QPushButton("应用配置")
         self.btn_apply.setFixedHeight(34)
+        self.btn_apply.setMinimumWidth(100)
         try:
             self.btn_apply.setObjectName('primaryButton')
             self.btn_apply.setShortcut('Ctrl+R')
             self.btn_apply.setToolTip('应用当前配置并初始化计算器 (Ctrl+Enter)')
         except Exception:
             pass
-        self.btn_apply.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_apply.clicked.connect(self.apply_config)
 
         btn_layout.addWidget(self.btn_load)
         btn_layout.addWidget(self.btn_save)
         btn_layout.addWidget(self.btn_apply)
+        btn_layout.addStretch()
 
-        # 添加到主布局
-        layout.addWidget(grp_target)
-        # layout.addWidget(grp_global)  # 删除未定义的grp_global，避免报错
-        layout.addLayout(btn_layout)
-        # 设置伸缩：让 Source/Target 在垂直方向扩展以填充空间
-        # header_layout index 0, chk_show_source index 1, grp_source index 2, grp_target index 3, btn_layout index 4
+        # === 横向布局：Source + Target + 按钮 ===
+        coord_layout = QHBoxLayout()
+        coord_layout.addWidget(self.grp_source)
+        coord_layout.addWidget(grp_target)
+        coord_layout.addWidget(btn_widget)
+        # 设置比例：Source:Target:按钮 = 1:1:0（按钮固定宽度）
+        coord_layout.setStretch(0, 1)
+        coord_layout.setStretch(1, 1)
+        coord_layout.setStretch(2, 0)
+
+        # 添加横向布局到主布局
+        layout.addWidget(self.chk_show_source)
+        layout.addLayout(coord_layout)
+        
+        # 设置伸缩：让横向布局在垂直方向扩展以填充空间
         try:
-            layout.setStretch(2, 1)
-            layout.setStretch(3, 1)
+            layout.setStretch(1, 1)  # chk_show_source index 0, coord_layout index 1
         except Exception:
             logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
         layout.addStretch()
@@ -831,13 +841,18 @@ class IntegratedAeroGUI(QMainWindow):
                 item = QTableWidgetItem(str(default_values[row][col]))
                 item.setTextAlignment(Qt.AlignCenter)
                 table.setItem(row, col, item)
+            # 设置行高
+            table.setRowHeight(row, 28)
         
-        # 设置表格样式
-        table.setMaximumHeight(150)
-        table.setMaximumWidth(280)
+        # 设置表格样式 - 确保表格能完整显示
+        table.setMinimumHeight(145)
+        table.setMaximumHeight(165)
+        table.setMinimumWidth(240)
+        table.setMaximumWidth(300)
         
-        # 调整列宽
+        # 调整列宽，确保内容完整显示
         for col in range(3):
+            table.setColumnWidth(col, 70)
             table.setColumnWidth(col, 70)
         
         try:
