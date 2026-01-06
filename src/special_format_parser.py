@@ -1,14 +1,32 @@
 """
 特殊格式数据文件解析器
-处理包含多个 part 数据块的文件，自动识别 part 名称和数据行
+处理包含多个 part 数据块的文件，自动识别 part 名称和数据行。
+
+新增：
+- `looks_like_special_format`：用于快速判断文件是否为特殊格式
+- `process_special_format_file`：直接解析并输出处理结果，便于 CLI/GUI 批处理调用
 """
 import re
-import pandas as pd
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+import sys
 import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import pandas as pd
+
+# 确保脚本运行时能找到 src 包
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from src.physics import AeroCalculator
 
 logger = logging.getLogger(__name__)
+
+# 推荐扩展名：MomentTransfer 专用批处理格式
+RECOMMENDED_EXT = '.mtfmt'
+SUPPORTED_EXTS = {'.mtfmt', '.mtdata', '.txt', '.dat'}
 
 
 def is_metadata_line(line: str) -> bool:
@@ -26,6 +44,34 @@ def is_metadata_line(line: str) -> bool:
         # 可能是参数描述行，如"计算坐标系:X向后、Y向右、z向上"
         return True
     
+    return False
+
+
+def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> bool:
+    """快速判断文件是否符合特殊格式。
+
+    规则：
+    1) 扩展名在推荐/支持列表
+    2) 前若干行包含典型表头关键词（Alpha/CL/CD/Cm/Cx/Cy/Cz）或 part 名后跟表头
+    """
+    p = Path(file_path)
+    if p.suffix.lower() in SUPPORTED_EXTS:
+        return True
+
+    try:
+        with open(p, 'r', encoding='utf-8') as fh:
+            lines = [fh.readline() for _ in range(max_probe_lines)]
+    except OSError:
+        return False
+
+    tokens = " ".join(lines)
+    header_keywords = ['Alpha', 'CL', 'CD', 'Cm', 'Cx', 'Cy', 'Cz', 'Cz/FN']
+    if any(kw in tokens for kw in header_keywords):
+        # 同时检测到可能的 part 标记
+        for ln in lines:
+            ln = (ln or '').strip()
+            if ln and not is_metadata_line(ln) and not is_data_line(ln):
+                return True
     return False
 
 
@@ -203,6 +249,98 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
             logger.warning(f"创建 DataFrame 失败 (part={current_part}): {e}")
     
     return result
+
+
+def process_special_format_file(
+    file_path: Path,
+    project_data,
+    output_dir: Path,
+    *,
+    timestamp_format: str = "%Y%m%d_%H%M%S",
+    overwrite: bool = False,
+) -> List[Path]:
+    """
+    直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
+
+    - 默认将 part 名映射到同名的 Target part；若不存在则跳过并记录警告。
+    - 输入文件假定使用统一的源坐标系/参考值（由 ProjectData 的 source frame 定义），
+      每个 Target part 使用自身的参考量进行系数转换。
+    - 当前假定列名包含 `Cx`, `Cy`, `Cz/FN`, `CMx`, `CMy`, `CMz`；
+      如列名变动，可在后续迭代中扩展映射规则。
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    data_dict = parse_special_format_file(file_path)
+    outputs: List[Path] = []
+
+    for part_name, df in data_dict.items():
+        # 校验 Target part 是否存在
+        if project_data is not None and hasattr(project_data, 'target_parts'):
+            if part_name not in project_data.target_parts:
+                logger.warning("目标配置中不存在 part '%s'，已跳过该块", part_name)
+                continue
+
+        required_cols = ['Cx', 'Cy', 'Cz/FN', 'CMx', 'CMy', 'CMz']
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            logger.warning("part '%s' 缺少必需列 %s，已跳过", part_name, missing)
+            continue
+
+        try:
+            cx = pd.to_numeric(df['Cx'], errors='coerce')
+            cy = pd.to_numeric(df['Cy'], errors='coerce')
+            cz = pd.to_numeric(df['Cz/FN'], errors='coerce')
+            cmx = pd.to_numeric(df['CMx'], errors='coerce')
+            cmy = pd.to_numeric(df['CMy'], errors='coerce')
+            cmz = pd.to_numeric(df['CMz'], errors='coerce')
+        except Exception as e:
+            logger.warning("part '%s' 数值转换失败: %s", part_name, e)
+            continue
+
+        forces = pd.concat([cx, cy, cz], axis=1).to_numpy()
+        moments = pd.concat([cmx, cmy, cmz], axis=1).to_numpy()
+
+        try:
+            if project_data is None:
+                logger.warning("缺少 ProjectData，无法为 part '%s' 构建 AeroCalculator，已跳过", part_name)
+                continue
+            calc = AeroCalculator(project_data, target_part=part_name)
+            results = calc.process_batch(forces, moments)
+        except Exception as e:
+            logger.warning("part '%s' 处理失败: %s", part_name, e, exc_info=True)
+            continue
+
+        out_df = df.copy()
+        out_df['Fx_new'] = results['force_transformed'][:, 0]
+        out_df['Fy_new'] = results['force_transformed'][:, 1]
+        out_df['Fz_new'] = results['force_transformed'][:, 2]
+        out_df['Mx_new'] = results['moment_transformed'][:, 0]
+        out_df['My_new'] = results['moment_transformed'][:, 1]
+        out_df['Mz_new'] = results['moment_transformed'][:, 2]
+        out_df['Cx_new'] = results['coeff_force'][:, 0]
+        out_df['Cy_new'] = results['coeff_force'][:, 1]
+        out_df['Cz_new'] = results['coeff_force'][:, 2]
+        out_df['Cl_new'] = results['coeff_moment'][:, 0]
+        out_df['Cm_new'] = results['coeff_moment'][:, 1]
+        out_df['Cn_new'] = results['coeff_moment'][:, 2]
+
+        ts = datetime.now().strftime(timestamp_format)
+        out_path = output_dir / f"{file_path.stem}_{part_name}_result_{ts}.csv"
+        if out_path.exists() and not overwrite:
+            suffix = 1
+            while True:
+                candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+                if not candidate.exists():
+                    out_path = candidate
+                    break
+                suffix += 1
+
+        out_df.to_csv(out_path, index=False)
+        outputs.append(out_path)
+        logger.info("part '%s' 输出: %s", part_name, out_path.name)
+
+    return outputs
 
 
 def get_part_names(file_path: Path) -> List[str]:
