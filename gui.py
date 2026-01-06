@@ -115,7 +115,7 @@ class IntegratedAeroGUI(QMainWindow):
         splitter.setStretchFactor(1, 1)  # 下方批量处理面板
         # 初始 splitter 大小
         try:
-            splitter.setSizes([400, 400])  # 上下各占一半
+            splitter.setSizes([380, 420])  # 上方配置面板占更少空间
         except Exception:
             logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
 
@@ -140,12 +140,12 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         
         panel = QWidget()
-        # 横向布局需要更大的最小宽度，但不限制高度
+        # 横向布局需要更大的最小宽度
         panel.setMinimumWidth(900)
-        panel.setMinimumHeight(300)
+        panel.setMaximumHeight(550)  # 限制最大高度，避免过多空白
         # 移除最大宽度限制，允许横向布局充分展开
         layout = QVBoxLayout(panel)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         # 标题
         title = QLabel("配置编辑器")
@@ -164,9 +164,10 @@ class IntegratedAeroGUI(QMainWindow):
         self.chk_show_source.stateChanged.connect(self.toggle_source_visibility)
 
         self.grp_source = QGroupBox("Source Coordinate System")
-        # 设置最小宽度，确保内容不被压缩
+        # 设置尺寸约束，避免过多空白
         self.grp_source.setMinimumWidth(350)
-        self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.grp_source.setMaximumHeight(500)
+        self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_source = QFormLayout()
         try:
             form_source.setLabelAlignment(Qt.AlignRight)
@@ -275,9 +276,10 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
-        # 设置最小宽度，确保内容不被压缩
+        # 设置尺寸约束，避免过多空白
         grp_target.setMinimumWidth(350)
-        grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        grp_target.setMaximumHeight(500)
+        grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_target = QFormLayout()
         try:
             form_target.setLabelAlignment(Qt.AlignRight)
@@ -841,16 +843,16 @@ class IntegratedAeroGUI(QMainWindow):
                 item = QTableWidgetItem(str(default_values[row][col]))
                 item.setTextAlignment(Qt.AlignCenter)
                 table.setItem(row, col, item)
-            # 设置行高
-            table.setRowHeight(row, 30)
+            # 设置更紧凑的行高
+            table.setRowHeight(row, 26)
         
-        # 设置表格样式 - 确保表格能完整显示
-        table.setFixedHeight(170)
-        table.setFixedWidth(280)
+        # 设置表格样式 - 紧凑但完整显示
+        table.setFixedHeight(145)  # 减小高度
+        table.setFixedWidth(260)   # 略微减小宽度
         
-        # 调整列宽，确保内容完整显示
+        # 调整列宽
         for col in range(3):
-            table.setColumnWidth(col, 75)
+            table.setColumnWidth(col, 70)
             table.setColumnWidth(col, 70)
         
         try:
