@@ -100,23 +100,22 @@ class IntegratedAeroGUI(QMainWindow):
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
         # 设置主布局的边距，使界面更紧凑
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(4)
 
-        # 立即创建splitter和panel，避免延迟加载导致的启动缓慢
-        splitter = QSplitter(Qt.Horizontal)
+        # 使用垂直分割器：上方是配置面板，下方是批量处理面板
+        splitter = QSplitter(Qt.Vertical)
         splitter.setHandleWidth(4)  # 设置分割条宽度
         splitter.addWidget(self.create_config_panel())
         splitter.addWidget(self.create_operation_panel())
-        # 调整拉伸因子，使布局更平衡
-        splitter.setStretchFactor(0, 3)  # 左侧配置面板
-        splitter.setStretchFactor(1, 5)  # 右侧操作面板
-        # 初始 splitter 大小，考虑到最大宽度限制
+        # 调整拉伸因子，配置面板和批量处理面板各占一半
+        splitter.setStretchFactor(0, 1)  # 上方配置面板
+        splitter.setStretchFactor(1, 1)  # 下方批量处理面板
+        # 初始 splitter 大小
         try:
-            # 横向布局需要更多空间，调整左右比例
-            splitter.setSizes([900, 600])  # 左侧配置面板:右侧操作面板 = 3:2
+            splitter.setSizes([400, 400])  # 上下各占一半
         except Exception:
             logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
 
@@ -141,10 +140,10 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         
         panel = QWidget()
-        # 横向布局需要更大的最小宽度
+        # 横向布局需要更大的最小宽度，但不限制高度
         panel.setMinimumWidth(900)
+        panel.setMinimumHeight(300)
         # 移除最大宽度限制，允许横向布局充分展开
-        # panel.setMaximumWidth(550)
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
 
@@ -464,9 +463,9 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         
         panel = QWidget()
-        panel.setMinimumWidth(600)
-        # 设置最大宽度，防止窗口放大时过度拉伸
-        panel.setMaximumWidth(900)
+        panel.setMinimumWidth(900)
+        panel.setMinimumHeight(300)
+        # 移除最大宽度限制，批量处理面板应该占据整个宽度
         layout = QVBoxLayout(panel)
         layout.setSpacing(8)  # 从 15 减为 8，更紧凑
 
