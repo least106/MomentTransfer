@@ -708,7 +708,10 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_grid.addWidget(self.btn_cancel, 1, 1)
 
         # 把文件表单加入 layout_batch（实例属性）
+        # 顺序：文件表单 -> 按钮行 -> 进度条 -> Tab -> 最近项目
         self.layout_batch.addLayout(self.file_form)
+        # 把按钮行也放入批处理组内，便于整体伸缩与对齐
+        self.layout_batch.addWidget(self.btn_widget)
         self.layout_batch.addWidget(self.progress_bar)
 
         # 创建 Tab 容器：分离"文件列表"和"处理日志"
@@ -744,40 +747,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 将布局应用到 grp_batch
         self.grp_batch.setLayout(self.layout_batch)
 
-        # 最近项目与快捷操作
-        recent_group = QGroupBox("最近项目 & 快捷操作")
-        recent_layout = QVBoxLayout()
-        from PySide6.QtWidgets import QListWidget
-        self.lst_recent = QListWidget()
-        self.lst_recent.setMaximumHeight(120)
-        self.lst_recent.itemActivated.connect(lambda it: self.inp_batch_input.setText(it.text()))
-        recent_layout.addWidget(QLabel("最近打开的配置/项目（双击以填充输入路径）:"))
-        recent_layout.addWidget(self.lst_recent)
 
-        out_row = QHBoxLayout()
-        self.inp_default_output = QLineEdit()
-        self.inp_default_output.setPlaceholderText("默认输出目录，可选")
-        btn_browse_default_out = QPushButton("浏览")
-        btn_browse_default_out.clicked.connect(lambda: self._browse_default_output())
-        out_row.addWidget(self.inp_default_output)
-        out_row.addWidget(btn_browse_default_out)
-        recent_layout.addLayout(out_row)
-
-        self.btn_quick = QPushButton("一键处理")
-        try:
-            self.btn_quick.setObjectName('primaryButton')
-            self.btn_quick.setShortcut('Ctrl+Shift+R')
-        except Exception:
-            pass
-        self.btn_quick.setToolTip("使用当前配置与默认输出目录快速开始批处理")
-        self.btn_quick.clicked.connect(self.one_click_process)
-        recent_layout.addWidget(self.btn_quick)
-        recent_group.setLayout(recent_layout)
 
         layout.addWidget(self.status_group)
-        layout.addWidget(self.btn_widget)
         layout.addWidget(self.grp_batch)
-        layout.addWidget(recent_group)
 
         try:
             idx_status = layout.indexOf(self.status_group)
@@ -1295,34 +1268,9 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("update_config_preview failed", exc_info=True)
 
-    def add_recent_project(self, path_str: str):
-        """将最近打开的配置/项目加入列表（去重，保持最新在上）。"""
-        try:
-            if not hasattr(self, 'recent_projects'):
-                self.recent_projects = []
-            p = str(path_str)
-            if p in self.recent_projects:
-                self.recent_projects.remove(p)
-            self.recent_projects.insert(0, p)
-            # 限制数量
-            self.recent_projects = self.recent_projects[:10]
-            # 更新 UI 列表
-            try:
-                self.lst_recent.clear()
-                for rp in self.recent_projects:
-                    self.lst_recent.addItem(rp)
-            except Exception:
-                logger.debug("Failed to update lst_recent", exc_info=True)
-        except Exception:
-            logger.debug("add_recent_project failed", exc_info=True)
 
-    def _browse_default_output(self):
-        try:
-            d = QFileDialog.getExistingDirectory(self, '选择默认输出目录', '.')
-            if d:
-                self.inp_default_output.setText(d)
-        except Exception:
-            logger.debug("_browse_default_output failed", exc_info=True)
+
+
 
     def _on_target_part_changed(self):
         """当用户在下拉框选择不同 Part 时 - 委托给 PartManager"""
@@ -1645,38 +1593,6 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("_on_tgt_partname_changed failed", exc_info=True)
 
-    def one_click_process(self):
-        """使用当前配置和默认输出目录快速启动批处理（单次、非交互）。"""
-        try:
-            # 初始化基本前置条件
-            if not hasattr(self, 'calculator') or self.calculator is None:
-                QMessageBox.warning(self, "错误", "尚未应用配置，请先点击“应用配置”。")
-                return
-            inp = self.inp_batch_input.text().strip()
-            if not inp:
-                # 若最近项目可用，则使用第一个
-                if hasattr(self, 'recent_projects') and self.recent_projects:
-                    inp = self.recent_projects[0]
-                    self.inp_batch_input.setText(inp)
-                else:
-                    QMessageBox.warning(self, "错误", "请先选择输入文件或目录（或在最近项目中选择一项）。")
-                    return
-
-            output_dir = self.inp_default_output.text().strip() or None
-            if output_dir:
-                self.output_dir = Path(output_dir)
-            else:
-                self.output_dir = None
-
-            # 将输入路径设置到控件并调用 run_batch_processing
-            self.inp_batch_input.setText(inp)
-            # 如果指定了默认输出目录，设置为实例属性，run_batch_processing 会优先使用它
-            try:
-                self.run_batch_processing()
-            except Exception as e:
-                logger.exception("one_click_process failed: %s", e)
-        except Exception:
-            logger.debug("one_click_process failed", exc_info=True)
 
     def request_cancel_batch(self):
         """UI 回调：请求取消正在运行的批处理任务"""
