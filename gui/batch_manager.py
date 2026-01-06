@@ -71,6 +71,13 @@ class BatchManager:
 
             # 统一由 BatchManager 扫描并填充文件列表
             self._scan_and_populate_files(chosen_path)
+            
+            # 输入路径后自动切换到文件列表页
+            try:
+                if hasattr(self.gui, 'tab_main'):
+                    self.gui.tab_main.setCurrentIndex(1)  # 文件列表页是第1个Tab
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f"浏览输入失败: {e}")
@@ -341,6 +348,13 @@ class BatchManager:
                     self.gui.btn_batch.setText("处理中...")
             except Exception:
                 logger.debug("无法禁用批处理按钮", exc_info=True)
+            
+            # 批处理开始时自动切换到处理日志页
+            try:
+                if hasattr(self.gui, 'tab_main'):
+                    self.gui.tab_main.setCurrentIndex(2)  # 处理日志页是第2个Tab
+            except Exception:
+                pass
 
             self.batch_thread.start()
             logger.info(f"开始批处理 {len(files_to_process)} 个文件")

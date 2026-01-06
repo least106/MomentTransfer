@@ -570,71 +570,10 @@ class IntegratedAeroGUI(QMainWindow):
 
 
 
-        # 将文件表单和信息区域横向排列
-        form_and_info_layout = QHBoxLayout()
-        
-        # 左侧：文件表单
-        form_widget = QWidget()
-        form_layout = QVBoxLayout(form_widget)
-        form_layout.setContentsMargins(0, 0, 0, 0)
+        # 直接将文件表单添加到批处理布局
         self.file_form.addRow("输入路径:", input_row)
         self.file_form.addRow("匹配模式:", pattern_row)
-        form_layout.addLayout(self.file_form)
-        
-        # 右侧：信息区域（重新设计为紧凑布局）
-        info_widget = QWidget()
-        info_widget.setMaximumWidth(250)
-        info_layout = QVBoxLayout(info_widget)
-        info_layout.setContentsMargins(8, 4, 8, 4)
-        info_layout.setSpacing(2)
-        
-        # 信息标题
-        info_title = QLabel("信息")
-        try:
-            info_title.setObjectName('sectionTitle')
-        except Exception:
-            pass
-        info_layout.addWidget(info_title)
-        
-        # 配置状态
-        self.lbl_status = QLabel("未加载配置")
-        try:
-            self.lbl_status.setObjectName('statusLabel')
-        except Exception:
-            pass
-        info_layout.addWidget(self.lbl_status)
-        
-        # 跳过行和保留列（同一行）
-        skip_passthrough_row = QHBoxLayout()
-        self.lbl_preview_skip = QLabel("跳过行: -")
-        self.lbl_preview_passthrough = QLabel("保留列: -")
-        for w in (self.lbl_preview_skip, self.lbl_preview_passthrough):
-            try:
-                w.setObjectName('previewText')
-            except Exception:
-                pass
-        skip_passthrough_row.addWidget(self.lbl_preview_skip)
-        skip_passthrough_row.addSpacing(10)
-        skip_passthrough_row.addWidget(self.lbl_preview_passthrough)
-        skip_passthrough_row.addStretch()
-        info_layout.addLayout(skip_passthrough_row)
-        
-        # 列映射
-        self.lbl_preview_columns = QLabel("列映射: -")
-        try:
-            self.lbl_preview_columns.setObjectName('previewText')
-        except Exception:
-            pass
-        info_layout.addWidget(self.lbl_preview_columns)
-        info_layout.addStretch()
-        
-        # 组合到横向布局
-        form_and_info_layout.addWidget(form_widget, stretch=2)
-        form_and_info_layout.addWidget(info_widget, stretch=1)
-        
-        # 添加到批处理布局
-        self.layout_batch.addLayout(form_and_info_layout)
-        # 将文件表单行添加到会话级文件_form
+        self.layout_batch.addLayout(self.file_form)
 
         # 文件列表（可复选、可滚动）
         self.grp_file_list = QGroupBox("找到的文件列表")
@@ -731,38 +670,74 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_grid.addWidget(self.btn_batch, 0, 1)
         self.btn_grid.addWidget(self.btn_undo, 1, 1)
 
-        # 把文件表单加入 layout_batch（实例属性）
-        # 顺序：文件表单 -> 按钮行 -> 进度条 -> Tab -> 最近项目
-        self.layout_batch.addLayout(self.file_form)
-        # 把按钮行也放入批处理组内，便于整体伸缩与对齐
+        # 把form和按钮行放入批处理组内
         self.layout_batch.addWidget(self.btn_widget)
         self.layout_batch.addWidget(self.progress_bar)
 
-        # 创建 Tab 容器：分离"文件列表"和"处理日志"
-        self.tab_files_logs = QTabWidget()
+        # 创建 Tab 容器：信息、文件列表和处理日志
+        self.tab_main = QTabWidget()
         try:
-            self.tab_files_logs.setObjectName('filesLogsTab')
+            self.tab_main.setObjectName('mainTab')
         except Exception:
             pass
         
+        # Tab 0: 信息页
+        self.info_tab_widget = QWidget()
+        info_tab_layout = QVBoxLayout(self.info_tab_widget)
+        info_tab_layout.setContentsMargins(12, 12, 12, 12)
+        info_tab_layout.setSpacing(8)
+        
+        # 配置状态
+        self.lbl_status = QLabel("未加载配置")
+        try:
+            self.lbl_status.setObjectName('statusLabel')
+            font = self.lbl_status.font()
+            font.setPointSize(10)
+            font.setBold(True)
+            self.lbl_status.setFont(font)
+        except Exception:
+            pass
+        info_tab_layout.addWidget(self.lbl_status)
+        
+        # 数据格式预览区域
+        format_group = QGroupBox("数据格式预览")
+        format_layout = QVBoxLayout(format_group)
+        format_layout.setSpacing(4)
+        
+        self.lbl_preview_skip = QLabel("跳过行: -")
+        self.lbl_preview_passthrough = QLabel("保留列: -")
+        self.lbl_preview_columns = QLabel("列映射: -")
+        
+        for w in (self.lbl_preview_skip, self.lbl_preview_passthrough, self.lbl_preview_columns):
+            try:
+                w.setObjectName('previewText')
+            except Exception:
+                pass
+            format_layout.addWidget(w)
+        
+        info_tab_layout.addWidget(format_group)
+        info_tab_layout.addStretch()
+        
+        self.tab_main.addTab(self.info_tab_widget, "信息")
+        
         # Tab 1: 文件列表
-        self.tab_files_logs.addTab(self.grp_file_list, "文件列表")
+        self.tab_main.addTab(self.grp_file_list, "文件列表")
         
         # Tab 2: 处理日志
         self.tab_logs_widget = QWidget()
         tab_logs_layout = QVBoxLayout(self.tab_logs_widget)
         tab_logs_layout.setContentsMargins(0, 0, 0, 0)
         tab_logs_layout.addWidget(self.txt_batch_log)
-        self.tab_files_logs.addTab(self.tab_logs_widget, "处理日志")
+        self.tab_main.addTab(self.tab_logs_widget, "处理日志")
         
         # 添加 Tab 到批处理布局
-        self.layout_batch.addWidget(self.tab_files_logs)
+        self.layout_batch.addWidget(self.tab_main)
 
 
 
         # 设置伸缩：Tab 拉伸占满空间
         try:
-            idx_tab = self.layout_batch.indexOf(self.tab_files_logs)
+            idx_tab = self.layout_batch.indexOf(self.tab_main)
             if idx_tab >= 0:
                 self.layout_batch.setStretch(idx_tab, 1)
         except Exception:
@@ -1058,9 +1033,15 @@ class IntegratedAeroGUI(QMainWindow):
         """应用当前配置到计算器 - 委托给 ConfigManager"""
         try:
             self.config_manager.apply_config()
+            # 应用配置后自动切换到信息页
+            try:
+                if hasattr(self, 'tab_main'):
+                    self.tab_main.setCurrentIndex(0)  # 信息页是第0个Tab
+            except Exception:
+                pass
         except AttributeError:
             # 如果管理器未初始化，记录警告
-            logger.warning("ConfigManager 未初始化，无法应用配置")
+            logger.warning("配置Manager 未初始化，无法应用配置")
         except Exception as e:
             logger.error(f"应用配置失败: {e}")
 
@@ -1095,6 +1076,12 @@ class IntegratedAeroGUI(QMainWindow):
                     self.update_config_preview()
                 except Exception:
                     logger.debug('update_config_preview failed after configure_data_format', exc_info=True)
+                # 配置数据格式后自动切换到信息页
+                try:
+                    if hasattr(self, 'tab_main'):
+                        self.tab_main.setCurrentIndex(0)
+                except Exception:
+                    pass
         except Exception as e:
             QMessageBox.critical(self, '错误', f'无法配置数据格式: {e}')
 
