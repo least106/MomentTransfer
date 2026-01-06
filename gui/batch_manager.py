@@ -31,7 +31,7 @@ class BatchManager:
             dlg = QFileDialog(self.gui, '选择输入文件或目录')
             dlg.setOption(QFileDialog.DontUseNativeDialog, True)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter('Data Files (*.csv *.xlsx *.xls);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls)')
+            dlg.setNameFilter('Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls);;MomentTransfer (*.mtfmt *.mtdata)')
 
             # 允许切换目录模式
             from PySide6.QtWidgets import QCheckBox
@@ -90,13 +90,13 @@ class BatchManager:
             else:
                 # 目录 - 递归扫描常见格式文件
                 files = []
-                for pattern in ['*.csv', '*.xlsx', '*.xls']:
+                for pattern in ['*.csv', '*.xlsx', '*.xls', '*.mtfmt', '*.mtdata', '*.txt', '*.dat']:
                     files.extend(chosen_path.rglob(pattern))
                 files = list(set(files))  # 去重
                 files.sort()
             
             if not files:
-                QMessageBox.warning(self.gui, '提示', '未找到任何支持的数据文件 (.csv, .xlsx)')
+                QMessageBox.warning(self.gui, '提示', '未找到任何支持的数据文件 (.csv/.xlsx/.mtfmt/.mtdata/.txt/.dat)')
                 return
             
             # 更新 GUI 中的文件列表
@@ -193,7 +193,9 @@ class BatchManager:
                 files_to_process,
                 output_path,
                 data_config,
-                registry_db=getattr(self.gui, '_registry_db', None)
+                registry_db=getattr(self.gui, '_registry_db', None),
+                project_data=getattr(self.gui, 'current_config', None),
+                timestamp_format=getattr(self.gui, 'timestamp_format', "%Y%m%d_%H%M%S")
             )
 
             # 连接信号
