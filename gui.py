@@ -196,10 +196,11 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("无法连接 src_part_name.textChanged", exc_info=True)
         # 注意：信号恢复延迟到 panel 返回前，避免在构建期间触发
-        self.cmb_source_parts = QComboBox()
+        # 注意：控件创建时必须指定 parent，否则在 Windows 下调用 setVisible(True)
+        # 可能会导致其被当作“顶层窗口”短暂显示（表现为启动时弹窗一闪而过）。
+        self.cmb_source_parts = QComboBox(panel)
         self.cmb_source_parts.blockSignals(True)  # 初始也阻止信号
-        self.cmb_source_parts.setVisible(True)
-        self.spin_source_variant = QSpinBox()
+        self.spin_source_variant = QSpinBox(panel)
         self.spin_source_variant.setRange(0, 100)
         self.spin_source_variant.setValue(0)
         self.spin_source_variant.setVisible(False)
@@ -311,10 +312,10 @@ class IntegratedAeroGUI(QMainWindow):
         form_target.addRow("Part Name:", self.tgt_part_name)
 
         # 当加载 ProjectData 时，展示可选的 Part 下拉框与 Variant 索引选择器
-        self.cmb_target_parts = QComboBox()
+        # 同上：创建时绑定 parent，避免未 parent 状态下短暂成为顶层窗口。
+        self.cmb_target_parts = QComboBox(panel)
         self.cmb_target_parts.blockSignals(True)  # 初始也阻止信号
-        self.cmb_target_parts.setVisible(True)
-        self.spin_target_variant = QSpinBox()
+        self.spin_target_variant = QSpinBox(panel)
         self.spin_target_variant.setRange(0, 100)
         self.spin_target_variant.setValue(0)
         self.spin_target_variant.setVisible(False)
