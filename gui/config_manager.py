@@ -338,6 +338,45 @@ class ConfigManager:
     def apply_config(self):
         """应用当前配置到计算器"""
         try:
+            # 同步表格数据到独立控件（为了兼容现有的读取逻辑）
+            try:
+                if hasattr(self.gui, 'src_coord_table'):
+                    src_coord = self.gui._get_coord_from_table(self.gui.src_coord_table)
+                    # 更新独立控件的值
+                    self.gui.src_ox.setValue(src_coord['Orig'][0])
+                    self.gui.src_oy.setValue(src_coord['Orig'][1])
+                    self.gui.src_oz.setValue(src_coord['Orig'][2])
+                    self.gui.src_xx.setValue(src_coord['X'][0])
+                    self.gui.src_xy.setValue(src_coord['X'][1])
+                    self.gui.src_xz.setValue(src_coord['X'][2])
+                    self.gui.src_yx.setValue(src_coord['Y'][0])
+                    self.gui.src_yy.setValue(src_coord['Y'][1])
+                    self.gui.src_yz.setValue(src_coord['Y'][2])
+                    self.gui.src_zx.setValue(src_coord['Z'][0])
+                    self.gui.src_zy.setValue(src_coord['Z'][1])
+                    self.gui.src_zz.setValue(src_coord['Z'][2])
+            except Exception as e:
+                logger.debug(f"同步Source表格数据失败: {e}")
+            
+            try:
+                if hasattr(self.gui, 'tgt_coord_table'):
+                    tgt_coord = self.gui._get_coord_from_table(self.gui.tgt_coord_table)
+                    # 更新独立控件的值
+                    self.gui.tgt_ox.setValue(tgt_coord['Orig'][0])
+                    self.gui.tgt_oy.setValue(tgt_coord['Orig'][1])
+                    self.gui.tgt_oz.setValue(tgt_coord['Orig'][2])
+                    self.gui.tgt_xx.setValue(tgt_coord['X'][0])
+                    self.gui.tgt_xy.setValue(tgt_coord['X'][1])
+                    self.gui.tgt_xz.setValue(tgt_coord['X'][2])
+                    self.gui.tgt_yx.setValue(tgt_coord['Y'][0])
+                    self.gui.tgt_yy.setValue(tgt_coord['Y'][1])
+                    self.gui.tgt_yz.setValue(tgt_coord['Y'][2])
+                    self.gui.tgt_zx.setValue(tgt_coord['Z'][0])
+                    self.gui.tgt_zy.setValue(tgt_coord['Z'][1])
+                    self.gui.tgt_zz.setValue(tgt_coord['Z'][2])
+            except Exception as e:
+                logger.debug(f"同步Target表格数据失败: {e}")
+            
             # 构建数据结构
             src_part = {
                 "PartName": self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else "Global",

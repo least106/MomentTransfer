@@ -173,8 +173,15 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
 
-        # 使用单行三元 QDoubleSpinBox 以节省垂直空间
+        # Source 坐标系输入表格
+        self.src_coord_table = self._create_coord_table('src')
+        
+        # 保留原有的独立控件引用（用于兼容现有代码）
+        # 但这些不再显示在UI中，而是作为表格的数据访问接口
         self.src_ox, self.src_oy, self.src_oz = self._create_triple_spin(0.0, 0.0, 0.0)
+        self.src_xx, self.src_xy, self.src_xz = self._create_triple_spin(1.0, 0.0, 0.0)
+        self.src_yx, self.src_yy, self.src_yz = self._create_triple_spin(0.0, 1.0, 0.0)
+        self.src_zx, self.src_zy, self.src_zz = self._create_triple_spin(0.0, 0.0, 1.0)
 
         # Source Part Name（与 Target 对等）
         # 支持多 Part/Variant 的下拉选择（当从 ProjectData 加载时会显示）
@@ -229,26 +236,12 @@ class IntegratedAeroGUI(QMainWindow):
         src_part_h.addWidget(self.btn_remove_source_part)
         form_source.addRow("选择 Source Part:", src_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）；避免用户混淆，因此不在表单中显示
-        # 使用一致宽度的 QLabel 以避免表单断行并保持对齐
-        lbl = QLabel("Orig:")
+        
+        # 使用表格显示坐标系（3x4表格取代12个独立输入框）
+        lbl = QLabel("坐标系:")
         lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self._create_vector_row(self.src_ox, self.src_oy, self.src_oz))
-
-        lbl = QLabel("X:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self._create_vector_row(self.src_xx, self.src_xy, self.src_xz))
-
-        lbl = QLabel("Y:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self._create_vector_row(self.src_yx, self.src_yy, self.src_yz))
-
-        lbl = QLabel("Z:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self._create_vector_row(self.src_zx, self.src_zy, self.src_zz))
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        form_source.addRow(lbl, self.src_coord_table)
 
         # Source 参考量（与 Target 对等）
         self.src_cref = self._create_input("1.0")
@@ -334,34 +327,20 @@ class IntegratedAeroGUI(QMainWindow):
         form_target.addRow("选择 Target Part:", tgt_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）
 
-        # Target 坐标系
+        # Target 坐标系输入表格
+        self.tgt_coord_table = self._create_coord_table('tgt')
+        
+        # 保留原有的独立控件引用（用于兼容现有代码）
         self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
-
         self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
-
         self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
-
         self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
 
-        lbl = QLabel("Orig:")
+        # 使用表格显示坐标系
+        lbl = QLabel("坐标系:")
         lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self._create_vector_row(self.tgt_ox, self.tgt_oy, self.tgt_oz))
-
-        lbl = QLabel("X:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self._create_vector_row(self.tgt_xx, self.tgt_xy, self.tgt_xz))
-
-        lbl = QLabel("Y:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self._create_vector_row(self.tgt_yx, self.tgt_yy, self.tgt_yz))
-
-        lbl = QLabel("Z:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self._create_vector_row(self.tgt_zx, self.tgt_zy, self.tgt_zz))
+        lbl.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        form_target.addRow(lbl, self.tgt_coord_table)
 
         # Moment Center
         self.tgt_mcx, self.tgt_mcy, self.tgt_mcz = self._create_triple_spin(0.5, 0.0, 0.0)
@@ -820,6 +799,54 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("inp.setSizePolicy failed (non-fatal)", exc_info=True)
         return inp
 
+    def _create_coord_table(self, name_prefix: str):
+        """
+        创建坐标系输入表格（3x4: 4行×3列）
+        行：Orig, X, Y, Z
+        列：x, y, z分量
+        
+        Args:
+            name_prefix: 控件名称前缀（如 'src' 或 'tgt'）
+            
+        Returns:
+            QTableWidget实例
+        """
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+        from PySide6.QtCore import Qt
+        
+        table = QTableWidget(4, 3)
+        table.setHorizontalHeaderLabels(['X', 'Y', 'Z'])
+        table.setVerticalHeaderLabels(['Orig', 'X轴', 'Y轴', 'Z轴'])
+        
+        # 设置默认值
+        default_values = [
+            [0.0, 0.0, 0.0],  # Orig
+            [1.0, 0.0, 0.0],  # X轴
+            [0.0, 1.0, 0.0],  # Y轴
+            [0.0, 0.0, 1.0],  # Z轴
+        ]
+        
+        for row in range(4):
+            for col in range(3):
+                item = QTableWidgetItem(str(default_values[row][col]))
+                item.setTextAlignment(Qt.AlignCenter)
+                table.setItem(row, col, item)
+        
+        # 设置表格样式
+        table.setMaximumHeight(150)
+        table.setMaximumWidth(280)
+        
+        # 调整列宽
+        for col in range(3):
+            table.setColumnWidth(col, 70)
+        
+        try:
+            table.setObjectName(f'{name_prefix}_coord_table')
+        except Exception:
+            pass
+        
+        return table
+
     def _create_triple_spin(self, a: float, b: float, c: float):
         """创建一行三个紧凑型 QDoubleSpinBox，返回 (spin_a, spin_b, spin_c)"""
         s1 = QDoubleSpinBox()
@@ -893,6 +920,61 @@ class IntegratedAeroGUI(QMainWindow):
             if item.data(0, Qt.UserRole):
                 item.setCheckState(0, check_state)
             iterator += 1
+
+    def _get_coord_from_table(self, table):
+        """
+        从坐标表格中读取值
+        
+        Args:
+            table: QTableWidget实例
+            
+        Returns:
+            包含4个向量的字典：{'Orig': [x,y,z], 'X': [x,y,z], 'Y': [x,y,z], 'Z': [x,y,z]}
+        """
+        result = {
+            'Orig': [0.0, 0.0, 0.0],
+            'X': [1.0, 0.0, 0.0],
+            'Y': [0.0, 1.0, 0.0],
+            'Z': [0.0, 0.0, 1.0],
+        }
+        
+        row_keys = ['Orig', 'X', 'Y', 'Z']
+        
+        for row_idx, key in enumerate(row_keys):
+            for col_idx in range(3):
+                try:
+                    item = table.item(row_idx, col_idx)
+                    if item:
+                        result[key][col_idx] = float(item.text())
+                except (ValueError, AttributeError):
+                    # 保持默认值
+                    pass
+        
+        return result
+
+    def _set_coord_to_table(self, table, coord_dict):
+        """
+        设置坐标表格的值
+        
+        Args:
+            table: QTableWidget实例
+            coord_dict: 包含Orig/X/Y/Z的字典
+        """
+        from PySide6.QtWidgets import QTableWidgetItem
+        from PySide6.QtCore import Qt
+        
+        row_keys = ['Orig', 'X', 'Y', 'Z']
+        
+        for row_idx, key in enumerate(row_keys):
+            vector = coord_dict.get(key, [0.0, 0.0, 0.0])
+            for col_idx in range(3):
+                try:
+                    value = float(vector[col_idx])
+                    item = QTableWidgetItem(str(value))
+                    item.setTextAlignment(Qt.AlignCenter)
+                    table.setItem(row_idx, col_idx, item)
+                except Exception:
+                    pass
 
     def _create_vector_row(self, inp1, inp2, inp3):
         """创建向量输入行 [x, y, z]"""
