@@ -63,7 +63,7 @@ class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.chk_show_source = None
-        self.grp_file_list = None
+        self.file_list_widget = None
         self.layout_manager = None
         self.visualization_manager = None
         self.batch_manager = None
@@ -169,6 +169,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.grp_source.setMaximumHeight(500)
         self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_source = QFormLayout()
+        form_source.setContentsMargins(10, 10, 10, 10)  # 减小margins
+        form_source.setSpacing(4)  # 减小行间距
         try:
             form_source.setLabelAlignment(Qt.AlignRight)
         except Exception:
@@ -238,11 +240,8 @@ class IntegratedAeroGUI(QMainWindow):
         form_source.addRow("选择 Source Part:", src_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）；避免用户混淆，因此不在表单中显示
         
-        # 使用表格显示坐标系（3x4表格取代12个独立输入框）
-        lbl = QLabel("坐标系:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignTop)
-        form_source.addRow(lbl, self.src_coord_table)
+        # 直接添加坐标系表格，不用label
+        form_source.addRow("", self.src_coord_table)
 
         # Source 参考量（与 Target 对等）
         self.src_cref = self._create_input("1.0")
@@ -250,10 +249,6 @@ class IntegratedAeroGUI(QMainWindow):
         self.src_sref = self._create_input("10.0")
         self.src_q = self._create_input("1000.0")
 
-        lbl = QLabel("Moment Center:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self._create_vector_row(self.src_mcx, self.src_mcy, self.src_mcz))
         lbl = QLabel("C_ref (m):")
         lbl.setFixedWidth(120)
         lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -281,6 +276,8 @@ class IntegratedAeroGUI(QMainWindow):
         grp_target.setMaximumHeight(500)
         grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_target = QFormLayout()
+        form_target.setContentsMargins(10, 10, 10, 10)  # 减小margins
+        form_target.setSpacing(4)  # 减小行间距
         try:
             form_target.setLabelAlignment(Qt.AlignRight)
         except Exception:
@@ -330,24 +327,8 @@ class IntegratedAeroGUI(QMainWindow):
         form_target.addRow("选择 Target Part:", tgt_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）
 
-        # Target 坐标系输入表格
-        self.tgt_coord_table = self._create_coord_table('tgt')
-        
-        # 保留原有的独立控件引用（用于兼容现有代码）
-        self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
-        self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
-        self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
-        self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
-
-        # 使用表格显示坐标系
-        lbl = QLabel("坐标系:")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignTop)
-        form_target.addRow(lbl, self.tgt_coord_table)
-
-        # Moment Center
-        self.tgt_mcx, self.tgt_mcy, self.tgt_mcz = self._create_triple_spin(0.5, 0.0, 0.0)
-        form_target.addRow("Moment Center:", self._create_vector_row(self.tgt_mcx, self.tgt_mcy, self.tgt_mcz))
+        # 直接添加坐标系表格，不用label
+        form_target.addRow("", self.tgt_coord_table)
 
         # Target 参考量（与 Source 对等）
         self.tgt_cref = self._create_input("1.0")
@@ -559,7 +540,6 @@ class IntegratedAeroGUI(QMainWindow):
             pass
 
         pattern_row = QHBoxLayout()
-        pattern_row.addWidget(QLabel("匹配模式:"))
         pattern_row.addWidget(self.inp_pattern)
         pattern_row.addWidget(self.cmb_pattern_preset)
         try:
@@ -577,10 +557,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.file_form.addRow("匹配模式:", pattern_row)
         self.layout_batch.addLayout(self.file_form)
 
-        # 文件列表（使用树形结构显示目录）
-        self.grp_file_list = QGroupBox("文件列表")
-        self.grp_file_list.setVisible(False)
-        file_list_layout = QVBoxLayout()
+        # 文件列表Widget（不使用GroupBox，避免重复标题）
+        self.file_list_widget = QWidget()
+        self.file_list_widget.setVisible(False)
+        file_list_layout = QVBoxLayout(self.file_list_widget)
+        file_list_layout.setContentsMargins(0, 0, 0, 0)
         
         # 添加操作按钮行
         btn_row = QHBoxLayout()
@@ -610,6 +591,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(["文件/目录", "状态"])
         self.file_tree.setColumnWidth(0, 400)
+        self.file_tree.setMinimumHeight(250)  # 增加最小高度，防止被截断
         
         # 设置表头自动调整
         header = self.file_tree.header()
@@ -619,9 +601,7 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         
-        self.file_tree.setMinimumHeight(200)
         file_list_layout.addWidget(self.file_tree)
-        self.grp_file_list.setLayout(file_list_layout)
 
         # 存储文件信息的字典：{file_path: tree_item}
         self._file_tree_items = {}
@@ -750,7 +730,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.tab_main.addTab(self.info_tab_widget, "信息")
         
         # Tab 1: 文件列表
-        self.tab_main.addTab(self.grp_file_list, "文件列表")
+        self.tab_main.addTab(self.file_list_widget, "文件列表")
         
         # Tab 2: 处理日志
         self.tab_logs_widget = QWidget()
@@ -946,16 +926,17 @@ class IntegratedAeroGUI(QMainWindow):
             table: QTableWidget实例
             
         Returns:
-            包含4个向量的字典：{'Orig': [x,y,z], 'X': [x,y,z], 'Y': [x,y,z], 'Z': [x,y,z]}
+            包含5个向量的字典：{'Orig': [x,y,z], 'X': [x,y,z], 'Y': [x,y,z], 'Z': [x,y,z], 'MomentCenter': [x,y,z]}
         """
         result = {
             'Orig': [0.0, 0.0, 0.0],
             'X': [1.0, 0.0, 0.0],
             'Y': [0.0, 1.0, 0.0],
             'Z': [0.0, 0.0, 1.0],
+            'MomentCenter': [0.0, 0.0, 0.0],
         }
         
-        row_keys = ['Orig', 'X', 'Y', 'Z']
+        row_keys = ['Orig', 'X', 'Y', 'Z', 'MomentCenter']
         
         for row_idx, key in enumerate(row_keys):
             for col_idx in range(3):
@@ -975,12 +956,12 @@ class IntegratedAeroGUI(QMainWindow):
         
         Args:
             table: QTableWidget实例
-            coord_dict: 包含Orig/X/Y/Z的字典
+            coord_dict: 包含Orig/X/Y/Z/MomentCenter的字典
         """
         from PySide6.QtWidgets import QTableWidgetItem
         from PySide6.QtCore import Qt
         
-        row_keys = ['Orig', 'X', 'Y', 'Z']
+        row_keys = ['Orig', 'X', 'Y', 'Z', 'MomentCenter']
         
         for row_idx, key in enumerate(row_keys):
             vector = coord_dict.get(key, [0.0, 0.0, 0.0])
@@ -1038,6 +1019,10 @@ class IntegratedAeroGUI(QMainWindow):
                 return
             if not getattr(self, '_raw_project_dict', None) or not isinstance(self._raw_project_dict, dict):
                 return
+            
+            # 从表格读取坐标数据
+            coord_data = self._get_coord_from_table(self.src_coord_table)
+            
             parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
             for p in parts:
                 if p.get('PartName') == old:
@@ -1050,12 +1035,12 @@ class IntegratedAeroGUI(QMainWindow):
                     except Exception:
                         pass
                     v['CoordSystem'] = {
-                        'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                        'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                        'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                        'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                        'Orig': coord_data['Orig'],
+                        'X': coord_data['X'],
+                        'Y': coord_data['Y'],
+                        'Z': coord_data['Z']
                     }
-                    v['MomentCenter'] = [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)]
+                    v['MomentCenter'] = coord_data['MomentCenter']
                     try:
                         v['Cref'] = float(self.src_cref.text())
                         v['Bref'] = float(self.src_bref.text())
@@ -1079,6 +1064,10 @@ class IntegratedAeroGUI(QMainWindow):
                 return
             if not getattr(self, '_raw_project_dict', None) or not isinstance(self._raw_project_dict, dict):
                 return
+            
+            # 从表格读取坐标数据
+            coord_data = self._get_coord_from_table(self.tgt_coord_table)
+            
             parts = self._raw_project_dict.get('Target', {}).get('Parts', [])
             for p in parts:
                 if p.get('PartName') == old:
@@ -1091,12 +1080,12 @@ class IntegratedAeroGUI(QMainWindow):
                     except Exception:
                         pass
                     v['CoordSystem'] = {
-                        'Orig': [self._num(self.tgt_ox), self._num(self.tgt_oy), self._num(self.tgt_oz)],
-                        'X': [self._num(self.tgt_xx), self._num(self.tgt_xy), self._num(self.tgt_xz)],
-                        'Y': [self._num(self.tgt_yx), self._num(self.tgt_yy), self._num(self.tgt_yz)],
-                        'Z': [self._num(self.tgt_zx), self._num(self.tgt_zy), self._num(self.tgt_zz)]
+                        'Orig': coord_data['Orig'],
+                        'X': coord_data['X'],
+                        'Y': coord_data['Y'],
+                        'Z': coord_data['Z']
                     }
-                    v['MomentCenter'] = [self._num(self.tgt_mcx), self._num(self.tgt_mcy), self._num(self.tgt_mcz)]
+                    v['MomentCenter'] = coord_data['MomentCenter']
                     try:
                         v['Cref'] = float(self.tgt_cref.text())
                         v['Bref'] = float(self.tgt_bref.text())
@@ -1532,16 +1521,19 @@ class IntegratedAeroGUI(QMainWindow):
                             logger.warning(f"无效的 S 值，使用默认值 10.0")
                             s_val = 10.0
 
+                        # 从表格读取坐标数据
+                        coord_data = self._get_coord_from_table(self.src_coord_table)
+                        
                         p['Variants'] = [
                             {
                                 'PartName': preferred_name,
                                 'CoordSystem': {
-                                    'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                                    'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                                    'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                                    'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                                    'Orig': coord_data['Orig'],
+                                    'X': coord_data['X'],
+                                    'Y': coord_data['Y'],
+                                    'Z': coord_data['Z']
                                 },
-                                'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                                'MomentCenter': coord_data['MomentCenter'],
                                 'Cref': cref_val,
                                 'Bref': bref_val,
                                 'Q': q_val,
@@ -1582,18 +1574,21 @@ class IntegratedAeroGUI(QMainWindow):
             logger.warning(f"无效的 S 值，使用默认值 10.0")
             s_val = 10.0
 
+        # 从表格读取坐标数据
+        coord_data = self._get_coord_from_table(self.src_coord_table)
+        
         new_part = {
             'PartName': name,
             'Variants': [
                 {
                     'PartName': name,
                     'CoordSystem': {
-                        'Orig': [self._num(self.src_ox), self._num(self.src_oy), self._num(self.src_oz)],
-                        'X': [self._num(self.src_xx), self._num(self.src_xy), self._num(self.src_xz)],
-                        'Y': [self._num(self.src_yx), self._num(self.src_yy), self._num(self.src_yz)],
-                        'Z': [self._num(self.src_zx), self._num(self.src_zy), self._num(self.src_zz)]
+                        'Orig': coord_data['Orig'],
+                        'X': coord_data['X'],
+                        'Y': coord_data['Y'],
+                        'Z': coord_data['Z']
                     },
-                    'MomentCenter': [self._num(self.src_mcx), self._num(self.src_mcy), self._num(self.src_mcz)],
+                    'MomentCenter': coord_data['MomentCenter'],
                     'Cref': cref_val,
                     'Bref': bref_val,
                     'Q': q_val,

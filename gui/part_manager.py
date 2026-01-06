@@ -393,6 +393,19 @@ class PartManager:
                         self.gui.src_q.setText(str(q_val))
                 except Exception as e:
                     logger.debug(f"设置 Source 坐标系控件失败: {e}")
+                
+                # 将数据同步到表格
+                try:
+                    coord_dict = {
+                        'Orig': [cs.origin[0], cs.origin[1], cs.origin[2]],
+                        'X': [cs.x_axis[0], cs.x_axis[1], cs.x_axis[2]],
+                        'Y': [cs.y_axis[0], cs.y_axis[1], cs.y_axis[2]],
+                        'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
+                        'MomentCenter': mc
+                    }
+                    self.gui._set_coord_to_table(self.gui.src_coord_table, coord_dict)
+                except Exception as e:
+                    logger.debug(f"同步 Source 坐标到表格失败: {e}")
         
         except Exception as e:
             logger.error(f"Source Part 切换失败: {e}")
@@ -480,6 +493,19 @@ class PartManager:
                         self.gui.tgt_q.setText(str(q_val))
                 except Exception as e:
                     logger.debug(f"设置 Target 坐标系控件失败: {e}")
+                
+                # 将数据同步到表格
+                try:
+                    coord_dict = {
+                        'Orig': [cs.origin[0], cs.origin[1], cs.origin[2]],
+                        'X': [cs.x_axis[0], cs.x_axis[1], cs.x_axis[2]],
+                        'Y': [cs.y_axis[0], cs.y_axis[1], cs.y_axis[2]],
+                        'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
+                        'MomentCenter': mc
+                    }
+                    self.gui._set_coord_to_table(self.gui.tgt_coord_table, coord_dict)
+                except Exception as e:
+                    logger.debug(f"同步 Target 坐标到表格失败: {e}")
         
         except Exception as e:
             logger.error(f"Target Part 切换失败: {e}")

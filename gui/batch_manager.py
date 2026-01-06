@@ -135,7 +135,7 @@ class BatchManager:
 
             if not files:
                 try:
-                    self.gui.grp_file_list.setVisible(False)
+                    self.gui.file_list_widget.setVisible(False)
                 except Exception:
                     pass
                 return
@@ -201,7 +201,7 @@ class BatchManager:
             
             # 显示文件列表区域
             try:
-                self.gui.grp_file_list.setVisible(True)
+                self.gui.file_list_widget.setVisible(True)
             except Exception:
                 pass
 
