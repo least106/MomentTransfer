@@ -75,6 +75,12 @@ from src.cli_helpers import (
     resolve_file_format,
 )
 
+from src.special_format_parser import (
+    looks_like_special_format,
+    process_special_format_file,
+    RECOMMENDED_EXT,
+)
+
 
 
 def generate_output_path(file_path: Path, output_dir: Path, cfg: BatchConfig, create_placeholder: bool = True) -> Path:
@@ -409,16 +415,23 @@ def process_df_chunk(chunk_df: pd.DataFrame,
 
 
 def find_matching_files(directory: str, pattern: str) -> list:
-    """在目录中查找匹配模式的文件"""
+    """在目录中查找匹配模式的文件，支持分号分隔的多模式。"""
     directory = Path(directory)
     if not directory.is_dir():
         raise ValueError(f"路径不是有效目录: {directory}")
-    
+
+    # 允许 pattern 形如 "*.csv;*.mtfmt;*.mtdata"
+    patterns = [p.strip() for p in pattern.split(';') if p.strip()]
+    if not patterns:
+        patterns = [pattern]
+
     matched_files = []
     for file_path in directory.rglob('*'):
-        if file_path.is_file() and fnmatch.fnmatch(file_path.name, pattern):
+        if not file_path.is_file():
+            continue
+        if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
             matched_files.append(file_path)
-    
+
     return sorted(matched_files)
 
 
@@ -471,8 +484,9 @@ def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
         )
 
 
-def process_single_file(file_path: Path, calculator: AeroCalculator, 
-                       config: BatchConfig, output_dir: Path) -> bool:
+def process_single_file(file_path: Path, calculator: AeroCalculator,
+                       config: BatchConfig, output_dir: Path,
+                       project_data=None) -> bool:
     """处理单个文件（支持 chunked CSV）。
 
     实现要点：
@@ -481,6 +495,25 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
     - 在异常时清理临时并在 partial 中记录错误信息。
     """
     logger = logging.getLogger('batch')
+
+    # 特殊格式路径：直接用专用解析器处理并按 part 输出
+    if project_data is not None and looks_like_special_format(file_path):
+        try:
+            outputs = process_special_format_file(
+                file_path,
+                project_data,
+                output_dir,
+                timestamp_format=config.timestamp_format,
+                overwrite=config.overwrite,
+            )
+            if not outputs:
+                logger.warning("特殊格式文件 %s 未产生输出，可能因缺少匹配的 Target part 或列缺失", file_path.name)
+                return False
+            logger.info("特殊格式文件 %s 已处理，生成 %d 个 part 输出", file_path.name, len(outputs))
+            return True
+        except Exception as exc:
+            logger.error("处理特殊格式文件 %s 失败: %s", file_path.name, exc, exc_info=True)
+            return False
 
     # 安全解析 chunksize
     if config.chunksize:
@@ -652,12 +685,13 @@ def _worker_process(args):
         # 若调用方传入序列化的计算器（calculator_pickle），优先使用并缓存
         # 否则：若当前进程已缓存相同 project_config_path 的计算器，则重用
         # 否则按需加载一次并缓存
-        global _WORKER_CALCULATOR, _WORKER_PROJECT_PATH
+        global _WORKER_CALCULATOR, _WORKER_PROJECT_PATH, _WORKER_PROJECT_DATA
         try:
             _WORKER_CALCULATOR
         except NameError:
             _WORKER_CALCULATOR = None
             _WORKER_PROJECT_PATH = None
+            _WORKER_PROJECT_DATA = None
 
         project_data = None
         calculator = None
@@ -669,6 +703,7 @@ def _worker_process(args):
                 project_data, calculator = pickle.loads(calc_pickle)
                 _WORKER_CALCULATOR = calculator
                 _WORKER_PROJECT_PATH = project_config_path
+                _WORKER_PROJECT_DATA = project_data
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.warning("反序列化传入的 calculator 失败，回退到按路径加载: %s", e)
@@ -677,12 +712,13 @@ def _worker_process(args):
             if _WORKER_CALCULATOR is not None and project_config_path == _WORKER_PROJECT_PATH:
                 # 重用已缓存的计算器
                 calculator = _WORKER_CALCULATOR
-                project_data = None
+                project_data = _WORKER_PROJECT_DATA
             else:
                 # 仅在必要时加载一次并缓存到进程全局变量
                 project_data, calculator = load_project_calculator(project_config_path)
                 _WORKER_CALCULATOR = calculator
                 _WORKER_PROJECT_PATH = project_config_path
+                _WORKER_PROJECT_DATA = project_data
 
         # 构造 BatchConfig
         cfg = BatchConfig()
@@ -719,7 +755,7 @@ def _worker_process(args):
                         str(file_path), registry_db, e
                     )
 
-        success = process_single_file(file_path, calculator, cfg, output_dir)
+        success = process_single_file(file_path, calculator, cfg, output_dir, project_data)
         return (str(file_path), success, None)
     except Exception as e:
         # 捕获子进程中任何异常，返回失败信息以便主进程记录
@@ -776,15 +812,15 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         logger.info("  模式: 目录批处理")
         if non_interactive_mode:
             # 非交互自动模式：使用默认模式匹配所有 CSV 文件并全部处理
-            pattern = "*.csv"
+            pattern = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
             files = find_matching_files(str(input_path), pattern)
             logger.info("  自动模式下找到 %d 个匹配文件 (pattern=%s)", len(files), pattern)
             files_to_process = files
             output_dir = input_path
         else:
-            pattern = input("  文件名匹配模式 (如 *.csv, data_*.xlsx): ").strip()
+            pattern = input("  文件名匹配模式 (如 *.csv;*.mtfmt): ").strip()
             if not pattern:
-                pattern = "*.csv"
+                pattern = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
             files = find_matching_files(str(input_path), pattern)
             logger.info("  找到 %d 个匹配文件:", len(files))
             for i, fp in enumerate(files, start=1):
@@ -851,7 +887,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             cfg_local = data_config
 
         t0 = datetime.now()
-        ok = process_single_file(file_path, calculator, cfg_local, output_dir)
+        ok = process_single_file(file_path, calculator, cfg_local, output_dir, project_data)
         elapsed = (datetime.now() - t0).total_seconds()
         if ok:
             success_count += 1
@@ -929,7 +965,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
 @click.option('-c', '--config', 'config', required=True, help='配置文件路径 (JSON)')
 @click.option('-i', '--input', 'input_path', required=True, help='输入文件或目录路径')
-@click.option('-p', '--pattern', default=None, help='文件匹配模式（目录模式下），如 "*.csv"')
+@click.option('-p', '--pattern', default=None, help='文件匹配模式（目录模式下），支持分号分隔多模式，如 "*.csv;*.mtfmt"')
 @click.option('-f', '--format-file', 'format_file', default=None, help='数据格式 JSON 文件路径（包含 skip_rows, columns, passthrough）')
 @click.option('--non-interactive', 'non_interactive', is_flag=True, help='以非交互模式运行（必须提供 --format-file）')
 @click.option('--log-file', 'log_file', default=None, help='将日志写入指定文件')
@@ -1038,10 +1074,10 @@ def main(**cli_options):
                     pat_use = pat
                 else:
                     if non_interactive:
-                        pat_use = '*.csv'
-                        logger.info("非交互模式：使用默认文件匹配模式 '*.csv'")
+                        pat_use = '*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat'
+                        logger.info("非交互模式：使用默认文件匹配模式 '%s'", pat_use)
                     else:
-                        pat_use = input('文件名匹配模式 (如 *.csv, default *.csv): ').strip() or '*.csv'
+                        pat_use = input('文件名匹配模式 (如 *.csv;*.mtfmt，默认包含 csv/xlsx/mtfmt): ').strip() or '*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat'
                 files = find_matching_files(str(input_path_obj), pat_use)
                 # 并行模式下不提供交互选择：自动处理所有匹配到的文件
                 # 选择 all
