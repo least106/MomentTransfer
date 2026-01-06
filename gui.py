@@ -142,7 +142,7 @@ class IntegratedAeroGUI(QMainWindow):
         
         panel = QWidget()
         # 横向布局需要更大的最小宽度
-        panel.setMinimumWidth(800)
+        panel.setMinimumWidth(900)
         # 移除最大宽度限制，允许横向布局充分展开
         # panel.setMaximumWidth(550)
         layout = QVBoxLayout(panel)
@@ -165,7 +165,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.chk_show_source.stateChanged.connect(self.toggle_source_visibility)
 
         self.grp_source = QGroupBox("Source Coordinate System")
-        # 允许在垂直方向扩展以填充空间，使底部按钮保持在窗口底部
+        # 设置最小宽度，确保内容不被压缩
+        self.grp_source.setMinimumWidth(350)
         self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_source = QFormLayout()
         try:
@@ -275,6 +276,8 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
+        # 设置最小宽度，确保内容不被压缩
+        grp_target.setMinimumWidth(350)
         grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         form_target = QFormLayout()
         try:
@@ -371,12 +374,12 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === 配置操作按钮（竖向排列）===
         btn_widget = QWidget()
+        btn_widget.setFixedWidth(120)
         btn_layout = QVBoxLayout(btn_widget)
         btn_layout.setSpacing(8)
 
         self.btn_load = QPushButton("加载配置")
-        self.btn_load.setFixedHeight(34)
-        self.btn_load.setMinimumWidth(100)
+        self.btn_load.setFixedHeight(40)
         try:
             self.btn_load.setObjectName('secondaryButton')
             self.btn_load.setToolTip('从磁盘加载配置文件')
@@ -385,8 +388,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_load.clicked.connect(self.load_config)
 
         self.btn_save = QPushButton("保存配置")
-        self.btn_save.setFixedHeight(34)
-        self.btn_save.setMinimumWidth(100)
+        self.btn_save.setFixedHeight(40)
         try:
             self.btn_save.setObjectName('primaryButton')
             self.btn_save.setToolTip('将当前配置保存到磁盘 (Ctrl+S)')
@@ -396,8 +398,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_save.clicked.connect(self.save_config)
 
         self.btn_apply = QPushButton("应用配置")
-        self.btn_apply.setFixedHeight(34)
-        self.btn_apply.setMinimumWidth(100)
+        self.btn_apply.setFixedHeight(40)
         try:
             self.btn_apply.setObjectName('primaryButton')
             self.btn_apply.setShortcut('Ctrl+R')
@@ -842,17 +843,15 @@ class IntegratedAeroGUI(QMainWindow):
                 item.setTextAlignment(Qt.AlignCenter)
                 table.setItem(row, col, item)
             # 设置行高
-            table.setRowHeight(row, 28)
+            table.setRowHeight(row, 30)
         
         # 设置表格样式 - 确保表格能完整显示
-        table.setMinimumHeight(145)
-        table.setMaximumHeight(165)
-        table.setMinimumWidth(240)
-        table.setMaximumWidth(300)
+        table.setFixedHeight(170)
+        table.setFixedWidth(280)
         
         # 调整列宽，确保内容完整显示
         for col in range(3):
-            table.setColumnWidth(col, 70)
+            table.setColumnWidth(col, 75)
             table.setColumnWidth(col, 70)
         
         try:
