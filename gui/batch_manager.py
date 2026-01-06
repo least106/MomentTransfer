@@ -84,7 +84,10 @@ class BatchManager:
             QMessageBox.critical(self.gui, '错误', f'浏览失败: {e}')
     
     def _scan_and_populate_files(self, chosen_path: Path):
-        """扫描所选路径并在文件列表区域生成复选框列表（默认全选）。"""
+        """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。"""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QTreeWidgetItem
+        
         try:
             p = Path(chosen_path)
             files = []
@@ -122,20 +125,13 @@ class BatchManager:
                 except Exception:
                     pass
 
-            # UI 结构要求：create_operation_panel 中的 grp_file_list/file_list_layout_inner/file_scroll
-            if not (hasattr(self.gui, 'grp_file_list') and hasattr(self.gui, 'file_list_layout_inner')):
+            # 检查UI组件是否存在
+            if not hasattr(self.gui, 'file_tree'):
                 return
 
-            # 清空旧的复选框及标签
-            for i in reversed(range(self.gui.file_list_layout_inner.count())):
-                item = self.gui.file_list_layout_inner.itemAt(i)
-                if item is None:
-                    continue
-                w = item.widget()
-                if w:
-                    w.setParent(None)
-
-            self.gui._file_check_items = []
+            # 清空旧的树项
+            self.gui.file_tree.clear()
+            self.gui._file_tree_items = {}
 
             if not files:
                 try:
@@ -144,90 +140,123 @@ class BatchManager:
                     pass
                 return
 
-            # 创建复选框并显示格式来源标签
+            # 构建目录树结构
+            # 获取所有文件的共同根目录
+            if p.is_file():
+                base_path = p.parent
+            else:
+                base_path = p
+
+            # 创建目录节点的字典：{relative_dir_path: QTreeWidgetItem}
+            dir_items = {}
+            
             for fp in files:
-                row = QWidget()
-                row_layout = QHBoxLayout(row)
-                row_layout.setContentsMargins(0, 0, 0, 0)
-                row_layout.setSpacing(8)
-
-                cb = QCheckBox(fp.name)
-                cb.setChecked(True)
-
-                src_label = QLabel("")
+                # 计算相对路径
                 try:
-                    src_label.setObjectName('fileSrcLabel')
-                    src_label.setProperty('variant', 'muted')
-                except Exception:
-                    pass
-                try:
-                    src_label.setFont(QFont('Consolas', 8))
-                except Exception:
-                    pass
-
-                try:
-                    src, src_path = self._determine_format_source(fp)
-                    disp, tip, color = self._format_label_from(src, src_path)
-                    src_label.setText(disp)
-                    src_label.setToolTip(tip or "")
-                    try:
-                        if color == '#dc3545':
-                            src_label.setProperty('variant', 'error')
-                        elif color == '#6c757d':
-                            src_label.setProperty('variant', 'muted')
+                    rel_path = fp.relative_to(base_path)
+                except ValueError:
+                    # 如果文件不在base_path下，直接显示完整路径
+                    rel_path = fp
+                
+                # 构建父目录节点
+                parts = rel_path.parts[:-1]  # 不包括文件名
+                parent_item = None
+                current_path = Path()
+                
+                for part in parts:
+                    current_path = current_path / part
+                    if current_path not in dir_items:
+                        # 创建目录节点
+                        dir_item = QTreeWidgetItem([str(part), ""])
+                        dir_item.setData(0, Qt.UserRole, None)  # 目录节点不存储路径
+                        
+                        if parent_item is None:
+                            self.gui.file_tree.addTopLevelItem(dir_item)
                         else:
-                            src_label.setProperty('variant', 'normal')
-                    except Exception:
-                        pass
-                except Exception:
-                    src_label.setText('未知')
-                    try:
-                        src_label.setProperty('variant', 'error')
-                    except Exception:
-                        pass
+                            parent_item.addChild(dir_item)
+                        
+                        dir_items[current_path] = dir_item
+                        parent_item = dir_item
+                    else:
+                        parent_item = dir_items[current_path]
+                
+                # 创建文件节点
+                file_item = QTreeWidgetItem([rel_path.name, ""])
+                file_item.setCheckState(0, Qt.Checked)  # 默认选中
+                file_item.setData(0, Qt.UserRole, str(fp))  # 存储完整路径
+                
+                # 验证配置：检查target name是否存在
+                status_text = self._validate_file_config(fp)
+                file_item.setText(1, status_text)
+                
+                if parent_item is None:
+                    self.gui.file_tree.addTopLevelItem(file_item)
+                else:
+                    parent_item.addChild(file_item)
+                
+                self.gui._file_tree_items[str(fp)] = file_item
 
-                row_layout.addWidget(cb)
-                row_layout.addStretch()
-                try:
-                    src_label.setFixedWidth(300)
-                    src_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                except Exception:
-                    pass
-                row_layout.addWidget(src_label)
-
-                self.gui.file_list_layout_inner.addWidget(row)
-                self.gui._file_check_items.append((cb, fp, src_label))
-
-            # 根据文件数量自适应高度
-            try:
-                row_count = len(files)
-                row_height = 28
-                padding = 36
-                min_h = 80
-                max_h = 420
-                desired = min(max_h, max(min_h, row_count * row_height + padding))
-                if hasattr(self.gui, 'file_scroll') and self.gui.file_scroll is not None:
-                    self.gui.file_scroll.setFixedHeight(int(desired))
-            except Exception:
-                try:
-                    if hasattr(self.gui, 'file_scroll') and self.gui.file_scroll is not None:
-                        self.gui.file_scroll.setMinimumHeight(180)
-                except Exception:
-                    pass
-
+            # 展开所有节点
+            self.gui.file_tree.expandAll()
+            
+            # 显示文件列表区域
             try:
                 self.gui.grp_file_list.setVisible(True)
             except Exception:
                 pass
-            try:
-                if hasattr(self.gui, 'file_scroll') and self.gui.file_scroll is not None:
-                    self.gui.file_scroll.verticalScrollBar().setValue(0)
-            except Exception:
-                pass
 
+            logger.info(f"已扫描到 {len(files)} 个文件")
+            
         except Exception as e:
-            logger.error(f"扫描文件失败: {e}")
-            QMessageBox.critical(self.gui, '错误', f'扫描失败: {e}')
+            logger.error(f"扫描并填充文件列表失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _validate_file_config(self, file_path: Path) -> str:
+        """验证文件的配置，返回状态文本"""
+        try:
+            # 尝试检测格式
+            from src.format_registry import resolve_file_format
+            fmt_info = resolve_file_format(
+                file_path,
+                explicit_format_name=None,
+                config=getattr(self.gui, 'current_config', None)
+            )
+            
+            if not fmt_info:
+                return "❌ 未知格式"
+            
+            # 检查target names是否存在于配置中
+            target_names = fmt_info.get('target_names', [])
+            if not target_names:
+                return "✓ 格式正常"
+            
+            # 检查每个target name是否在配置中
+            if hasattr(self.gui, 'current_config') and self.gui.current_config:
+                missing_targets = []
+                for tname in target_names:
+                    # 检查是否在Target的Variants中
+                    found = False
+                    try:
+                        if hasattr(self.gui.current_config, 'Target'):
+                            for variant in getattr(self.gui.current_config.Target, 'Variants', []):
+                                if getattr(variant, 'PartName', None) == tname:
+                                    found = True
+                                    break
+                    except Exception:
+                        pass
+                    
+                    if not found:
+                        missing_targets.append(tname)
+                
+                if missing_targets:
+                    return f"⚠ [{','.join(missing_targets)}]不存在"
+            
+            return "✓ 格式正常"
+            
+        except Exception as e:
+            logger.debug(f"验证文件配置失败: {e}")
+            return "❓ 未验证"
 
     def _on_pattern_changed(self):
         """当匹配模式改变时，基于当前输入路径重新扫描并刷新文件列表。"""
@@ -265,18 +294,24 @@ class BatchManager:
                 if output_dir is None:
                     output_dir = input_path.parent
             elif input_path.is_dir():
-                # 优先使用 GUI 的复选框列表
-                if getattr(self.gui, '_file_check_items', None):
-                    for item in self.gui._file_check_items:
-                        try:
-                            cb, fp = item[0], item[1]
-                        except Exception:
-                            continue
-                        if cb.isChecked():
-                            files_to_process.append(fp)
+                # 使用树形文件列表收集选中的文件
+                if hasattr(self.gui, 'file_tree') and hasattr(self.gui, '_file_tree_items'):
+                    from PySide6.QtCore import Qt
+                    from PySide6.QtWidgets import QTreeWidgetItemIterator
+                    
+                    iterator = QTreeWidgetItemIterator(self.gui.file_tree)
+                    while iterator.value():
+                        item = iterator.value()
+                        # 只处理文件项（有UserRole数据的）
+                        file_path_str = item.data(0, Qt.UserRole)
+                        if file_path_str and item.checkState(0) == Qt.Checked:
+                            files_to_process.append(Path(file_path_str))
+                        iterator += 1
+                    
                     if output_dir is None:
                         output_dir = input_path
                 else:
+                    # Fallback：直接扫描目录
                     pattern = getattr(self.gui, 'inp_pattern', None)
                     pattern_text = pattern.text().strip() if pattern else '*.csv'
                     patterns = [x.strip() for x in pattern_text.split(';') if x.strip()]

@@ -586,27 +586,54 @@ class IntegratedAeroGUI(QMainWindow):
         self.file_form.addRow("匹配模式:", pattern_row)
         self.layout_batch.addLayout(self.file_form)
 
-        # 文件列表（可复选、可滚动）
-        self.grp_file_list = QGroupBox("找到的文件列表")
+        # 文件列表（使用树形结构显示目录）
+        self.grp_file_list = QGroupBox("文件列表")
         self.grp_file_list.setVisible(False)
         file_list_layout = QVBoxLayout()
-        self.file_scroll = QScrollArea()
-        self.file_scroll.setWidgetResizable(True)
-        self.file_list_widget = QWidget()
-        self.file_list_layout_inner = QVBoxLayout(self.file_list_widget)
+        
+        # 添加操作按钮行
+        btn_row = QHBoxLayout()
+        self.btn_select_all = QPushButton("全选")
+        self.btn_select_none = QPushButton("全不选")
+        self.btn_select_invert = QPushButton("反选")
+        
+        for btn in (self.btn_select_all, self.btn_select_none, self.btn_select_invert):
+            btn.setMaximumWidth(80)
+            try:
+                btn.setObjectName('smallButton')
+            except Exception:
+                pass
+        
+        self.btn_select_all.clicked.connect(self._select_all_files)
+        self.btn_select_none.clicked.connect(self._select_none_files)
+        self.btn_select_invert.clicked.connect(self._invert_file_selection)
+        
+        btn_row.addWidget(self.btn_select_all)
+        btn_row.addWidget(self.btn_select_none)
+        btn_row.addWidget(self.btn_select_invert)
+        btn_row.addStretch()
+        file_list_layout.addLayout(btn_row)
+        
+        # 使用TreeWidget显示文件层次结构
+        from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QHeaderView
+        self.file_tree = QTreeWidget()
+        self.file_tree.setHeaderLabels(["文件/目录", "状态"])
+        self.file_tree.setColumnWidth(0, 400)
+        
+        # 设置表头自动调整
+        header = self.file_tree.header()
         try:
-            self.file_list_layout_inner.setAlignment(Qt.AlignTop)
+            header.setSectionResizeMode(0, QHeaderView.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         except Exception:
-            logger.debug("Error while setting file list layout alignment", exc_info=True)
-        self.file_list_layout_inner.setContentsMargins(4, 4, 4, 4)
-        self.file_scroll.setWidget(self.file_list_widget)
-        # 初始最小高度较小，实际高度会根据文件数量在 _scan_and_populate_files 中调整
-        self.file_scroll.setMinimumHeight(60)
-        file_list_layout.addWidget(self.file_scroll)
+            pass
+        
+        self.file_tree.setMinimumHeight(200)
+        file_list_layout.addWidget(self.file_tree)
         self.grp_file_list.setLayout(file_list_layout)
 
-        # 存储文件复选框相关信息的元组列表
-        self._file_check_items: List[Tuple[QCheckBox, Path, Optional[QLabel]]] = []
+        # 存储文件信息的字典：{file_path: tree_item}
+        self._file_tree_items = {}
 
         # 数据格式配置按钮
         self.btn_config_format = QPushButton("⚙ 配置数据格式")
@@ -830,6 +857,42 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception as e:
             # 若解析失败，抛出 ValueError 以便上层显示提示
             raise ValueError(f"无法解析数值输入: {e}")
+
+    def _select_all_files(self):
+        """全选文件树中的所有文件项"""
+        from PySide6.QtCore import Qt
+        self._set_all_file_items_checked(Qt.Checked)
+
+    def _select_none_files(self):
+        """全不选文件树中的所有文件项"""
+        from PySide6.QtCore import Qt
+        self._set_all_file_items_checked(Qt.Unchecked)
+
+    def _invert_file_selection(self):
+        """反选文件树中的所有文件项"""
+        from PySide6.QtCore import Qt
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            # 只反选文件项（有用户数据中存储了路径的项）
+            if item.data(0, Qt.UserRole):
+                if item.checkState(0) == Qt.Checked:
+                    item.setCheckState(0, Qt.Unchecked)
+                else:
+                    item.setCheckState(0, Qt.Checked)
+            iterator += 1
+
+    def _set_all_file_items_checked(self, check_state):
+        """设置所有文件项的选中状态（仅文件，不包括目录节点）"""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            # 只选中文件项（有用户数据中存储了路径的项）
+            if item.data(0, Qt.UserRole):
+                item.setCheckState(0, check_state)
+            iterator += 1
 
     def _create_vector_row(self, inp1, inp2, inp3):
         """创建向量输入行 [x, y, z]"""
