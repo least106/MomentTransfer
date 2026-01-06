@@ -334,6 +334,14 @@ class BatchManager:
             except Exception:
                 pass
 
+            # 禁用批处理按钮，防止重复点击
+            try:
+                if hasattr(self.gui, 'btn_batch'):
+                    self.gui.btn_batch.setEnabled(False)
+                    self.gui.btn_batch.setText("处理中...")
+            except Exception:
+                logger.debug("无法禁用批处理按钮", exc_info=True)
+
             self.batch_thread.start()
             logger.info(f"开始批处理 {len(files_to_process)} 个文件")
         except Exception as e:
@@ -358,6 +366,23 @@ class BatchManager:
             logger.info(f"批处理完成: {message}")
             if hasattr(self.gui, '_set_controls_locked'):
                 self.gui._set_controls_locked(False)
+            
+            # 重新启用批处理按钮
+            try:
+                if hasattr(self.gui, 'btn_batch'):
+                    self.gui.btn_batch.setEnabled(True)
+                    self.gui.btn_batch.setText("开始批量处理")
+            except Exception:
+                logger.debug("无法启用批处理按钮", exc_info=True)
+            
+            # 启用撤销按钮
+            try:
+                if hasattr(self.gui, 'btn_undo'):
+                    self.gui.btn_undo.setEnabled(True)
+                    self.gui.btn_undo.setVisible(True)
+            except Exception:
+                logger.debug("无法启用撤销按钮", exc_info=True)
+            
             QMessageBox.information(self.gui, '完成', message)
         except Exception as e:
             logger.error(f"处理完成事件失败: {e}")
@@ -368,6 +393,15 @@ class BatchManager:
             logger.error(f"批处理错误: {error_msg}")
             if hasattr(self.gui, '_set_controls_locked'):
                 self.gui._set_controls_locked(False)
+            
+            # 重新启用批处理按钮
+            try:
+                if hasattr(self.gui, 'btn_batch'):
+                    self.gui.btn_batch.setEnabled(True)
+                    self.gui.btn_batch.setText("开始批量处理")
+            except Exception:
+                logger.debug("无法启用批处理按钮", exc_info=True)
+            
             QMessageBox.critical(self.gui, '错误', f'批处理出错: {error_msg}')
         except Exception as e:
             logger.error(f"处理错误事件失败: {e}")

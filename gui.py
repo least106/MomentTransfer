@@ -62,6 +62,8 @@ LAYOUT_SPACING = 8
 class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.chk_show_source = None
+        self.grp_file_list = None
         self.layout_manager = None
         self.visualization_manager = None
         self.batch_manager = None
@@ -670,27 +672,30 @@ class IntegratedAeroGUI(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
 
-        # 执行/取消等按钮与日志
+        # 执行/撤销按钮
         self.btn_batch = QPushButton("开始批量处理")
         try:
             self.btn_batch.setObjectName('primaryButton')
             self.btn_batch.setShortcut('Ctrl+R')
-            self.btn_batch.setToolTip('开始批量处理。运行时会锁定配置控件。')
+            self.btn_batch.setToolTip('开始批量处理。运行时会禁用此按钮。')
         except Exception:
             pass
         self.btn_batch.clicked.connect(self.run_batch_processing)
 
-        self.btn_cancel = QPushButton("取消")
-        self.btn_cancel.setFixedHeight(34)
+        # 撤销按钮（初始隐藏）
+        self.btn_undo = QPushButton("撤销批处理")
         try:
-            self.btn_cancel.setObjectName('secondaryButton')
-            self.btn_cancel.setToolTip('取消正在运行的批处理任务')
-            self.btn_cancel.setShortcut('Ctrl+.')
+            self.btn_undo.setObjectName('secondaryButton')
+            self.btn_undo.setShortcut('Ctrl+Z')
+            self.btn_undo.setToolTip('撤销最近一次批处理操作')
         except Exception:
             pass
-        self.btn_cancel.clicked.connect(self.request_cancel_batch)
-        self.btn_cancel.setVisible(False)
-        self.btn_cancel.setEnabled(False)
+        self.btn_undo.clicked.connect(self.undo_batch_processing)
+        self.btn_undo.setVisible(False)
+        self.btn_undo.setEnabled(False)
+        
+        # 保存最近批处理的信息用于撤销
+        self._last_batch_info = None
 
         self.txt_batch_log = QTextEdit()
         try:
@@ -724,7 +729,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.btn_grid.addWidget(self.btn_config_format, 0, 0)
         self.btn_grid.addWidget(self.btn_batch, 0, 1)
-        self.btn_grid.addWidget(self.btn_cancel, 1, 1)
+        self.btn_grid.addWidget(self.btn_undo, 1, 1)
 
         # 把文件表单加入 layout_batch（实例属性）
         # 顺序：文件表单 -> 按钮行 -> 进度条 -> Tab -> 最近项目
@@ -876,6 +881,61 @@ class IntegratedAeroGUI(QMainWindow):
         # 使用小间距替代 stretch，避免把右侧控件挤出可见区域
         layout.addSpacing(6)
         return row
+
+    def _create_coord_table(self, default_values=None):
+        """
+        创建紧凑的坐标系表格 (4行x3列)
+        行: Orig, X, Y, Z
+        列: X, Y, Z 分量
+        返回: (table_widget, 字典{控件引用})
+        """
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+        
+        if default_values is None:
+            default_values = {
+                'Orig': [0.0, 0.0, 0.0],
+                'X': [1.0, 0.0, 0.0],
+                'Y': [0.0, 1.0, 0.0],
+                'Z': [0.0, 0.0, 1.0]
+            }
+        
+        table = QTableWidget(4, 3)
+        table.setMaximumHeight(140)
+        table.setMaximumWidth(280)
+        
+        # 设置表头
+        table.setHorizontalHeaderLabels(['X', 'Y', 'Z'])
+        table.setVerticalHeaderLabels(['Orig', 'X', 'Y', 'Z'])
+        
+        # 调整列宽使表格更紧凑
+        header = table.horizontalHeader()
+        try:
+            header.setSectionResizeMode(QHeaderView.Stretch)
+        except Exception:
+            pass
+        
+        # 调整行高
+        v_header = table.verticalHeader()
+        try:
+            v_header.setSectionResizeMode(QHeaderView.Fixed)
+            v_header.setDefaultSectionSize(28)
+        except Exception:
+            pass
+        
+        # 填充表格并保存控件引用
+        refs = {}
+        row_names = ['Orig', 'X', 'Y', 'Z']
+        col_names = ['x', 'y', 'z']
+        
+        for i, row_name in enumerate(row_names):
+            refs[row_name.lower()] = {}
+            for j, col_name in enumerate(col_names):
+                value = default_values[row_name][j]
+                item = QTableWidgetItem(str(value))
+                table.setItem(i, j, item)
+                refs[row_name.lower()][col_name] = (i, j)
+        
+        return table, refs
 
     def _save_current_source_part(self):
         """将当前 Source 表单保存回 self._raw_project_dict 中对应的 Part（只更新第一个 Variant）。"""
@@ -1624,6 +1684,56 @@ class IntegratedAeroGUI(QMainWindow):
                     pass
         except Exception as e:
             logger.debug("request_cancel_batch 失败", exc_info=True)
+
+    def undo_batch_processing(self):
+        """撤销最近一次批处理操作"""
+        try:
+            from pathlib import Path
+            import shutil
+            
+            reply = QMessageBox.question(
+                self, 
+                '确认撤销',
+                '确定要撤销最近一次批处理？这将删除生成的输出文件。',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                return
+            
+            # 尝试删除最近生成的输出文件
+            deleted_count = 0
+            try:
+                output_dir = getattr(self, 'output_dir', None)
+                if output_dir and Path(output_dir).exists():
+                    # 删除输出目录中最近创建的文件
+                    # 这里简单实现：删除整个输出目录下的所有文件
+                    output_path = Path(output_dir)
+                    for file in output_path.glob('*'):
+                        if file.is_file():
+                            try:
+                                file.unlink()
+                                deleted_count += 1
+                            except Exception as e:
+                                logger.warning(f"无法删除文件 {file}: {e}")
+                    
+                    self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 已撤销批处理，删除了 {deleted_count} 个输出文件")
+                    QMessageBox.information(self, '完成', f'已删除 {deleted_count} 个输出文件')
+                else:
+                    QMessageBox.warning(self, '提示', '未找到输出目录')
+                    
+                # 禁用撤销按钮
+                if hasattr(self, 'btn_undo'):
+                    self.btn_undo.setEnabled(False)
+                    self.btn_undo.setVisible(False)
+                    
+            except Exception as e:
+                logger.error(f"撤销批处理失败: {e}")
+                QMessageBox.critical(self, '错误', f'撤销失败: {e}')
+                
+        except Exception as e:
+            logger.error(f"撤销批处理失败: {e}")
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
