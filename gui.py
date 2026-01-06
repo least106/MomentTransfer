@@ -101,16 +101,21 @@ class IntegratedAeroGUI(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
+        # 设置主布局的边距，使界面更紧凑
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
 
         # 立即创建splitter和panel，避免延迟加载导致的启动缓慢
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(4)  # 设置分割条宽度
         splitter.addWidget(self.create_config_panel())
         splitter.addWidget(self.create_operation_panel())
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 5)
-        # 初始 splitter 大小，优先显示左侧配置和右侧操作（近似匹配图一布局）
+        # 调整拉伸因子，使布局更平衡
+        splitter.setStretchFactor(0, 3)  # 左侧配置面板
+        splitter.setStretchFactor(1, 5)  # 右侧操作面板
+        # 初始 splitter 大小，考虑到最大宽度限制
         try:
-            splitter.setSizes([520, 880])
+            splitter.setSizes([450, 750])  # 调整为更合理的初始比例
         except Exception:
             logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
 
@@ -137,6 +142,8 @@ class IntegratedAeroGUI(QMainWindow):
         panel = QWidget()
         # 给左侧配置面板一个合理的最小宽度，避免在窄窗口时完全压扁
         panel.setMinimumWidth(420)
+        # 设置最大宽度，防止窗口放大时过度拉伸
+        panel.setMaximumWidth(550)
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
 
@@ -468,6 +475,8 @@ class IntegratedAeroGUI(QMainWindow):
         
         panel = QWidget()
         panel.setMinimumWidth(600)
+        # 设置最大宽度，防止窗口放大时过度拉伸
+        panel.setMaximumWidth(900)
         layout = QVBoxLayout(panel)
         layout.setSpacing(8)  # 从 15 减为 8，更紧凑
 
@@ -486,6 +495,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 输入行：文件路径 + 浏览
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
+        self.inp_batch_input.setMaximumWidth(650)  # 限制最大宽度
         btn_browse_input = QPushButton("浏览")
         btn_browse_input.setMaximumWidth(80)
         try:
@@ -501,6 +511,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 文件匹配模式 + 预设
         self.inp_pattern = QLineEdit("*.csv")
         self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv, data_*.xlsx；支持分号多模式：*.csv;*.xlsx")
+        self.inp_pattern.setMaximumWidth(300)  # 限制最大宽度
         self.cmb_pattern_preset = QComboBox()
         try:
             self.cmb_pattern_preset.setObjectName('patternPreset')
