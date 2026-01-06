@@ -9,6 +9,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
+from src.special_format_parser import looks_like_special_format, process_special_format_file
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,7 +21,7 @@ class BatchProcessThread(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, calculator, file_list, output_dir, data_config, registry_db=None):
+    def __init__(self, calculator, file_list, output_dir, data_config, registry_db=None, project_data=None, timestamp_format: str = "%Y%m%d_%H%M%S"):
         super().__init__()
         self.calculator = calculator
         self.file_list = file_list
@@ -27,9 +29,31 @@ class BatchProcessThread(QThread):
         self.data_config = data_config
         self.registry_db = registry_db
         self._stop_requested = False
+        self.project_data = project_data
+        self.timestamp_format = timestamp_format
 
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""
+        # 特殊格式分支：解析多 part 并按 target part 输出
+        if self.project_data is not None and looks_like_special_format(file_path):
+            overwrite_flag = False
+            try:
+                if isinstance(self.data_config, dict):
+                    overwrite_flag = bool(self.data_config.get('overwrite', False))
+                else:
+                    overwrite_flag = bool(getattr(self.data_config, 'overwrite', False))
+            except Exception:
+                overwrite_flag = False
+
+            outputs = process_special_format_file(
+                Path(file_path),
+                self.project_data,
+                self.output_dir,
+                timestamp_format=self.timestamp_format,
+                overwrite=overwrite_flag,
+            )
+            return outputs
+
         cfg_to_use = self.data_config
         if getattr(self, 'enable_sidecar', False):
             try:
@@ -214,8 +238,16 @@ class BatchProcessThread(QThread):
                     remaining = total - (i + 1)
                     eta = int(avg * remaining)
 
+                    # 兼容特殊格式返回多个输出文件的情况
+                    if isinstance(output_file, list):
+                        out_names = ', '.join([p.name for p in output_file])
+                        success_msg = f"生成 {len(output_file)} 个 part 输出: {out_names}"
+                    else:
+                        out_names = getattr(output_file, 'name', '未知输出')
+                        success_msg = out_names
+
                     try:
-                        self.log_message.emit(f"  ✓ 完成: {output_file.name} (耗时: {file_elapsed:.2f}s)")
+                        self.log_message.emit(f"  ✓ 完成: {success_msg} (耗时: {file_elapsed:.2f}s)")
                     except Exception:
                         logger.debug("Cannot emit success message for %s", file_path, exc_info=True)
 
