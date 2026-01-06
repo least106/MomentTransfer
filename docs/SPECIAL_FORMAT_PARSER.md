@@ -4,6 +4,8 @@
 
 `src/special_format_parser.py` 提供了针对特殊格式数据文件的智能解析功能，能够：
 
+> 建议使用扩展名：`.mtfmt`（或 `.mtdata`）。批处理已支持默认匹配 `*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat`。
+
 1. **自动跳过元数据行**：识别并忽略文件开头的描述性文本（如"计算坐标系:X向后、Y向右、z向上"）
 2. **智能识别 part 名称**：自动检测用户自定义的 part 名称（如 quanji、BODY、DUAHUI 等）
 3. **过滤汇总行**：自动跳过 CLa、Cdmin、CmCL 等汇总统计行
