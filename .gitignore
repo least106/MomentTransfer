@@ -4,6 +4,7 @@ tmp_*
 *.tmp
 **/__pycache__/
 *.bak
+*.bak_*
 *.tmp
 .vscode/
 .github/copilot-instructions.md

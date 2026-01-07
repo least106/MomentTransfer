@@ -34,19 +34,25 @@ from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 from typing import Optional, List, Tuple
 from src.format_registry import get_format_for_file
+from src.models import ProjectConfig, Part, Variant
+from src.models import ProjectConfigModel, ReferenceValues, CSModel as CSModelAlias, PartVariant as PMPartVariant
 
 # 从模块化包导入组件
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
 from gui.dialogs import ColumnMappingDialog
 from gui.batch_thread import BatchProcessThread
+from gui.log_manager import LoggingManager
 
 # 导入管理器和工具
-from gui.ui_utils import create_input, create_triple_spin, get_numeric_value, create_vector_row
 from gui.config_manager import ConfigManager
 from gui.part_manager import PartManager
+from gui.signal_bus import SignalBus
 from gui.batch_manager import BatchManager
 from gui.visualization_manager import VisualizationManager
 from gui.layout_manager import LayoutManager
+
+# 导入面板组件
+from gui.panels import SourcePanel, TargetPanel, ConfigPanel, OperationPanel
 
 logger = logging.getLogger(__name__)
 
@@ -75,29 +81,24 @@ class IntegratedAeroGUI(QMainWindow):
         self._is_initializing = True  # 标记正在初始化，禁止弹窗
         self._show_event_fired = False  # 标记 showEvent 是否已触发过
         self.calculator = None
+        self.signal_bus = SignalBus.instance()
         self.current_config = None
+        self.project_config: ProjectConfig | None = None
+        self.project_model: ProjectConfigModel | None = None
         self.data_config = None
         self.canvas3d = None
         self.visualization_window = None
 
         self.init_ui()
+        try:
+            self._connect_signals()
+        except Exception:
+            logger.debug("_connect_signals 初始化失败（占位）", exc_info=True)
         # 注意：不在这里设置 _is_initializing = False
         # 将在 show() 之后通过延迟定时器设置，以避免 showEvent 期间的弹窗
 
     def init_ui(self):
         """初始化界面"""
-        # 初始化各个管理器
-        try:
-            self.config_manager = ConfigManager(self)
-            self.part_manager = PartManager(self)
-            self.batch_manager = BatchManager(self)
-            self.visualization_manager = VisualizationManager(self)
-            self.layout_manager = LayoutManager(self)
-            logger.info("所有管理器初始化成功")
-        except Exception as e:
-            logger.error(f"管理器初始化失败: {e}")
-            # 继续运行，即使管理器初始化失败
-        
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
@@ -108,7 +109,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 使用垂直分割器：上方是配置面板，下方是批量处理面板
         splitter = QSplitter(Qt.Vertical)
         splitter.setHandleWidth(4)  # 设置分割条宽度
-        splitter.addWidget(self.create_config_panel())
+        
+        # 先创建 config_panel（需要在 ConfigManager 初始化前）
+        config_panel = self.create_config_panel()
+        splitter.addWidget(config_panel)
         splitter.addWidget(self.create_operation_panel())
         # 调整拉伸因子，配置面板和批量处理面板各占一半
         splitter.setStretchFactor(0, 1)  # 上方配置面板
@@ -128,718 +132,153 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             # 若方法尚未定义或出现异常，记录调试堆栈以便诊断，但不阻止 UI 启动
             logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
+        
+        # 初始化各个管理器（ConfigManager 需要 config_panel）
+        try:
+            self.config_manager = ConfigManager(self, config_panel)
+            self.part_manager = PartManager(self)
+            self.batch_manager = BatchManager(self)
+            self.visualization_manager = VisualizationManager(self)
+            self.layout_manager = LayoutManager(self)
+            logger.info("所有管理器初始化成功")
+        except Exception as e:
+            logger.error(f"管理器初始化失败: {e}")
+            # 继续运行，即使管理器初始化失败
 
     def create_config_panel(self):
-        """创建配置编辑器面板，支持 Source/Target 的并排显示"""
-        # 在整个panel构建期间禁用应用级别的信号，避免任何误触发
-        try:
-            app = QApplication.instance()
-            if app:
-                app.blockSignals(True)
-        except Exception:
-            pass
+        """创建配置编辑器面板（委托 ConfigPanel 组件），并保持旧属性兼容。"""
+        panel = ConfigPanel(self)
+
+        # 兼容旧代码：保持对旧控件的引用
+        self.source_panel = panel.source_panel
+        self.target_panel = panel.target_panel
+        self.btn_load = panel.btn_load
+        self.btn_save = panel.btn_save
+        self.btn_apply = panel.btn_apply
+
+        self._setup_panel_compatibility()
+
+        # 注意：ConfigPanel 的 loadRequested/saveRequested/applyRequested 信号
+        # 已在 ConfigManager.__init__() 中连接，无需在此重复连接
         
-        panel = QWidget()
-        # 设置面板最小尺寸
-        panel.setMinimumWidth(950)
-        panel.setMaximumHeight(550)  # 限制最大高度，避免过多空白
-        
-        # 主垂直布局
-        main_layout = QVBoxLayout(panel)
-        main_layout.setSpacing(8)
+        # 面板内部的部件信号
+        self.source_panel.btn_add_part.clicked.connect(self._add_source_part)
+        self.source_panel.btn_remove_part.clicked.connect(self._remove_source_part)
+        self.source_panel.partSelected.connect(self._on_source_part_changed_wrapper)
 
-        # 标题
-        title = QLabel("配置编辑器")
+        self.target_panel.btn_add_part.clicked.connect(self._add_target_part)
+        self.target_panel.btn_remove_part.clicked.connect(self._remove_target_part)
+        self.target_panel.partSelected.connect(self._on_target_part_changed_wrapper)
+
+        return panel
+
+    def _connect_signals(self):
+        """集中信号连接（占位，逐步迁移分散连接）。"""
         try:
-            title.setObjectName('panelTitle')
+            # 基本 UI 控制
+            self.signal_bus.controlsLocked.connect(self._set_controls_locked)
         except Exception:
-            pass
-        main_layout.addWidget(title)
-
-        # === Source 坐标系 ===
-        # 不再使用复选框控制显示，Source 面板始终可见
-
-
-        # 将 groupbox 指定 parent 为本 panel，避免在 setVisible 时成为顶层窗口
-        self.grp_source = QGroupBox("Source Coordinate System", panel)
-        # 设置尺寸约束，为并排布局做准备
-        self.grp_source.setMinimumWidth(350)
-        self.grp_source.setMaximumHeight(480)
-        self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        form_source = QFormLayout()
-        form_source.setContentsMargins(10, 10, 10, 10)
-        form_source.setSpacing(4)
-        try:
-            form_source.setLabelAlignment(Qt.AlignRight)
-        except Exception:
-            pass
-
-        # Source 坐标系输入表格
-        self.src_coord_table = self._create_coord_table('src')
+            logger.debug("连接 controlsLocked 信号失败", exc_info=True)
+    
+    def _setup_panel_compatibility(self):
+        """设置面板兼容性 - 保持对旧控件的引用"""
+        # Source 面板控件引用
+        self.grp_source = self.source_panel
+        self.src_part_name = self.source_panel.part_name_input
+        self.cmb_source_parts = self.source_panel.part_selector
+        self.src_coord_table = self.source_panel.coord_table
+        self.src_cref = self.source_panel.cref_input
+        self.src_bref = self.source_panel.bref_input
+        self.src_sref = self.source_panel.sref_input
+        self.src_q = self.source_panel.q_input
+        self.btn_add_source_part = self.source_panel.btn_add_part
+        self.btn_remove_source_part = self.source_panel.btn_remove_part
         
-        # 保留原有的独立控件引用（用于兼容现有代码）
-        # 但这些不再显示在UI中，而是作为表格的数据访问接口
+        # Target 面板控件引用
+        self.tgt_part_name = self.target_panel.part_name_input
+        self.cmb_target_parts = self.target_panel.part_selector
+        self.tgt_coord_table = self.target_panel.coord_table
+        self.tgt_cref = self.target_panel.cref_input
+        self.tgt_bref = self.target_panel.bref_input
+        self.tgt_sref = self.target_panel.sref_input
+        self.tgt_q = self.target_panel.q_input
+        self.btn_add_target_part = self.target_panel.btn_add_part
+        self.btn_remove_target_part = self.target_panel.btn_remove_part
+        
+        # 创建隐藏的三元旋钮（保持兼容性）
         self.src_ox, self.src_oy, self.src_oz = self._create_triple_spin(0.0, 0.0, 0.0)
         self.src_xx, self.src_xy, self.src_xz = self._create_triple_spin(1.0, 0.0, 0.0)
         self.src_yx, self.src_yy, self.src_yz = self._create_triple_spin(0.0, 1.0, 0.0)
         self.src_zx, self.src_zy, self.src_zz = self._create_triple_spin(0.0, 0.0, 1.0)
-
-        # Source Part Name（与 Target 对等）
-        # 支持多 Part/Variant 的下拉选择（当从 ProjectData 加载时会显示）
-        self.src_part_name = self._create_input("")  # 先设置空字符串避免触发信号
-        self.src_part_name.blockSignals(True)  # 阻止信号在初始化期间触发
-        self.src_part_name.setText("Global")
-        self._current_source_part_name = "Global"  # 初始化当前名称
-        # 当用户直接编辑 Part Name 时，实时更新下拉列表（若可见）与 current_config 的键名
-        try:
-            self.src_part_name.textChanged.connect(self._on_src_partname_changed)
-        except Exception:
-            logger.debug("无法连接 src_part_name.textChanged", exc_info=True)
-        # 注意：信号恢复延迟到 panel 返回前，避免在构建期间触发
-        # 注意：控件创建时必须指定 parent，否则在 Windows 下调用 setVisible(True)
-        # 可能会导致其被当作“顶层窗口”短暂显示（表现为启动时弹窗一闪而过）。
-        self.cmb_source_parts = QComboBox(panel)
-        self.cmb_source_parts.blockSignals(True)  # 初始也阻止信号
-        self.spin_source_variant = QSpinBox(panel)
-        self.spin_source_variant.setRange(0, 100)
-        self.spin_source_variant.setValue(0)
-        self.spin_source_variant.setVisible(False)
-        self.cmb_source_parts.currentTextChanged.connect(lambda _: self._on_source_part_changed())
-
-        self.src_xx, self.src_xy, self.src_xz = self._create_triple_spin(1.0, 0.0, 0.0)
-
-        self.src_yx, self.src_yy, self.src_yz = self._create_triple_spin(0.0, 1.0, 0.0)
-
-        self.src_zx, self.src_zy, self.src_zz = self._create_triple_spin(0.0, 0.0, 1.0)
-
-        # Source 力矩中心（单行三元）
         self.src_mcx, self.src_mcy, self.src_mcz = self._create_triple_spin(0.0, 0.0, 0.0)
-
-        # 当有多个 source part 时显示下拉；否则使用自由文本框
-        form_source.addRow("Part Name:", self.src_part_name)
-        # 使用带新增/删除按钮的组合控件以便在未加载文件时也能管理 Parts
-        src_part_widget = QWidget()
-        src_part_h = QHBoxLayout(src_part_widget)
-        src_part_h.setContentsMargins(0, 0, 0, 0)
-        src_part_h.addWidget(self.cmb_source_parts)
-        self.btn_add_source_part = QPushButton("+")
-        self.btn_add_source_part.setMaximumWidth(28)
-        self.btn_remove_source_part = QPushButton("−")
-        self.btn_remove_source_part.setMaximumWidth(28)
-        try:
-            self.btn_add_source_part.setObjectName('smallButton')
-            self.btn_remove_source_part.setObjectName('smallButton')
-        except Exception:
-            pass
-        self.btn_add_source_part.clicked.connect(self._add_source_part)
-        self.btn_remove_source_part.clicked.connect(self._remove_source_part)
-        src_part_h.addWidget(self.btn_add_source_part)
-        src_part_h.addWidget(self.btn_remove_source_part)
-        form_source.addRow("选择 Source Part:", src_part_widget)
-        # Variant 索引已移除（始终使用第 0 个 variant）；避免用户混淆，因此不在表单中显示
         
-        # 直接添加坐标系表格，不用label
-        form_source.addRow("", self.src_coord_table)
-
-        # Source 参考量（与 Target 对等）
-        self.src_cref = self._create_input("1.0")
-        self.src_bref = self._create_input("1.0")
-        self.src_sref = self._create_input("10.0")
-        self.src_q = self._create_input("1000.0")
-
-        lbl = QLabel("C_ref (m):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self.src_cref)
-        lbl = QLabel("B_ref (m):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self.src_bref)
-        lbl = QLabel("S_ref (m²):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self.src_sref)
-        lbl = QLabel("Q (Pa):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_source.addRow(lbl, self.src_q)
-
-        self.grp_source.setLayout(form_source)
-        # 始终显示 Source 面板
-        self.grp_source.setVisible(True)
-
-        # === Target 配置 ===
-        # 同样为 Target 指定 parent
-        grp_target = QGroupBox("Target Configuration", panel)
-        # 设置尺寸约束，为并排布局做准备
-        grp_target.setMinimumWidth(350)
-        grp_target.setMaximumHeight(480)
-        grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        form_target = QFormLayout()
-        form_target.setContentsMargins(10, 10, 10, 10)
-        form_target.setSpacing(4)
-        try:
-            form_target.setLabelAlignment(Qt.AlignRight)
-        except Exception:
-            pass
-
-        # Target 的内部数值控件（与 Source 对等）
         self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
         self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
         self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
         self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
         self.tgt_mcx, self.tgt_mcy, self.tgt_mcz = self._create_triple_spin(0.0, 0.0, 0.0)
 
-        # Part Name
-        # 使用 _create_input 以保持与 Source 的输入框样式与宽度一致
-        self.tgt_part_name = self._create_input("")  # 先设置空字符串避免触发信号
-        self.tgt_part_name.blockSignals(True)  # 阻止信号在初始化期间触发
-        self.tgt_part_name.setText("TestModel")
-        self._current_target_part_name = "TestModel"  # 初始化当前名称
+        # 兼容旧逻辑的 Variant 选择器（当前组件化面板未使用，但下游管理器仍会设置范围）
+        self.spin_source_variant = QSpinBox()
+        self.spin_source_variant.setRange(0, 0)
+        self.spin_source_variant.setVisible(False)
         try:
-            self.tgt_part_name.textChanged.connect(self._on_tgt_partname_changed)
+            self.spin_source_variant.valueChanged.connect(lambda i: self.part_manager.on_source_variant_changed(int(i)))
         except Exception:
-            logger.debug("无法连接 tgt_part_name.textChanged", exc_info=True)
-        # 注意：信号恢复延迟到 panel 返回前，避免在构建期间触发
-        form_target.addRow("Part Name:", self.tgt_part_name)
-
-        # 当加载 ProjectData 时，展示可选的 Part 下拉框与 Variant 索引选择器
-        # 同上：创建时绑定 parent，避免未 parent 状态下短暂成为顶层窗口。
-        self.cmb_target_parts = QComboBox(panel)
-        self.cmb_target_parts.blockSignals(True)  # 初始也阻止信号
-        self.spin_target_variant = QSpinBox(panel)
-        self.spin_target_variant.setRange(0, 100)
-        self.spin_target_variant.setValue(0)
+            logger.debug("连接 Source 变体切换信号失败", exc_info=True)
+        self.spin_target_variant = QSpinBox()
+        self.spin_target_variant.setRange(0, 0)
         self.spin_target_variant.setVisible(False)
-        # 当选择不同 part 时，更新 variant 最大值（在 load_config 中设置）
-        self.cmb_target_parts.currentTextChanged.connect(lambda _: self._on_target_part_changed())
-        # 目标 Part 下拉也使用带新增/删除的组合控件
-        tgt_part_widget = QWidget()
-        tgt_part_h = QHBoxLayout(tgt_part_widget)
-        tgt_part_h.setContentsMargins(0, 0, 0, 0)
-        tgt_part_h.addWidget(self.cmb_target_parts)
-        self.btn_add_target_part = QPushButton("+")
-        self.btn_add_target_part.setMaximumWidth(28)
-        self.btn_remove_target_part = QPushButton("−")
-        self.btn_remove_target_part.setMaximumWidth(28)
         try:
-            self.btn_add_target_part.setObjectName('smallButton')
-            self.btn_remove_target_part.setObjectName('smallButton')
+            self.spin_target_variant.valueChanged.connect(lambda i: self.part_manager.on_target_variant_changed(int(i)))
         except Exception:
-            pass
-        self.btn_add_target_part.clicked.connect(self._add_target_part)
-        self.btn_remove_target_part.clicked.connect(self._remove_target_part)
-        tgt_part_h.addWidget(self.btn_add_target_part)
-        tgt_part_h.addWidget(self.btn_remove_target_part)
-        form_target.addRow("选择 Target Part:", tgt_part_widget)
-        # Variant 索引已移除（始终使用第 0 个 variant）
-
-        # 创建并添加坐标系表格
-        self.tgt_coord_table = self._create_coord_table('tgt')
-        form_target.addRow("", self.tgt_coord_table)
-
-        # Target 参考量（与 Source 对等）
-        self.tgt_cref = self._create_input("1.0")
-        self.tgt_bref = self._create_input("1.0")
-        self.tgt_sref = self._create_input("10.0")
-        self.tgt_q = self._create_input("1000.0")
-
-        lbl = QLabel("C_ref (m):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self.tgt_cref)
-        lbl = QLabel("B_ref (m):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self.tgt_bref)
-        lbl = QLabel("S_ref (m²):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self.tgt_sref)
-        lbl = QLabel("Q (Pa):")
-        lbl.setFixedWidth(120)
-        lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form_target.addRow(lbl, self.tgt_q)
-        grp_target.setLayout(form_target)
-
-        # === 配置操作按钮（竖向排列在最右侧） ===
-        btn_widget = QWidget()
-        btn_widget.setFixedWidth(120)
-        btn_layout = QVBoxLayout(btn_widget)
-        btn_layout.setSpacing(8)
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.btn_load = QPushButton("加载配置")
-        self.btn_load.setFixedHeight(40)
-        try:
-            self.btn_load.setObjectName('secondaryButton')
-            self.btn_load.setToolTip('从磁盘加载配置文件')
-        except Exception:
-            pass
-        self.btn_load.clicked.connect(self.load_config)
-
-        self.btn_save = QPushButton("保存配置")
-        self.btn_save.setFixedHeight(40)
-        try:
-            self.btn_save.setObjectName('primaryButton')
-            self.btn_save.setToolTip('将当前配置保存到磁盘 (Ctrl+S)')
-            self.btn_save.setShortcut('Ctrl+S')
-        except Exception:
-            pass
-        self.btn_save.clicked.connect(self.save_config)
-
-        self.btn_apply = QPushButton("应用配置")
-        self.btn_apply.setFixedHeight(40)
-        try:
-            self.btn_apply.setObjectName('primaryButton')
-            self.btn_apply.setShortcut('Ctrl+R')
-            self.btn_apply.setToolTip('应用当前配置并初始化计算器 (Ctrl+Enter)')
-        except Exception:
-            pass
-        self.btn_apply.clicked.connect(self.apply_config)
-
-        btn_layout.addWidget(self.btn_load)
-        btn_layout.addWidget(self.btn_save)
-        btn_layout.addWidget(self.btn_apply)
-        btn_layout.addStretch()
-
-        # === 横向布局：Source + Target + 按钮 ===
-        coord_layout = QHBoxLayout()
-        coord_layout.setSpacing(8)
-        coord_layout.setContentsMargins(0, 0, 0, 0)
-        coord_layout.addWidget(self.grp_source)
-        coord_layout.addWidget(grp_target)
-        coord_layout.addWidget(btn_widget)
-        # 设置比例：Source:Target:按钮 = 1:1:0（按钮固定宽度）
-        coord_layout.setStretch(0, 1)
-        coord_layout.setStretch(1, 1)
-        coord_layout.setStretch(2, 0)
-
-        # 添加横向布局到主布局
-        main_layout.addLayout(coord_layout)
+            logger.debug("连接 Target 变体切换信号失败", exc_info=True)
         
-        # 设置伸缩：让横向布局在垂直方向扩展以填充空间
+        # 初始化当前Part名称
+        self._current_source_part_name = "Global"
+        self._current_target_part_name = "TestModel"
+    
+    def _on_source_part_changed_wrapper(self):
+        """Source Part变化的封装方法"""
         try:
-            main_layout.setStretch(2, 1)  # coord_layout index 2（index 0 是标题，index 1 是复选框）
-        except Exception:
-            logger.debug("main_layout.setStretch failed (non-fatal)", exc_info=True)
-        main_layout.addStretch()
-
-        # 在返回前统一恢复所有被阻止的信号，此时UI已完全构建
-        # 这样可以避免在构建过程中触发信号导致的弹窗
+            self._on_source_part_changed()
+        except Exception as e:
+            logger.debug(f"Source part changed failed: {e}", exc_info=True)
+    
+    def _on_target_part_changed_wrapper(self):
+        """Target Part变化的封装方法"""
         try:
-            self.src_part_name.blockSignals(False)
-            self.tgt_part_name.blockSignals(False)
-            self.cmb_source_parts.blockSignals(False)
-            self.cmb_target_parts.blockSignals(False)
-        except Exception:
-            logger.debug("恢复信号失败", exc_info=True)
-        
-        # 恢复应用级别的信号
-        try:
-            app = QApplication.instance()
-            if app:
-                app.blockSignals(False)
-        except Exception:
-            pass
-
-        return panel
+            self._on_target_part_changed()
+        except Exception as e:
+            logger.debug(f"Target part changed failed: {e}", exc_info=True)
 
     def create_operation_panel(self):
-        """创建右侧操作面板"""
-        """创建批量处理面板，左侧输入文件，右侧操作按钮"""
-        # 在整个panel构建期间禁用应用级别的信号，避免任何误触发
+        """创建批量处理面板（委托 OperationPanel 组件），并保持旧属性兼容。"""
+        panel = OperationPanel(
+            parent=self,
+            on_batch_start=self.run_batch_processing,
+            on_format_config=self.configure_data_format,
+            on_undo=self.undo_batch_processing,
+            on_browse=self.browse_batch_input,
+            on_pattern_changed=lambda: self._on_pattern_changed(),
+            on_select_all=self._select_all_files,
+            on_select_none=self._select_none_files,
+            on_invert_selection=self._invert_file_selection,
+        )
+
+        # 兼容旧属性映射
         try:
-            app = QApplication.instance()
-            if app:
-                app.blockSignals(True)
+            panel.attach_legacy_aliases(self)
         except Exception:
-            pass
-        
-        panel = QWidget()
-        panel.setMinimumWidth(900)
-        panel.setMinimumHeight(300)
-        
-        # 主垂直布局
-        main_layout = QVBoxLayout(panel)
-        main_layout.setSpacing(8)
+            logger.debug("attach_legacy_aliases 失败", exc_info=True)
 
-        self.grp_batch = QGroupBox("批量处理 (Batch Processing)")
-        self.grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
-        # 批处理组的水平布局：左侧为内容区，右侧为操作按钮
-        layout_batch_h = QHBoxLayout()
-        layout_batch_h.setSpacing(8)
-        layout_batch_h.setContentsMargins(8, 8, 8, 8)
-        
-        # === 左侧：输入路径、匹配模式、Tab 面板 ===
-        left_content = QWidget()
-        left_layout = QVBoxLayout(left_content)
-        left_layout.setSpacing(6)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-
-        # 文件选择表单（作为实例属性供后续方法访问）
-        self.file_form = QFormLayout()
-        self.file_form.setSpacing(4)  # 更小的间距
-        self.file_form.setContentsMargins(2, 2, 2, 2)  # 减少内边距
-
-        # 输入行：文件路径 + 浏览
-        self.inp_batch_input = QLineEdit()
-        self.inp_batch_input.setPlaceholderText("选择文件或目录...")
-        btn_browse_input = QPushButton("浏览")
+        # 将日志处理器连接到 GUI
         try:
-            btn_browse_input.setObjectName('smallButton')
-            btn_browse_input.setToolTip('选择输入文件或目录')
+            self._setup_gui_logging()
         except Exception:
-            pass
-        btn_browse_input.clicked.connect(self.browse_batch_input)
-        input_row = QHBoxLayout()
-        input_row.addWidget(self.inp_batch_input)
-        input_row.addWidget(btn_browse_input)
-
-        # 文件匹配模式 + 预设
-        self.inp_pattern = QLineEdit("*.csv")
-        self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv, data_*.xlsx；支持分号多模式：*.csv;*.xlsx")
-        self.cmb_pattern_preset = QComboBox()
-        try:
-            self.cmb_pattern_preset.setObjectName('patternPreset')
-        except Exception:
-            pass
-        self._pattern_presets = [
-            ("自定义", None),
-            ("仅 CSV", "*.csv"),
-            ("CSV + Excel", "*.csv;*.xlsx;*.xls"),
-            ("特殊格式", "*.mtfmt;*.mtdata;*.txt;*.dat"),
-            ("全部支持", "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"),
-        ]
-        for name, _pat in self._pattern_presets:
-            self.cmb_pattern_preset.addItem(name)
-
-        def _apply_preset(idx: int) -> None:
-            try:
-                if idx < 0 or idx >= len(self._pattern_presets):
-                    return
-                pat = self._pattern_presets[idx][1]
-                if not pat:
-                    return
-                try:
-                    self.inp_pattern.blockSignals(True)
-                    self.inp_pattern.setText(pat)
-                finally:
-                    self.inp_pattern.blockSignals(False)
-                # 主动触发刷新（兼容某些情况下 textChanged 未触发）
-                try:
-                    self._on_pattern_changed()
-                except Exception:
-                    pass
-            except Exception:
-                logger.debug('apply preset failed', exc_info=True)
-
-        def _mark_custom(_text: str) -> None:
-            try:
-                if self.cmb_pattern_preset.currentIndex() != 0:
-                    self.cmb_pattern_preset.blockSignals(True)
-                    self.cmb_pattern_preset.setCurrentIndex(0)
-                    self.cmb_pattern_preset.blockSignals(False)
-            except Exception:
-                pass
-
-        try:
-            self.cmb_pattern_preset.currentIndexChanged.connect(_apply_preset)
-        except Exception:
-            logger.debug('无法连接 cmb_pattern_preset 信号', exc_info=True)
-
-        try:
-            self.inp_pattern.textEdited.connect(_mark_custom)
-        except Exception:
-            pass
-
-        pattern_row = QHBoxLayout()
-        pattern_row.addWidget(self.inp_pattern)
-        pattern_row.addWidget(self.cmb_pattern_preset)
-        try:
-            # 实时根据模式更新文件列表（若已选择输入路径）
-            self.inp_pattern.textChanged.connect(lambda _: self._on_pattern_changed())
-        except Exception:
-            logger.debug("无法连接 inp_pattern.textChanged 信号", exc_info=True)
-
-
-        # 将表单添加到左侧布局
-        self.file_form.addRow("输入路径:", input_row)
-        self.file_form.addRow("匹配模式:", pattern_row)
-        left_layout.addLayout(self.file_form)
-
-        # 文件列表Widget
-        self.file_list_widget = QWidget()
-        self.file_list_widget.setVisible(False)
-        file_list_layout = QVBoxLayout(self.file_list_widget)
-        file_list_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 添加操作按钮行
-        btn_row = QHBoxLayout()
-        self.btn_select_all = QPushButton("全选")
-        self.btn_select_none = QPushButton("全不选")
-        self.btn_select_invert = QPushButton("反选")
-        
-        for btn in (self.btn_select_all, self.btn_select_none, self.btn_select_invert):
-            btn.setMaximumWidth(80)
-            try:
-                btn.setObjectName('smallButton')
-            except Exception:
-                pass
-        
-        self.btn_select_all.clicked.connect(self._select_all_files)
-        self.btn_select_none.clicked.connect(self._select_none_files)
-        self.btn_select_invert.clicked.connect(self._invert_file_selection)
-        
-        btn_row.addWidget(self.btn_select_all)
-        btn_row.addWidget(self.btn_select_none)
-        btn_row.addWidget(self.btn_select_invert)
-        btn_row.addStretch()
-        file_list_layout.addLayout(btn_row)
-        
-        # 使用TreeWidget显示文件层次结构
-        from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QHeaderView
-        self.file_tree = QTreeWidget()
-        self.file_tree.setHeaderLabels(["文件/目录", "状态"])
-        self.file_tree.setColumnWidth(0, 400)
-        self.file_tree.setMinimumHeight(250)
-        
-        # 设置表头自动调整
-        header = self.file_tree.header()
-        try:
-            header.setSectionResizeMode(0, QHeaderView.Stretch)
-            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        except Exception:
-            pass
-        
-        file_list_layout.addWidget(self.file_tree)
-
-        # 存储文件信息的字典
-        self._file_tree_items = {}
-
-        # 进度条（隐藏）
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        left_layout.addWidget(self.progress_bar)
-
-        # 创建 Tab 容器：信息、文件列表和处理日志
-        self.tab_main = QTabWidget()
-        try:
-            self.tab_main.setObjectName('mainTab')
-        except Exception:
-            pass
-        
-        # Tab 0: 信息页
-        self.info_tab_widget = QWidget()
-        info_tab_layout = QVBoxLayout(self.info_tab_widget)
-        info_tab_layout.setContentsMargins(12, 12, 12, 12)
-        info_tab_layout.setSpacing(8)
-        
-        # 配置状态
-        self.lbl_status = QLabel("未加载配置")
-        try:
-            self.lbl_status.setObjectName('statusLabel')
-            font = self.lbl_status.font()
-            font.setPointSize(10)
-            font.setBold(True)
-            self.lbl_status.setFont(font)
-        except Exception:
-            pass
-        info_tab_layout.addWidget(self.lbl_status)
-        
-        # 数据格式预览区域
-        format_group = QGroupBox("数据格式预览")
-        format_layout = QVBoxLayout(format_group)
-        format_layout.setSpacing(4)
-        
-        self.lbl_preview_skip = QLabel("跳过行: -")
-        self.lbl_preview_passthrough = QLabel("保留列: -")
-        self.lbl_preview_columns = QLabel("列映射: -")
-        
-        for w in (self.lbl_preview_skip, self.lbl_preview_passthrough, self.lbl_preview_columns):
-            try:
-                w.setObjectName('previewText')
-            except Exception:
-                pass
-            format_layout.addWidget(w)
-        
-        info_tab_layout.addWidget(format_group)
-        info_tab_layout.addStretch()
-        
-        self.tab_main.addTab(self.info_tab_widget, "信息")
-        self.tab_main.addTab(self.file_list_widget, "文件列表")
-        
-        # Tab 2: 处理日志
-        self.txt_batch_log = QTextEdit()
-        try:
-            self.txt_batch_log.setObjectName('batchLog')
-        except Exception:
-            pass
-        self.txt_batch_log.setReadOnly(True)
-        self.txt_batch_log.setFont(QFont("Consolas", 9))
-        self.txt_batch_log.setMinimumHeight(160)
-        self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
-        self.tab_logs_widget = QWidget()
-        tab_logs_layout = QVBoxLayout(self.tab_logs_widget)
-        tab_logs_layout.setContentsMargins(0, 0, 0, 0)
-        tab_logs_layout.addWidget(self.txt_batch_log)
-        self.tab_main.addTab(self.tab_logs_widget, "处理日志")
-        
-        # 添加 Tab 到左侧布局
-        left_layout.addWidget(self.tab_main)
-        
-        # 保存批处理布局为实例属性以便在其他方法中引用
-        self.layout_batch = left_layout
-        
-        # === 右侧：操作按钮（垂直排列） ===
-        right_buttons = QWidget()
-        right_layout = QVBoxLayout(right_buttons)
-        right_layout.setSpacing(8)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setAlignment(Qt.AlignTop)
-        
-        # 数据格式配置按钮
-        self.btn_config_format = QPushButton("⚙ 配置\n数据格式")
-        try:
-            self.btn_config_format.setObjectName('secondaryButton')
-            self.btn_config_format.setShortcut('Ctrl+Shift+F')
-        except Exception:
-            pass
-        self.btn_config_format.setToolTip("设置会话级别的全局数据格式")
-        self.btn_config_format.setFixedWidth(100)
-        self.btn_config_format.setFixedHeight(50)
-        self.btn_config_format.clicked.connect(self.configure_data_format)
-
-        # 执行按钮
-        self.btn_batch = QPushButton("开始\n批量处理")
-        try:
-            self.btn_batch.setObjectName('primaryButton')
-            self.btn_batch.setShortcut('Ctrl+R')
-            self.btn_batch.setToolTip('开始批量处理')
-        except Exception:
-            pass
-        self.btn_batch.setFixedWidth(100)
-        self.btn_batch.setFixedHeight(50)
-        self.btn_batch.clicked.connect(self.run_batch_processing)
-
-        # 撤销按钮
-        self.btn_undo = QPushButton("撤销\n批处理")
-        try:
-            self.btn_undo.setObjectName('secondaryButton')
-            self.btn_undo.setShortcut('Ctrl+Z')
-            self.btn_undo.setToolTip('撤销最近一次批处理')
-        except Exception:
-            pass
-        self.btn_undo.setFixedWidth(100)
-        self.btn_undo.setFixedHeight(50)
-        self.btn_undo.clicked.connect(self.undo_batch_processing)
-        self.btn_undo.setVisible(False)
-        self.btn_undo.setEnabled(False)
-        
-        # 保存最近批处理的信息
-        self._last_batch_info = None
-
-        right_layout.addWidget(self.btn_config_format)
-        right_layout.addWidget(self.btn_batch)
-        right_layout.addWidget(self.btn_undo)
-        right_layout.addStretch()
-
-        # === 组合左右布局 ===
-        layout_batch_h.addWidget(left_content, 1)  # 左侧占据大部分空间
-        layout_batch_h.addWidget(right_buttons, 0)  # 右侧按钮固定宽度
-
-        self.grp_batch.setLayout(layout_batch_h)
-        main_layout.addWidget(self.grp_batch)
-
-        # 恢复应用级别的信号
-        try:
-            app = QApplication.instance()
-            if app:
-                app.blockSignals(False)
-        except Exception:
-            pass
+            logger.debug("_setup_gui_logging failed in create_operation_panel", exc_info=True)
 
         return panel
-
-    def _create_input(self, default_value):
-        """创建输入框"""
-        inp = QLineEdit(default_value)
-        # 提高最大宽度以适配高 DPI 和更长的文本输入，使 Source/Target 输入框长度一致
-        inp.setMaximumWidth(220)
-        try:
-            inp.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        except Exception:
-            logger.debug("inp.setSizePolicy failed (non-fatal)", exc_info=True)
-        return inp
-
-    def _create_coord_table(self, name_prefix: str):
-        """
-        创建坐标系输入表格（3x5: 5行×3列）
-        行：Orig, X轴, Y轴, Z轴, 力矩中心
-        列：x, y, z分量
-        
-        Args:
-            name_prefix: 控件名称前缀（如 'src' 或 'tgt'）
-            
-        Returns:
-            QTableWidget实例
-        """
-        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
-        from PySide6.QtCore import Qt
-        
-        table = QTableWidget(5, 3)
-        table.setHorizontalHeaderLabels(['X', 'Y', 'Z'])
-        table.setVerticalHeaderLabels(['Orig', 'X轴', 'Y轴', 'Z轴', '力矩中心'])
-        
-        # 设置默认值
-        default_values = [
-            [0.0, 0.0, 0.0],  # Orig
-            [1.0, 0.0, 0.0],  # X轴
-            [0.0, 1.0, 0.0],  # Y轴
-            [0.0, 0.0, 1.0],  # Z轴
-            [0.0, 0.0, 0.0],  # 力矩中心
-        ]
-        
-        for row in range(5):
-            for col in range(3):
-                item = QTableWidgetItem(str(default_values[row][col]))
-                item.setTextAlignment(Qt.AlignCenter)
-                table.setItem(row, col, item)
-            # 设置紧凑的行高
-            table.setRowHeight(row, 26)
-        
-        # 设置表格整体尺寸 - 更紧凑
-        table.setMinimumHeight(170)  # 5行
-        table.setMaximumHeight(190)
-        table.setMinimumWidth(250)
-        table.setMaximumWidth(280)
-        
-        # 列宽自适应内容
-        h_header = table.horizontalHeader()
-        h_header.setSectionResizeMode(QHeaderView.Stretch)
-        
-        # 行标题列更窄
-        v_header = table.verticalHeader()
-        v_header.setMinimumWidth(60)
-        v_header.setMaximumWidth(65)
-        
-        # 样式优化：隐藏网格线，启用行色交替
-        table.setShowGrid(False)
-        table.setAlternatingRowColors(True)
-        
-        # 隐藏滚动条
-        from PySide6.QtCore import Qt as QtCore_Qt
-        table.setHorizontalScrollBarPolicy(QtCore_Qt.ScrollBarAlwaysOff)
-        table.setVerticalScrollBarPolicy(QtCore_Qt.ScrollBarAlwaysOff)
-        
-        try:
-            table.setObjectName(f'{name_prefix}_coord_table')
-        except Exception:
-            pass
-        
-        return table
 
     def _create_triple_spin(self, a: float, b: float, c: float):
         """创建一行三个紧凑型 QDoubleSpinBox，返回 (spin_a, spin_b, spin_c)"""
@@ -867,17 +306,6 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         return s1, s2, s3
-
-    def _num(self, widget):
-        """从 QDoubleSpinBox 或 QLineEdit 返回 float 值的统一访问器"""
-        try:
-            if hasattr(widget, 'value'):
-                return float(widget.value())
-            else:
-                return float(widget.text())
-        except Exception as e:
-            # 若解析失败，抛出 ValueError 以便上层显示提示
-            raise ValueError(f"无法解析数值输入: {e}")
 
     def _select_all_files(self):
         """全选文件树中的所有文件项"""
@@ -973,130 +401,79 @@ class IntegratedAeroGUI(QMainWindow):
                 except Exception:
                     pass
 
-    def _create_vector_row(self, inp1, inp2, inp3):
-        """创建向量输入行 [x, y, z]"""
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        lb1 = QLabel("[")
-        lb_comma1 = QLabel(",")
-        lb_comma2 = QLabel(",")
-        lb2 = QLabel("]")
-        for lb in (lb1, lb_comma1, lb_comma2, lb2):
-            try:
-                lb.setObjectName('smallLabel')
-            except Exception:
-                pass
-        # 对传入的输入框标记为 compact 以便样式表进行收缩
-        try:
-            for w in (inp1, inp2, inp3):
-                w.setProperty('compact', 'true')
-                try:
-                    w.setMaximumWidth(96)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        layout.addWidget(lb1)
-        layout.addWidget(inp1)
-        layout.addWidget(lb_comma1)
-        layout.addWidget(inp2)
-        layout.addWidget(lb_comma2)
-        layout.addWidget(inp3)
-        layout.addWidget(lb2)
-        # 使用小间距替代 stretch，避免把右侧控件挤出可见区域
-        layout.addSpacing(6)
-        return row
-
     def _save_current_source_part(self):
-        """将当前 Source 表单保存回 self._raw_project_dict 中对应的 Part（只更新第一个 Variant）。"""
+        """将当前 Source 表单保存到新旧模型，并同步旧结构（使用强类型接口）。"""
         try:
-            old = getattr(self, '_current_source_part_name', None)
-            if not old:
-                return
-            if not getattr(self, '_raw_project_dict', None) or not isinstance(self._raw_project_dict, dict):
-                return
-            
-            # 从表格读取坐标数据
-            coord_data = self._get_coord_from_table(self.src_coord_table)
-            
-            parts = self._raw_project_dict.get('Source', {}).get('Parts', [])
-            for p in parts:
-                if p.get('PartName') == old:
-                    vars = p.setdefault('Variants', [])
-                    if not vars:
-                        vars.append({})
-                    v = vars[0]
-                    try:
-                        v['PartName'] = self.src_part_name.text()
-                    except Exception:
-                        pass
-                    v['CoordSystem'] = {
-                        'Orig': coord_data['Orig'],
-                        'X': coord_data['X'],
-                        'Y': coord_data['Y'],
-                        'Z': coord_data['Z']
-                    }
-                    v['MomentCenter'] = coord_data['MomentCenter']
-                    try:
-                        v['Cref'] = float(self.src_cref.text())
-                        v['Bref'] = float(self.src_bref.text())
-                        v['Q'] = float(self.src_q.text())
-                        v['S'] = float(self.src_sref.text())
-                    except Exception:
-                        pass
-                    break
+            part_name = self.src_part_name.text() if hasattr(self, "src_part_name") else "Global"
+            payload = self.source_panel.to_variant_payload(part_name)
+
+            # 更新旧模型 ProjectConfig
+            if getattr(self, "project_config", None):
+                try:
+                    variant = Variant.from_dict(payload)
+                    part = Part(name=variant.part_name, variants=[variant])
+                    self.project_config.source_parts[part.name] = part
+                except Exception:
+                    logger.debug("更新 ProjectConfig 失败", exc_info=True)
+
+            # 更新新模型 ProjectConfigModel（使用强类型接口）
             try:
-                self.current_config = ProjectData.from_dict(self._raw_project_dict)
+                if self.project_model is None:
+                    self.project_model = ProjectConfigModel()
+                # 使用面板提供的强类型模型接口
+                cs_model = self.source_panel.get_coordinate_system_model()
+                refs_model = self.source_panel.get_reference_values_model()
+                pm_variant = PMPartVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
+                from src.models.project_model import Part as PMPart
+                self.project_model.source_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
             except Exception:
-                pass
+                logger.debug("更新 ProjectConfigModel 失败", exc_info=True)
+
+            # 同步旧结构以兼容现有流程
+            try:
+                if getattr(self, "project_config", None):
+                    self._raw_project_dict = self.project_config.to_dict()
+                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                logger.debug("同步旧结构失败", exc_info=True)
         except Exception:
             logger.debug("_save_current_source_part failed", exc_info=True)
 
     def _save_current_target_part(self):
-        """将当前 Target 表单保存回 self._raw_project_dict 中对应的 Part（只更新第一个 Variant）。"""
+        """将当前 Target 表单保存到新旧模型，并同步旧结构（使用强类型接口）。"""
         try:
-            old = getattr(self, '_current_target_part_name', None)
-            if not old:
-                return
-            if not getattr(self, '_raw_project_dict', None) or not isinstance(self._raw_project_dict, dict):
-                return
-            
-            # 从表格读取坐标数据
-            coord_data = self._get_coord_from_table(self.tgt_coord_table)
-            
-            parts = self._raw_project_dict.get('Target', {}).get('Parts', [])
-            for p in parts:
-                if p.get('PartName') == old:
-                    vars = p.setdefault('Variants', [])
-                    if not vars:
-                        vars.append({})
-                    v = vars[0]
-                    try:
-                        v['PartName'] = self.tgt_part_name.text()
-                    except Exception:
-                        pass
-                    v['CoordSystem'] = {
-                        'Orig': coord_data['Orig'],
-                        'X': coord_data['X'],
-                        'Y': coord_data['Y'],
-                        'Z': coord_data['Z']
-                    }
-                    v['MomentCenter'] = coord_data['MomentCenter']
-                    try:
-                        v['Cref'] = float(self.tgt_cref.text())
-                        v['Bref'] = float(self.tgt_bref.text())
-                        v['Q'] = float(self.tgt_q.text())
-                        v['S'] = float(self.tgt_sref.text())
-                    except Exception:
-                        pass
-                    break
+            part_name = self.tgt_part_name.text() if hasattr(self, "tgt_part_name") else "Target"
+            payload = self.target_panel.to_variant_payload(part_name)
+
+            # 更新旧模型 ProjectConfig
+            if getattr(self, "project_config", None):
+                try:
+                    variant = Variant.from_dict(payload)
+                    part = Part(name=variant.part_name, variants=[variant])
+                    self.project_config.target_parts[part.name] = part
+                except Exception:
+                    logger.debug("更新 ProjectConfig 失败", exc_info=True)
+
+            # 更新新模型 ProjectConfigModel（使用强类型接口）
             try:
-                self.current_config = ProjectData.from_dict(self._raw_project_dict)
+                if self.project_model is None:
+                    self.project_model = ProjectConfigModel()
+                # 使用面板提供的强类型模型接口
+                cs_model = self.target_panel.get_coordinate_system_model()
+                refs_model = self.target_panel.get_reference_values_model()
+                pm_variant = PMPartVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
+                from src.models.project_model import Part as PMPart
+                self.project_model.target_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
             except Exception:
-                pass
+                logger.debug("更新 ProjectConfigModel 失败", exc_info=True)
+
+            # 同步旧结构以兼容现有流程
+            try:
+                if getattr(self, "project_config", None):
+                    self._raw_project_dict = self.project_config.to_dict()
+                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
+            except Exception:
+                logger.debug("同步旧结构失败", exc_info=True)
         except Exception:
             logger.debug("_save_current_target_part failed", exc_info=True)
 
@@ -1441,193 +818,38 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug(f"Target Part 切换失败: {e}")
 
     def _add_source_part(self):
-        """在原始项目或内存结构中添加一个新的 Source Part - 委托给 PartManager"""
-        # 初始化期间禁止添加操作，避免误触发弹窗
+        """添加 Source Part - 委托给 PartManager，移除旧 fallback。"""
         if getattr(self, '_is_initializing', False):
             return
         try:
             self.part_manager.add_source_part()
-            return  # 成功则直接返回
-        except AttributeError:
-            # PartManager 未初始化，继续执行 fallback 逻辑
-            logger.warning("PartManager 未初始化，使用 fallback 逻辑")
         except Exception as e:
-            # PartManager 存在但执行失败，记录错误并终止，不执行 fallback
-            logger.error(f"添加 Source Part 失败: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "添加失败",
-                f"添加 Source Part 时发生错误:\n{str(e)}"
-            )
-            return  # 不继续执行 fallback
-        
-        # 只有在 AttributeError 时才执行以下 fallback 逻辑
-        raw_project = getattr(self, '_raw_project_dict', None)
-        if not isinstance(raw_project, dict):
-            logger.debug(
-                "_add_source_part fallback aborted: _raw_project_dict 未初始化或不是 dict"
-            )
-            return
-        parts = raw_project.setdefault('Source', {}).setdefault('Parts', [])
-        # 基于当前 UI 构造一个新 part，先生成不重复的 PartName
-        preferred_name = self.src_part_name.text() if hasattr(self, 'src_part_name') else 'NewSource'
-        existing_names = [p.get('PartName') for p in parts if isinstance(p, dict) and 'PartName' in p]
-        name = preferred_name
-        if name in existing_names:
-            # 名称已存在，提示用户选择：覆盖 / 创建唯一名 / 取消
-            msg = QMessageBox(self)
-            msg.setWindowTitle('已存在的 Part')
-            msg.setText(f"Source Part 名称 '{preferred_name}' 已存在。请选择操作：")
-            btn_overwrite = msg.addButton('覆盖', QMessageBox.AcceptRole)
-            btn_unique = msg.addButton('创建唯一名', QMessageBox.DestructiveRole)
-            btn_cancel = msg.addButton('取消', QMessageBox.RejectRole)
-            msg.exec()
-            clicked = msg.clickedButton()
-            if clicked == btn_cancel:
-                return
-            if clicked == btn_overwrite:
-                # 查找到已存在的 part 并用新数据覆盖（第一 Variant）
-                for p in parts:
-                    if p.get('PartName') == preferred_name:
-                        try:
-                            cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
-                        except (ValueError, AttributeError):
-                            logger.warning(f"无效的 Cref 值: {getattr(self.src_cref, 'text', lambda: 'N/A')()}，使用默认值 1.0")
-                            cref_val = 1.0
-                        try:
-                            bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
-                        except (ValueError, AttributeError):
-                            logger.warning(f"无效的 Bref 值，使用默认值 1.0")
-                            bref_val = 1.0
-                        try:
-                            q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
-                        except (ValueError, AttributeError):
-                            logger.warning(f"无效的 Q 值，使用默认值 1000.0")
-                            q_val = 1000.0
-                        try:
-                            s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
-                        except (ValueError, AttributeError):
-                            logger.warning(f"无效的 S 值，使用默认值 10.0")
-                            s_val = 10.0
-
-                        # 从表格读取坐标数据
-                        coord_data = self._get_coord_from_table(self.src_coord_table)
-                        
-                        p['Variants'] = [
-                            {
-                                'PartName': preferred_name,
-                                'CoordSystem': {
-                                    'Orig': coord_data['Orig'],
-                                    'X': coord_data['X'],
-                                    'Y': coord_data['Y'],
-                                    'Z': coord_data['Z']
-                                },
-                                'MomentCenter': coord_data['MomentCenter'],
-                                'Cref': cref_val,
-                                'Bref': bref_val,
-                                'Q': q_val,
-                                'S': s_val
-                            }
-                        ]
-                        break
-                try:
-                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
-                except Exception:
-                    pass
-                return
-            # 创建唯一名
-            i = 1
-            while f"{preferred_name}_{i}" in existing_names:
-                i += 1
-            name = f"{preferred_name}_{i}"
-
-        # 安全获取参数值，带错误处理
-        try:
-            cref_val = float(self.src_cref.text()) if hasattr(self, 'src_cref') and self.src_cref.text() else 1.0
-        except (ValueError, AttributeError):
-            logger.warning(f"无效的 Cref 值，使用默认值 1.0")
-            cref_val = 1.0
-        try:
-            bref_val = float(self.src_bref.text()) if hasattr(self, 'src_bref') and self.src_bref.text() else 1.0
-        except (ValueError, AttributeError):
-            logger.warning(f"无效的 Bref 值，使用默认值 1.0")
-            bref_val = 1.0
-        try:
-            q_val = float(self.src_q.text()) if hasattr(self, 'src_q') and self.src_q.text() else 1000.0
-        except (ValueError, AttributeError):
-            logger.warning(f"无效的 Q 值，使用默认值 1000.0")
-            q_val = 1000.0
-        try:
-            s_val = float(self.src_sref.text()) if hasattr(self, 'src_sref') and self.src_sref.text() else 10.0
-        except (ValueError, AttributeError):
-            logger.warning(f"无效的 S 值，使用默认值 10.0")
-            s_val = 10.0
-
-        # 从表格读取坐标数据
-        coord_data = self._get_coord_from_table(self.src_coord_table)
-        
-        new_part = {
-            'PartName': name,
-            'Variants': [
-                {
-                    'PartName': name,
-                    'CoordSystem': {
-                        'Orig': coord_data['Orig'],
-                        'X': coord_data['X'],
-                        'Y': coord_data['Y'],
-                        'Z': coord_data['Z']
-                    },
-                    'MomentCenter': coord_data['MomentCenter'],
-                    'Cref': cref_val,
-                    'Bref': bref_val,
-                    'Q': q_val,
-                    'S': s_val
-                }
-            ]
-        }
-        parts.append(new_part)
-        # 更新 combo
-        self.cmb_source_parts.addItem(new_part['PartName'])
-        self.cmb_source_parts.setVisible(True)
-        # 解析为 ProjectData
-        try:
-            self.current_config = ProjectData.from_dict(self._raw_project_dict)
-        except Exception:
-            logger.debug("_add_source_part failed", exc_info=True)
+            logger.error(f"添加 Source Part 失败: {e}")
 
     def _remove_source_part(self):
-        """从原始项目或内存结构中移除当前选中的 Source Part - 委托给 PartManager"""
-        # 初始化期间禁止删除操作
+        """删除当前 Source Part - 委托给 PartManager，移除旧 fallback。"""
         if getattr(self, '_is_initializing', False):
             return
         try:
             self.part_manager.remove_source_part()
-        except AttributeError:
-            logger.warning("PartManager 未初始化")
         except Exception as e:
             logger.error(f"删除 Source Part 失败: {e}")
 
     def _add_target_part(self):
-        """添加新 Target Part - 委托给 PartManager"""
-        # 初始化期间禁止添加操作，避免误触发弹窗
+        """添加 Target Part - 委托给 PartManager，移除旧 fallback。"""
         if getattr(self, '_is_initializing', False):
             return
         try:
             self.part_manager.add_target_part()
-        except AttributeError:
-            logger.warning("PartManager 未初始化")
         except Exception as e:
             logger.error(f"添加 Target Part 失败: {e}")
 
     def _remove_target_part(self):
-        """删除当前 Target Part - 委托给 PartManager"""
-        # 初始化期间禁止删除操作
+        """删除当前 Target Part - 委托给 PartManager，移除旧 fallback。"""
         if getattr(self, '_is_initializing', False):
             return
         try:
             self.part_manager.remove_target_part()
-        except AttributeError:
-            logger.warning("PartManager 未初始化")
         except Exception as e:
             logger.error(f"删除 Target Part 失败: {e}")
 
@@ -1778,12 +1000,11 @@ class IntegratedAeroGUI(QMainWindow):
         """撤销最近一次批处理操作"""
         try:
             from pathlib import Path
-            import shutil
             
             reply = QMessageBox.question(
                 self, 
                 '确认撤销',
-                '确定要撤销最近一次批处理？这将删除生成的输出文件。',
+                '确定要撤销最近一次批处理？这将删除本次生成的输出文件（保留源数据）。',
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
@@ -1791,31 +1012,36 @@ class IntegratedAeroGUI(QMainWindow):
             if reply != QMessageBox.Yes:
                 return
             
-            # 尝试删除最近生成的输出文件
+            # 只删除本次批处理新生成的文件
             deleted_count = 0
             try:
-                output_dir = getattr(self, 'output_dir', None)
+                output_dir = getattr(self, '_batch_output_dir', None)
+                existing_files = getattr(self, '_batch_existing_files', set())
+                
                 if output_dir and Path(output_dir).exists():
-                    # 删除输出目录中最近创建的文件
-                    # 这里简单实现：删除整个输出目录下的所有文件
                     output_path = Path(output_dir)
+                    # 只删除不在 existing_files 中的文件（即本次新生成的）
                     for file in output_path.glob('*'):
-                        if file.is_file():
+                        if file.is_file() and file.name not in existing_files:
                             try:
                                 file.unlink()
                                 deleted_count += 1
                             except Exception as e:
                                 logger.warning(f"无法删除文件 {file}: {e}")
                     
-                    self.txt_batch_log.append(f"[{datetime.now().strftime('%H:%M:%S')}] 已撤销批处理，删除了 {deleted_count} 个输出文件")
-                    QMessageBox.information(self, '完成', f'已删除 {deleted_count} 个输出文件')
+                    self.txt_batch_log.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ 撤销完成，已删除 {deleted_count} 个输出文件")
+                    QMessageBox.information(self, '完成', f'已删除 {deleted_count} 个输出文件（源数据保留）')
                 else:
-                    QMessageBox.warning(self, '提示', '未找到输出目录')
+                    QMessageBox.warning(self, '提示', '未找到输出目录或没有之前的批处理记录')
                     
                 # 禁用撤销按钮
                 if hasattr(self, 'btn_undo'):
                     self.btn_undo.setEnabled(False)
                     self.btn_undo.setVisible(False)
+                    
+                # 清空批处理追踪信息
+                self._batch_output_dir = None
+                self._batch_existing_files = set()
                     
             except Exception as e:
                 logger.error(f"撤销批处理失败: {e}")
@@ -1823,6 +1049,32 @@ class IntegratedAeroGUI(QMainWindow):
                 
         except Exception as e:
             logger.error(f"撤销批处理失败: {e}")
+
+    def _setup_gui_logging(self):
+        """设置日志系统，将所有日志输出到 GUI 的处理日志面板"""
+        try:
+            logging_manager = LoggingManager(self)
+            logging_manager.setup_gui_logging()
+        except Exception as e:
+            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
+
+    def closeEvent(self, event):
+        """处理窗口关闭事件"""
+        try:
+            # 如果批处理正在进行中，先停止它
+            if hasattr(self, 'batch_thread') and self.batch_thread is not None and self.batch_thread.isRunning():
+                try:
+                    self.batch_thread.request_stop()
+                    # 等待线程完成（最多1秒）
+                    self.batch_thread.wait(1000)
+                except Exception:
+                    pass
+            
+            # 接受关闭事件
+            event.accept()
+        except Exception as e:
+            logger.debug(f"closeEvent handling failed: {e}", exc_info=True)
+            event.accept()
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。

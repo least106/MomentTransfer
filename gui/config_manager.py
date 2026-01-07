@@ -4,10 +4,13 @@
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from src.data_loader import ProjectData
+from src.models import ProjectConfig
+from src.models import ProjectConfigModel
+from gui.signal_bus import SignalBus
 from src.physics import AeroCalculator
-from gui.ui_utils import get_numeric_value
 
 logger = logging.getLogger(__name__)
 
@@ -15,15 +18,92 @@ logger = logging.getLogger(__name__)
 class ConfigManager:
     """配置管理器 - 管理配置文件的加载、保存和应用"""
     
-    def __init__(self, gui_instance):
+    def __init__(self, gui_instance, config_panel=None):
         """初始化配置管理器
         
         参数：
             gui_instance: IntegratedAeroGUI 实例，用于访问 UI 控件
+            config_panel: ConfigPanel 实例（可选），用于连接请求信号
         """
         self.gui = gui_instance
         self._last_loaded_config_path = None
         self._raw_project_dict = None
+        self.project_config: Optional[ProjectConfig] = None
+        try:
+            self.signal_bus = getattr(gui_instance, 'signal_bus', SignalBus.instance())
+        except Exception:
+            self.signal_bus = SignalBus.instance()
+        
+        # 如果提供了 config_panel，连接请求信号
+        if config_panel:
+            try:
+                config_panel.loadRequested.connect(self.load_config)
+                config_panel.saveRequested.connect(self.save_config)
+                config_panel.applyRequested.connect(self.apply_config)
+                logger.debug("ConfigManager 已连接 ConfigPanel 请求信号")
+            except Exception as e:
+                logger.warning(f"ConfigManager 连接 ConfigPanel 信号失败: {e}")
+
+    def _frame_to_payload(self, frame):
+        """将 ProjectData 帧转换为面板可用的 payload。"""
+        cs = frame.coord_system
+        mc = frame.moment_center or [0.0, 0.0, 0.0]
+        return {
+            "PartName": frame.part_name,
+            "CoordSystem": {
+                "Orig": [float(cs.origin[0]), float(cs.origin[1]), float(cs.origin[2])],
+                "X": [float(cs.x_axis[0]), float(cs.x_axis[1]), float(cs.x_axis[2])],
+                "Y": [float(cs.y_axis[0]), float(cs.y_axis[1]), float(cs.y_axis[2])],
+                "Z": [float(cs.z_axis[0]), float(cs.z_axis[1]), float(cs.z_axis[2])],
+            },
+            "MomentCenter": [float(mc[0]), float(mc[1]), float(mc[2])],
+            "Cref": float(frame.c_ref or 1.0),
+            "Bref": float(frame.b_ref or 1.0),
+            "Sref": float(frame.s_ref or 10.0),
+            "Q": float(frame.q or 1000.0),
+        }
+
+    def _sync_payload_to_legacy(self, payload: dict, side: str):
+        """将面板数据同步到旧的隐藏控件，保持兼容。"""
+        prefix = "src" if side == "source" or side == "src" else "tgt"
+        coord = payload.get("CoordSystem", {})
+        mc = payload.get("MomentCenter", [0.0, 0.0, 0.0])
+
+        def _set_spin(name, idx, arr):
+            spin = getattr(self.gui, name, None)
+            try:
+                if spin is not None:
+                    spin.setValue(float(arr[idx]))
+            except Exception:
+                pass
+
+        _set_spin(f"{prefix}_ox", 0, coord.get("Orig", [0, 0, 0]))
+        _set_spin(f"{prefix}_oy", 1, coord.get("Orig", [0, 0, 0]))
+        _set_spin(f"{prefix}_oz", 2, coord.get("Orig", [0, 0, 0]))
+
+        _set_spin(f"{prefix}_xx", 0, coord.get("X", [1, 0, 0]))
+        _set_spin(f"{prefix}_xy", 1, coord.get("X", [1, 0, 0]))
+        _set_spin(f"{prefix}_xz", 2, coord.get("X", [1, 0, 0]))
+
+        _set_spin(f"{prefix}_yx", 0, coord.get("Y", [0, 1, 0]))
+        _set_spin(f"{prefix}_yy", 1, coord.get("Y", [0, 1, 0]))
+        _set_spin(f"{prefix}_yz", 2, coord.get("Y", [0, 1, 0]))
+
+        _set_spin(f"{prefix}_zx", 0, coord.get("Z", [0, 0, 1]))
+        _set_spin(f"{prefix}_zy", 1, coord.get("Z", [0, 0, 1]))
+        _set_spin(f"{prefix}_zz", 2, coord.get("Z", [0, 0, 1]))
+
+        _set_spin(f"{prefix}_mcx", 0, mc)
+        _set_spin(f"{prefix}_mcy", 1, mc)
+        _set_spin(f"{prefix}_mcz", 2, mc)
+
+        try:
+            getattr(self.gui, f"{prefix}_cref").setText(str(payload.get("Cref", 1.0)))
+            getattr(self.gui, f"{prefix}_bref").setText(str(payload.get("Bref", 1.0)))
+            getattr(self.gui, f"{prefix}_sref").setText(str(payload.get("Sref", 10.0)))
+            getattr(self.gui, f"{prefix}_q").setText(str(payload.get("Q", 1000.0)))
+        except Exception:
+            pass
     
     def load_config(self):
         """加载配置文件"""
@@ -47,6 +127,21 @@ class ConfigManager:
             # 解析为 ProjectData
             project = ProjectData.from_dict(data)
             self.gui.current_config = project
+            try:
+                self.project_config = ProjectConfig.from_dict(data)
+                setattr(self.gui, "project_config", self.project_config)
+            except Exception:
+                logger.debug("ProjectConfig 解析失败或同步失败", exc_info=True)
+            # 新模型：ProjectConfigModel
+            try:
+                model = ProjectConfigModel.from_dict(data)
+                setattr(self.gui, 'project_model', model)
+                try:
+                    self.signal_bus.configLoaded.emit(model)
+                except Exception:
+                    logger.debug("发射 configLoaded 失败", exc_info=True)
+            except Exception:
+                logger.debug("ProjectConfigModel 解析失败", exc_info=True)
             
             # 记录加载路径
             self._last_loaded_config_path = Path(fname)
@@ -55,6 +150,10 @@ class ConfigManager:
             self.gui.cmb_target_parts.clear()
             for part in project.target_parts.keys():
                 self.gui.cmb_target_parts.addItem(part)
+                try:
+                    self.gui.target_panel.part_selector.addItem(part)
+                except Exception:
+                    pass
             
             if self.gui.cmb_target_parts.count() > 0:
                 self.gui.cmb_target_parts.setVisible(True)
@@ -71,6 +170,10 @@ class ConfigManager:
                 self.gui.cmb_source_parts.clear()
                 for part in project.source_parts.keys():
                     self.gui.cmb_source_parts.addItem(part)
+                    try:
+                        self.gui.source_panel.part_selector.addItem(part)
+                    except Exception:
+                        pass
                 
                 if self.gui.cmb_source_parts.count() > 0:
                     self.gui.cmb_source_parts.setVisible(True)
@@ -114,53 +217,14 @@ class ConfigManager:
             sel_part = self.gui.cmb_target_parts.currentText() or self.gui.cmb_target_parts.itemText(0)
             sel_variant = 0
             frame = project.get_target_part(sel_part, sel_variant)
-            cs = frame.coord_system
-            mc = frame.moment_center or [0.0, 0.0, 0.0]
-            
-            # 屏蔽信号避免触发验证
+            payload = self._frame_to_payload(frame)
             try:
-                self.gui.tgt_part_name.blockSignals(True)
-                self.gui.tgt_part_name.setText(frame.part_name)
-            finally:
-                try:
-                    self.gui.tgt_part_name.blockSignals(False)
-                except Exception:
-                    pass
-            
-            self.gui.tgt_ox.setValue(float(cs.origin[0]))
-            self.gui.tgt_oy.setValue(float(cs.origin[1]))
-            self.gui.tgt_oz.setValue(float(cs.origin[2]))
-            
-            self.gui.tgt_xx.setValue(float(cs.x_axis[0]))
-            self.gui.tgt_xy.setValue(float(cs.x_axis[1]))
-            self.gui.tgt_xz.setValue(float(cs.x_axis[2]))
-            
-            self.gui.tgt_yx.setValue(float(cs.y_axis[0]))
-            self.gui.tgt_yy.setValue(float(cs.y_axis[1]))
-            self.gui.tgt_yz.setValue(float(cs.y_axis[2]))
-            
-            self.gui.tgt_zx.setValue(float(cs.z_axis[0]))
-            self.gui.tgt_zy.setValue(float(cs.z_axis[1]))
-            self.gui.tgt_zz.setValue(float(cs.z_axis[2]))
-            
-            # 力矩中心
-            try:
-                self.gui.tgt_mcx.setValue(float(mc[0]))
-                self.gui.tgt_mcy.setValue(float(mc[1]))
-                self.gui.tgt_mcz.setValue(float(mc[2]))
+                self.gui.target_panel.apply_variant_payload(payload)
             except Exception:
-                try:
-                    if hasattr(self.gui.tgt_mcx, 'setText'):
-                        self.gui.tgt_mcx.setText(str(mc[0]))
-                        self.gui.tgt_mcy.setText(str(mc[1]))
-                        self.gui.tgt_mcz.setText(str(mc[2]))
-                except Exception:
-                    pass
-            
-            self.gui.tgt_cref.setText(str(frame.c_ref or 1.0))
-            self.gui.tgt_bref.setText(str(frame.b_ref or 1.0))
-            self.gui.tgt_sref.setText(str(frame.s_ref or 10.0))
-            self.gui.tgt_q.setText(str(frame.q or 1000.0))
+                logger.debug("填充 Target 面板失败", exc_info=True)
+
+            # 兼容旧控件
+            self._sync_payload_to_legacy(payload, "tgt")
         
         except Exception as e:
             logger.debug(f"填充 Target 表单失败: {e}", exc_info=True)
@@ -175,48 +239,13 @@ class ConfigManager:
                 sframe = project.get_source_part(s_part, s_variant)
             else:
                 sframe = project.source_config
-            
-            scs = sframe.coord_system
-            smc = sframe.moment_center or [0.0, 0.0, 0.0]
-            
-            # 屏蔽信号
+            payload = self._frame_to_payload(sframe)
             try:
-                self.gui.src_part_name.blockSignals(True)
-                self.gui.src_part_name.setText(sframe.part_name)
-            finally:
-                try:
-                    self.gui.src_part_name.blockSignals(False)
-                except Exception:
-                    pass
-            
-            self.gui.src_ox.setValue(float(scs.origin[0]))
-            self.gui.src_oy.setValue(float(scs.origin[1]))
-            self.gui.src_oz.setValue(float(scs.origin[2]))
-            
-            self.gui.src_xx.setValue(float(scs.x_axis[0]))
-            self.gui.src_xy.setValue(float(scs.x_axis[1]))
-            self.gui.src_xz.setValue(float(scs.x_axis[2]))
-            
-            self.gui.src_yx.setValue(float(scs.y_axis[0]))
-            self.gui.src_yy.setValue(float(scs.y_axis[1]))
-            self.gui.src_yz.setValue(float(scs.y_axis[2]))
-            
-            self.gui.src_zx.setValue(float(scs.z_axis[0]))
-            self.gui.src_zy.setValue(float(scs.z_axis[1]))
-            self.gui.src_zz.setValue(float(scs.z_axis[2]))
-            
-            self.gui.src_mcx.setValue(float(smc[0]))
-            self.gui.src_mcy.setValue(float(smc[1]))
-            self.gui.src_mcz.setValue(float(smc[2]))
-            
-            self.gui.src_cref.setText(str(sframe.c_ref or 1.0))
-            self.gui.src_bref.setText(str(sframe.b_ref or 1.0))
-            self.gui.src_sref.setText(str(sframe.s_ref or 10.0))
-            
-            try:
-                self.gui.src_q.setText(str(sframe.q or 1000.0))
+                self.gui.source_panel.apply_variant_payload(payload)
             except Exception:
-                pass
+                logger.debug("填充 Source 面板失败", exc_info=True)
+
+            self._sync_payload_to_legacy(payload, "src")
         
         except Exception as e:
             logger.debug(f"填充 Source 表单失败: {e}", exc_info=True)
@@ -224,87 +253,33 @@ class ConfigManager:
     def save_config(self):
         """保存配置到 JSON 文件"""
         try:
-            # 构建 Parts 格式数据
-            src_part = {
-                "PartName": self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else "Global",
-                "Variants": [{
-                    "PartName": self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else "Global",
-                    "CoordSystem": {
-                        "Orig": [
-                            get_numeric_value(self.gui.src_ox),
-                            get_numeric_value(self.gui.src_oy),
-                            get_numeric_value(self.gui.src_oz)
-                        ],
-                        "X": [
-                            get_numeric_value(self.gui.src_xx),
-                            get_numeric_value(self.gui.src_xy),
-                            get_numeric_value(self.gui.src_xz)
-                        ],
-                        "Y": [
-                            get_numeric_value(self.gui.src_yx),
-                            get_numeric_value(self.gui.src_yy),
-                            get_numeric_value(self.gui.src_yz)
-                        ],
-                        "Z": [
-                            get_numeric_value(self.gui.src_zx),
-                            get_numeric_value(self.gui.src_zy),
-                            get_numeric_value(self.gui.src_zz)
-                        ]
-                    },
-                    "MomentCenter": [
-                        get_numeric_value(self.gui.src_mcx),
-                        get_numeric_value(self.gui.src_mcy),
-                        get_numeric_value(self.gui.src_mcz)
-                    ],
-                    "Cref": float(self.gui.src_cref.text()) if hasattr(self.gui, 'src_cref') else 1.0,
-                    "Bref": float(self.gui.src_bref.text()) if hasattr(self.gui, 'src_bref') else 1.0,
-                    "Q": float(self.gui.src_q.text()) if hasattr(self.gui, 'src_q') else 1000.0,
-                    "S": float(self.gui.src_sref.text()) if hasattr(self.gui, 'src_sref') else 10.0
-                }]
-            }
-            
-            tgt_part = {
-                "PartName": self.gui.tgt_part_name.text(),
-                "Variants": [{
-                    "PartName": self.gui.tgt_part_name.text(),
-                    "CoordSystem": {
-                        "Orig": [
-                            get_numeric_value(self.gui.tgt_ox),
-                            get_numeric_value(self.gui.tgt_oy),
-                            get_numeric_value(self.gui.tgt_oz)
-                        ],
-                        "X": [
-                            get_numeric_value(self.gui.tgt_xx),
-                            get_numeric_value(self.gui.tgt_xy),
-                            get_numeric_value(self.gui.tgt_xz)
-                        ],
-                        "Y": [
-                            get_numeric_value(self.gui.tgt_yx),
-                            get_numeric_value(self.gui.tgt_yy),
-                            get_numeric_value(self.gui.tgt_yz)
-                        ],
-                        "Z": [
-                            get_numeric_value(self.gui.tgt_zx),
-                            get_numeric_value(self.gui.tgt_zy),
-                            get_numeric_value(self.gui.tgt_zz)
-                        ]
-                    },
-                    "MomentCenter": [
-                        get_numeric_value(self.gui.tgt_mcx),
-                        get_numeric_value(self.gui.tgt_mcy),
-                        get_numeric_value(self.gui.tgt_mcz)
-                    ],
-                    "Cref": float(self.gui.tgt_cref.text()) if hasattr(self.gui, 'tgt_cref') else 1.0,
-                    "Bref": float(self.gui.tgt_bref.text()) if hasattr(self.gui, 'tgt_bref') else 1.0,
-                    "Q": float(self.gui.tgt_q.text()) if hasattr(self.gui, 'tgt_q') else 1000.0,
-                    "S": float(self.gui.tgt_sref.text()) if hasattr(self.gui, 'tgt_sref') else 10.0
-                }]
-            }
-            
+            # 直接从面板读取 Variant 数据
+            src_variant = self.gui.source_panel.to_variant_payload()
+            tgt_variant = self.gui.target_panel.to_variant_payload()
+
+            src_part = {"PartName": src_variant.get("PartName", "Global"), "Variants": [src_variant]}
+            tgt_part = {"PartName": tgt_variant.get("PartName", "Target"), "Variants": [tgt_variant]}
+
+            # 保持旧控件同步（兼容历史逻辑）
+            self._sync_payload_to_legacy(src_variant, "src")
+            self._sync_payload_to_legacy(tgt_variant, "tgt")
+
             data = {
                 "Source": {"Parts": [src_part]},
                 "Target": {"Parts": [tgt_part]}
             }
+
+            try:
+                self.project_config = ProjectConfig.from_dict(data)
+                setattr(self.gui, "project_config", self.project_config)
+            except Exception:
+                logger.debug("保存前 ProjectConfig 同步失败", exc_info=True)
+            # 同步新模型
+            try:
+                model = ProjectConfigModel.from_dict(data)
+                setattr(self.gui, 'project_model', model)
+            except Exception:
+                logger.debug("保存前 ProjectConfigModel 同步失败", exc_info=True)
             
             # 优先覆盖上次加载的文件
             try:
@@ -313,6 +288,10 @@ class ConfigManager:
                         json.dump(data, f, indent=2)
                     QMessageBox.information(self.gui, "成功", f"配置已覆盖保存:\n{self._last_loaded_config_path}")
                     self.gui.statusBar().showMessage(f"已保存: {self._last_loaded_config_path}")
+                    try:
+                        self.signal_bus.configSaved.emit(self._last_loaded_config_path)
+                    except Exception:
+                        logger.debug("发射 configSaved 失败", exc_info=True)
                     return
             except Exception:
                 logger.debug("直接覆盖失败，使用另存为", exc_info=True)
@@ -329,6 +308,11 @@ class ConfigManager:
             
             QMessageBox.information(self.gui, "成功", f"配置已保存:\n{fname}")
             self.gui.statusBar().showMessage(f"已保存: {fname}")
+            try:
+                from pathlib import Path
+                self.signal_bus.configSaved.emit(Path(fname))
+            except Exception:
+                logger.debug("发射 configSaved 失败", exc_info=True)
         
         except ValueError as e:
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
@@ -338,82 +322,16 @@ class ConfigManager:
     def apply_config(self):
         """应用当前配置到计算器"""
         try:
-            # 同步表格数据到独立控件（为了兼容现有的读取逻辑）
-            try:
-                if hasattr(self.gui, 'src_coord_table'):
-                    src_coord = self.gui._get_coord_from_table(self.gui.src_coord_table)
-                    # 更新独立控件的值
-                    self.gui.src_ox.setValue(src_coord['Orig'][0])
-                    self.gui.src_oy.setValue(src_coord['Orig'][1])
-                    self.gui.src_oz.setValue(src_coord['Orig'][2])
-                    self.gui.src_xx.setValue(src_coord['X'][0])
-                    self.gui.src_xy.setValue(src_coord['X'][1])
-                    self.gui.src_xz.setValue(src_coord['X'][2])
-                    self.gui.src_yx.setValue(src_coord['Y'][0])
-                    self.gui.src_yy.setValue(src_coord['Y'][1])
-                    self.gui.src_yz.setValue(src_coord['Y'][2])
-                    self.gui.src_zx.setValue(src_coord['Z'][0])
-                    self.gui.src_zy.setValue(src_coord['Z'][1])
-                    self.gui.src_zz.setValue(src_coord['Z'][2])
-            except Exception as e:
-                logger.debug(f"同步Source表格数据失败: {e}")
-            
-            try:
-                if hasattr(self.gui, 'tgt_coord_table'):
-                    tgt_coord = self.gui._get_coord_from_table(self.gui.tgt_coord_table)
-                    # 更新独立控件的值
-                    self.gui.tgt_ox.setValue(tgt_coord['Orig'][0])
-                    self.gui.tgt_oy.setValue(tgt_coord['Orig'][1])
-                    self.gui.tgt_oz.setValue(tgt_coord['Orig'][2])
-                    self.gui.tgt_xx.setValue(tgt_coord['X'][0])
-                    self.gui.tgt_xy.setValue(tgt_coord['X'][1])
-                    self.gui.tgt_xz.setValue(tgt_coord['X'][2])
-                    self.gui.tgt_yx.setValue(tgt_coord['Y'][0])
-                    self.gui.tgt_yy.setValue(tgt_coord['Y'][1])
-                    self.gui.tgt_yz.setValue(tgt_coord['Y'][2])
-                    self.gui.tgt_zx.setValue(tgt_coord['Z'][0])
-                    self.gui.tgt_zy.setValue(tgt_coord['Z'][1])
-                    self.gui.tgt_zz.setValue(tgt_coord['Z'][2])
-            except Exception as e:
-                logger.debug(f"同步Target表格数据失败: {e}")
-            
-            # 构建数据结构
-            src_part = {
-                "PartName": self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else "Global",
-                "Variants": [{
-                    "PartName": self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else "Global",
-                    "CoordSystem": {
-                        "Orig": [get_numeric_value(self.gui.src_ox), get_numeric_value(self.gui.src_oy), get_numeric_value(self.gui.src_oz)],
-                        "X": [get_numeric_value(self.gui.src_xx), get_numeric_value(self.gui.src_xy), get_numeric_value(self.gui.src_xz)],
-                        "Y": [get_numeric_value(self.gui.src_yx), get_numeric_value(self.gui.src_yy), get_numeric_value(self.gui.src_yz)],
-                        "Z": [get_numeric_value(self.gui.src_zx), get_numeric_value(self.gui.src_zy), get_numeric_value(self.gui.src_zz)]
-                    },
-                    "MomentCenter": [get_numeric_value(self.gui.src_mcx), get_numeric_value(self.gui.src_mcy), get_numeric_value(self.gui.src_mcz)],
-                    "Cref": float(self.gui.src_cref.text()) if hasattr(self.gui, 'src_cref') else 1.0,
-                    "Bref": float(self.gui.src_bref.text()) if hasattr(self.gui, 'src_bref') else 1.0,
-                    "Q": float(self.gui.src_q.text()) if hasattr(self.gui, 'src_q') else 1000.0,
-                    "S": float(self.gui.src_sref.text()) if hasattr(self.gui, 'src_sref') else 10.0
-                }]
-            }
-            
-            tgt_part = {
-                "PartName": self.gui.tgt_part_name.text(),
-                "Variants": [{
-                    "PartName": self.gui.tgt_part_name.text(),
-                    "CoordSystem": {
-                        "Orig": [get_numeric_value(self.gui.tgt_ox), get_numeric_value(self.gui.tgt_oy), get_numeric_value(self.gui.tgt_oz)],
-                        "X": [get_numeric_value(self.gui.tgt_xx), get_numeric_value(self.gui.tgt_xy), get_numeric_value(self.gui.tgt_xz)],
-                        "Y": [get_numeric_value(self.gui.tgt_yx), get_numeric_value(self.gui.tgt_yy), get_numeric_value(self.gui.tgt_yz)],
-                        "Z": [get_numeric_value(self.gui.tgt_zx), get_numeric_value(self.gui.tgt_zy), get_numeric_value(self.gui.tgt_zz)]
-                    },
-                    "MomentCenter": [get_numeric_value(self.gui.tgt_mcx), get_numeric_value(self.gui.tgt_mcy), get_numeric_value(self.gui.tgt_mcz)],
-                    "Cref": float(self.gui.tgt_cref.text()) if hasattr(self.gui, 'tgt_cref') else 1.0,
-                    "Bref": float(self.gui.tgt_bref.text()) if hasattr(self.gui, 'tgt_bref') else 1.0,
-                    "Q": float(self.gui.tgt_q.text()) if hasattr(self.gui, 'tgt_q') else 1000.0,
-                    "S": float(self.gui.tgt_sref.text()) if hasattr(self.gui, 'tgt_sref') else 10.0
-                }]
-            }
-            
+            # 使用面板导出的数据，减少重复读取逻辑
+            src_variant = self.gui.source_panel.to_variant_payload()
+            tgt_variant = self.gui.target_panel.to_variant_payload()
+
+            self._sync_payload_to_legacy(src_variant, "src")
+            self._sync_payload_to_legacy(tgt_variant, "tgt")
+
+            src_part = {"PartName": src_variant.get("PartName", "Global"), "Variants": [src_variant]}
+            tgt_part = {"PartName": tgt_variant.get("PartName", "Target"), "Variants": [tgt_variant]}
+
             data = {
                 "Source": {"Parts": [src_part]},
                 "Target": {"Parts": [tgt_part]}
@@ -421,6 +339,12 @@ class ConfigManager:
             
             # 解析为 ProjectData
             self.gui.current_config = ProjectData.from_dict(data)
+
+            try:
+                self.project_config = ProjectConfig.from_dict(data)
+                setattr(self.gui, "project_config", self.project_config)
+            except Exception:
+                logger.debug("应用前 ProjectConfig 同步失败", exc_info=True)
             
             # 获取选定的 target part
             if (hasattr(self.gui, 'cmb_target_parts') and 
@@ -469,6 +393,11 @@ class ConfigManager:
                 self.gui.update_config_preview()
             except Exception:
                 logger.debug("update_config_preview 失败", exc_info=True)
+            # 发射 SignalBus 事件
+            try:
+                self.signal_bus.configApplied.emit()
+            except Exception:
+                logger.debug("发射 configApplied 失败", exc_info=True)
         
         except ValueError as e:
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")

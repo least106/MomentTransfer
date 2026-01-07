@@ -284,9 +284,17 @@ class BatchProcessThread(QThread):
 
             total_elapsed = sum(elapsed_list)
             try:
-                msg = f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+                # 只有在实际处理了文件时才报告成功
+                if success > 0:
+                    msg = f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+                elif total == 0:
+                    msg = "没有文件需要处理"
+                else:
+                    msg = f"未成功处理任何文件 (0/{total})，耗时 {total_elapsed:.2f}s"
+                
                 if self._stop_requested:
                     msg = f"已取消：已处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+                
                 self.finished.emit(msg)
             except Exception:
                 logger.debug("Cannot emit finished signal", exc_info=True)

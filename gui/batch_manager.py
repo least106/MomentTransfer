@@ -334,8 +334,11 @@ class BatchManager:
                 output_dir = Path('data/output')
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
-
-            # 数据格式
+            
+            # 记录批处理前的文件列表（用于撤销时恢复）
+            existing_files = set(f.name for f in output_path.glob('*') if f.is_file())
+            self.gui._batch_output_dir = output_path
+            self.gui._batch_existing_files = existing_files
             data_config = getattr(self.gui, 'data_config', {'skip_rows': 0, 'columns': {}, 'passthrough': []})
 
             from gui.batch_thread import BatchProcessThread

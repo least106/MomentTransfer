@@ -1,0 +1,44 @@
+"""
+中央信号总线：集中管理 GUI 内部通信，便于解耦。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from PySide6.QtCore import QObject, Signal
+
+
+class SignalBus(QObject):
+    """中央信号总线 - 单例。
+    后续可在面板、管理器间复用，逐步替换分散连接。
+    """
+
+    # 配置相关
+    configLoaded = Signal(object)         # 载入新模型（ProjectConfigModel 或兼容对象）
+    configSaved = Signal(Path)            # 保存路径
+    configApplied = Signal()              # 已应用配置
+
+    # Part 相关
+    sourcePartChanged = Signal(str)       # Source 当前 Part 名称
+    targetPartChanged = Signal(str)       # Target 当前 Part 名称
+    partAdded = Signal(str, str)          # side: 'Source'|'Target', part_name
+    partRemoved = Signal(str, str)        # side: 'Source'|'Target', part_name
+
+    # 批处理相关
+    batchStarted = Signal(list)
+    batchProgress = Signal(int, str)
+    batchFinished = Signal(str)
+    batchError = Signal(str)
+
+    # UI 控制
+    controlsLocked = Signal(bool)
+
+    _instance: "SignalBus" | None = None
+
+    @classmethod
+    def instance(cls) -> "SignalBus":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def __init__(self) -> None:
+        super().__init__()

@@ -1,7 +1,7 @@
 numpy
 pytest>=7.0.0
 pandas
-pyside6==6.1.3
+pyside6>=6.1.3
 openpyxl
 matplotlib
 click
