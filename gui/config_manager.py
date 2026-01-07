@@ -47,7 +47,16 @@ class ConfigManager:
     def _frame_to_payload(self, frame):
         """将 ProjectData 帧转换为面板可用的 payload。"""
         cs = frame.coord_system
-        mc = frame.moment_center or [0.0, 0.0, 0.0]
+        # 处理 moment_center：可能是数组、列表或 None（避免数组真值判断错误）
+        mc = frame.moment_center
+        if mc is None:
+            mc = [0.0, 0.0, 0.0]
+        else:
+            try:
+                mc = [float(mc[0]), float(mc[1]), float(mc[2])] if hasattr(mc, '__getitem__') else [0.0, 0.0, 0.0]
+            except Exception:
+                mc = [0.0, 0.0, 0.0]
+        
         return {
             "PartName": frame.part_name,
             "CoordSystem": {
@@ -56,7 +65,7 @@ class ConfigManager:
                 "Y": [float(cs.y_axis[0]), float(cs.y_axis[1]), float(cs.y_axis[2])],
                 "Z": [float(cs.z_axis[0]), float(cs.z_axis[1]), float(cs.z_axis[2])],
             },
-            "MomentCenter": [float(mc[0]), float(mc[1]), float(mc[2])],
+            "MomentCenter": mc,
             "Cref": float(frame.c_ref or 1.0),
             "Bref": float(frame.b_ref or 1.0),
             "Sref": float(frame.s_ref or 10.0),

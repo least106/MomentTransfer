@@ -65,7 +65,19 @@ class PartManager:
     def _read_variant_fields(variant):
         """抽取变体字段，兼容新旧模型属性名。"""
         cs = getattr(variant, "coord_system", None)
-        mc = getattr(variant, "moment_center", None) or getattr(cs, "moment_center", [0.0, 0.0, 0.0])
+        # 处理 moment_center：可能是数组、列表或 None（避免数组真值判断错误）
+        mc = getattr(variant, "moment_center", None)
+        if mc is None:
+            mc = getattr(cs, "moment_center", None) if cs is not None else None
+        # 确保 mc 转换为列表
+        if mc is not None:
+            try:
+                mc = [float(mc[0]), float(mc[1]), float(mc[2])] if hasattr(mc, '__getitem__') else [0.0, 0.0, 0.0]
+            except Exception:
+                mc = [0.0, 0.0, 0.0]
+        else:
+            mc = [0.0, 0.0, 0.0]
+        
         part_name = getattr(variant, "part_name", getattr(variant, "name", ""))
         cref_val = float(getattr(variant, "cref", getattr(variant, "c_ref", 1.0)) or 1.0)
         bref_val = float(getattr(variant, "bref", getattr(variant, "b_ref", 1.0)) or 1.0)
@@ -529,6 +541,7 @@ class PartManager:
                 frame = variants[0]
                 part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
                 if cs is None:
+                    logger.warning(f"Source Part '{sel}' 没有坐标系数据")
                     return
 
                 try:
@@ -609,6 +622,7 @@ class PartManager:
                 frame = variants[0]
                 part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
                 if cs is None:
+                    logger.warning(f"Target Part '{sel}' 没有坐标系数据")
                     return
 
                 try:
