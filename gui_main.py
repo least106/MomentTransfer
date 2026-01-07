@@ -70,7 +70,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.part_manager = None
         self.config_manager = None
         self.setWindowTitle("MomentTransfer")
-        self.resize(1400, 850)
+        self.resize(1500, 900)
 
         self._is_initializing = True  # 标记正在初始化，禁止弹窗
         self._show_event_fired = False  # 标记 showEvent 是否已触发过
@@ -130,7 +130,7 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("update_button_layout failed (non-fatal)", exc_info=True)
 
     def create_config_panel(self):
-        """创建左侧配置编辑面板"""
+        """创建配置编辑器面板，支持 Source/Target 的并排显示"""
         # 在整个panel构建期间禁用应用级别的信号，避免任何误触发
         try:
             app = QApplication.instance()
@@ -140,12 +140,13 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         
         panel = QWidget()
-        # 横向布局需要更大的最小宽度
-        panel.setMinimumWidth(900)
+        # 设置面板最小尺寸
+        panel.setMinimumWidth(950)
         panel.setMaximumHeight(550)  # 限制最大高度，避免过多空白
-        # 移除最大宽度限制，允许横向布局充分展开
-        layout = QVBoxLayout(panel)
-        layout.setSpacing(8)
+        
+        # 主垂直布局
+        main_layout = QVBoxLayout(panel)
+        main_layout.setSpacing(8)
 
         # 标题
         title = QLabel("配置编辑器")
@@ -153,7 +154,7 @@ class IntegratedAeroGUI(QMainWindow):
             title.setObjectName('panelTitle')
         except Exception:
             pass
-        layout.addWidget(title)
+        main_layout.addWidget(title)
 
         # === Source 坐标系（可折叠） ===
         self.chk_show_source = QCheckBox("显示 Source 坐标系设置")
@@ -162,15 +163,17 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
         self.chk_show_source.stateChanged.connect(self.toggle_source_visibility)
+        main_layout.addWidget(self.chk_show_source)
+
 
         self.grp_source = QGroupBox("Source Coordinate System")
-        # 设置尺寸约束，避免过多空白
+        # 设置尺寸约束，为并排布局做准备
         self.grp_source.setMinimumWidth(350)
-        self.grp_source.setMaximumHeight(500)
+        self.grp_source.setMaximumHeight(480)
         self.grp_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_source = QFormLayout()
-        form_source.setContentsMargins(10, 10, 10, 10)  # 减小margins
-        form_source.setSpacing(4)  # 减小行间距
+        form_source.setContentsMargins(10, 10, 10, 10)
+        form_source.setSpacing(4)
         try:
             form_source.setLabelAlignment(Qt.AlignRight)
         except Exception:
@@ -271,27 +274,17 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
-        # 设置尺寸约束，避免过多空白
+        # 设置尺寸约束，为并排布局做准备
         grp_target.setMinimumWidth(350)
-        grp_target.setMaximumHeight(500)
+        grp_target.setMaximumHeight(480)
         grp_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_target = QFormLayout()
-        form_target.setContentsMargins(10, 10, 10, 10)  # 减小margins
-        form_target.setSpacing(4)  # 减小行间距
+        form_target.setContentsMargins(10, 10, 10, 10)
+        form_target.setSpacing(4)
         try:
             form_target.setLabelAlignment(Qt.AlignRight)
         except Exception:
             pass
-
-        # Target 坐标系输入表格
-        self.tgt_coord_table = self._create_coord_table('tgt')
-        
-        # 保留原有的独立控件引用（用于兼容现有代码）
-        # 但这些不再显示在UI中，而是作为表格的数据访问接口
-        self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
-        self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
-        self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
-        self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
 
         # Part Name
         # 使用 _create_input 以保持与 Source 的输入框样式与宽度一致
@@ -337,7 +330,8 @@ class IntegratedAeroGUI(QMainWindow):
         form_target.addRow("选择 Target Part:", tgt_part_widget)
         # Variant 索引已移除（始终使用第 0 个 variant）
 
-        # 直接添加坐标系表格，不用label
+        # 创建并添加坐标系表格
+        self.tgt_coord_table = self._create_coord_table('tgt')
         form_target.addRow("", self.tgt_coord_table)
 
         # Target 参考量（与 Source 对等）
@@ -364,11 +358,12 @@ class IntegratedAeroGUI(QMainWindow):
         form_target.addRow(lbl, self.tgt_q)
         grp_target.setLayout(form_target)
 
-        # === 配置操作按钮（竖向排列）===
+        # === 配置操作按钮（竖向排列在最右侧） ===
         btn_widget = QWidget()
         btn_widget.setFixedWidth(120)
         btn_layout = QVBoxLayout(btn_widget)
         btn_layout.setSpacing(8)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
 
         self.btn_load = QPushButton("加载配置")
         self.btn_load.setFixedHeight(40)
@@ -406,6 +401,8 @@ class IntegratedAeroGUI(QMainWindow):
 
         # === 横向布局：Source + Target + 按钮 ===
         coord_layout = QHBoxLayout()
+        coord_layout.setSpacing(8)
+        coord_layout.setContentsMargins(0, 0, 0, 0)
         coord_layout.addWidget(self.grp_source)
         coord_layout.addWidget(grp_target)
         coord_layout.addWidget(btn_widget)
@@ -415,15 +412,14 @@ class IntegratedAeroGUI(QMainWindow):
         coord_layout.setStretch(2, 0)
 
         # 添加横向布局到主布局
-        layout.addWidget(self.chk_show_source)
-        layout.addLayout(coord_layout)
+        main_layout.addLayout(coord_layout)
         
         # 设置伸缩：让横向布局在垂直方向扩展以填充空间
         try:
-            layout.setStretch(1, 1)  # chk_show_source index 0, coord_layout index 1
+            main_layout.setStretch(2, 1)  # coord_layout index 2（index 0 是标题，index 1 是复选框）
         except Exception:
-            logger.debug("layout.setStretch failed (non-fatal)", exc_info=True)
-        layout.addStretch()
+            logger.debug("main_layout.setStretch failed (non-fatal)", exc_info=True)
+        main_layout.addStretch()
 
         # 在返回前统一恢复所有被阻止的信号，此时UI已完全构建
         # 这样可以避免在构建过程中触发信号导致的弹窗
@@ -447,6 +443,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     def create_operation_panel(self):
         """创建右侧操作面板"""
+        """创建批量处理面板，左侧输入文件，右侧操作按钮"""
         # 在整个panel构建期间禁用应用级别的信号，避免任何误触发
         try:
             app = QApplication.instance()
@@ -458,16 +455,24 @@ class IntegratedAeroGUI(QMainWindow):
         panel = QWidget()
         panel.setMinimumWidth(900)
         panel.setMinimumHeight(300)
-        # 移除最大宽度限制，批量处理面板应该占据整个宽度
-        layout = QVBoxLayout(panel)
-        layout.setSpacing(8)  # 从 15 减为 8，更紧凑
+        
+        # 主垂直布局
+        main_layout = QVBoxLayout(panel)
+        main_layout.setSpacing(8)
 
         self.grp_batch = QGroupBox("批量处理 (Batch Processing)")
         self.grp_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        # 右侧批处理的主布局（作为实例属性以便在其它方法中引用）
-        self.layout_batch = QVBoxLayout()
-        self.layout_batch.setSpacing(6)  # 更紧凑的间距
-        self.layout_batch.setContentsMargins(8, 8, 8, 8)  # 减少外边距
+        
+        # 批处理组的水平布局：左侧为内容区，右侧为操作按钮
+        layout_batch_h = QHBoxLayout()
+        layout_batch_h.setSpacing(8)
+        layout_batch_h.setContentsMargins(8, 8, 8, 8)
+        
+        # === 左侧：输入路径、匹配模式、Tab 面板 ===
+        left_content = QWidget()
+        left_layout = QVBoxLayout(left_content)
+        left_layout.setSpacing(6)
+        left_layout.setContentsMargins(0, 0, 0, 0)
 
         # 文件选择表单（作为实例属性供后续方法访问）
         self.file_form = QFormLayout()
@@ -477,9 +482,7 @@ class IntegratedAeroGUI(QMainWindow):
         # 输入行：文件路径 + 浏览
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
-        self.inp_batch_input.setMaximumWidth(650)  # 限制最大宽度
         btn_browse_input = QPushButton("浏览")
-        btn_browse_input.setMaximumWidth(80)
         try:
             btn_browse_input.setObjectName('smallButton')
             btn_browse_input.setToolTip('选择输入文件或目录')
@@ -493,7 +496,6 @@ class IntegratedAeroGUI(QMainWindow):
         # 文件匹配模式 + 预设
         self.inp_pattern = QLineEdit("*.csv")
         self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv, data_*.xlsx；支持分号多模式：*.csv;*.xlsx")
-        self.inp_pattern.setMaximumWidth(300)  # 限制最大宽度
         self.cmb_pattern_preset = QComboBox()
         try:
             self.cmb_pattern_preset.setObjectName('patternPreset')
@@ -531,7 +533,6 @@ class IntegratedAeroGUI(QMainWindow):
 
         def _mark_custom(_text: str) -> None:
             try:
-                # 用户手动编辑时切回“自定义”
                 if self.cmb_pattern_preset.currentIndex() != 0:
                     self.cmb_pattern_preset.blockSignals(True)
                     self.cmb_pattern_preset.setCurrentIndex(0)
@@ -559,15 +560,12 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("无法连接 inp_pattern.textChanged 信号", exc_info=True)
 
 
-
-
-
-        # 直接将文件表单添加到批处理布局
+        # 将表单添加到左侧布局
         self.file_form.addRow("输入路径:", input_row)
         self.file_form.addRow("匹配模式:", pattern_row)
-        self.layout_batch.addLayout(self.file_form)
+        left_layout.addLayout(self.file_form)
 
-        # 文件列表Widget（不使用GroupBox，避免重复标题）
+        # 文件列表Widget
         self.file_list_widget = QWidget()
         self.file_list_widget.setVisible(False)
         file_list_layout = QVBoxLayout(self.file_list_widget)
@@ -601,7 +599,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(["文件/目录", "状态"])
         self.file_tree.setColumnWidth(0, 400)
-        self.file_tree.setMinimumHeight(250)  # 增加最小高度，防止被截断
+        self.file_tree.setMinimumHeight(250)
         
         # 设置表头自动调整
         header = self.file_tree.header()
@@ -613,85 +611,13 @@ class IntegratedAeroGUI(QMainWindow):
         
         file_list_layout.addWidget(self.file_tree)
 
-        # 存储文件信息的字典：{file_path: tree_item}
+        # 存储文件信息的字典
         self._file_tree_items = {}
-
-        # 数据格式配置按钮
-        self.btn_config_format = QPushButton("⚙ 配置数据格式")
-        try:
-            self.btn_config_format.setObjectName('secondaryButton')
-            self.btn_config_format.setShortcut('Ctrl+Shift+F')
-        except Exception:
-            pass
-        self.btn_config_format.setToolTip("设置会话级别的全局数据格式（仅全局，不再按每个文件查找侧车/registry）")
-        self.btn_config_format.clicked.connect(self.configure_data_format)
 
         # 进度条（隐藏）
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-
-        # 执行/撤销按钮
-        self.btn_batch = QPushButton("开始批量处理")
-        try:
-            self.btn_batch.setObjectName('primaryButton')
-            self.btn_batch.setShortcut('Ctrl+R')
-            self.btn_batch.setToolTip('开始批量处理。运行时会禁用此按钮。')
-        except Exception:
-            pass
-        self.btn_batch.clicked.connect(self.run_batch_processing)
-
-        # 撤销按钮（初始隐藏）
-        self.btn_undo = QPushButton("撤销批处理")
-        try:
-            self.btn_undo.setObjectName('secondaryButton')
-            self.btn_undo.setShortcut('Ctrl+Z')
-            self.btn_undo.setToolTip('撤销最近一次批处理操作')
-        except Exception:
-            pass
-        self.btn_undo.clicked.connect(self.undo_batch_processing)
-        self.btn_undo.setVisible(False)
-        self.btn_undo.setEnabled(False)
-        
-        # 保存最近批处理的信息用于撤销
-        self._last_batch_info = None
-
-        self.txt_batch_log = QTextEdit()
-        try:
-            self.txt_batch_log.setObjectName('batchLog')
-        except Exception:
-            pass
-        self.txt_batch_log.setReadOnly(True)
-        self.txt_batch_log.setFont(QFont("Consolas", 9))
-        self.txt_batch_log.setMinimumHeight(160)
-        self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # 按钮容器（grid）
-        self.btn_widget = QWidget()
-        try:
-            self.btn_widget.setObjectName('btnWidget')
-        except Exception:
-            pass
-        BTN_CONTENT_HEIGHT = 30
-        V_PADDING = 12
-        self.btn_widget.setMinimumHeight(BTN_CONTENT_HEIGHT + V_PADDING)
-        self.btn_widget.setFixedHeight(BTN_CONTENT_HEIGHT + V_PADDING)
-        self.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.btn_grid = QGridLayout(self.btn_widget)
-        self.btn_grid.setSpacing(0)
-        self.btn_grid.setContentsMargins(0, 0, 0, 0)
-        self.btn_grid.setColumnStretch(0, 1)
-        self.btn_grid.setColumnStretch(1, 1)
-        self.btn_config_format.setFixedHeight(40)
-        self.btn_config_format.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.btn_batch.setFixedHeight(40)
-        self.btn_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.btn_grid.addWidget(self.btn_config_format, 0, 0)
-        self.btn_grid.addWidget(self.btn_batch, 0, 1)
-        self.btn_grid.addWidget(self.btn_undo, 1, 1)
-
-        # 把form和按钮行放入批处理组内
-        self.layout_batch.addWidget(self.btn_widget)
-        self.layout_batch.addWidget(self.progress_bar)
+        left_layout.addWidget(self.progress_bar)
 
         # 创建 Tab 容器：信息、文件列表和处理日志
         self.tab_main = QTabWidget()
@@ -738,48 +664,91 @@ class IntegratedAeroGUI(QMainWindow):
         info_tab_layout.addStretch()
         
         self.tab_main.addTab(self.info_tab_widget, "信息")
-        
-        # Tab 1: 文件列表
         self.tab_main.addTab(self.file_list_widget, "文件列表")
         
         # Tab 2: 处理日志
+        self.txt_batch_log = QTextEdit()
+        try:
+            self.txt_batch_log.setObjectName('batchLog')
+        except Exception:
+            pass
+        self.txt_batch_log.setReadOnly(True)
+        self.txt_batch_log.setFont(QFont("Consolas", 9))
+        self.txt_batch_log.setMinimumHeight(160)
+        self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
         self.tab_logs_widget = QWidget()
         tab_logs_layout = QVBoxLayout(self.tab_logs_widget)
         tab_logs_layout.setContentsMargins(0, 0, 0, 0)
         tab_logs_layout.addWidget(self.txt_batch_log)
         self.tab_main.addTab(self.tab_logs_widget, "处理日志")
         
-        # 添加 Tab 到批处理布局
-        self.layout_batch.addWidget(self.tab_main)
-
-
-
-        # 设置伸缩：Tab 拉伸占满空间
-        try:
-            idx_tab = self.layout_batch.indexOf(self.tab_main)
-            if idx_tab >= 0:
-                self.layout_batch.setStretch(idx_tab, 1)
-        except Exception:
-            logger.debug("layout_batch.setStretch for tab failed (non-fatal)", exc_info=True)
-
-        # 将布局应用到 grp_batch
-        self.grp_batch.setLayout(self.layout_batch)
-
-        layout.addWidget(self.grp_batch)
-
-        # 设置伸缩：批处理组占据所有可用空间
-        try:
-            idx_batch = layout.indexOf(self.grp_batch)
-            if idx_batch >= 0:
-                layout.setStretch(idx_batch, 1)
-        except Exception:
-            try:
-                layout.setStretch(0, 1)
-            except Exception:
-                pass
-
-        layout.addStretch()
+        # 添加 Tab 到左侧布局
+        left_layout.addWidget(self.tab_main)
         
+        # 保存批处理布局为实例属性以便在其他方法中引用
+        self.layout_batch = left_layout
+        
+        # === 右侧：操作按钮（垂直排列） ===
+        right_buttons = QWidget()
+        right_layout = QVBoxLayout(right_buttons)
+        right_layout.setSpacing(8)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setAlignment(Qt.AlignTop)
+        
+        # 数据格式配置按钮
+        self.btn_config_format = QPushButton("⚙ 配置\n数据格式")
+        try:
+            self.btn_config_format.setObjectName('secondaryButton')
+            self.btn_config_format.setShortcut('Ctrl+Shift+F')
+        except Exception:
+            pass
+        self.btn_config_format.setToolTip("设置会话级别的全局数据格式")
+        self.btn_config_format.setFixedWidth(100)
+        self.btn_config_format.setFixedHeight(50)
+        self.btn_config_format.clicked.connect(self.configure_data_format)
+
+        # 执行按钮
+        self.btn_batch = QPushButton("开始\n批量处理")
+        try:
+            self.btn_batch.setObjectName('primaryButton')
+            self.btn_batch.setShortcut('Ctrl+R')
+            self.btn_batch.setToolTip('开始批量处理')
+        except Exception:
+            pass
+        self.btn_batch.setFixedWidth(100)
+        self.btn_batch.setFixedHeight(50)
+        self.btn_batch.clicked.connect(self.run_batch_processing)
+
+        # 撤销按钮
+        self.btn_undo = QPushButton("撤销\n批处理")
+        try:
+            self.btn_undo.setObjectName('secondaryButton')
+            self.btn_undo.setShortcut('Ctrl+Z')
+            self.btn_undo.setToolTip('撤销最近一次批处理')
+        except Exception:
+            pass
+        self.btn_undo.setFixedWidth(100)
+        self.btn_undo.setFixedHeight(50)
+        self.btn_undo.clicked.connect(self.undo_batch_processing)
+        self.btn_undo.setVisible(False)
+        self.btn_undo.setEnabled(False)
+        
+        # 保存最近批处理的信息
+        self._last_batch_info = None
+
+        right_layout.addWidget(self.btn_config_format)
+        right_layout.addWidget(self.btn_batch)
+        right_layout.addWidget(self.btn_undo)
+        right_layout.addStretch()
+
+        # === 组合左右布局 ===
+        layout_batch_h.addWidget(left_content, 1)  # 左侧占据大部分空间
+        layout_batch_h.addWidget(right_buttons, 0)  # 右侧按钮固定宽度
+
+        self.grp_batch.setLayout(layout_batch_h)
+        main_layout.addWidget(self.grp_batch)
+
         # 恢复应用级别的信号
         try:
             app = QApplication.instance()
@@ -803,8 +772,8 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _create_coord_table(self, name_prefix: str):
         """
-        创建坐标系输入表格（3x4: 4行×3列）
-        行：Orig, X, Y, Z
+        创建坐标系输入表格（3x5: 5行×3列）
+        行：Orig, X轴, Y轴, Z轴, 力矩中心
         列：x, y, z分量
         
         Args:
@@ -813,12 +782,12 @@ class IntegratedAeroGUI(QMainWindow):
         Returns:
             QTableWidget实例
         """
-        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
         from PySide6.QtCore import Qt
         
-        table = QTableWidget(4, 3)
+        table = QTableWidget(5, 3)
         table.setHorizontalHeaderLabels(['X', 'Y', 'Z'])
-        table.setVerticalHeaderLabels(['Orig', 'X轴', 'Y轴', 'Z轴'])
+        table.setVerticalHeaderLabels(['Orig', 'X轴', 'Y轴', 'Z轴', '力矩中心'])
         
         # 设置默认值
         default_values = [
@@ -826,24 +795,40 @@ class IntegratedAeroGUI(QMainWindow):
             [1.0, 0.0, 0.0],  # X轴
             [0.0, 1.0, 0.0],  # Y轴
             [0.0, 0.0, 1.0],  # Z轴
+            [0.0, 0.0, 0.0],  # 力矩中心
         ]
         
-        for row in range(4):
+        for row in range(5):
             for col in range(3):
                 item = QTableWidgetItem(str(default_values[row][col]))
                 item.setTextAlignment(Qt.AlignCenter)
                 table.setItem(row, col, item)
-            # 设置更紧凑的行高
+            # 设置紧凑的行高
             table.setRowHeight(row, 26)
         
-        # 设置表格样式 - 紧凑但完整显示
-        table.setFixedHeight(145)  # 减小高度
-        table.setFixedWidth(260)   # 略微减小宽度
+        # 设置表格整体尺寸 - 更紧凑
+        table.setMinimumHeight(170)  # 5行
+        table.setMaximumHeight(190)
+        table.setMinimumWidth(250)
+        table.setMaximumWidth(280)
         
-        # 调整列宽
-        for col in range(3):
-            table.setColumnWidth(col, 70)
-            table.setColumnWidth(col, 70)
+        # 列宽自适应内容
+        h_header = table.horizontalHeader()
+        h_header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        # 行标题列更窄
+        v_header = table.verticalHeader()
+        v_header.setMinimumWidth(60)
+        v_header.setMaximumWidth(65)
+        
+        # 样式优化：隐藏网格线，启用行色交替
+        table.setShowGrid(False)
+        table.setAlternatingRowColors(True)
+        
+        # 隐藏滚动条
+        from PySide6.QtCore import Qt as QtCore_Qt
+        table.setHorizontalScrollBarPolicy(QtCore_Qt.ScrollBarAlwaysOff)
+        table.setVerticalScrollBarPolicy(QtCore_Qt.ScrollBarAlwaysOff)
         
         try:
             table.setObjectName(f'{name_prefix}_coord_table')
