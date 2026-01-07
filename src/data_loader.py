@@ -89,11 +89,12 @@ class FrameConfiguration:
         if moment_center is None:
             raise ValueError(f"{frame_type} 定义必须包含 MomentCenter 字段（长度为3的列表）")
         
-        # 获取数值参数 (都是可选的)
-        c_ref = data.get("Cref")
-        b_ref = data.get("Bref")
+        # 获取数值参数 (都是可选的) - 支持多种字段名以保证兼容性
+        c_ref = data.get("Cref") or data.get("C_ref")
+        b_ref = data.get("Bref") or data.get("B_ref")
         q = data.get("Q")
-        s_ref = data.get("S")
+        # S/S_ref/Sref 都支持
+        s_ref = data.get("S") or data.get("Sref") or data.get("S_ref")
         
         # 如果提供了这些参数，进行验证
         def parse_numeric_value(name: str, val, strictly_positive: bool = True):
