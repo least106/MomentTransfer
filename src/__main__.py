@@ -18,7 +18,7 @@ def print_help():
    python cli.py
 
 3. 图形界面 (GUI):
-   python gui.py
+   python gui_main.py
 
 ------------------------------------------------
     """)

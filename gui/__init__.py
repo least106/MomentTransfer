@@ -50,28 +50,19 @@ __all__ = [
     'IntegratedAeroGUI',
 ]
 
-# 延迟导入 IntegratedAeroGUI 以避免循环导入
+# 延迟导入 IntegratedAeroGUI 以避免循环导入（改为加载 gui_main.py）
 def __getattr__(name):
-    """支持延迟导入 IntegratedAeroGUI"""
+    """支持延迟导入 IntegratedAeroGUI（从顶层脚本 gui_main.py 加载）"""
     if name == 'IntegratedAeroGUI':
-        # 延迟导入以避免 gui.py 加载此包时的循环依赖
-        import importlib
-        gui_module = importlib.import_module('gui')  # 这会导致问题
-        # 改为直接执行以避免递归
-        import sys
-        # 删除自己使得 re-import 使用 gui.py 而非包
-        pkg_name = __name__
-        if pkg_name in sys.modules and hasattr(sys.modules[pkg_name], '__path__'):
-            # 尝试加载 gui.py 而不是包
-            parent_dir = str(Path(__file__).parent.parent)
-            gui_py_path = Path(parent_dir) / "gui.py"
-            if gui_py_path.exists():
-                spec = importlib.util.spec_from_file_location("_gui_module", str(gui_py_path))
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    return mod.IntegratedAeroGUI
-        raise ImportError(f"Cannot import IntegratedAeroGUI")
+        parent_dir = Path(__file__).parent.parent
+        gui_main_path = parent_dir / "gui_main.py"
+        if gui_main_path.exists():
+            spec = importlib.util.spec_from_file_location("_gui_main_module", str(gui_main_path))
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return getattr(mod, 'IntegratedAeroGUI')
+        raise ImportError("Cannot import IntegratedAeroGUI from gui_main.py")
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 

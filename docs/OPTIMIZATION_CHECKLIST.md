@@ -43,7 +43,7 @@ conda activate MomentTransfer
 python tools/startup_profiler.py
 
 # 3. 手动启动测试（观察启动速度）
-python gui.py
+python gui_main.py
 ```
 
 ---
@@ -53,7 +53,7 @@ python gui.py
 在 Win7 虚拟机上：
 ```powershell
 # 使用 PowerShell 的 Measure-Command 测量启动时间
-Measure-Command { & python gui.py }
+Measure-Command { & python gui_main.py }
 ```
 
 如果启动时间从 ~5000ms 降到 ~4000ms，说明优化有效 ✓
