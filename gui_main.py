@@ -160,7 +160,8 @@ class IntegratedAeroGUI(QMainWindow):
         # 不再使用复选框控制显示，Source 面板始终可见
 
 
-        self.grp_source = QGroupBox("Source Coordinate System")
+        # 将 groupbox 指定 parent 为本 panel，避免在 setVisible 时成为顶层窗口
+        self.grp_source = QGroupBox("Source Coordinate System", panel)
         # 设置尺寸约束，为并排布局做准备
         self.grp_source.setMinimumWidth(350)
         self.grp_source.setMaximumHeight(480)
@@ -268,7 +269,8 @@ class IntegratedAeroGUI(QMainWindow):
         self.grp_source.setVisible(True)
 
         # === Target 配置 ===
-        grp_target = QGroupBox("Target Configuration")
+        # 同样为 Target 指定 parent
+        grp_target = QGroupBox("Target Configuration", panel)
         # 设置尺寸约束，为并排布局做准备
         grp_target.setMinimumWidth(350)
         grp_target.setMaximumHeight(480)
@@ -280,6 +282,13 @@ class IntegratedAeroGUI(QMainWindow):
             form_target.setLabelAlignment(Qt.AlignRight)
         except Exception:
             pass
+
+        # Target 的内部数值控件（与 Source 对等）
+        self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
+        self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
+        self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
+        self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
+        self.tgt_mcx, self.tgt_mcy, self.tgt_mcz = self._create_triple_spin(0.0, 0.0, 0.0)
 
         # Part Name
         # 使用 _create_input 以保持与 Source 的输入框样式与宽度一致
