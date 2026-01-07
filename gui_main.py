@@ -62,7 +62,7 @@ LAYOUT_SPACING = 8
 class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.chk_show_source = None
+        # Source 面板始终显示（不使用复选框控制）
         self.file_list_widget = None
         self.layout_manager = None
         self.visualization_manager = None
@@ -156,14 +156,8 @@ class IntegratedAeroGUI(QMainWindow):
             pass
         main_layout.addWidget(title)
 
-        # === Source 坐标系（可折叠） ===
-        self.chk_show_source = QCheckBox("显示 Source 坐标系设置")
-        try:
-            self.chk_show_source.setObjectName('sectionToggle')
-        except Exception:
-            pass
-        self.chk_show_source.stateChanged.connect(self.toggle_source_visibility)
-        main_layout.addWidget(self.chk_show_source)
+        # === Source 坐标系 ===
+        # 不再使用复选框控制显示，Source 面板始终可见
 
 
         self.grp_source = QGroupBox("Source Coordinate System")
@@ -270,7 +264,8 @@ class IntegratedAeroGUI(QMainWindow):
         form_source.addRow(lbl, self.src_q)
 
         self.grp_source.setLayout(form_source)
-        self.grp_source.setVisible(False)
+        # 始终显示 Source 面板
+        self.grp_source.setVisible(True)
 
         # === Target 配置 ===
         grp_target = QGroupBox("Target Configuration")
@@ -1098,18 +1093,8 @@ class IntegratedAeroGUI(QMainWindow):
 
     def toggle_source_visibility(self, state):
         """切换 Source 坐标系的显示/隐藏"""
-        self.grp_source.setVisible(state == Qt.Checked)
-        # 切换后刷新布局以确保组框填满高度并使右侧底部元素可见
-        try:
-            QTimer.singleShot(30, self._refresh_layouts)
-        except RuntimeError as re:
-            logger.debug("QTimer.singleShot 调度失败: %s", re, exc_info=True)
-            try:
-                self._refresh_layouts()
-            except Exception as e:
-                logger.exception("_refresh_layouts 直接调用时出现异常")
-        except Exception as e:
-            logger.exception("调度 _refresh_layouts 时出现意外异常")
+        # Source 面板始终显示，不再响应复选框切换。
+        return
 
     def load_config(self):
         """加载配置文件 - 委托给 ConfigManager"""
