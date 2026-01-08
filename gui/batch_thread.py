@@ -45,14 +45,56 @@ class BatchProcessThread(QThread):
             except Exception:
                 overwrite_flag = False
 
-            outputs = process_special_format_file(
+            outputs, report = process_special_format_file(
                 Path(file_path),
                 self.project_data,
                 self.output_dir,
                 timestamp_format=self.timestamp_format,
                 overwrite=overwrite_flag,
+                return_report=True,
             )
-            return outputs
+
+            # 将详细报告转换为 GUI 日志消息，按 part 显示成功/跳过/失败原因
+            try:
+                for r in report:
+                    status = r.get('status')
+                    part = r.get('part')
+                    if status == 'success':
+                        msg = f"part '{part}' 处理成功，输出: {r.get('out_path', '')}"
+                        try:
+                            self.log_message.emit(msg)
+                        except Exception:
+                            logger.debug('无法发送 part 成功消息', exc_info=True)
+                    elif status == 'skipped':
+                        reason = r.get('reason')
+                        msg = f"part '{part}' 被跳过: {reason} - {r.get('message','') }"
+                        try:
+                            self.log_message.emit(msg)
+                        except Exception:
+                            logger.debug('无法发送 part 跳过消息', exc_info=True)
+                    else:
+                        msg = f"part '{part}' 处理失败: {r.get('reason')} - {r.get('message','') }"
+                        try:
+                            self.log_message.emit(msg)
+                        except Exception:
+                            logger.debug('无法发送 part 失败消息', exc_info=True)
+            except Exception:
+                logger.debug('处理 special format report 时发生错误', exc_info=True)
+
+            # 如果特殊格式解析既没有产出 outputs 也没有 report（即解析器判定为特殊但未提取到任何 part），
+            # 则回退为普通 CSV/Excel 处理（避免把空结果当作成功）。
+            if not outputs and not report:
+                try:
+                    logger.debug("special_format 解析未提取到任何 part，回退到常规 CSV/Excel 处理: %s", file_path)
+                    try:
+                        self.log_message.emit(f"特殊格式解析未提取到 part，回退为常规表格处理: {file_path.name}")
+                    except Exception:
+                        logger.debug('无法发送回退日志消息', exc_info=True)
+                except Exception:
+                    pass
+                # 不返回，此时继续到后面的常规分支处理
+            else:
+                return outputs
 
         cfg_to_use = self.data_config
         if getattr(self, 'enable_sidecar', False):
@@ -85,7 +127,25 @@ class BatchProcessThread(QThread):
                 raise
 
         if file_path.suffix.lower() == '.csv':
-            df = pd.read_csv(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
+            # 记录用于调试的配置信息和读取数据预览
+            try:
+                logger.debug("CSV 处理：使用 cfg_to_use=%s", cfg_to_use)
+                try:
+                    self.log_message.emit(f"使用文件配置: {cfg_to_use}")
+                except Exception:
+                    logger.debug("无法通过 signal 发送 cfg_to_use", exc_info=True)
+            except Exception:
+                pass
+
+            df = pd.read_csv(file_path, header=None, skiprows=(cfg_to_use.get('skip_rows', 0) if isinstance(cfg_to_use, dict) else 0))
+            try:
+                logger.debug("已读取 CSV: %s 行, %s 列", df.shape[0], df.shape[1])
+                try:
+                    self.log_message.emit(f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列")
+                except Exception:
+                    logger.debug("无法通过 signal 发送 df.shape", exc_info=True)
+            except Exception:
+                pass
         else:
             df = pd.read_excel(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
 
@@ -97,6 +157,14 @@ class BatchProcessThread(QThread):
             required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
             mapped = [cols.get(k) for k in required_keys if cols.get(k) is not None]
             mapped = [int(x) for x in mapped if isinstance(x, (int, float)) or (isinstance(x, str) and str(x).isdigit())]
+            try:
+                logger.debug("映射列索引: %s", mapped)
+                try:
+                    self.log_message.emit(f"映射列索引: {mapped}")
+                except Exception:
+                    pass
+            except Exception:
+                pass
             if mapped:
                 non_numeric_count = 0
                 checked = 0
@@ -239,24 +307,37 @@ class BatchProcessThread(QThread):
                     eta = int(avg * remaining)
 
                     # 兼容特殊格式返回多个输出文件的情况
+                    success_flag = False
                     if isinstance(output_file, list):
-                        out_names = ', '.join([p.name for p in output_file])
-                        success_msg = f"生成 {len(output_file)} 个 part 输出: {out_names}"
+                        if len(output_file) > 0:
+                            out_names = ', '.join([p.name for p in output_file])
+                            success_msg = f"生成 {len(output_file)} 个 part 输出: {out_names}"
+                            success_flag = True
+                        else:
+                            success_msg = "未生成任何 part 输出"
                     else:
-                        out_names = getattr(output_file, 'name', '未知输出')
-                        success_msg = out_names
+                        out_names = getattr(output_file, 'name', None)
+                        if out_names:
+                            success_msg = out_names
+                            success_flag = True
+                        else:
+                            success_msg = '未生成输出文件'
 
                     try:
-                        self.log_message.emit(f"  ✓ 完成: {success_msg} (耗时: {file_elapsed:.2f}s)")
+                        if success_flag:
+                            self.log_message.emit(f"  ✓ 完成: {success_msg} (耗时: {file_elapsed:.2f}s)")
+                        else:
+                            self.log_message.emit(f"  ✗ 处理结果：{success_msg} (耗时: {file_elapsed:.2f}s)")
                     except Exception:
-                        logger.debug("Cannot emit success message for %s", file_path, exc_info=True)
+                        logger.debug("Cannot emit success/failure message for %s", file_path, exc_info=True)
 
                     try:
                         self.log_message.emit(f"已完成 {i+1}/{total}，平均每文件耗时 {avg:.2f}s，预计剩余 {eta}s")
                     except Exception:
                         logger.debug("无法发出 ETA 消息", exc_info=True)
 
-                    success += 1
+                    if success_flag:
+                        success += 1
 
                 except (ValueError, IndexError, OSError) as e:
                     file_elapsed = (datetime.now() - file_start).total_seconds()
