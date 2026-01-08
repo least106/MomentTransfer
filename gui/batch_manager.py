@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.format_registry import get_format_for_file
+from src.special_format_parser import looks_like_special_format, get_part_names
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class BatchManager:
             # 输入路径后自动切换到文件列表页
             try:
                 if hasattr(self.gui, 'tab_main'):
-                    self.gui.tab_main.setCurrentIndex(1)  # 文件列表页是第1个Tab
+                    self.gui.tab_main.setCurrentIndex(0)  # 文件列表在第0个Tab
             except Exception:
                 pass
 
@@ -90,6 +91,31 @@ class BatchManager:
         
         try:
             p = Path(chosen_path)
+            # 根据所选路径类型启用/禁用匹配模式控件：
+            try:
+                # 当选择单个文件时，将匹配模式控件与输入框灰掉，避免用户误操作；选择目录时恢复
+                is_file = p.is_file()
+                # 设置启用/禁用
+                if hasattr(self.gui, 'inp_pattern') and self.gui.inp_pattern is not None:
+                    self.gui.inp_pattern.setEnabled(not is_file)
+                    try:
+                        if is_file:
+                            self.gui.inp_pattern.setStyleSheet('color: gray; background-color: #f0f0f0')
+                        else:
+                            self.gui.inp_pattern.setStyleSheet('')
+                    except Exception:
+                        pass
+                if hasattr(self.gui, 'cmb_pattern_preset') and self.gui.cmb_pattern_preset is not None:
+                    self.gui.cmb_pattern_preset.setEnabled(not is_file)
+                    try:
+                        if is_file:
+                            self.gui.cmb_pattern_preset.setStyleSheet('color: gray; background-color: #f0f0f0')
+                        else:
+                            self.gui.cmb_pattern_preset.setStyleSheet('')
+                    except Exception:
+                        pass
+            except Exception:
+                logger.debug('设置匹配控件/输入框启用状态失败', exc_info=True)
             files = []
 
             if p.is_file():
@@ -184,6 +210,22 @@ class BatchManager:
                 file_item = QTreeWidgetItem([rel_path.name, ""])
                 file_item.setCheckState(0, Qt.Checked)  # 默认选中
                 file_item.setData(0, Qt.UserRole, str(fp))  # 存储完整路径
+
+                # 单文件模式下：仅禁用复选框，防止用户取消选中，但不灰显整行
+                try:
+                    if p.is_file():
+                        # 确保复选框保持选中
+                        file_item.setCheckState(0, Qt.Checked)
+                        # 移除用户交互修改复选框的标志，但保留项可见和可选中
+                        flags = file_item.flags()
+                        file_item.setFlags(flags & ~Qt.ItemIsUserCheckable)
+                        # 添加提示说明
+                        try:
+                            file_item.setToolTip(0, "单文件模式，无法修改选择状态")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 
                 # 验证配置：检查target name是否存在
                 status_text = self._validate_file_config(fp)
@@ -215,6 +257,25 @@ class BatchManager:
     def _validate_file_config(self, file_path: Path) -> str:
         """验证文件的配置，返回状态文本"""
         try:
+            # 特殊格式：提前检查 part 是否存在于当前配置
+            try:
+                if looks_like_special_format(file_path):
+                    part_names = get_part_names(file_path)
+                    missing = []
+                    try:
+                        target_parts = getattr(getattr(self.gui, 'current_config', None), 'target_parts', {}) or {}
+                    except Exception:
+                        target_parts = {}
+                    for pn in part_names:
+                        if pn not in target_parts:
+                            missing.append(pn)
+                    if missing:
+                        return f"⚠ 目标缺失: {', '.join(missing)}"
+                    else:
+                        return "✓ 特殊格式"
+            except Exception:
+                logger.debug("特殊格式预检查失败", exc_info=True)
+
             # 使用缓存机制读取文件头部用于格式检测
             from src.file_cache import get_file_cache
             from src.cli_helpers import resolve_file_format, BatchConfig
@@ -247,9 +308,6 @@ class BatchManager:
             if not fmt_info:
                 return "❌ 未知格式"
             
-            # resolve_file_format返回的是BatchConfig对象，我们需要检查target_names
-            # BatchConfig没有target_names属性，这个验证逻辑需要调整
-            # 简化处理：只要格式解析成功就认为正常
             return "✓ 格式正常"
             
         except Exception as e:
@@ -336,7 +394,8 @@ class BatchManager:
             output_path.mkdir(parents=True, exist_ok=True)
             
             # 记录批处理前的文件列表（用于撤销时恢复）
-            existing_files = set(f.name for f in output_path.glob('*') if f.is_file())
+            # 重要：使用完整路径字符串，而不是仅文件名，确保撤销时能正确比对
+            existing_files = set(str(f) for f in output_path.glob('*') if f.is_file())
             self.gui._batch_output_dir = output_path
             self.gui._batch_existing_files = existing_files
             data_config = getattr(self.gui, 'data_config', {'skip_rows': 0, 'columns': {}, 'passthrough': []})
@@ -388,7 +447,7 @@ class BatchManager:
             # 批处理开始时自动切换到处理日志页
             try:
                 if hasattr(self.gui, 'tab_main'):
-                    self.gui.tab_main.setCurrentIndex(2)  # 处理日志页是第2个Tab
+                    self.gui.tab_main.setCurrentIndex(1)  # 处理日志页在第1个Tab
             except Exception:
                 pass
 
@@ -639,10 +698,22 @@ class BatchManager:
     def undo_batch_processing(self):
         """撤销最近一次批处理操作"""
         try:
+            output_dir = getattr(self.gui, '_batch_output_dir', None)
+            existing_files = getattr(self.gui, '_batch_existing_files', set())
+            
+            # 安全检查：确保有记录的输出目录和已存在文件列表
+            if not output_dir or not isinstance(existing_files, set):
+                QMessageBox.warning(
+                    self.gui,
+                    '提示',
+                    '没有可撤销的批处理记录。请先运行批处理。'
+                )
+                return
+            
             reply = QMessageBox.question(
                 self.gui,
                 '确认撤销',
-                '确定要撤销最近一次批处理？这将删除本次生成的输出文件（保留源数据）。',
+                f'确定要撤销最近一次批处理？\n将删除 {output_dir} 中的新生成文件（保留源数据）。',
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
@@ -653,13 +724,15 @@ class BatchManager:
             # 只删除本次批处理新生成的文件
             deleted_count = 0
             try:
-                output_dir = getattr(self.gui, '_batch_output_dir', None)
-                existing_files = getattr(self.gui, '_batch_existing_files', set())
-                
                 if output_dir and Path(output_dir).exists():
                     output_path = Path(output_dir)
                     for file in output_path.iterdir():
-                        if file.is_file() and str(file) not in existing_files:
+                        # 使用完整路径字符串进行比对
+                        file_path_str = str(file.resolve())
+                        # 转换existing_files中的路径为绝对路径进行比较
+                        existing_files_resolved = set(str(Path(p).resolve()) for p in existing_files)
+                        
+                        if file.is_file() and file_path_str not in existing_files_resolved:
                             try:
                                 file.unlink()
                                 deleted_count += 1
