@@ -303,29 +303,40 @@ class ConfigManager:
     def apply_config(self):
         """应用当前配置到计算器"""
         try:
-            # 使用面板导出的数据，减少重复读取逻辑
-            src_variant = self.gui.source_panel.to_variant_payload()
-            tgt_variant = self.gui.target_panel.to_variant_payload()
+            # 关键：apply_config 不能把多 Part 配置“缩成”单一 Part。
+            # 否则用户切换下拉时会找不到其它 Part 的变体。
 
-            # 直接使用面板数据，无需同步隐藏控件
-
-            src_part = {"PartName": src_variant.get("PartName", "Global"), "Variants": [src_variant]}
-            tgt_part = {"PartName": tgt_variant.get("PartName", "Target"), "Variants": [tgt_variant]}
-
-            data = {
-                "Source": {"Parts": [src_part]},
-                "Target": {"Parts": [tgt_part]}
-            }
-            
-            # 解析为 ProjectData
-            self.gui.current_config = ProjectData.from_dict(data)
-
-            # 同步新模型
+            # 先把当前面板上的编辑保存回模型（仅更新当前选择的 Part，不影响其它 Part）
             try:
-                model = ProjectConfigModel.from_dict(data)
-                setattr(self.gui, 'project_model', model)
+                pm = getattr(self.gui, 'part_manager', None)
+                if pm:
+                    pm.save_current_source_part()
+                    pm.save_current_target_part()
             except Exception:
-                logger.debug("应用前 ProjectConfigModel 同步失败", exc_info=True)
+                logger.debug("apply_config: 保存当前 Part 失败", exc_info=True)
+
+            # 以完整 ProjectConfigModel 生成 ProjectData
+            data = None
+            try:
+                model = getattr(self.gui, 'project_model', None)
+                if model:
+                    data = model.to_dict()
+            except Exception:
+                logger.debug("apply_config: 从 project_model 导出失败", exc_info=True)
+
+            if data is None:
+                # 回退：仅当没有模型时，才用面板构造最小配置
+                src_variant = self.gui.source_panel.to_variant_payload()
+                tgt_variant = self.gui.target_panel.to_variant_payload()
+                src_part = {"PartName": src_variant.get("PartName", "Global"), "Variants": [src_variant]}
+                tgt_part = {"PartName": tgt_variant.get("PartName", "Target"), "Variants": [tgt_variant]}
+                data = {"Source": {"Parts": [src_part]}, "Target": {"Parts": [tgt_part]}}
+                try:
+                    setattr(self.gui, 'project_model', ProjectConfigModel.from_dict(data))
+                except Exception:
+                    logger.debug("apply_config: 回退构造 ProjectConfigModel 失败", exc_info=True)
+
+            self.gui.current_config = ProjectData.from_dict(data)
             
             # 获取选定的 target part
             if (hasattr(self.gui, 'cmb_target_parts') and 
