@@ -247,6 +247,10 @@ class CoordinateSystemPanel(QGroupBox):
                 data[key].append(value)
         
         return data
+
+    def _get_coord_from_table(self) -> dict:
+        """从表格读取坐标数据的私有辅助方法。"""
+        return self.get_coord_data()
     
     def set_coord_data(self, data: dict):
         """设置坐标系数据"""
@@ -277,6 +281,10 @@ class CoordinateSystemPanel(QGroupBox):
             )
         except Exception:
             return RefModel()
+
+    def get_coordinate_system(self):
+        """以强类型模型返回坐标系（别名）。"""
+        return self.get_coordinate_system_model()
     
     def set_reference_values(self, cref: float, bref: float, sref: float, q: float):
         """设置参考量"""
