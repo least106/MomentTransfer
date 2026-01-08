@@ -65,29 +65,73 @@ class PartManager:
                 parts = cfg.source_parts if is_source else cfg.target_parts
                 part = parts.get(part_name)
                 if part:
-                    variants = part.variants
+                    # legacy ProjectData: value 是 List[FrameConfiguration]
+                    if isinstance(part, list):
+                        variants = part
+                    # 兼容其他可能的结构（如对象有 variants 属性）
+                    elif hasattr(part, 'variants'):
+                        variants = part.variants
 
         return variants
 
-    def _read_variant_fields(self, variant: PMVariant):
-        """从变体读取字段，返回统一元组。"""
+    def _read_variant_fields(self, variant):
+        """从变体读取字段，返回统一元组。
+
+        兼容两类对象：
+        - 强类型模型：src.models.project_model.PartVariant
+        - legacy：src.data_loader.FrameConfiguration
+        """
         try:
             if variant is None:
                 return None, None, None, 0.0, 0.0, 0.0, 0.0
+
             cs = getattr(variant, 'coord_system', None)
-            refs = getattr(variant, 'refs', None)
             part_name = getattr(variant, 'part_name', '') or ''
 
-            mc = []
-            if cs and getattr(cs, 'moment_center', None) is not None:
-                mc = list(cs.moment_center)
+            # 力矩中心：强类型在 cs.moment_center；legacy 在 variant.moment_center
+            mc = None
+            if cs is not None and getattr(cs, 'moment_center', None) is not None:
+                mc = list(getattr(cs, 'moment_center'))
+            if mc is None:
+                mc = getattr(variant, 'moment_center', None)
+                if mc is not None:
+                    mc = list(mc)
             if not mc:
                 mc = [0.0, 0.0, 0.0]
 
-            cref_val = getattr(refs, 'cref', 0.0) if refs else 0.0
-            bref_val = getattr(refs, 'bref', 0.0) if refs else 0.0
-            sref_val = getattr(refs, 'sref', 0.0) if refs else 0.0
-            q_val = getattr(refs, 'q', 0.0) if refs else 0.0
+            # 参考量：强类型在 refs；legacy 在 variant.c_ref/b_ref/s_ref/q
+            refs = getattr(variant, 'refs', None)
+            cref_val = getattr(refs, 'cref', None) if refs else None
+            bref_val = getattr(refs, 'bref', None) if refs else None
+            sref_val = getattr(refs, 'sref', None) if refs else None
+            q_val = getattr(refs, 'q', None) if refs else None
+
+            if cref_val is None:
+                cref_val = getattr(variant, 'c_ref', 0.0)
+            if bref_val is None:
+                bref_val = getattr(variant, 'b_ref', 0.0)
+            if sref_val is None:
+                sref_val = getattr(variant, 's_ref', 0.0)
+            if q_val is None:
+                q_val = getattr(variant, 'q', 0.0)
+
+            # 强制 float 化，避免 None 透传
+            try:
+                cref_val = float(cref_val)
+            except Exception:
+                cref_val = 0.0
+            try:
+                bref_val = float(bref_val)
+            except Exception:
+                bref_val = 0.0
+            try:
+                sref_val = float(sref_val)
+            except Exception:
+                sref_val = 0.0
+            try:
+                q_val = float(q_val)
+            except Exception:
+                q_val = 0.0
             return part_name, cs, mc, cref_val, bref_val, sref_val, q_val
         except Exception:
             logger.debug("读取变体字段失败", exc_info=True)
@@ -406,119 +450,7 @@ class PartManager:
                 logger.debug(f"同步 Target 变体坐标失败: {e}")
         except Exception as e:
             logger.error(f"Target 变体切换失败: {e}")
-    def on_source_part_changed(self):
-        """Source Part 切换事件 - 更新 UI 和表单"""
-        try:
-            try:
-                if hasattr(self.gui, '_save_current_source_part'):
-                    self.gui._save_current_source_part()
-            except Exception:
-                logger.debug("保存当前 Source 部件失败", exc_info=True)
 
-            # 优先从面板选择器读取，其次回退到旧下拉
-            try:
-                sel = self.gui.source_panel.part_selector.currentText()
-            except Exception:
-                sel = ''
-            self.gui._current_source_part_name = sel
-            variants = self._get_variants(sel, is_source=True)
-
-            if variants:
-                frame = variants[0]
-                part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
-                if cs is None:
-                    logger.warning(f"Source Part '{sel}' 没有坐标系数据")
-                    return
-
-                try:
-                    self.gui.src_part_name.blockSignals(True)
-                    self.gui.src_part_name.setText(part_name)
-                finally:
-                    try:
-                        self.gui.src_part_name.blockSignals(False)
-                    except Exception:
-                        pass
-
-                # 通过面板控件统一更新，无需同步隐藏控件
-
-                # 优先使用面板的强类型 setter 更新 UI（确保联动）
-                try:
-                    coord_payload = {
-                        'Orig': [cs.origin[0], cs.origin[1], cs.origin[2]],
-                        'X': [cs.x_axis[0], cs.x_axis[1], cs.x_axis[2]],
-                        'Y': [cs.y_axis[0], cs.y_axis[1], cs.y_axis[2]],
-                        'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
-                        'MomentCenter': mc
-                    }
-                    self.gui.source_panel.set_coord_data(coord_payload)
-                    self.gui.source_panel.set_reference_values(cref_val, bref_val, sref_val, q_val)
-                except Exception as e:
-                    logger.debug(f"Source 面板 setter 更新失败: {e}")
-
-        except Exception as e:
-            logger.error(f"Source Part 切换失败: {e}")
-
-    def on_target_part_changed(self):
-        """Target Part 切换事件 - 更新 UI 和表单"""
-        try:
-            try:
-                if hasattr(self.gui, '_save_current_target_part'):
-                    self.gui._save_current_target_part()
-            except Exception:
-                logger.debug("保存当前 Target 部件失败", exc_info=True)
-
-            # 优先从面板选择器读取，其次回退到旧下拉
-            try:
-                sel = self.gui.target_panel.part_selector.currentText()
-            except Exception:
-                sel = ''
-            self.gui._current_target_part_name = sel
-            variants = self._get_variants(sel, is_source=False)
-
-            if variants:
-                frame = variants[0]
-                part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
-                if cs is None:
-                    logger.warning(f"Target Part '{sel}' 没有坐标系数据")
-                    return
-
-                try:
-                    self.gui.tgt_part_name.blockSignals(True)
-                    self.gui.tgt_part_name.setText(part_name)
-                finally:
-                    try:
-                        self.gui.tgt_part_name.blockSignals(False)
-                    except Exception:
-                        pass
-
-                # 优先使用面板的强类型 setter 更新 UI（确保联动）
-                try:
-                    coord_payload = {
-                        'Orig': [cs.origin[0], cs.origin[1], cs.origin[2]],
-                        'X': [cs.x_axis[0], cs.x_axis[1], cs.x_axis[2]],
-                        'Y': [cs.y_axis[0], cs.y_axis[1], cs.y_axis[2]],
-                        'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
-                        'MomentCenter': mc
-                    }
-                    self.gui.target_panel.set_coord_data(coord_payload)
-                    self.gui.target_panel.set_reference_values(cref_val, bref_val, sref_val, q_val)
-                except Exception as e:
-                    logger.debug(f"Target 面板 setter 更新失败: {e}")
-
-                try:
-                    coord_dict = {
-                        'Orig': [cs.origin[0], cs.origin[1], cs.origin[2]],
-                        'X': [cs.x_axis[0], cs.x_axis[1], cs.x_axis[2]],
-                        'Y': [cs.y_axis[0], cs.y_axis[1], cs.y_axis[2]],
-                        'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
-                        'MomentCenter': mc
-                    }
-                    self.gui.target_panel.set_coord_data(coord_dict)
-                except Exception as e:
-                    logger.debug(f"同步 Target 坐标失败: {e}")
-
-        except Exception as e:
-            logger.error(f"Target Part 切换失败: {e}")
 
     # ===== 名称变更事件 =====
     def on_source_part_name_changed(self, new_text: str):
@@ -621,89 +553,111 @@ class PartManager:
     def on_source_part_changed(self):
         """Source Part 选择变化时的处理"""
         try:
+            logger.debug("=== on_source_part_changed 被调用 ===")
             if not hasattr(self.gui, 'source_panel'):
+                logger.debug("source_panel 不存在")
                 return
             
             part_name = self.gui.source_panel.part_selector.currentText()
+            logger.debug(f"当前选择的 Source Part: {part_name}")
             if not part_name:
+                logger.debug("part_name 为空")
                 return
             
             # 保存当前 Part（如果需要）
             old_name = getattr(self.gui, '_current_source_part_name', None)
+            logger.debug(f"旧的 Source Part: {old_name}")
             if old_name and old_name != part_name:
+                logger.debug(f"保存旧 Part: {old_name}")
                 self.save_current_source_part()
             
             # 加载新 Part
             variants = self._get_variants(part_name, is_source=True)
+            logger.debug(f"找到 {len(variants) if variants else 0} 个变体")
             if variants:
                 variant = variants[0]
                 _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
+                logger.debug(f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}")
                 
                 # 应用到面板
                 payload = {
                     'PartName': part_name,
                     'CoordSystem': {
-                        'Orig': list(cs.orig) if cs else [0.0, 0.0, 0.0],
-                        'X': list(cs.x) if cs else [1.0, 0.0, 0.0],
-                        'Y': list(cs.y) if cs else [0.0, 1.0, 0.0],
-                        'Z': list(cs.z) if cs else [0.0, 0.0, 1.0],
+                        'Orig': list(cs.origin) if cs else [0.0, 0.0, 0.0],
+                        'X': list(cs.x_axis) if cs else [1.0, 0.0, 0.0],
+                        'Y': list(cs.y_axis) if cs else [0.0, 1.0, 0.0],
+                        'Z': list(cs.z_axis) if cs else [0.0, 0.0, 1.0],
                         'MomentCenter': mc,
                     },
-                    'Refs': {
-                        'C_ref': cref_val,
-                        'B_ref': bref_val,
-                        'S_ref': sref_val,
-                        'Q': q_val,
-                    }
+                    'Cref': cref_val,
+                    'Bref': bref_val,
+                    'Sref': sref_val,
+                    'Q': q_val,
                 }
+                logger.debug(f"准备应用 payload: {payload}")
                 self.gui.source_panel.apply_variant_payload(payload)
+                logger.debug("payload 已应用")
+            else:
+                logger.warning(f"未找到 Part '{part_name}' 的变体")
             
             self.gui._current_source_part_name = part_name
+            logger.debug("=== on_source_part_changed 完成 ===")
             
         except Exception as e:
-            logger.debug(f"on_source_part_changed 失败: {e}", exc_info=True)
+            logger.error(f"on_source_part_changed 失败: {e}", exc_info=True)
     
     def on_target_part_changed(self):
         """Target Part 选择变化时的处理"""
         try:
+            logger.debug("=== on_target_part_changed 被调用 ===")
             if not hasattr(self.gui, 'target_panel'):
+                logger.debug("target_panel 不存在")
                 return
             
             part_name = self.gui.target_panel.part_selector.currentText()
+            logger.debug(f"当前选择的 Target Part: {part_name}")
             if not part_name:
+                logger.debug("part_name 为空")
                 return
             
             # 保存当前 Part（如果需要）
             old_name = getattr(self.gui, '_current_target_part_name', None)
+            logger.debug(f"旧的 Target Part: {old_name}")
             if old_name and old_name != part_name:
+                logger.debug(f"保存旧 Part: {old_name}")
                 self.save_current_target_part()
             
             # 加载新 Part
             variants = self._get_variants(part_name, is_source=False)
+            logger.debug(f"找到 {len(variants) if variants else 0} 个变体")
             if variants:
                 variant = variants[0]
                 _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
+                logger.debug(f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}")
                 
                 # 应用到面板
                 payload = {
                     'PartName': part_name,
                     'CoordSystem': {
-                        'Orig': list(cs.orig) if cs else [0.0, 0.0, 0.0],
-                        'X': list(cs.x) if cs else [1.0, 0.0, 0.0],
-                        'Y': list(cs.y) if cs else [0.0, 1.0, 0.0],
-                        'Z': list(cs.z) if cs else [0.0, 0.0, 1.0],
+                        'Orig': list(cs.origin) if cs else [0.0, 0.0, 0.0],
+                        'X': list(cs.x_axis) if cs else [1.0, 0.0, 0.0],
+                        'Y': list(cs.y_axis) if cs else [0.0, 1.0, 0.0],
+                        'Z': list(cs.z_axis) if cs else [0.0, 0.0, 1.0],
                         'MomentCenter': mc,
                     },
-                    'Refs': {
-                        'C_ref': cref_val,
-                        'B_ref': bref_val,
-                        'S_ref': sref_val,
-                        'Q': q_val,
-                    }
+                    'Cref': cref_val,
+                    'Bref': bref_val,
+                    'Sref': sref_val,
+                    'Q': q_val,
                 }
+                logger.debug(f"准备应用 payload: {payload}")
                 self.gui.target_panel.apply_variant_payload(payload)
+                logger.debug("payload 已应用")
+            else:
+                logger.warning(f"未找到 Part '{part_name}' 的变体")
             
             self.gui._current_target_part_name = part_name
+            logger.debug("=== on_target_part_changed 完成 ===")
             
         except Exception as e:
-            logger.debug(f"on_target_part_changed 失败: {e}", exc_info=True)
+            logger.error(f"on_target_part_changed 失败: {e}", exc_info=True)
