@@ -33,38 +33,30 @@ class VisualizationManager:
     def show_visualization(self):
         """显示 3D 可视化窗口"""
         try:
-            # 读取当前配置
-            source_orig = [
-                get_numeric_value(self.gui.src_ox),
-                get_numeric_value(self.gui.src_oy),
-                get_numeric_value(self.gui.src_oz)
-            ]
+            # 读取当前配置（直接从面板表格与强类型接口）
+            src_coord = self.gui.source_panel.get_coord_data()
+            tgt_coord = self.gui.target_panel.get_coord_data()
+            source_orig = src_coord.get('Orig', [0.0, 0.0, 0.0])
             source_basis = np.array([
-                [get_numeric_value(self.gui.src_xx), get_numeric_value(self.gui.src_xy), get_numeric_value(self.gui.src_xz)],
-                [get_numeric_value(self.gui.src_yx), get_numeric_value(self.gui.src_yy), get_numeric_value(self.gui.src_yz)],
-                [get_numeric_value(self.gui.src_zx), get_numeric_value(self.gui.src_zy), get_numeric_value(self.gui.src_zz)]
+                src_coord.get('X', [1.0, 0.0, 0.0]),
+                src_coord.get('Y', [0.0, 1.0, 0.0]),
+                src_coord.get('Z', [0.0, 0.0, 1.0])
             ])
-            
-            target_orig = [
-                get_numeric_value(self.gui.tgt_ox),
-                get_numeric_value(self.gui.tgt_oy),
-                get_numeric_value(self.gui.tgt_oz)
-            ]
+            target_orig = tgt_coord.get('Orig', [0.0, 0.0, 0.0])
             target_basis = np.array([
-                [get_numeric_value(self.gui.tgt_xx), get_numeric_value(self.gui.tgt_xy), get_numeric_value(self.gui.tgt_xz)],
-                [get_numeric_value(self.gui.tgt_yx), get_numeric_value(self.gui.tgt_yy), get_numeric_value(self.gui.tgt_yz)],
-                [get_numeric_value(self.gui.tgt_zx), get_numeric_value(self.gui.tgt_zy), get_numeric_value(self.gui.tgt_zz)]
+                tgt_coord.get('X', [1.0, 0.0, 0.0]),
+                tgt_coord.get('Y', [0.0, 1.0, 0.0]),
+                tgt_coord.get('Z', [0.0, 0.0, 1.0])
             ])
-            
-            moment_center = [
-                get_numeric_value(self.gui.tgt_mcx),
-                get_numeric_value(self.gui.tgt_mcy),
-                get_numeric_value(self.gui.tgt_mcz)
-            ]
+            moment_center = tgt_coord.get('MomentCenter', [0.0, 0.0, 0.0])
             
             # 创建可视化窗口
             self.gui.visualization_window = QWidget()
-            self.gui.visualization_window.setWindowTitle(f"3D坐标系可视化 - {self.gui.tgt_part_name.text()}")
+            try:
+                part_name = self.gui.target_panel.get_part_name()
+            except Exception:
+                part_name = "Target"
+            self.gui.visualization_window.setWindowTitle(f"3D坐标系可视化 - {part_name}")
             self.gui.visualization_window.resize(800, 600)
             
             layout = QVBoxLayout(self.gui.visualization_window)
