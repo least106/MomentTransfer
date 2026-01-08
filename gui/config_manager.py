@@ -368,13 +368,14 @@ class ConfigManager:
             
             tgt_sel = sel_part or (self.gui.tgt_part_name.text() if hasattr(self.gui, 'tgt_part_name') else 'Target')
             
-            self.gui.lbl_status.setText(f"当前配置: [{src_sel}] -> [{tgt_sel}]")
-            try:
-                self.gui.lbl_status.setProperty('state', 'loaded')
-            except Exception:
-                pass
-            
             self.gui.statusBar().showMessage(f"配置已应用: {src_sel} -> {tgt_sel}")
+
+            # 显示当前 source part 名称到批处理面板
+            try:
+                if hasattr(self.gui, 'lbl_source_part_applied') and self.gui.lbl_source_part_applied is not None:
+                    self.gui.lbl_source_part_applied.setText(f"Source: {src_sel}")
+            except Exception:
+                logger.debug("更新 source part 标签失败", exc_info=True)
             
             QMessageBox.information(
                 self.gui, "成功", 
@@ -435,7 +436,7 @@ class ConfigManager:
                 except Exception:
                     logger.debug('update_config_preview failed', exc_info=True)
                 
-                # 配置数据格式后自动切换到信息页
+                # 配置数据格式后自动回到文件列表
                 try:
                     if hasattr(self.gui, 'tab_main'):
                         self.gui.tab_main.setCurrentIndex(0)
@@ -449,57 +450,40 @@ class ConfigManager:
         try:
             cfg = getattr(self.gui, 'data_config', None)
             
-            # 确保预览标签存在
-            if not all(hasattr(self.gui, attr) for attr in ['lbl_preview_skip', 'lbl_preview_columns', 'lbl_preview_passthrough']):
-                return
-            
-            if cfg is None:
-                self.gui.lbl_preview_skip.setText('跳过行: -')
-                self.gui.lbl_preview_columns.setText('列映射: -')
-                self.gui.lbl_preview_passthrough.setText('保留列: -')
-                return
-
-            # 支持 dict 或具有属性的对象
             if isinstance(cfg, dict):
                 skip = cfg.get('skip_rows')
                 cols = cfg.get('columns', {}) or {}
                 passth = cfg.get('passthrough', []) or []
+            elif cfg is None:
+                skip = None
+                cols = {}
+                passth = []
             else:
                 skip = getattr(cfg, 'skip_rows', None)
                 cols = getattr(cfg, 'columns', {}) or {}
                 passth = getattr(cfg, 'passthrough', None) or getattr(cfg, 'passthrough_columns', []) or []
 
-            # 跳过行
-            self.gui.lbl_preview_skip.setText(f"跳过行: {skip if skip is not None else '-'}")
-
-            # 列映射摘要
-            def _col_val(k):
-                v = cols.get(k)
-                return str(v) if v is not None else '缺失'
+            def _col_val(key_name):
+                value = cols.get(key_name)
+                return str(value) if value is not None else '缺失'
 
             col_keys = ['alpha', 'fx', 'fy', 'fz', 'mx', 'my', 'mz']
             col_parts = [f"{k.upper()}={_col_val(k)}" for k in col_keys]
-            cols_text = ", ".join(col_parts)
-            
-            # 若关键力列缺失，标红提示
-            if cols.get('fx') is None or cols.get('fy') is None or cols.get('fz') is None:
-                try:
-                    self.gui.lbl_preview_columns.setProperty('state', 'error')
-                except Exception:
-                    pass
-            else:
-                try:
-                    self.gui.lbl_preview_columns.setProperty('state', 'normal')
-                except Exception:
-                    pass
-            self.gui.lbl_preview_columns.setText(f"列映射: {cols_text}")
+            cols_text = ", ".join(col_parts) if col_parts else '-'
 
-            # 保留列
             try:
                 pt_display = ','.join(str(int(x)) for x in (passth or [])) if passth else '-'
             except Exception:
                 pt_display = str(passth)
-            self.gui.lbl_preview_passthrough.setText(f"保留列: {pt_display}")
+
+            summary = f"跳过: {skip if skip is not None else '-'} | 列映射: {cols_text} | 保留: {pt_display}"
+
+            # 若存在摘要标签则更新
+            try:
+                if hasattr(self.gui, 'lbl_format_summary') and getattr(self.gui, 'lbl_format_summary') is not None:
+                    self.gui.lbl_format_summary.setText(summary)
+            except Exception:
+                logger.debug("设置 lbl_format_summary 失败", exc_info=True)
 
         except Exception:
             logger.debug("update_config_preview failed", exc_info=True)
