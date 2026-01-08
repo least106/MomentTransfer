@@ -288,61 +288,8 @@ class IntegratedAeroGUI(QMainWindow):
                 item.setCheckState(0, check_state)
             iterator += 1
 
-    def _get_coord_from_table(self, table):
-        """
-        从坐标表格中读取值
-        
-        Args:
-            table: QTableWidget实例
-            
-        Returns:
-            包含5个向量的字典：{'Orig': [x,y,z], 'X': [x,y,z], 'Y': [x,y,z], 'Z': [x,y,z], 'MomentCenter': [x,y,z]}
-        """
-        result = {
-            'Orig': [0.0, 0.0, 0.0],
-            'X': [1.0, 0.0, 0.0],
-            'Y': [0.0, 1.0, 0.0],
-            'Z': [0.0, 0.0, 1.0],
-            'MomentCenter': [0.0, 0.0, 0.0],
-        }
-        
-        row_keys = ['Orig', 'X', 'Y', 'Z', 'MomentCenter']
-        
-        for row_idx, key in enumerate(row_keys):
-            for col_idx in range(3):
-                try:
-                    item = table.item(row_idx, col_idx)
-                    if item:
-                        result[key][col_idx] = float(item.text())
-                except (ValueError, AttributeError):
-                    # 保持默认值
-                    pass
-        
-        return result
-
-    def _set_coord_to_table(self, table, coord_dict):
-        """
-        设置坐标表格的值
-        
-        Args:
-            table: QTableWidget实例
-            coord_dict: 包含Orig/X/Y/Z/MomentCenter的字典
-        """
-        from PySide6.QtWidgets import QTableWidgetItem
-        from PySide6.QtCore import Qt
-        
-        row_keys = ['Orig', 'X', 'Y', 'Z', 'MomentCenter']
-        
-        for row_idx, key in enumerate(row_keys):
-            vector = coord_dict.get(key, [0.0, 0.0, 0.0])
-            for col_idx in range(3):
-                try:
-                    value = float(vector[col_idx])
-                    item = QTableWidgetItem(str(value))
-                    item.setTextAlignment(Qt.AlignCenter)
-                    table.setItem(row_idx, col_idx, item)
-                except Exception:
-                    pass
+    # 注意：_get_coord_from_table 和 _set_coord_to_table 已移到 Panel 中
+    # 调用方式改为：self.source_panel.get_coord_data() 和 self.source_panel.set_coord_data()
 
     def _save_current_source_part(self):
         """将当前 Source 表单保存到新模型（使用强类型接口）。"""

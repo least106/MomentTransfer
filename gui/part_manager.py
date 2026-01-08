@@ -352,40 +352,7 @@ class PartManager:
                 except Exception:
                     pass
 
-            try:
-                self.gui.src_ox.setValue(float(cs.origin[0]))
-                self.gui.src_oy.setValue(float(cs.origin[1]))
-                self.gui.src_oz.setValue(float(cs.origin[2]))
-                self.gui.src_xx.setValue(float(cs.x_axis[0]))
-                self.gui.src_xy.setValue(float(cs.x_axis[1]))
-                self.gui.src_xz.setValue(float(cs.x_axis[2]))
-                self.gui.src_yx.setValue(float(cs.y_axis[0]))
-                self.gui.src_yy.setValue(float(cs.y_axis[1]))
-                self.gui.src_yz.setValue(float(cs.y_axis[2]))
-                self.gui.src_zx.setValue(float(cs.z_axis[0]))
-                self.gui.src_zy.setValue(float(cs.z_axis[1]))
-                self.gui.src_zz.setValue(float(cs.z_axis[2]))
-                self.gui.src_mcx.setValue(float(mc[0]))
-                self.gui.src_mcy.setValue(float(mc[1]))
-                self.gui.src_mcz.setValue(float(mc[2]))
-                if hasattr(self.gui.src_cref, "setValue"):
-                    self.gui.src_cref.setValue(cref_val)
-                if hasattr(self.gui.src_bref, "setValue"):
-                    self.gui.src_bref.setValue(bref_val)
-                if hasattr(self.gui.src_sref, "setValue"):
-                    self.gui.src_sref.setValue(sref_val)
-                if hasattr(self.gui.src_q, "setValue"):
-                    self.gui.src_q.setValue(q_val)
-                if hasattr(self.gui.src_cref, "setText"):
-                    self.gui.src_cref.setText(str(cref_val))
-                if hasattr(self.gui.src_bref, "setText"):
-                    self.gui.src_bref.setText(str(bref_val))
-                if hasattr(self.gui.src_sref, "setText"):
-                    self.gui.src_sref.setText(str(sref_val))
-                if hasattr(self.gui.src_q, "setText"):
-                    self.gui.src_q.setText(str(q_val))
-            except Exception as e:
-                logger.debug(f"设置 Source 变体控件失败: {e}")
+            # 旧兼容性隐藏控件已删除，使用 Panel setter 统一更新
 
             try:
                 coord_dict = {
@@ -395,9 +362,9 @@ class PartManager:
                     'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
                     'MomentCenter': mc
                 }
-                self.gui._set_coord_to_table(self.gui.src_coord_table, coord_dict)
+                self.gui.source_panel.set_coord_data(coord_dict)
             except Exception as e:
-                logger.debug(f"同步 Source 变体坐标到表格失败: {e}")
+                logger.debug(f"同步 Source 变体坐标失败: {e}")
         except Exception as e:
             logger.error(f"Source 变体切换失败: {e}")
 
@@ -434,9 +401,9 @@ class PartManager:
                     'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
                     'MomentCenter': mc
                 }
-                self.gui._set_coord_to_table(self.gui.tgt_coord_table, coord_dict)
+                self.gui.target_panel.set_coord_data(coord_dict)
             except Exception as e:
-                logger.debug(f"同步 Target 变体坐标到表格失败: {e}")
+                logger.debug(f"同步 Target 变体坐标失败: {e}")
         except Exception as e:
             logger.error(f"Target 变体切换失败: {e}")
     def on_source_part_changed(self):
@@ -546,9 +513,9 @@ class PartManager:
                         'Z': [cs.z_axis[0], cs.z_axis[1], cs.z_axis[2]],
                         'MomentCenter': mc
                     }
-                    self.gui._set_coord_to_table(self.gui.tgt_coord_table, coord_dict)
+                    self.gui.target_panel.set_coord_data(coord_dict)
                 except Exception as e:
-                    logger.debug(f"同步 Target 坐标到表格失败: {e}")
+                    logger.debug(f"同步 Target 坐标失败: {e}")
 
         except Exception as e:
             logger.error(f"Target Part 切换失败: {e}")
