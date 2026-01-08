@@ -79,6 +79,40 @@ class InitializationManager:
             self.main_window.layout_manager = LayoutManager(self.main_window)
             
             logger.info("所有管理器初始化成功")
+            # 绑定：当用户在输入框直接输入路径并完成编辑时，触发扫描和控件启用状态更新
+            try:
+                bp = getattr(self.main_window, 'inp_batch_input', None)
+                if bp is not None:
+                    def _on_input_edit_finished():
+                        try:
+                            text = bp.text().strip()
+                            if not text:
+                                return
+                            from pathlib import Path
+                            p = Path(text)
+                            if p.exists():
+                                # 委托给 BatchManager 统一处理扫描与 UI 状态
+                                try:
+                                    self.main_window.batch_manager._scan_and_populate_files(p)
+                                except Exception:
+                                    # 兜底：仅更新匹配控件的启用状态
+                                    try:
+                                        if hasattr(self.main_window, 'inp_pattern'):
+                                            self.main_window.inp_pattern.setEnabled(not p.is_file())
+                                        if hasattr(self.main_window, 'cmb_pattern_preset'):
+                                            self.main_window.cmb_pattern_preset.setEnabled(not p.is_file())
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                    try:
+                        bp.editingFinished.connect(_on_input_edit_finished)
+                    except Exception:
+                        # 有些 Qt 版本或组件可能不支持该信号，忽略绑定失败
+                        pass
+            except Exception:
+                logger.debug('绑定 inp_batch_input 编辑完成信号失败', exc_info=True)
         except Exception as e:
             logger.error(f"管理器初始化失败: {e}", exc_info=True)
             # 继续运行，即使管理器初始化失败
