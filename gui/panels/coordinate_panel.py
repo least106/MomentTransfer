@@ -148,12 +148,12 @@ class CoordinateSystemPanel(QGroupBox):
         # 将按钮连接到 SignalBus 请求信号
         try:
             if self.signal_bus:
-                def _side_str():
-                    return 'Source' if self.prefix.lower() == 'src' else 'Target'
-                self.btn_add_part.clicked.connect(lambda: self.signal_bus.partAddRequested.emit(_side_str(), self.get_part_name()))
-                self.btn_remove_part.clicked.connect(lambda: self.signal_bus.partRemoveRequested.emit(_side_str(), self.get_part_name()))
-        except Exception:
-            logger.debug("连接面板按钮到请求信号失败", exc_info=True)
+                side = 'Source' if self.prefix.lower() == 'src' else 'Target'
+                self.btn_add_part.clicked.connect(lambda: self.signal_bus.partAddRequested.emit(side, self.get_part_name()))
+                self.btn_remove_part.clicked.connect(lambda: self.signal_bus.partRemoveRequested.emit(side, self.get_part_name()))
+                logger.debug(f"{side} 面板按钮已连接到 SignalBus")
+        except Exception as e:
+            logger.warning(f"连接面板按钮到请求信号失败: {e}", exc_info=True)
     
     def _create_input(self, default_text: str) -> QLineEdit:
         """创建紧凑型输入框"""
@@ -296,9 +296,11 @@ class CoordinateSystemPanel(QGroupBox):
     def apply_variant_payload(self, payload: dict):
         """将 Variant 字典数据填充到面板。"""
         if not payload:
+            logger.debug(f"{self.prefix} apply_variant_payload: payload 为空")
             return
 
         part_name = payload.get('PartName') or "Part"
+        logger.debug(f"{self.prefix} apply_variant_payload: PartName={part_name}")
         try:
             self.part_name_input.blockSignals(True)
             self.part_name_input.setText(str(part_name))
@@ -319,12 +321,14 @@ class CoordinateSystemPanel(QGroupBox):
             'Z': cs.get('Z', [0.0, 0.0, 1.0]),
             'MomentCenter': mc if mc is not None else [0.0, 0.0, 0.0],
         }
+        logger.debug(f"{self.prefix} apply_variant_payload: coord_data={coord_data}")
         self.set_coord_data(coord_data)
 
         cref = payload.get('Cref', payload.get('C_ref', 1.0))
         bref = payload.get('Bref', payload.get('B_ref', 1.0))
         sref = payload.get('Sref', payload.get('S_ref', 10.0))
         q_val = payload.get('Q', 1000.0)
+        logger.debug(f"{self.prefix} apply_variant_payload: cref={cref}, bref={bref}, sref={sref}, q={q_val}")
         self.set_reference_values(cref, bref, sref, q_val)
 
     def to_variant_payload(self, override_part_name: str = None) -> dict:
@@ -380,7 +384,13 @@ class CoordinateSystemPanel(QGroupBox):
     def _on_part_added(self, side: str, part_name: str):
         """SignalBus 事件：Part 被添加时更新选择器列表"""
         # 只更新对应侧的面板
-        if side.lower() != self.prefix.lower():
+        side_norm = (side or '').strip().lower()
+        prefix_norm = (self.prefix or '').strip().lower()
+        if side_norm in ('source', 'src'):
+            side_norm = 'src'
+        elif side_norm in ('target', 'tgt'):
+            side_norm = 'tgt'
+        if side_norm != prefix_norm:
             return
         try:
             current_items = [
@@ -398,7 +408,13 @@ class CoordinateSystemPanel(QGroupBox):
     def _on_part_removed(self, side: str, part_name: str):
         """SignalBus 事件：Part 被移除时更新选择器列表"""
         # 只更新对应侧的面板
-        if side.lower() != self.prefix.lower():
+        side_norm = (side or '').strip().lower()
+        prefix_norm = (self.prefix or '').strip().lower()
+        if side_norm in ('source', 'src'):
+            side_norm = 'src'
+        elif side_norm in ('target', 'tgt'):
+            side_norm = 'tgt'
+        if side_norm != prefix_norm:
             return
         try:
             idx = self.part_selector.findText(part_name)
