@@ -216,10 +216,10 @@ class IntegratedAeroGUI(QMainWindow):
         """应用当前配置到计算器 - 委托给 ConfigManager"""
         try:
             self.config_manager.apply_config()
-            # 应用配置后自动切换到信息页
+            # 应用配置后自动切换到文件列表
             try:
                 if hasattr(self, 'tab_main'):
-                    self.tab_main.setCurrentIndex(0)  # 信息页是第0个Tab
+                    self.tab_main.setCurrentIndex(0)  # 文件列表在第0个Tab
             except Exception:
                 pass
         except AttributeError:
