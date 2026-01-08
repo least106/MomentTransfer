@@ -258,6 +258,7 @@ def process_special_format_file(
     *,
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
+    return_report: bool = False,
 ) -> List[Path]:
     """
     直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
@@ -274,17 +275,22 @@ def process_special_format_file(
     data_dict = parse_special_format_file(file_path)
     outputs: List[Path] = []
 
+    report = []
     for part_name, df in data_dict.items():
         # 校验 Target part 是否存在
         if project_data is not None and hasattr(project_data, 'target_parts'):
             if part_name not in project_data.target_parts:
-                logger.warning("目标配置中不存在 part '%s'，已跳过该块", part_name)
+                msg = f"目标配置中不存在 part '{part_name}'，已跳过该块"
+                logger.warning(msg)
+                report.append({'part': part_name, 'status': 'skipped', 'reason': 'target_missing', 'message': msg})
                 continue
 
         required_cols = ['Cx', 'Cy', 'Cz/FN', 'CMx', 'CMy', 'CMz']
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
-            logger.warning("part '%s' 缺少必需列 %s，已跳过", part_name, missing)
+            msg = f"part '{part_name}' 缺少必需列 {missing}，已跳过"
+            logger.warning(msg)
+            report.append({'part': part_name, 'status': 'skipped', 'reason': 'missing_columns', 'message': msg, 'missing': missing})
             continue
 
         try:
@@ -295,7 +301,9 @@ def process_special_format_file(
             cmy = pd.to_numeric(df['CMy'], errors='coerce')
             cmz = pd.to_numeric(df['CMz'], errors='coerce')
         except Exception as e:
-            logger.warning("part '%s' 数值转换失败: %s", part_name, e)
+            msg = f"part '{part_name}' 数值转换失败: {e}"
+            logger.warning(msg)
+            report.append({'part': part_name, 'status': 'failed', 'reason': 'numeric_conversion_failed', 'message': msg, 'error': str(e)})
             continue
 
         forces = pd.concat([cx, cy, cz], axis=1).to_numpy()
@@ -303,12 +311,16 @@ def process_special_format_file(
 
         try:
             if project_data is None:
-                logger.warning("缺少 ProjectData，无法为 part '%s' 构建 AeroCalculator，已跳过", part_name)
+                msg = f"缺少 ProjectData，无法为 part '{part_name}' 构建 AeroCalculator，已跳过"
+                logger.warning(msg)
+                report.append({'part': part_name, 'status': 'skipped', 'reason': 'no_project_data', 'message': msg})
                 continue
             calc = AeroCalculator(project_data, target_part=part_name)
             results = calc.process_batch(forces, moments)
         except Exception as e:
-            logger.warning("part '%s' 处理失败: %s", part_name, e, exc_info=True)
+            msg = f"part '{part_name}' 处理失败: {e}"
+            logger.warning(msg, exc_info=True)
+            report.append({'part': part_name, 'status': 'failed', 'reason': 'processing_failed', 'message': msg, 'error': str(e)})
             continue
 
         out_df = df.copy()
@@ -338,7 +350,26 @@ def process_special_format_file(
 
         out_df.to_csv(out_path, index=False)
         outputs.append(out_path)
-        logger.info("part '%s' 输出: %s", part_name, out_path.name)
+        msg = f"part '{part_name}' 输出: {out_path.name}"
+        logger.info(msg)
+        report.append({'part': part_name, 'status': 'success', 'message': msg, 'out_path': str(out_path)})
+
+    # 汇总日志
+    total = len(data_dict)
+    success_count = sum(1 for r in report if r.get('status') == 'success')
+    skipped_count = sum(1 for r in report if r.get('status') == 'skipped')
+    failed_count = sum(1 for r in report if r.get('status') == 'failed')
+    logger.info(
+        "文件 %s 处理完成：%d 个 part（%d 成功，%d 跳过，%d 失败）",
+        file_path.name,
+        total,
+        success_count,
+        skipped_count,
+        failed_count,
+    )
+
+    if return_report:
+        return outputs, report
 
     return outputs
 
