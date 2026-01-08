@@ -1,7 +1,9 @@
 numpy
 pytest>=7.0.0
-pandas
-pyside6>=6.1.3
+# pin pandas to 2.2.x to support Python 3.10 CI runners
+pandas>=2.2.0,<2.3
+# require a more recent PySide6 wheel (6.1.3 has poor availability on some platforms)
+pyside6>=6.2.0
 openpyxl
 matplotlib
 click
