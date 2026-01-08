@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from src.data_loader import ProjectData
-from src.models import ProjectConfig
 from src.models import ProjectConfigModel
 from gui.signal_bus import SignalBus
 from src.physics import AeroCalculator
@@ -28,7 +27,8 @@ class ConfigManager:
         self.gui = gui_instance
         self._last_loaded_config_path = None
         self._raw_project_dict = None
-        self.project_config: Optional[ProjectConfig] = None
+        # 统一使用 ProjectConfigModel
+        self.project_config_model: Optional[ProjectConfigModel] = None
         try:
             self.signal_bus = getattr(gui_instance, 'signal_bus', SignalBus.instance())
         except Exception:
@@ -73,39 +73,8 @@ class ConfigManager:
         }
 
     def _sync_payload_to_legacy(self, payload: dict, side: str):
-        """将面板数据同步到旧的隐藏控件，保持兼容。"""
+        """同步必要字段到面板输入（旧隐藏控件已移除）。"""
         prefix = "src" if side == "source" or side == "src" else "tgt"
-        coord = payload.get("CoordSystem", {})
-        mc = payload.get("MomentCenter", [0.0, 0.0, 0.0])
-
-        def _set_spin(name, idx, arr):
-            spin = getattr(self.gui, name, None)
-            try:
-                if spin is not None:
-                    spin.setValue(float(arr[idx]))
-            except Exception:
-                pass
-
-        _set_spin(f"{prefix}_ox", 0, coord.get("Orig", [0, 0, 0]))
-        _set_spin(f"{prefix}_oy", 1, coord.get("Orig", [0, 0, 0]))
-        _set_spin(f"{prefix}_oz", 2, coord.get("Orig", [0, 0, 0]))
-
-        _set_spin(f"{prefix}_xx", 0, coord.get("X", [1, 0, 0]))
-        _set_spin(f"{prefix}_xy", 1, coord.get("X", [1, 0, 0]))
-        _set_spin(f"{prefix}_xz", 2, coord.get("X", [1, 0, 0]))
-
-        _set_spin(f"{prefix}_yx", 0, coord.get("Y", [0, 1, 0]))
-        _set_spin(f"{prefix}_yy", 1, coord.get("Y", [0, 1, 0]))
-        _set_spin(f"{prefix}_yz", 2, coord.get("Y", [0, 1, 0]))
-
-        _set_spin(f"{prefix}_zx", 0, coord.get("Z", [0, 0, 1]))
-        _set_spin(f"{prefix}_zy", 1, coord.get("Z", [0, 0, 1]))
-        _set_spin(f"{prefix}_zz", 2, coord.get("Z", [0, 0, 1]))
-
-        _set_spin(f"{prefix}_mcx", 0, mc)
-        _set_spin(f"{prefix}_mcy", 1, mc)
-        _set_spin(f"{prefix}_mcz", 2, mc)
-
         try:
             getattr(self.gui, f"{prefix}_cref").setText(str(payload.get("Cref", 1.0)))
             getattr(self.gui, f"{prefix}_bref").setText(str(payload.get("Bref", 1.0)))
@@ -136,11 +105,6 @@ class ConfigManager:
             # 解析为 ProjectData
             project = ProjectData.from_dict(data)
             self.gui.current_config = project
-            try:
-                self.project_config = ProjectConfig.from_dict(data)
-                setattr(self.gui, "project_config", self.project_config)
-            except Exception:
-                logger.debug("ProjectConfig 解析失败或同步失败", exc_info=True)
             # 新模型：ProjectConfigModel
             try:
                 model = ProjectConfigModel.from_dict(data)
@@ -155,15 +119,16 @@ class ConfigManager:
             # 记录加载路径
             self._last_loaded_config_path = Path(fname)
             
-            # 填充 Target 下拉列表
+            # 填充 Target 下拉列表（统一通过面板接口，避免重复添加）
             self.gui.cmb_target_parts.clear()
-            for part in project.target_parts.keys():
+            target_part_names = list(project.target_parts.keys())
+            for part in target_part_names:
                 self.gui.cmb_target_parts.addItem(part)
-                try:
-                    self.gui.target_panel.part_selector.addItem(part)
-                except Exception:
-                    pass
-            
+            try:
+                self.gui.target_panel.update_part_list(target_part_names)
+            except Exception:
+                logger.debug("target_panel.update_part_list 失败", exc_info=True)
+
             if self.gui.cmb_target_parts.count() > 0:
                 self.gui.cmb_target_parts.setVisible(True)
                 first = self.gui.cmb_target_parts.currentText() or self.gui.cmb_target_parts.itemText(0)
@@ -171,18 +136,26 @@ class ConfigManager:
                     self.gui._current_target_part_name = first
                 except Exception:
                     pass
-                variants = project.target_parts.get(first, [])
-                self.gui.spin_target_variant.setRange(0, max(0, len(variants) - 1))
-            
-            # 填充 Source 下拉列表
-            try:
-                self.gui.cmb_source_parts.clear()
-                for part in project.source_parts.keys():
-                    self.gui.cmb_source_parts.addItem(part)
+                # 同步面板当前选择
+                try:
+                    self.gui.target_panel.part_selector.blockSignals(True)
+                    self.gui.target_panel.part_selector.setCurrentText(first)
+                finally:
                     try:
-                        self.gui.source_panel.part_selector.addItem(part)
+                        self.gui.target_panel.part_selector.blockSignals(False)
                     except Exception:
                         pass
+            
+            # 填充 Source 下拉列表（统一通过面板接口，避免重复添加）
+            try:
+                self.gui.cmb_source_parts.clear()
+                source_part_names = list(project.source_parts.keys())
+                for part in source_part_names:
+                    self.gui.cmb_source_parts.addItem(part)
+                try:
+                    self.gui.source_panel.update_part_list(source_part_names)
+                except Exception:
+                    logger.debug("source_panel.update_part_list 失败", exc_info=True)
                 
                 if self.gui.cmb_source_parts.count() > 0:
                     self.gui.cmb_source_parts.setVisible(True)
@@ -191,8 +164,15 @@ class ConfigManager:
                         self.gui._current_source_part_name = firsts
                     except Exception:
                         pass
-                    s_variants = project.source_parts.get(firsts, [])
-                    self.gui.spin_source_variant.setRange(0, max(0, len(s_variants) - 1))
+                    # 同步面板当前选择
+                    try:
+                        self.gui.source_panel.part_selector.blockSignals(True)
+                        self.gui.source_panel.part_selector.setCurrentText(firsts)
+                    finally:
+                        try:
+                            self.gui.source_panel.part_selector.blockSignals(False)
+                        except Exception:
+                            pass
             except Exception:
                 logger.debug("source_parts 填充失败", exc_info=True)
             
@@ -232,8 +212,7 @@ class ConfigManager:
             except Exception:
                 logger.debug("填充 Target 面板失败", exc_info=True)
 
-            # 兼容旧控件
-            self._sync_payload_to_legacy(payload, "tgt")
+            # 同步到面板已完成，无需同步隐藏控件
         
         except Exception as e:
             logger.debug(f"填充 Target 表单失败: {e}", exc_info=True)
@@ -254,7 +233,7 @@ class ConfigManager:
             except Exception:
                 logger.debug("填充 Source 面板失败", exc_info=True)
 
-            self._sync_payload_to_legacy(payload, "src")
+            # 同步到面板已完成，无需同步隐藏控件
         
         except Exception as e:
             logger.debug(f"填充 Source 表单失败: {e}", exc_info=True)
@@ -269,20 +248,13 @@ class ConfigManager:
             src_part = {"PartName": src_variant.get("PartName", "Global"), "Variants": [src_variant]}
             tgt_part = {"PartName": tgt_variant.get("PartName", "Target"), "Variants": [tgt_variant]}
 
-            # 保持旧控件同步（兼容历史逻辑）
-            self._sync_payload_to_legacy(src_variant, "src")
-            self._sync_payload_to_legacy(tgt_variant, "tgt")
+            # 直接使用面板数据，无需同步隐藏控件
 
             data = {
                 "Source": {"Parts": [src_part]},
                 "Target": {"Parts": [tgt_part]}
             }
 
-            try:
-                self.project_config = ProjectConfig.from_dict(data)
-                setattr(self.gui, "project_config", self.project_config)
-            except Exception:
-                logger.debug("保存前 ProjectConfig 同步失败", exc_info=True)
             # 同步新模型
             try:
                 model = ProjectConfigModel.from_dict(data)
@@ -335,8 +307,7 @@ class ConfigManager:
             src_variant = self.gui.source_panel.to_variant_payload()
             tgt_variant = self.gui.target_panel.to_variant_payload()
 
-            self._sync_payload_to_legacy(src_variant, "src")
-            self._sync_payload_to_legacy(tgt_variant, "tgt")
+            # 直接使用面板数据，无需同步隐藏控件
 
             src_part = {"PartName": src_variant.get("PartName", "Global"), "Variants": [src_variant]}
             tgt_part = {"PartName": tgt_variant.get("PartName", "Target"), "Variants": [tgt_variant]}
@@ -349,11 +320,12 @@ class ConfigManager:
             # 解析为 ProjectData
             self.gui.current_config = ProjectData.from_dict(data)
 
+            # 同步新模型
             try:
-                self.project_config = ProjectConfig.from_dict(data)
-                setattr(self.gui, "project_config", self.project_config)
+                model = ProjectConfigModel.from_dict(data)
+                setattr(self.gui, 'project_model', model)
             except Exception:
-                logger.debug("应用前 ProjectConfig 同步失败", exc_info=True)
+                logger.debug("应用前 ProjectConfigModel 同步失败", exc_info=True)
             
             # 获取选定的 target part
             if (hasattr(self.gui, 'cmb_target_parts') and 
