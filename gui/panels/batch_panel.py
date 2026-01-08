@@ -6,7 +6,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,
     QTabWidget, QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel,
-    QGroupBox, QHeaderView, QSizePolicy, QLineEdit, QFormLayout, QComboBox
+    QHeaderView, QSizePolicy, QLineEdit, QFormLayout, QComboBox
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
@@ -85,6 +85,11 @@ class BatchPanel(QWidget):
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(self.btn_browse_input)
         self.file_form.addRow("输入路径:", input_row)
+
+        # 数据格式摘要（实时显示跳过行/保留列/列映射）
+        self.lbl_format_summary = QLabel("格式摘要: 未设置")
+        self.lbl_format_summary.setToolTip("显示当前的数据格式配置，包括跳过行、列映射和保留列")
+        self.file_form.addRow("格式摘要:", self.lbl_format_summary)
 
         # 匹配模式
         self.inp_pattern = QLineEdit("*.csv")
@@ -170,7 +175,11 @@ class BatchPanel(QWidget):
         btn_row.addWidget(self.btn_select_all)
         btn_row.addWidget(self.btn_select_none)
         btn_row.addWidget(self.btn_select_invert)
+        # 显示当前应用的 Source Part 名称
+        self.lbl_source_part_applied = QLabel("Source: -")
+        self.lbl_source_part_applied.setMinimumWidth(140)
         btn_row.addStretch()
+        btn_row.addWidget(self.lbl_source_part_applied)
         layout.addLayout(btn_row)
         
         # 文件树
@@ -198,58 +207,14 @@ class BatchPanel(QWidget):
         except Exception:
             pass
         
-        # Tab 0: 信息页
-        self.info_tab = self._create_info_tab()
-        tab.addTab(self.info_tab, "信息")
-        
-        # Tab 1: 文件列表（已在外部）
+        # Tab 0: 文件列表
         tab.addTab(self.file_list_widget, "文件列表")
         
-        # Tab 2: 处理日志
+        # Tab 1: 处理日志
         self.log_tab = self._create_log_tab()
         tab.addTab(self.log_tab, "处理日志")
         
         return tab
-    
-    def _create_info_tab(self) -> QWidget:
-        """创建信息Tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
-        
-        # 配置状态
-        self.lbl_status = QLabel("未加载配置")
-        try:
-            self.lbl_status.setObjectName('statusLabel')
-            font = self.lbl_status.font()
-            font.setPointSize(10)
-            font.setBold(True)
-            self.lbl_status.setFont(font)
-        except Exception:
-            pass
-        layout.addWidget(self.lbl_status)
-        
-        # 数据格式预览
-        format_group = QGroupBox("数据格式预览")
-        format_layout = QVBoxLayout(format_group)
-        format_layout.setSpacing(4)
-        
-        self.lbl_preview_skip = QLabel("跳过行: -")
-        self.lbl_preview_passthrough = QLabel("保留列: -")
-        self.lbl_preview_columns = QLabel("列映射: -")
-        
-        for w in [self.lbl_preview_skip, self.lbl_preview_passthrough, self.lbl_preview_columns]:
-            try:
-                w.setObjectName('previewText')
-            except Exception:
-                pass
-            format_layout.addWidget(w)
-        
-        layout.addWidget(format_group)
-        layout.addStretch()
-        
-        return widget
     
     def _create_log_tab(self) -> QWidget:
         """创建日志Tab"""
@@ -331,21 +296,10 @@ class BatchPanel(QWidget):
         """设置进度值"""
         self.progress_bar.setValue(value)
     
-    def set_status(self, text: str):
-        """设置状态文本"""
-        self.lbl_status.setText(text)
-    
-    def update_format_preview(self, skip_rows: int, passthrough: list, columns: dict):
-        """更新格式预览"""
-        self.lbl_preview_skip.setText(f"跳过行: {skip_rows}")
-        self.lbl_preview_passthrough.setText(f"保留列: {', '.join(map(str, passthrough)) if passthrough else '无'}")
-        col_text = ', '.join([f"{k}→{v}" for k, v in columns.items()]) if columns else '无'
-        self.lbl_preview_columns.setText(f"列映射: {col_text}")
-    
     def append_log(self, message: str):
         """追加日志消息"""
         self.txt_batch_log.append(message)
     
     def switch_to_log_tab(self):
         """切换到日志Tab"""
-        self.tab_main.setCurrentIndex(2)
+        self.tab_main.setCurrentIndex(1)
