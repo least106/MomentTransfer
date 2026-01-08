@@ -384,3 +384,111 @@ class ConfigManager:
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
         except Exception as e:
             QMessageBox.critical(self.gui, "应用失败", f"配置应用失败:\n{str(e)}")
+    
+    # ===== 数据格式配置方法（从 main_window 迁移）=====
+    def configure_data_format(self):
+        """配置全局会话级别的数据格式"""
+        from gui.dialogs import ColumnMappingDialog
+        from PySide6.QtWidgets import QDialog
+        
+        try:
+            dlg = ColumnMappingDialog(self.gui)
+            
+            # 若已有全局 data_config，尝试填充对话框
+            try:
+                data_config = getattr(self.gui, 'data_config', None)
+                if data_config:
+                    if isinstance(data_config, dict):
+                        dlg.set_config(data_config)
+                    else:
+                        # 兼容具有属性的配置对象
+                        cfg = {}
+                        try:
+                            cfg['skip_rows'] = getattr(data_config, 'skip_rows', None)
+                            cols = getattr(data_config, 'columns', None) or getattr(data_config, 'column_mappings', None)
+                            cfg['columns'] = cols or {}
+                            cfg['passthrough'] = getattr(data_config, 'passthrough', None) or getattr(data_config, 'passthrough_columns', [])
+                            dlg.set_config(cfg)
+                        except Exception:
+                            pass
+            except Exception:
+                logger.debug('Failed to prefill ColumnMappingDialog', exc_info=True)
+
+            if dlg.exec() == QDialog.Accepted:
+                cfg = dlg.get_config()
+                self.gui.data_config = cfg
+                QMessageBox.information(self.gui, '已更新', '会话级全局数据格式已更新')
+                
+                try:
+                    self.update_config_preview()
+                except Exception:
+                    logger.debug('update_config_preview failed', exc_info=True)
+                
+                # 配置数据格式后自动切换到信息页
+                try:
+                    if hasattr(self.gui, 'tab_main'):
+                        self.gui.tab_main.setCurrentIndex(0)
+                except Exception:
+                    pass
+        except Exception as e:
+            QMessageBox.critical(self.gui, '错误', f'无法配置数据格式: {e}')
+    
+    def update_config_preview(self):
+        """根据当前的 data_config 显示数据格式预览"""
+        try:
+            cfg = getattr(self.gui, 'data_config', None)
+            
+            # 确保预览标签存在
+            if not all(hasattr(self.gui, attr) for attr in ['lbl_preview_skip', 'lbl_preview_columns', 'lbl_preview_passthrough']):
+                return
+            
+            if cfg is None:
+                self.gui.lbl_preview_skip.setText('跳过行: -')
+                self.gui.lbl_preview_columns.setText('列映射: -')
+                self.gui.lbl_preview_passthrough.setText('保留列: -')
+                return
+
+            # 支持 dict 或具有属性的对象
+            if isinstance(cfg, dict):
+                skip = cfg.get('skip_rows')
+                cols = cfg.get('columns', {}) or {}
+                passth = cfg.get('passthrough', []) or []
+            else:
+                skip = getattr(cfg, 'skip_rows', None)
+                cols = getattr(cfg, 'columns', {}) or {}
+                passth = getattr(cfg, 'passthrough', None) or getattr(cfg, 'passthrough_columns', []) or []
+
+            # 跳过行
+            self.gui.lbl_preview_skip.setText(f"跳过行: {skip if skip is not None else '-'}")
+
+            # 列映射摘要
+            def _col_val(k):
+                v = cols.get(k)
+                return str(v) if v is not None else '缺失'
+
+            col_keys = ['alpha', 'fx', 'fy', 'fz', 'mx', 'my', 'mz']
+            col_parts = [f"{k.upper()}={_col_val(k)}" for k in col_keys]
+            cols_text = ", ".join(col_parts)
+            
+            # 若关键力列缺失，标红提示
+            if cols.get('fx') is None or cols.get('fy') is None or cols.get('fz') is None:
+                try:
+                    self.gui.lbl_preview_columns.setProperty('state', 'error')
+                except Exception:
+                    pass
+            else:
+                try:
+                    self.gui.lbl_preview_columns.setProperty('state', 'normal')
+                except Exception:
+                    pass
+            self.gui.lbl_preview_columns.setText(f"列映射: {cols_text}")
+
+            # 保留列
+            try:
+                pt_display = ','.join(str(int(x)) for x in (passth or [])) if passth else '-'
+            except Exception:
+                pt_display = str(passth)
+            self.gui.lbl_preview_passthrough.setText(f"保留列: {pt_display}")
+
+        except Exception:
+            logger.debug("update_config_preview failed", exc_info=True)

@@ -567,4 +567,120 @@ class BatchManager:
 
     def refresh_format_labels(self):
         return self._refresh_format_labels()
+    
+    # 文件选择方法（从 main_window 迁移）
+    def select_all_files(self):
+        """全选文件树中的所有文件项"""
+        self._set_all_file_items_checked(Qt.Checked)
+    
+    def select_none_files(self):
+        """全不选文件树中的所有文件项"""
+        self._set_all_file_items_checked(Qt.Unchecked)
+    
+    def invert_file_selection(self):
+        """反选文件树中的所有文件项"""
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        
+        if not hasattr(self.gui, 'file_tree'):
+            return
+        
+        iterator = QTreeWidgetItemIterator(self.gui.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            # 只反选文件项（有用户数据中存储了路径的项）
+            if item.data(0, Qt.UserRole):
+                if item.checkState(0) == Qt.Checked:
+                    item.setCheckState(0, Qt.Unchecked)
+                else:
+                    item.setCheckState(0, Qt.Checked)
+            iterator += 1
+    
+    def _set_all_file_items_checked(self, check_state):
+        """设置所有文件项的选中状态（仅文件，不包括目录节点）"""
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        
+        if not hasattr(self.gui, 'file_tree'):
+            return
+        
+        iterator = QTreeWidgetItemIterator(self.gui.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            # 只选中文件项（有用户数据中存储了路径的项）
+            if item.data(0, Qt.UserRole):
+                item.setCheckState(0, check_state)
+            iterator += 1
+    
+    # 批处理控制方法（从 main_window 迁移）
+    def request_cancel_batch(self):
+        """请求取消正在运行的批处理任务"""
+        from datetime import datetime
+        
+        try:
+            batch_thread = getattr(self.gui, 'batch_thread', None)
+            if batch_thread is not None:
+                if hasattr(self.gui, 'txt_batch_log'):
+                    self.gui.txt_batch_log.append(
+                        f"[{datetime.now().strftime('%H:%M:%S')}] 用户请求取消任务，正在停止..."
+                    )
+                try:
+                    batch_thread.request_stop()
+                except Exception:
+                    logger.debug("batch_thread.request_stop 调用失败（可能已结束）", exc_info=True)
+                
+                # 禁用取消按钮以避免重复点击
+                if hasattr(self.gui, 'btn_cancel'):
+                    try:
+                        self.gui.btn_cancel.setEnabled(False)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug("request_cancel_batch 失败", exc_info=True)
+    
+    def undo_batch_processing(self):
+        """撤销最近一次批处理操作"""
+        try:
+            reply = QMessageBox.question(
+                self.gui,
+                '确认撤销',
+                '确定要撤销最近一次批处理？这将删除本次生成的输出文件（保留源数据）。',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                return
+            
+            # 只删除本次批处理新生成的文件
+            deleted_count = 0
+            try:
+                output_dir = getattr(self.gui, '_batch_output_dir', None)
+                existing_files = getattr(self.gui, '_batch_existing_files', set())
+                
+                if output_dir and Path(output_dir).exists():
+                    output_path = Path(output_dir)
+                    for file in output_path.iterdir():
+                        if file.is_file() and str(file) not in existing_files:
+                            try:
+                                file.unlink()
+                                deleted_count += 1
+                                logger.info(f"已删除: {file}")
+                            except Exception as e:
+                                logger.warning(f"无法删除 {file}: {e}")
+                
+                QMessageBox.information(
+                    self.gui,
+                    '撤销完成',
+                    f'已删除 {deleted_count} 个输出文件'
+                )
+                
+                # 清空批处理记录
+                self.gui._batch_output_dir = None
+                self.gui._batch_existing_files = set()
+                
+            except Exception as e:
+                logger.error(f"撤销批处理失败: {e}", exc_info=True)
+                QMessageBox.critical(self.gui, '错误', f'撤销失败: {e}')
+        
+        except Exception as e:
+            logger.error(f"undo_batch_processing 失败: {e}", exc_info=True)
 

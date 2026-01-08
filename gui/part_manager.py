@@ -557,3 +557,153 @@ class PartManager:
                 self.remove_target_part()
         except Exception:
             logger.debug("处理 partRemoveRequested 失败", exc_info=True)
+    
+    # ===== Part 保存方法（从 main_window 迁移）=====
+    def save_current_source_part(self):
+        """将当前 Source 表单保存到新模型（使用强类型接口）"""
+        try:
+            part_name = self.gui.src_part_name.text() if hasattr(self.gui, "src_part_name") else "Global"
+            if hasattr(self.gui, 'source_panel'):
+                payload = self.gui.source_panel.to_variant_payload(part_name)
+            else:
+                logger.debug("source_panel 不存在")
+                return
+
+            # 更新新模型 ProjectConfigModel
+            try:
+                if not self._ensure_project_model():
+                    return
+                
+                # 使用面板提供的强类型模型接口
+                cs_model = self.gui.source_panel.get_coordinate_system_model()
+                refs_model = self.gui.source_panel.get_reference_values_model()
+                pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
+                
+                self.gui.project_model.source_parts[part_name] = PMPart(
+                    part_name=part_name,
+                    variants=[pm_variant]
+                )
+            except Exception:
+                logger.debug("更新 ProjectConfigModel 失败", exc_info=True)
+        except Exception:
+            logger.debug("save_current_source_part failed", exc_info=True)
+
+    def save_current_target_part(self):
+        """将当前 Target 表单保存到新模型（使用强类型接口）"""
+        try:
+            part_name = self.gui.tgt_part_name.text() if hasattr(self.gui, "tgt_part_name") else "Target"
+            if hasattr(self.gui, 'target_panel'):
+                payload = self.gui.target_panel.to_variant_payload(part_name)
+            else:
+                logger.debug("target_panel 不存在")
+                return
+
+            # 更新新模型 ProjectConfigModel
+            try:
+                if not self._ensure_project_model():
+                    return
+                
+                # 使用面板提供的强类型模型接口
+                cs_model = self.gui.target_panel.get_coordinate_system_model()
+                refs_model = self.gui.target_panel.get_reference_values_model()
+                pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
+                
+                self.gui.project_model.target_parts[part_name] = PMPart(
+                    part_name=part_name,
+                    variants=[pm_variant]
+                )
+            except Exception:
+                logger.debug("更新 ProjectConfigModel 失败", exc_info=True)
+        except Exception:
+            logger.debug("save_current_target_part failed", exc_info=True)
+    
+    # ===== Part 变更事件处理（从 main_window 迁移）=====
+    def on_source_part_changed(self):
+        """Source Part 选择变化时的处理"""
+        try:
+            if not hasattr(self.gui, 'source_panel'):
+                return
+            
+            part_name = self.gui.source_panel.part_selector.currentText()
+            if not part_name:
+                return
+            
+            # 保存当前 Part（如果需要）
+            old_name = getattr(self.gui, '_current_source_part_name', None)
+            if old_name and old_name != part_name:
+                self.save_current_source_part()
+            
+            # 加载新 Part
+            variants = self._get_variants(part_name, is_source=True)
+            if variants:
+                variant = variants[0]
+                _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
+                
+                # 应用到面板
+                payload = {
+                    'PartName': part_name,
+                    'CoordSystem': {
+                        'Orig': list(cs.orig) if cs else [0.0, 0.0, 0.0],
+                        'X': list(cs.x) if cs else [1.0, 0.0, 0.0],
+                        'Y': list(cs.y) if cs else [0.0, 1.0, 0.0],
+                        'Z': list(cs.z) if cs else [0.0, 0.0, 1.0],
+                        'MomentCenter': mc,
+                    },
+                    'Refs': {
+                        'C_ref': cref_val,
+                        'B_ref': bref_val,
+                        'S_ref': sref_val,
+                        'Q': q_val,
+                    }
+                }
+                self.gui.source_panel.apply_variant_payload(payload)
+            
+            self.gui._current_source_part_name = part_name
+            
+        except Exception as e:
+            logger.debug(f"on_source_part_changed 失败: {e}", exc_info=True)
+    
+    def on_target_part_changed(self):
+        """Target Part 选择变化时的处理"""
+        try:
+            if not hasattr(self.gui, 'target_panel'):
+                return
+            
+            part_name = self.gui.target_panel.part_selector.currentText()
+            if not part_name:
+                return
+            
+            # 保存当前 Part（如果需要）
+            old_name = getattr(self.gui, '_current_target_part_name', None)
+            if old_name and old_name != part_name:
+                self.save_current_target_part()
+            
+            # 加载新 Part
+            variants = self._get_variants(part_name, is_source=False)
+            if variants:
+                variant = variants[0]
+                _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
+                
+                # 应用到面板
+                payload = {
+                    'PartName': part_name,
+                    'CoordSystem': {
+                        'Orig': list(cs.orig) if cs else [0.0, 0.0, 0.0],
+                        'X': list(cs.x) if cs else [1.0, 0.0, 0.0],
+                        'Y': list(cs.y) if cs else [0.0, 1.0, 0.0],
+                        'Z': list(cs.z) if cs else [0.0, 0.0, 1.0],
+                        'MomentCenter': mc,
+                    },
+                    'Refs': {
+                        'C_ref': cref_val,
+                        'B_ref': bref_val,
+                        'S_ref': sref_val,
+                        'Q': q_val,
+                    }
+                }
+                self.gui.target_panel.apply_variant_payload(payload)
+            
+            self.gui._current_target_part_name = part_name
+            
+        except Exception as e:
+            logger.debug(f"on_target_part_changed 失败: {e}", exc_info=True)
