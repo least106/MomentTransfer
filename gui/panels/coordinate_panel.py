@@ -145,6 +145,15 @@ class CoordinateSystemPanel(QGroupBox):
             widget.textChanged.connect(self._emit_values_changed)
         
         self.setLayout(self.form_layout)
+        # 将按钮连接到 SignalBus 请求信号
+        try:
+            if self.signal_bus:
+                def _side_str():
+                    return 'Source' if self.prefix.lower() == 'src' else 'Target'
+                self.btn_add_part.clicked.connect(lambda: self.signal_bus.partAddRequested.emit(_side_str(), self.get_part_name()))
+                self.btn_remove_part.clicked.connect(lambda: self.signal_bus.partRemoveRequested.emit(_side_str(), self.get_part_name()))
+        except Exception:
+            logger.debug("连接面板按钮到请求信号失败", exc_info=True)
     
     def _create_input(self, default_text: str) -> QLineEdit:
         """创建紧凑型输入框"""
