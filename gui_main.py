@@ -34,7 +34,6 @@ from src.physics import AeroCalculator
 from src.data_loader import ProjectData
 from typing import Optional, List, Tuple
 from src.format_registry import get_format_for_file
-from src.models import ProjectConfig, Part, Variant
 from src.models import ProjectConfigModel, ReferenceValues, CSModel as CSModelAlias, PartVariant as PMPartVariant
 
 # 从模块化包导入组件
@@ -83,7 +82,6 @@ class IntegratedAeroGUI(QMainWindow):
         self.calculator = None
         self.signal_bus = SignalBus.instance()
         self.current_config = None
-        self.project_config: ProjectConfig | None = None
         self.project_model: ProjectConfigModel | None = None
         self.data_config = None
         self.canvas3d = None
@@ -161,13 +159,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 注意：ConfigPanel 的 loadRequested/saveRequested/applyRequested 信号
         # 已在 ConfigManager.__init__() 中连接，无需在此重复连接
         
-        # 面板内部的部件信号
-        self.source_panel.btn_add_part.clicked.connect(self._add_source_part)
-        self.source_panel.btn_remove_part.clicked.connect(self._remove_source_part)
+        # 面板内部的部件信号（改为使用 SignalBus 请求，在面板内部已连接）
         self.source_panel.partSelected.connect(self._on_source_part_changed_wrapper)
 
-        self.target_panel.btn_add_part.clicked.connect(self._add_target_part)
-        self.target_panel.btn_remove_part.clicked.connect(self._remove_target_part)
+        # Target 同样由面板发起请求（面板已连接到 SignalBus）
         self.target_panel.partSelected.connect(self._on_target_part_changed_wrapper)
 
         return panel
@@ -205,34 +200,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.btn_add_target_part = self.target_panel.btn_add_part
         self.btn_remove_target_part = self.target_panel.btn_remove_part
         
-        # 创建隐藏的三元旋钮（保持兼容性）
-        self.src_ox, self.src_oy, self.src_oz = self._create_triple_spin(0.0, 0.0, 0.0)
-        self.src_xx, self.src_xy, self.src_xz = self._create_triple_spin(1.0, 0.0, 0.0)
-        self.src_yx, self.src_yy, self.src_yz = self._create_triple_spin(0.0, 1.0, 0.0)
-        self.src_zx, self.src_zy, self.src_zz = self._create_triple_spin(0.0, 0.0, 1.0)
-        self.src_mcx, self.src_mcy, self.src_mcz = self._create_triple_spin(0.0, 0.0, 0.0)
-        
-        self.tgt_ox, self.tgt_oy, self.tgt_oz = self._create_triple_spin(0.0, 0.0, 0.0)
-        self.tgt_xx, self.tgt_xy, self.tgt_xz = self._create_triple_spin(1.0, 0.0, 0.0)
-        self.tgt_yx, self.tgt_yy, self.tgt_yz = self._create_triple_spin(0.0, 1.0, 0.0)
-        self.tgt_zx, self.tgt_zy, self.tgt_zz = self._create_triple_spin(0.0, 0.0, 1.0)
-        self.tgt_mcx, self.tgt_mcy, self.tgt_mcz = self._create_triple_spin(0.0, 0.0, 0.0)
-
-        # 兼容旧逻辑的 Variant 选择器（当前组件化面板未使用，但下游管理器仍会设置范围）
-        self.spin_source_variant = QSpinBox()
-        self.spin_source_variant.setRange(0, 0)
-        self.spin_source_variant.setVisible(False)
-        try:
-            self.spin_source_variant.valueChanged.connect(lambda i: self.part_manager.on_source_variant_changed(int(i)))
-        except Exception:
-            logger.debug("连接 Source 变体切换信号失败", exc_info=True)
-        self.spin_target_variant = QSpinBox()
-        self.spin_target_variant.setRange(0, 0)
-        self.spin_target_variant.setVisible(False)
-        try:
-            self.spin_target_variant.valueChanged.connect(lambda i: self.part_manager.on_target_variant_changed(int(i)))
-        except Exception:
-            logger.debug("连接 Target 变体切换信号失败", exc_info=True)
+        # 已移除隐藏三元旋钮与旧 Variant 选择器（统一使用面板控件与模型）
         
         # 初始化当前Part名称
         self._current_source_part_name = "Global"
@@ -280,32 +248,7 @@ class IntegratedAeroGUI(QMainWindow):
 
         return panel
 
-    def _create_triple_spin(self, a: float, b: float, c: float):
-        """创建一行三个紧凑型 QDoubleSpinBox，返回 (spin_a, spin_b, spin_c)"""
-        s1 = QDoubleSpinBox()
-        s2 = QDoubleSpinBox()
-        s3 = QDoubleSpinBox()
-        for s in (s1, s2, s3):
-            try:
-                s.setRange(-1e6, 1e6)
-                s.setDecimals(2)
-                s.setSingleStep(0.1)
-                s.setValue(0.0)
-                s.setProperty('compact', 'true')
-                s.setMaximumWidth(96)
-            except Exception:
-                logger.debug("triple spin init failed", exc_info=True)
-        s1.setValue(float(a))
-        s2.setValue(float(b))
-        s3.setValue(float(c))
-        # ToolTip 提示
-        try:
-            s1.setToolTip('X 分量')
-            s2.setToolTip('Y 分量')
-            s3.setToolTip('Z 分量')
-        except Exception:
-            pass
-        return s1, s2, s3
+    
 
     def _select_all_files(self):
         """全选文件树中的所有文件项"""
@@ -402,19 +345,10 @@ class IntegratedAeroGUI(QMainWindow):
                     pass
 
     def _save_current_source_part(self):
-        """将当前 Source 表单保存到新旧模型，并同步旧结构（使用强类型接口）。"""
+        """将当前 Source 表单保存到新模型（使用强类型接口）。"""
         try:
             part_name = self.src_part_name.text() if hasattr(self, "src_part_name") else "Global"
             payload = self.source_panel.to_variant_payload(part_name)
-
-            # 更新旧模型 ProjectConfig
-            if getattr(self, "project_config", None):
-                try:
-                    variant = Variant.from_dict(payload)
-                    part = Part(name=variant.part_name, variants=[variant])
-                    self.project_config.source_parts[part.name] = part
-                except Exception:
-                    logger.debug("更新 ProjectConfig 失败", exc_info=True)
 
             # 更新新模型 ProjectConfigModel（使用强类型接口）
             try:
@@ -428,31 +362,14 @@ class IntegratedAeroGUI(QMainWindow):
                 self.project_model.source_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
             except Exception:
                 logger.debug("更新 ProjectConfigModel 失败", exc_info=True)
-
-            # 同步旧结构以兼容现有流程
-            try:
-                if getattr(self, "project_config", None):
-                    self._raw_project_dict = self.project_config.to_dict()
-                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
-            except Exception:
-                logger.debug("同步旧结构失败", exc_info=True)
         except Exception:
             logger.debug("_save_current_source_part failed", exc_info=True)
 
     def _save_current_target_part(self):
-        """将当前 Target 表单保存到新旧模型，并同步旧结构（使用强类型接口）。"""
+        """将当前 Target 表单保存到新模型（使用强类型接口）。"""
         try:
             part_name = self.tgt_part_name.text() if hasattr(self, "tgt_part_name") else "Target"
             payload = self.target_panel.to_variant_payload(part_name)
-
-            # 更新旧模型 ProjectConfig
-            if getattr(self, "project_config", None):
-                try:
-                    variant = Variant.from_dict(payload)
-                    part = Part(name=variant.part_name, variants=[variant])
-                    self.project_config.target_parts[part.name] = part
-                except Exception:
-                    logger.debug("更新 ProjectConfig 失败", exc_info=True)
 
             # 更新新模型 ProjectConfigModel（使用强类型接口）
             try:
@@ -466,14 +383,6 @@ class IntegratedAeroGUI(QMainWindow):
                 self.project_model.target_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
             except Exception:
                 logger.debug("更新 ProjectConfigModel 失败", exc_info=True)
-
-            # 同步旧结构以兼容现有流程
-            try:
-                if getattr(self, "project_config", None):
-                    self._raw_project_dict = self.project_config.to_dict()
-                    self.current_config = ProjectData.from_dict(self._raw_project_dict)
-            except Exception:
-                logger.debug("同步旧结构失败", exc_info=True)
         except Exception:
             logger.debug("_save_current_target_part failed", exc_info=True)
 
