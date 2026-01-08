@@ -77,16 +77,14 @@ class OperationPanel(QWidget):
         gui_instance._file_tree_items = bp._file_tree_items
         gui_instance.progress_bar = bp.progress_bar
         gui_instance.tab_main = bp.tab_main
-        gui_instance.info_tab_widget = bp.info_tab
-        gui_instance.lbl_status = bp.lbl_status
-        gui_instance.lbl_preview_skip = bp.lbl_preview_skip
-        gui_instance.lbl_preview_passthrough = bp.lbl_preview_passthrough
-        gui_instance.lbl_preview_columns = bp.lbl_preview_columns
+        gui_instance.info_tab_widget = None
         gui_instance.txt_batch_log = bp.txt_batch_log
         gui_instance.btn_config_format = bp.btn_config_format
         gui_instance.btn_batch = bp.btn_batch
         gui_instance.btn_undo = bp.btn_undo
         gui_instance.tab_logs_widget = bp.log_tab
+        gui_instance.lbl_format_summary = getattr(bp, 'lbl_format_summary', None)
+        gui_instance.lbl_source_part_applied = getattr(bp, 'lbl_source_part_applied', None)
 
 
 __all__ = ["OperationPanel"]
