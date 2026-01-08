@@ -80,9 +80,18 @@ class PartVariant:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "PartVariant":
+        part_name = str(data.get('PartName', 'Unnamed'))
+        cs = CoordinateSystem.from_dict(data.get('CoordSystem', {}))
+        # input.json 的 MomentCenter 位于 variant 顶层；这里要同步进坐标系模型
+        mc = data.get('MomentCenter')
+        if mc is not None:
+            try:
+                cs.moment_center = list(mc)
+            except Exception:
+                pass
         return cls(
-            part_name=str(data.get('PartName', 'Unnamed')),
-            coord_system=CoordinateSystem.from_dict(data.get('CoordSystem', {})),
+            part_name=part_name,
+            coord_system=cs,
             refs=ReferenceValues.from_dict(data)
         )
 
@@ -90,6 +99,8 @@ class PartVariant:
         return {
             'PartName': self.part_name,
             'CoordSystem': self.coord_system.to_dict(),
+            # 保持兼容：在 variant 顶层也输出 MomentCenter，供旧的 data_loader 校验使用
+            'MomentCenter': list(self.coord_system.moment_center),
             **self.refs.to_dict()
         }
 
@@ -102,11 +113,15 @@ class Part:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "Part":
-        variants = [PartVariant.from_dict(v) for v in (data.get('Variants') or [{}])]
-        return cls(
-            part_name=str(data.get('PartName', 'Unnamed')),
-            variants=variants
-        )
+        part_name = str(data.get('PartName', 'Unnamed'))
+        variants: List[PartVariant] = []
+        for v in (data.get('Variants') or [{}]):
+            v_copy = dict(v or {})
+            # 兼容 input.json：variant 内通常不含 PartName
+            if not v_copy.get('PartName'):
+                v_copy['PartName'] = part_name
+            variants.append(PartVariant.from_dict(v_copy))
+        return cls(part_name=part_name, variants=variants)
 
     def to_dict(self) -> Dict:
         return {
