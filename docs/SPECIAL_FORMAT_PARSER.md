@@ -82,6 +82,24 @@ for part_name, df in data_dict.items():
             
             result = calculator.process_frame(force, moment)
             # 处理结果...
+
+## 与批处理的集成
+
+特殊格式解析器可作为批处理的后备解析器：当批处理未传入 `--format-file` 且 `--enable-sidecar` 未启用时，批处理会尝试使用 `parse_special_format_file` 对扩展名为 `.mtfmt` / `.mtdata` 的文件进行解析并提取 part 数据。
+
+示例：在批处理中，将解析结果转换为标准 `format-file` 或直接映射列名后处理：
+
+```python
+from pathlib import Path
+from src.special_format_parser import parse_special_format_file
+from src.cli_helpers import generate_format_from_dataframe  # 项目内可用的辅助函数示例
+
+data_dict = parse_special_format_file(Path('data/special_input.mtfmt'))
+for part, df in data_dict.items():
+    # generate_format_from_dataframe 为辅助函数示例，基于 DataFrame 的列生成批处理需用的 `columns` 配置
+    fmt = generate_format_from_dataframe(df)
+    # 可将 fmt 写为临时 format-file 或直接在内存中供批处理使用
+```
 ```
 
 ## API 参考
