@@ -76,8 +76,8 @@ def test_register_overwrite_logs(monkeypatch):
     p1 = SimpleCoordPlugin(name="dup")
     p2 = SimpleCoordPlugin(name="dup")
     called = {}
-    # monkeypatch logger.warning to capture call
-    monkeypatch.setattr(pl.logger, "warning", lambda msg: called.setdefault("w", msg))
+    # monkeypatch logger.warning to capture call (accept any args/kwargs)
+    monkeypatch.setattr(pl.logger, "warning", lambda *args, **kwargs: called.setdefault("w", args or kwargs))
     reg.register(p1)
     reg.register(p2)
     assert "w" in called
