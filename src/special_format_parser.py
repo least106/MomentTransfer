@@ -35,13 +35,17 @@ def is_metadata_line(line: str) -> bool:
     if not line:
         return True
     
-    # 包含中文冒号或英文冒号的描述行
-    if '：' in line or (': ' in line and not line[0].isdigit()):
+    # 包含中文冒号或英文冒号的描述行（英文冒号即使没有空格也视为描述）
+    if '：' in line or (':' in line and not line[0].isdigit()):
         return True
     
     # 包含中文字符且不是纯英文单词的行
     if re.search(r'[\u4e00-\u9fff]', line) and '：' not in line:
-        # 可能是参数描述行，如"计算坐标系:X向后、Y向右、z向上"
+        # 对于短而简洁的中文单词（可能为 part 名），不要误判为元数据
+        tokens = line.split()
+        if len(tokens) == 1 and len(line) < 20:
+            return False
+        # 其他包含中文但无冒号的长文本视为元数据或描述
         return True
     
     return False
@@ -59,14 +63,14 @@ def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> 
         return True
 
     try:
-        with open(p, 'r', encoding='utf-8') as fh:
-            lines = [fh.readline() for _ in range(max_probe_lines)]
+        lines = _read_text_file_lines(p, max_lines=max_probe_lines)
     except OSError:
         return False
 
     tokens = " ".join(lines)
+    tokens_lower = tokens.lower()
     header_keywords = ['Alpha', 'CL', 'CD', 'Cm', 'Cx', 'Cy', 'Cz', 'Cz/FN']
-    if any(kw in tokens for kw in header_keywords):
+    if any(kw.lower() in tokens_lower for kw in header_keywords):
         # 同时检测到可能的 part 标记
         for ln in lines:
             ln = (ln or '').strip()
@@ -128,17 +132,23 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
     if not line:
         return False
     
-    # 如果是元数据行或汇总行，肯定不是 part 名
-    if is_metadata_line(line) or is_summary_line(line):
-        return False
-    
-    # 如果是数据行，肯定不是 part 名
-    if is_data_line(line):
+    # 如果是数据行或汇总行，肯定不是 part 名
+    if is_data_line(line) or is_summary_line(line):
         return False
     
     # part 名特征：简短的文本（通常少于20个字符）
     tokens = line.split()
     if len(tokens) == 1 and len(line) < 20:
+        # 中文短文本优先视为 part 名（避免被误判为元数据）
+        contains_non_ascii = any(ord(ch) > 127 for ch in line)
+        if contains_non_ascii and re.search(r'[\u4e00-\u9fff]', line):
+            if next_line:
+                next_tokens = next_line.split()
+                header_keywords = ['Alpha', 'CL', 'CD', 'Cm', 'Cx', 'Cy', 'Cz']
+                if any(kw in next_tokens for kw in header_keywords):
+                    return True
+            return True
+
         # 如果下一行是表头，更有可能是 part 名
         if next_line:
             next_tokens = next_line.split()
@@ -148,6 +158,80 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
         return True
     
     return False
+
+
+def _read_text_file_lines(file_path: Path, *, max_lines: Optional[int] = None, encodings=None) -> List[str]:
+    """尝试以多种编码读取文本文件，返回行列表。
+
+    - 默认先尝试 `utf-8`，若失败依次尝试 `gbk` 和 `latin-1`。
+    - max_lines: 若指定则只返回前若干行（用于探测）。
+    """
+    if encodings is None:
+        encodings = ['utf-8', 'gbk', 'latin-1']
+
+    last_exc = None
+    for enc in encodings:
+        try:
+            with open(file_path, 'r', encoding=enc, errors='strict') as fh:
+                if max_lines is None:
+                    return fh.readlines()
+                lines = [fh.readline() for _ in range(max_lines)]
+                return lines
+        except UnicodeDecodeError as e:
+            last_exc = e
+            logger.debug("尝试以编码 %s 读取文件失败，切换下一编码", enc)
+            continue
+    # 若所有编码均失败，尝试以 latin-1 宽松读取以避免完全失败
+    try:
+        with open(file_path, 'r', encoding='latin-1', errors='replace') as fh:
+            if max_lines is None:
+                return fh.readlines()
+            return [fh.readline() for _ in range(max_lines)]
+    except Exception:
+        # 最后抛出最初的 Unicode 错误或一般 IO 错误
+        if last_exc:
+            raise last_exc
+        raise
+
+
+def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
+    """为给定列名列表返回一个从原始列名到标准列名的映射。
+
+    标准列名包括: 'Cx','Cy','Cz/FN','CMx','CMy','CMz' 等。
+    此函数对常见变体进行容错处理，例如下划线替代、大小写差异、或 '/' 与 '_' 互换。
+    """
+    mapping = {}
+    # 小写化并规范化下划线与斜杠和空格
+    def norm(s: str) -> str:
+        return s.strip().lower().replace('_', '/').replace(' ', '')
+
+    canonical = {
+        'cx': 'Cx',
+        'cy': 'Cy',
+        'cz/fn': 'Cz/FN',
+        'czfn': 'Cz/FN',
+        'cmx': 'CMx',
+        'cmy': 'CMy',
+        'cmz': 'CMz',
+        'alpha': 'Alpha',
+        'cl': 'CL',
+        'cd': 'CD',
+        'cm': 'Cm',
+    }
+
+    for col in columns:
+        key = norm(col)
+        if key in canonical:
+            mapping[col] = canonical[key]
+        else:
+            # 尝试去掉括号等特殊字符后匹配
+            key2 = re.sub(r'[\(\)\[\]\-]', '', key)
+            if key2 in canonical:
+                mapping[col] = canonical[key2]
+            else:
+                mapping[col] = col
+
+    return mapping
 
 
 def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
@@ -160,8 +244,7 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     Returns:
         字典，键为 part 名称，值为对应的 DataFrame
     """
-    with open(file_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
+    lines = _read_text_file_lines(file_path)
     
     result = {}
     current_part = None
@@ -189,6 +272,9 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
             if current_part and current_header and current_data:
                 try:
                     df = pd.DataFrame(current_data, columns=current_header)
+                    # 规范列名映射，接受常见变体
+                    col_map = _normalize_column_mapping(list(df.columns))
+                    df = df.rename(columns=col_map)
                     # 转换数值列
                     for col in df.columns:
                         try:
@@ -211,7 +297,8 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
         if current_part and not current_header:
             tokens = line.split()
             header_keywords = ['Alpha', 'CL', 'CD', 'Cm', 'Cx', 'Cy', 'Cz']
-            if any(kw in tokens for kw in header_keywords):
+            hk_lower = [h.lower() for h in header_keywords]
+            if any(any(h in t.lower() for h in hk_lower) for t in tokens):
                 current_header = tokens
                 i += 1
                 continue
@@ -238,6 +325,9 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     if current_part and current_header and current_data:
         try:
             df = pd.DataFrame(current_data, columns=current_header)
+            # 规范列名映射，接受常见变体
+            col_map = _normalize_column_mapping(list(df.columns))
+            df = df.rename(columns=col_map)
             for col in df.columns:
                 try:
                     df[col] = pd.to_numeric(df[col])
@@ -386,8 +476,7 @@ def get_part_names(file_path: Path) -> List[str]:
     """
     part_names = []
     
-    with open(file_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
+    lines = _read_text_file_lines(file_path)
     
     i = 0
     while i < len(lines):
