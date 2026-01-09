@@ -30,7 +30,7 @@ except ImportError:
 
 
 @dataclass
-class PerformanceMetrics:
+class PerformanceMetrics:  # pylint: disable=R0902
     """性能指标数据类"""
 
     metric_name: str
@@ -73,8 +73,9 @@ class PerformanceMonitor:
         if self.process:
             try:
                 memory_before_mb = self.process.memory_info().rss / 1024 / 1024
-            except Exception:
-                pass
+            except Exception:  # pylint: disable=broad-except
+                # psutil 动态环境下可能抛出多种错误，记录为调试信息并忽略
+                logger.debug("无法读取进程内存信息，跳过memory_before", exc_info=True)
 
         metrics = PerformanceMetrics(
             metric_name=metric_name,
@@ -95,8 +96,8 @@ class PerformanceMonitor:
                     metrics.memory_after_mb - metrics.memory_before_mb
                 )
                 metrics.cpu_percent = self.process.cpu_percent(interval=0.01)
-            except Exception:
-                pass
+            except Exception:  # pylint: disable=broad-except
+                logger.debug("读取进程性能信息失败，略过性能字段", exc_info=True)
 
         with self.lock:
             self.metrics[metrics.metric_name].append(metrics)
@@ -173,8 +174,8 @@ class PerformanceMonitor:
                 stats["memory_available_mb"] = (
                     psutil.virtual_memory().available / 1024 / 1024
                 )
-            except Exception:
-                pass
+            except Exception:  # pylint: disable=broad-except
+                logger.debug("获取系统统计信息失败", exc_info=True)
         return stats
 
     def clear_metrics(self, metric_name: Optional[str] = None) -> None:
@@ -194,15 +195,21 @@ class PerformanceMonitor:
         logger.info("=== 性能监控摘要 ===")
         if sys_stats:
             logger.info(
-                f"系统 CPU: {sys_stats.get('cpu_percent', 'N/A')}%, 内存: {sys_stats.get('memory_percent', 'N/A')}%"
+                "系统 CPU: %s%%, 内存: %s%%",
+                sys_stats.get("cpu_percent", "N/A"),
+                sys_stats.get("memory_percent", "N/A"),
             )
 
         for metric_name, stats in all_stats.items():
             if stats:
                 logger.info(
-                    f"{metric_name}: 计数={stats['count']}, "
-                    f"耗时={stats['duration_ms']['avg']:.2f}ms (min: {stats['duration_ms']['min']:.2f}ms, max: {stats['duration_ms']['max']:.2f}ms), "
-                    f"内存Δ={stats['memory_mb']['avg']:.2f}MB"
+                    "%s: 计数=%s, 耗时=%.2fms (min: %.2fms, max: %.2fms), 内存Δ=%.2fMB",
+                    metric_name,
+                    stats["count"],
+                    stats["duration_ms"]["avg"],
+                    stats["duration_ms"]["min"],
+                    stats["duration_ms"]["max"],
+                    stats["memory_mb"]["avg"],
                 )
 
 
@@ -220,19 +227,16 @@ def measure_performance(func: Callable) -> Callable:
     return wrapper
 
 
-# 全局监控器实例
-_performance_monitor: Optional[PerformanceMonitor] = None
-
-
 def get_performance_monitor() -> PerformanceMonitor:
-    """获取全局性能监控器实例"""
-    global _performance_monitor
-    if _performance_monitor is None:
-        _performance_monitor = PerformanceMonitor()
-    return _performance_monitor
+    """获取全局性能监控器实例（使用函数属性作为单例容器，避免模块全局变量）。"""
+    inst = getattr(get_performance_monitor, "_instance", None)
+    if inst is None:
+        inst = PerformanceMonitor()
+        setattr(get_performance_monitor, "_instance", inst)
+    return inst
 
 
 def reset_performance_monitor() -> None:
-    """重置监控器"""
-    global _performance_monitor
-    _performance_monitor = PerformanceMonitor()
+    """重置监控器实例（删除函数属性）。"""
+    if hasattr(get_performance_monitor, "_instance"):
+        delattr(get_performance_monitor, "_instance")
