@@ -51,6 +51,8 @@ jobs:
             ls -la /usr/lib/x86_64-linux-gnu | head -n 80 || true
           fi
           pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+          # 确保 coverage 支持插件可用
+          pip install pytest-cov coverage -i https://pypi.tuna.tsinghua.edu.cn/simple
 
       - name: Run tests (headless)
         env:
