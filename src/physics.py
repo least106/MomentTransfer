@@ -30,11 +30,14 @@ from src.config import get_config
 from src.data_loader import FrameConfiguration, ProjectData
 
 logger = logging.getLogger(__name__)
+# 该模块包含物理学惯例命名（如 R, F_rotated 等），接受非 snake_case 命名风格
+# 同时 __init__ 参数较多属于兼容性要求，允许过多参数检查
+# pylint: disable=invalid-name,too-many-arguments
 
 
 @dataclass
 class AeroResult:
-    # 保持原有的单点结果类不变，用于兼容 GUI 单点调试
+    """单点计算结果容器（兼容 GUI 与测试）。"""
     force_transformed: List[float]
     moment_transformed: List[float]
     coeff_force: List[float]
@@ -77,10 +80,8 @@ class AeroCalculator:
                 if len(project.target_parts) == 1:
                     target_part = next(iter(project.target_parts.keys()))
                 else:
-                    import warnings
-
                     warnings.warn(
-                        "ProjectData 包含多个 Target part，未显式指定 target_part，将使用第一个 Part。建议在 CLI/脚本中显式指定 --target-part/--target-variant。",
+                        "ProjectData 包含多个 Target part，未显式指定 target_part，使用第一个 Part。建议显式指定。",
                         UserWarning,
                     )
                     target_part = next(iter(project.target_parts.keys()))
@@ -189,7 +190,7 @@ class AeroCalculator:
                 result[:, zero_mask] = 0.0
             elif result.ndim == 1 and denom_arr.ndim == 1:
                 result[zero_mask] = 0.0
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             # 若形状不匹配，回退为原始结果
             logger.debug(
                 "_safe_divide: 形状不匹配，无法按列屏蔽 zero_mask", exc_info=True
@@ -211,40 +212,48 @@ class AeroCalculator:
                     getattr(cache_cfg, "max_entries", None)
                 )
                 try:
-                    R = rotation_cache.get_rotation_matrix(
+                    rotation_matrix = rotation_cache.get_rotation_matrix(
                         self.basis_source,
                         self.basis_target,
                         getattr(cache_cfg, "precision_digits", None),
                     )
-                except Exception:
-                    logger.debug("旋转矩阵缓存调用失败，回退到直接计算", exc_info=True)
-                    R = None
+                except Exception:  # pylint: disable=broad-except
+                    logger.debug(
+                        "旋转矩阵缓存调用失败，回退到直接计算", exc_info=True
+                    )
+                    rotation_matrix = None
 
-                if R is None:
-                    R = geometry.compute_rotation_matrix(
+                if rotation_matrix is None:
+                    rotation_matrix = geometry.compute_rotation_matrix(
                         self.basis_source, self.basis_target
                     )
                     try:
                         rotation_cache.set_rotation_matrix(
                             self.basis_source,
                             self.basis_target,
-                            R,
+                            rotation_matrix,
                             getattr(cache_cfg, "precision_digits", None),
                         )
                         logger.debug("旋转矩阵缓存未命中，已计算并缓存")
-                    except Exception:
-                        logger.debug("旋转矩阵缓存写入失败，已忽略", exc_info=True)
+                    except Exception:  # pylint: disable=broad-except
+                        logger.debug(
+                            "旋转矩阵缓存写入失败，已忽略", exc_info=True
+                        )
                 else:
                     logger.debug("旋转矩阵缓存命中")
             else:
-                R = geometry.compute_rotation_matrix(
+                rotation_matrix = geometry.compute_rotation_matrix(
                     self.basis_source, self.basis_target
                 )
-        except Exception:
-            logger.debug("获取缓存配置失败或异常，直接计算旋转矩阵", exc_info=True)
-            R = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+        except Exception:  # pylint: disable=broad-except
+            logger.debug(
+                "获取缓存配置失败或异常，直接计算旋转矩阵", exc_info=True
+            )
+            rotation_matrix = geometry.compute_rotation_matrix(
+                self.basis_source, self.basis_target
+            )
 
-        return R
+        return rotation_matrix
 
     def _init_r_target(self, cache_cfg):
         """
@@ -265,8 +274,10 @@ class AeroCalculator:
                         self.r_global,
                         getattr(cache_cfg, "precision_digits", None),
                     )
-                except Exception:
-                    logger.debug("力臂转换缓存调用失败，回退到直接计算", exc_info=True)
+                except Exception:  # pylint: disable=broad-except
+                    logger.debug(
+                        "力臂转换缓存调用失败，回退到直接计算", exc_info=True
+                    )
                     r_t = None
 
                 if r_t is None:
@@ -281,13 +292,13 @@ class AeroCalculator:
                             getattr(cache_cfg, "precision_digits", None),
                         )
                         logger.debug("力臂转换缓存未命中，已计算并缓存")
-                    except Exception:
+                    except Exception:  # pylint: disable=broad-except
                         logger.debug("力臂转换写入失败，已忽略", exc_info=True)
                 else:
                     logger.debug("力臂转换缓存命中")
             else:
                 r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             logger.debug(
                 "获取/使用力臂转换缓存时发生异常，直接计算 r_target", exc_info=True
             )
@@ -307,7 +318,7 @@ class AeroCalculator:
                 self.rotation_matrix = geometry.compute_rotation_matrix(
                     self.basis_source, self.basis_target
                 )
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             logger.debug(
                 "校验 rotation_matrix 时发生异常，重新计算旋转矩阵", exc_info=True
             )
@@ -326,7 +337,7 @@ class AeroCalculator:
                 )
             else:
                 self.r_target = r_arr
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             logger.debug("校验 r_target 时发生异常，重新计算 r_target", exc_info=True)
             self.r_target = geometry.project_vector_to_frame(
                 self.r_global, self.basis_target
@@ -347,7 +358,7 @@ class AeroCalculator:
         """
         try:
             return np.dot(np.asarray(vectors, dtype=float), self.rotation_matrix.T)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             logger.debug("旋转向量时发生异常，尝试逐行计算", exc_info=True)
             vecs = np.asarray(vectors, dtype=float)
             out = np.zeros_like(vecs)
@@ -367,7 +378,7 @@ class AeroCalculator:
         """
         try:
             return np.cross(self.r_target, np.asarray(F_rotated, dtype=float))
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             logger.debug("计算移轴力矩时异常，回退为逐行计算", exc_info=True)
             fr = np.asarray(F_rotated, dtype=float)
             out = np.zeros_like(fr)
@@ -402,13 +413,13 @@ class AeroCalculator:
         C_M = self._safe_divide(
             M_final,
             denom_moment,
-            warn_msg="动压(q) 或 参考长度 b_ref/c_ref 为零，相关轴的力矩系数已设为0。",
+            warn_msg=(
+                "动压(q) 或 参考长度 b_ref/c_ref 为零，相关轴的力矩系数已设为0。"
+            ),
         )
 
-        """返回力和力矩的无量纲系数 (C_F, C_M)。
-
-        说明：当 `q * s_ref == 0` 或参考长度为 0 时，使用 `_safe_divide` 会将对应结果设为 0 并发出警告。
-        """
+        # 返回力和力矩的无量纲系数 (C_F, C_M)。
+        # 说明：当 `q * s_ref == 0` 或参考长度为 0 时，使用 `_safe_divide` 会将对应结果设为 0 并发出警告。
 
         return C_F, C_M
 
