@@ -1,9 +1,9 @@
 # src/__main__.py
-import sys
-import os
+
 
 def print_help():
-    print("""
+    print(
+        """
 ================================================
                MomentTransform
 ================================================
@@ -21,7 +21,9 @@ def print_help():
    python gui_main.py
 
 ------------------------------------------------
-    """)
+    """
+    )
+
 
 if __name__ == "__main__":
-   print_help()
+    print_help()

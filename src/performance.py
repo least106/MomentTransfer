@@ -8,20 +8,21 @@
 4. I/O 性能指标
 """
 
-import time
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, Optional, Callable
-from functools import wraps
-from contextlib import contextmanager
-from collections import defaultdict
 import threading
+import time
+from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass
+from functools import wraps
+from typing import Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 # 尝试导入 psutil（可选）
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -31,6 +32,7 @@ except ImportError:
 @dataclass
 class PerformanceMetrics:
     """性能指标数据类"""
+
     metric_name: str
     start_time: float
     end_time: Optional[float] = None
@@ -46,13 +48,13 @@ class PerformanceMetrics:
     def to_dict(self) -> Dict:
         """转换为字典"""
         return {
-            'metric_name': self.metric_name,
-            'duration_ms': self.duration_ms,
-            'memory_delta_mb': self.memory_delta_mb,
-            'cpu_percent': self.cpu_percent,
-            'io_read_bytes': self.io_read_bytes,
-            'io_write_bytes': self.io_write_bytes,
-            'error': self.error,
+            "metric_name": self.metric_name,
+            "duration_ms": self.duration_ms,
+            "memory_delta_mb": self.memory_delta_mb,
+            "cpu_percent": self.cpu_percent,
+            "io_read_bytes": self.io_read_bytes,
+            "io_write_bytes": self.io_write_bytes,
+            "error": self.error,
         }
 
 
@@ -102,11 +104,7 @@ class PerformanceMonitor:
     def record_metric(self, metric_name: str, duration_ms: float, **kwargs) -> None:
         """直接记录指标"""
         metrics = PerformanceMetrics(
-            metric_name=metric_name,
-            start_time=time.time(),
-            end_time=time.time(),
-            duration_ms=duration_ms,
-            **kwargs
+            metric_name=metric_name, start_time=time.time(), end_time=time.time(), duration_ms=duration_ms, **kwargs
         )
         with self.lock:
             self.metrics[metric_name].append(metrics)
@@ -138,18 +136,18 @@ class PerformanceMonitor:
             return {}
 
         return {
-            'count': len(metrics_list),
-            'duration_ms': {
-                'min': min(durations),
-                'max': max(durations),
-                'avg': sum(durations) / len(durations),
+            "count": len(metrics_list),
+            "duration_ms": {
+                "min": min(durations),
+                "max": max(durations),
+                "avg": sum(durations) / len(durations),
             },
-            'memory_mb': {
-                'min': min(memory_deltas),
-                'max': max(memory_deltas),
-                'avg': sum(memory_deltas) / len(memory_deltas),
+            "memory_mb": {
+                "min": min(memory_deltas),
+                "max": max(memory_deltas),
+                "avg": sum(memory_deltas) / len(memory_deltas),
             },
-            'errors': sum(1 for m in metrics_list if m.error),
+            "errors": sum(1 for m in metrics_list if m.error),
         }
 
     def get_all_stats(self) -> Dict:
@@ -164,9 +162,9 @@ class PerformanceMonitor:
         stats = {}
         if PSUTIL_AVAILABLE:
             try:
-                stats['cpu_percent'] = psutil.cpu_percent(interval=0.1)
-                stats['memory_percent'] = psutil.virtual_memory().percent
-                stats['memory_available_mb'] = psutil.virtual_memory().available / 1024 / 1024
+                stats["cpu_percent"] = psutil.cpu_percent(interval=0.1)
+                stats["memory_percent"] = psutil.virtual_memory().percent
+                stats["memory_available_mb"] = psutil.virtual_memory().available / 1024 / 1024
             except Exception:
                 pass
         return stats
@@ -187,7 +185,9 @@ class PerformanceMonitor:
 
         logger.info("=== 性能监控摘要 ===")
         if sys_stats:
-            logger.info(f"系统 CPU: {sys_stats.get('cpu_percent', 'N/A')}%, 内存: {sys_stats.get('memory_percent', 'N/A')}%")
+            logger.info(
+                f"系统 CPU: {sys_stats.get('cpu_percent', 'N/A')}%, 内存: {sys_stats.get('memory_percent', 'N/A')}%"
+            )
 
         for metric_name, stats in all_stats.items():
             if stats:
@@ -200,6 +200,7 @@ class PerformanceMonitor:
 
 def measure_performance(func: Callable) -> Callable:
     """装饰器 - 自动测量函数性能"""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         monitor = get_performance_monitor()

@@ -7,12 +7,12 @@
 3. OutputPlugin: 自定义输出格式
 """
 
-import logging
 import importlib.util
+import logging
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import List, Dict, Optional, Type, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -22,11 +22,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PluginMetadata:
     """插件元数据"""
-    name: str              # 插件名称
-    version: str           # 版本
-    author: str            # 作者
-    description: str       # 描述
-    plugin_type: str       # 插件类型：'coord_system', 'transformation', 'output'
+
+    name: str  # 插件名称
+    version: str  # 版本
+    author: str  # 作者
+    description: str  # 描述
+    plugin_type: str  # 插件类型：'coord_system', 'transformation', 'output'
 
 
 class BasePlugin(ABC):
@@ -41,7 +42,7 @@ class BasePlugin(ABC):
     def initialize(self, config: Dict[str, Any]) -> None:
         """
         初始化插件（可选）
-        
+
         参数：
             config: 插件特定的配置字典
         """
@@ -59,7 +60,7 @@ class CoordSystemPlugin(BasePlugin):
     def get_coordinate_system(self, name: str) -> Optional[Dict[str, List[float]]]:
         """
         获取命名的坐标系定义
-        
+
         返回格式：
         {
             'origin': [x, y, z],
@@ -89,13 +90,13 @@ class TransformationPlugin(BasePlugin):
     ) -> Dict[str, np.ndarray]:
         """
         执行自定义坐标转换
-        
+
         参数：
             forces: (N, 3) 力数组
             moments: (N, 3) 力矩数组
             rotation_matrix: (3, 3) 旋转矩阵
             moment_arm: (3,) 力臂向量
-            
+
         返回：
             包含转换后的力、力矩和系数的字典
         """
@@ -106,15 +107,10 @@ class OutputPlugin(BasePlugin):
     """自定义输出格式插件"""
 
     @abstractmethod
-    def write(
-        self,
-        data: Dict[str, np.ndarray],
-        output_path: Path,
-        **kwargs
-    ) -> None:
+    def write(self, data: Dict[str, np.ndarray], output_path: Path, **kwargs) -> None:
         """
         以自定义格式写入数据
-        
+
         参数：
             data: 计算结果数据
             output_path: 输出文件路径
@@ -193,11 +189,11 @@ class PluginRegistry:
 
     def list_plugins(self, plugin_type: Optional[str] = None) -> List[str]:
         """列出所有插件"""
-        if plugin_type == 'coord_system':
+        if plugin_type == "coord_system":
             return list(self.coord_system_plugins.keys())
-        elif plugin_type == 'transformation':
+        elif plugin_type == "transformation":
             return list(self.transformation_plugins.keys())
-        elif plugin_type == 'output':
+        elif plugin_type == "output":
             return list(self.output_plugins.keys())
         else:
             return list(self.plugins.keys())
@@ -213,7 +209,7 @@ class PluginLoader:
     def load_plugin_from_file(self, filepath: Path) -> Optional[BasePlugin]:
         """
         从 Python 文件加载插件
-        
+
         约定：插件文件应包含一个继承自 BasePlugin 的类，
         且该类应有 `create_plugin()` 工厂函数。
         """
@@ -224,10 +220,7 @@ class PluginLoader:
 
         try:
             # 动态加载模块
-            spec = importlib.util.spec_from_file_location(
-                filepath.stem,
-                filepath
-            )
+            spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
             if spec is None or spec.loader is None:
                 logger.error(f"无法加载模块: {filepath}")
                 return None
@@ -236,7 +229,7 @@ class PluginLoader:
             spec.loader.exec_module(module)
 
             # 查找 create_plugin 工厂函数
-            if hasattr(module, 'create_plugin'):
+            if hasattr(module, "create_plugin"):
                 plugin = module.create_plugin()
                 self.registry.register(plugin)
                 logger.info(f"成功加载插件: {filepath}")
@@ -257,8 +250,8 @@ class PluginLoader:
             return []
 
         plugins = []
-        for plugin_file in directory.glob('*.py'):
-            if plugin_file.name.startswith('_'):
+        for plugin_file in directory.glob("*.py"):
+            if plugin_file.name.startswith("_"):
                 continue  # 跳过私有文件
 
             plugin = self.load_plugin_from_file(plugin_file)
@@ -284,7 +277,7 @@ def get_plugin_registry() -> PluginRegistry:
 def load_plugins_from_config(config_dirs: List[str]) -> None:
     """
     根据配置目录加载所有插件
-    
+
     参数：
         config_dirs: 插件目录列表
     """

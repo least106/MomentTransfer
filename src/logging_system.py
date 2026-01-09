@@ -8,13 +8,12 @@
 4. 上下文信息追踪
 """
 
-import logging
 import json
+import logging
 import sys
-from datetime import datetime
-from typing import Dict, Any, Optional
-from io import StringIO
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
 
 
 class StructuredLogFormatter(logging.Formatter):
@@ -23,22 +22,22 @@ class StructuredLogFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """格式化日志记录为 JSON"""
         log_record = {
-            'timestamp': datetime.utcnow().isoformat(),
-            'level': record.levelname,
-            'logger': record.name,
-            'module': record.module,
-            'function': record.funcName,
-            'line': record.lineno,
-            'message': record.getMessage(),
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+            "message": record.getMessage(),
         }
 
         # 添加异常信息
         if record.exc_info:
-            log_record['exception'] = self.formatException(record.exc_info)
+            log_record["exception"] = self.formatException(record.exc_info)
 
         # 添加额外字段
-        if hasattr(record, 'context'):
-            log_record['context'] = record.context
+        if hasattr(record, "context"):
+            log_record["context"] = record.context
 
         return json.dumps(log_record, ensure_ascii=False, default=str)
 
@@ -48,7 +47,7 @@ class LogContext:
 
     _context = None
 
-    def __init__(self, context_id: str, operation: str = '', **metadata):
+    def __init__(self, context_id: str, operation: str = "", **metadata):
         """初始化上下文"""
         self.context_id = context_id
         self.operation = operation
@@ -66,15 +65,15 @@ class LogContext:
         LogContext._context = self.parent_context
 
     @classmethod
-    def get_current(cls) -> Optional['LogContext']:
+    def get_current(cls) -> Optional["LogContext"]:
         """获取当前上下文"""
         return cls._context
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return {
-            'context_id': self.context_id,
-            'operation': self.operation,
+            "context_id": self.context_id,
+            "operation": self.operation,
             **self.metadata,
         }
 
@@ -90,9 +89,9 @@ class StructuredLogger:
         """添加上下文信息"""
         context_data = {}
         current_context = LogContext.get_current()
-        
+
         if current_context:
-            context_data['context'] = current_context.to_dict()
+            context_data["context"] = current_context.to_dict()
 
         if extra:
             context_data.update(extra)
@@ -122,17 +121,12 @@ class StructuredLogger:
     def log_operation(self, operation: str, success: bool, **details):
         """记录操作结果"""
         message = f"操作 {operation}: {'成功' if success else '失败'}"
-        level = 'info' if success else 'error'
+        level = "info" if success else "error"
         getattr(self, level)(message, operation=operation, success=success, **details)
 
     def log_performance(self, operation: str, duration_ms: float, **metrics):
         """记录性能数据"""
-        self.info(
-            f"性能: {operation}",
-            operation=operation,
-            duration_ms=duration_ms,
-            metrics=metrics
-        )
+        self.info(f"性能: {operation}", operation=operation, duration_ms=duration_ms, metrics=metrics)
 
 
 class LoggerFactory:
@@ -142,7 +136,7 @@ class LoggerFactory:
     _initialized = False
 
     @classmethod
-    def configure(cls, log_level: str = 'INFO', json_output: bool = True):
+    def configure(cls, log_level: str = "INFO", json_output: bool = True):
         """配置日志系统"""
         if cls._initialized:
             return
@@ -163,9 +157,7 @@ class LoggerFactory:
             formatter = StructuredLogFormatter()
         else:
             # 使用标准格式
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)

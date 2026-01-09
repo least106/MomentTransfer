@@ -8,18 +8,20 @@
 4. 文件路径验证
 """
 
+import logging
 import os
 from pathlib import Path
-from typing import Any, List, Tuple, Union, Optional
+from typing import Any, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 class ValidationError(ValueError):
     """数据验证错误"""
+
     pass
 
 
@@ -27,14 +29,14 @@ class DataValidator:
     """数据验证器 - 验证各类输入数据"""
 
     @staticmethod
-    def validate_coordinate(coord: Any, name: str = 'coordinate') -> Tuple[float, float, float]:
+    def validate_coordinate(coord: Any, name: str = "coordinate") -> Tuple[float, float, float]:
         """
         验证坐标（列表或数组）
-        
+
         参数：
             coord: 3D 坐标
             name: 坐标名称（用于错误消息）
-            
+
         返回：
             验证后的 (x, y, z) 元组
         """
@@ -61,20 +63,17 @@ class DataValidator:
 
     @staticmethod
     def validate_numeric_range(
-        value: Any,
-        min_val: Optional[float] = None,
-        max_val: Optional[float] = None,
-        name: str = 'value'
+        value: Any, min_val: Optional[float] = None, max_val: Optional[float] = None, name: str = "value"
     ) -> float:
         """
         验证数值范围
-        
+
         参数：
             value: 待验证的数值
             min_val: 最小值（None 表示无下限）
             max_val: 最大值（None 表示无上限）
             name: 值名称（用于错误消息）
-            
+
         返回：
             验证后的浮点数
         """
@@ -99,12 +98,12 @@ class DataValidator:
     def validate_file_path(filepath: str, must_exist: bool = True, writable: bool = False) -> Path:
         """
         验证文件路径安全性
-        
+
         参数：
             filepath: 文件路径
             must_exist: 文件是否必须存在
             writable: 文件是否必须可写
-            
+
         返回：
             验证后的 Path 对象
         """
@@ -112,7 +111,7 @@ class DataValidator:
             path = Path(filepath).resolve()
 
             # 检查路径遍历攻击
-            if '..' in path.parts:
+            if ".." in path.parts:
                 raise ValidationError(f"路径包含 '..'，可能存在目录遍历攻击: {filepath}")
 
             if must_exist and not path.exists():
@@ -132,19 +131,15 @@ class DataValidator:
             raise ValidationError(f"路径验证失败: {e}")
 
     @staticmethod
-    def validate_csv_safety(
-        filepath: str,
-        max_size_mb: float = 1024,
-        max_rows: int = 1000000
-    ) -> Path:
+    def validate_csv_safety(filepath: str, max_size_mb: float = 1024, max_rows: int = 1000000) -> Path:
         """
         验证 CSV 文件安全性
-        
+
         参数：
             filepath: CSV 文件路径
             max_size_mb: 最大文件大小（MB）
             max_rows: 最大行数
-            
+
         返回：
             验证后的 Path 对象
         """
@@ -154,9 +149,7 @@ class DataValidator:
             # 检查文件大小
             file_size_mb = path.stat().st_size / 1024 / 1024
             if file_size_mb > max_size_mb:
-                raise ValidationError(
-                    f"CSV 文件过大: {file_size_mb:.2f} MB > {max_size_mb} MB"
-                )
+                raise ValidationError(f"CSV 文件过大: {file_size_mb:.2f} MB > {max_size_mb} MB")
 
             # 检查行数（通过采样）
             try:
@@ -165,9 +158,7 @@ class DataValidator:
                     # 读取几行来估计总行数
                     total_lines = sum(1 for _ in open(path))
                     if total_lines > max_rows:
-                        raise ValidationError(
-                            f"CSV 文件行数过多: {total_lines} > {max_rows}"
-                        )
+                        raise ValidationError(f"CSV 文件行数过多: {total_lines} > {max_rows}")
             except pd.errors.ParserError as e:
                 raise ValidationError(f"CSV 格式无效: {e}")
 
@@ -180,18 +171,16 @@ class DataValidator:
 
     @staticmethod
     def validate_data_frame(
-        df: pd.DataFrame,
-        required_columns: Optional[List[str]] = None,
-        max_rows: int = 1000000
+        df: pd.DataFrame, required_columns: Optional[List[str]] = None, max_rows: int = 1000000
     ) -> pd.DataFrame:
         """
         验证 DataFrame 的完整性和安全性
-        
+
         参数：
             df: 待验证的 DataFrame
             required_columns: 必需的列名列表
             max_rows: 最大行数
-            
+
         返回：
             验证后的 DataFrame
         """
@@ -220,17 +209,14 @@ class DataValidator:
             raise ValidationError(f"DataFrame 验证失败: {e}")
 
     @staticmethod
-    def validate_column_mapping(
-        mapping: dict,
-        available_columns: List[str]
-    ) -> dict:
+    def validate_column_mapping(mapping: dict, available_columns: List[str]) -> dict:
         """
         验证列映射配置
-        
+
         参数：
             mapping: 列映射字典 (列名 -> 索引)
             available_columns: 可用的列列表
-            
+
         返回：
             验证后的映射字典
         """

@@ -1,11 +1,13 @@
 import json
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 
 # 定义数据结构 (Data Schema)
 @dataclass
 class CoordSystemDefinition:
     """定义坐标系的原点和基向量"""
+
     origin: List[float]  # 对应 JSON: Orig
     x_axis: List[float]  # 对应 JSON: X
     y_axis: List[float]  # 对应 JSON: Y
@@ -15,11 +17,11 @@ class CoordSystemDefinition:
     def from_dict(cls, data: Dict[str, Any]):
         """从字典创建对象的工厂方法，包含输入校验"""
         required_fields = ["Orig", "X", "Y", "Z"]
-        
+
         for field in required_fields:
             if field not in data:
                 raise ValueError(f"坐标系定义缺少必须字段: {field}")
-        
+
         def validate_vector(vec, field_name):
             if not isinstance(vec, (list, tuple)):
                 raise ValueError(f"字段 {field_name} 必须是列表或元组，当前类型: {type(vec).__name__}")
@@ -29,18 +31,13 @@ class CoordSystemDefinition:
                 [float(x) for x in vec]
             except (ValueError, TypeError) as e:
                 raise ValueError(f"字段 {field_name} 的元素必须是数值类型: {e}")
-        
+
         validate_vector(data["Orig"], "Orig")
         validate_vector(data["X"], "X")
         validate_vector(data["Y"], "Y")
         validate_vector(data["Z"], "Z")
-        
-        return cls(
-            origin=data["Orig"],
-            x_axis=data["X"],
-            y_axis=data["Y"],
-            z_axis=data["Z"]
-        )
+
+        return cls(origin=data["Orig"], x_axis=data["X"], y_axis=data["Y"], z_axis=data["Z"])
 
 
 @dataclass
@@ -49,13 +46,14 @@ class FrameConfiguration:
     通用坐标系配置类 (对等设计)
     Source 和 Target 都使用此结构
     """
-    part_name: str                              # 组件名称
-    coord_system: CoordSystemDefinition         # 坐标系定义
-    moment_center: Optional[List[float]] = None # 力矩参考中心 (可选)
-    c_ref: Optional[float] = None               # 参考弦长 (可选)
-    b_ref: Optional[float] = None               # 参考展长 (可选)
-    q: Optional[float] = None                   # 动压 (可选)
-    s_ref: Optional[float] = None               # 参考面积 (可选)
+
+    part_name: str  # 组件名称
+    coord_system: CoordSystemDefinition  # 坐标系定义
+    moment_center: Optional[List[float]] = None  # 力矩参考中心 (可选)
+    c_ref: Optional[float] = None  # 参考弦长 (可选)
+    b_ref: Optional[float] = None  # 参考展长 (可选)
+    q: Optional[float] = None  # 动压 (可选)
+    s_ref: Optional[float] = None  # 参考面积 (可选)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], frame_type: str = "Frame"):
@@ -67,17 +65,17 @@ class FrameConfiguration:
         # 验证必须字段
         if "PartName" not in data:
             raise ValueError(f"{frame_type} 定义缺少必须字段: PartName")
-        
+
         # 坐标系定义的键名兼容
         coord_key = None
         for possible_key in ["CoordSystem", "TargetCoordSystem", "SourceCoordSystem"]:
             if possible_key in data:
                 coord_key = possible_key
                 break
-        
+
         if coord_key is None:
             raise ValueError(f"{frame_type} 定义缺少坐标系字段 (CoordSystem)")
-        
+
         # 力矩中心（必需字段）
         moment_center = None
         for mc_key in ["MomentCenter", "TargetMomentCenter", "SourceMomentCenter"]:
@@ -88,14 +86,14 @@ class FrameConfiguration:
                 break
         if moment_center is None:
             raise ValueError(f"{frame_type} 定义必须包含 MomentCenter 字段（长度为3的列表）")
-        
+
         # 获取数值参数 (都是可选的) - 支持多种字段名以保证兼容性
         c_ref = data.get("Cref") or data.get("C_ref")
         b_ref = data.get("Bref") or data.get("B_ref")
         q = data.get("Q")
         # S/S_ref/Sref 都支持
         s_ref = data.get("S") or data.get("Sref") or data.get("S_ref")
-        
+
         # 如果提供了这些参数，进行验证
         def parse_numeric_value(name: str, val, strictly_positive: bool = True):
             """
@@ -136,7 +134,7 @@ class FrameConfiguration:
             c_ref = 1.0
         if b_ref is None:
             b_ref = 1.0
-        
+
         return cls(
             part_name=data["PartName"],
             coord_system=CoordSystemDefinition.from_dict(data[coord_key]),
@@ -144,7 +142,7 @@ class FrameConfiguration:
             c_ref=c_ref,
             b_ref=b_ref,
             q=q,
-            s_ref=s_ref
+            s_ref=s_ref,
         )
 
 
@@ -154,6 +152,7 @@ class TargetDefinition(FrameConfiguration):
     Target 定义 (继承自 FrameConfiguration)
     为了向后兼容保留此类
     """
+
     pass
 
 
@@ -166,6 +165,7 @@ class ProjectData:
 
     为向后兼容，保留对单一 source_config/target_config 的访问器（返回第一个 part 的第一个 variant）。
     """
+
     source_parts: Dict[str, List[FrameConfiguration]]
     target_parts: Dict[str, List[FrameConfiguration]]
 
@@ -174,26 +174,30 @@ class ProjectData:
         """解析 Source/Target 部分，支持新格式（含 Parts 列表）和旧格式（单个对象）。"""
         parts: Dict[str, List[FrameConfiguration]] = {}
         # 新格式：必须包含 Parts 列表（严格模式：不再支持旧的直接对象格式）
-        if not (isinstance(section, dict) and 'Parts' in section and isinstance(section['Parts'], list)):
-            raise ValueError(f"{section_name} 必须为对象且包含 'Parts' 列表。示例: {{'Parts':[{{'PartName':'Name','Variants':[{{...}}]}}]}}")
+        if not (isinstance(section, dict) and "Parts" in section and isinstance(section["Parts"], list)):
+            raise ValueError(
+                f"{section_name} 必须为对象且包含 'Parts' 列表。示例: {{'Parts':[{{'PartName':'Name','Variants':[{{...}}]}}]}}"
+            )
 
-        if isinstance(section['Parts'], list):
-            for p in section['Parts']:
+        if isinstance(section["Parts"], list):
+            for p in section["Parts"]:
                 if not isinstance(p, dict):
                     raise ValueError(f"{section_name}.Parts 中的元素必须为对象")
-                part_name = p.get('PartName') or 'Unnamed'
-                variants_raw = p.get('Variants')
+                part_name = p.get("PartName") or "Unnamed"
+                variants_raw = p.get("Variants")
                 variants: List[FrameConfiguration] = []
                 if variants_raw is None or not isinstance(variants_raw, list) or len(variants_raw) == 0:
-                    raise ValueError(f"{section_name} Part '{part_name}' 必须包含非空的 'Variants' 列表或至少一个变体对象")
+                    raise ValueError(
+                        f"{section_name} Part '{part_name}' 必须包含非空的 'Variants' 列表或至少一个变体对象"
+                    )
 
                 for v in variants_raw:
                     if not isinstance(v, dict):
                         raise ValueError(f"{section_name} Part {part_name} 的 variant 必须为对象")
                     # 确保每个 variant 有 PartName 字段以便 from_dict 验证；若无则注入 parent 名称
                     v_copy = dict(v)
-                    if 'PartName' not in v_copy:
-                        v_copy['PartName'] = part_name
+                    if "PartName" not in v_copy:
+                        v_copy["PartName"] = part_name
                     # FrameConfiguration.from_dict 已会对 CoordSystem 和必需字段进行校验
                     variants.append(FrameConfiguration.from_dict(v_copy, frame_type=f"{section_name}.{part_name}"))
 
@@ -209,21 +213,27 @@ class ProjectData:
         """
         从字典创建项目数据，兼容旧版格式与新格式（Parts 列表）。
         """
-        if 'Source' not in data:
+        if "Source" not in data:
             raise ValueError("配置文件缺少 Source 定义")
-        if 'Target' not in data:
+        if "Target" not in data:
             raise ValueError("配置文件缺少 Target 定义")
 
-        source_parts = cls._parse_parts_section(data['Source'], 'Source')
-        target_parts = cls._parse_parts_section(data['Target'], 'Target')
+        source_parts = cls._parse_parts_section(data["Source"], "Source")
+        target_parts = cls._parse_parts_section(data["Target"], "Target")
 
         # 对 target_parts 做额外的严格校验，确保每个 variant 包含必需字段并给出清晰错误提示
         for part_name, variants in target_parts.items():
             if not variants:
                 raise ValueError(f"Target 部件 '{part_name}' 必须包含至少一个 Variant")
             for idx, var in enumerate(variants):
-                if var.moment_center is None or not isinstance(var.moment_center, (list, tuple)) or len(var.moment_center) != 3:
-                    raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少有效的 MomentCenter（长度为3的列表）")
+                if (
+                    var.moment_center is None
+                    or not isinstance(var.moment_center, (list, tuple))
+                    or len(var.moment_center) != 3
+                ):
+                    raise ValueError(
+                        f"Target Part '{part_name}' Variant[{idx}] 缺少有效的 MomentCenter（长度为3的列表）"
+                    )
                 if var.q is None:
                     raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少动压 Q（数值）")
                 if var.s_ref is None:
@@ -237,14 +247,14 @@ class ProjectData:
         # 取第一个 part 的第一个 variant
         first_part = next(iter(self.source_parts.values()), None)
         if not first_part:
-            raise ValueError('source_parts 为空')
+            raise ValueError("source_parts 为空")
         return first_part[0]
 
     @property
     def target_config(self) -> FrameConfiguration:
         first_part = next(iter(self.target_parts.values()), None)
         if not first_part:
-            raise ValueError('target_parts 为空')
+            raise ValueError("target_parts 为空")
         return first_part[0]
 
     @property
@@ -279,11 +289,11 @@ def load_data(file_path: str) -> ProjectData:
     :return: ProjectData 对象
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             raw_data = json.load(f)
-            
+
         return ProjectData.from_dict(raw_data)
-        
+
     except FileNotFoundError:
         raise FileNotFoundError(f"错误: 找不到文件 {file_path}，请检查路径。")
     except json.JSONDecodeError:
@@ -304,17 +314,14 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
         pd = load_data(file_path)
         return True, pd, None
     except FileNotFoundError as e:
-        info = {
-            'message': str(e),
-            'suggestion': '检查路径或使用 creator.py 生成 data/input.json。'
-        }
+        info = {"message": str(e), "suggestion": "检查路径或使用 creator.py 生成 data/input.json。"}
         if strict:
             return False, None, info
         raise
     except json.JSONDecodeError as e:
         info = {
-            'message': f'配置文件不是有效的 JSON: {e}',
-            'suggestion': '请使用 JSON 校验工具检查语法或修复格式错误。'
+            "message": f"配置文件不是有效的 JSON: {e}",
+            "suggestion": "请使用 JSON 校验工具检查语法或修复格式错误。",
         }
         if strict:
             return False, None, info
@@ -322,12 +329,12 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
     except (ValueError, KeyError) as e:
         # 语义/缺失字段类错误，提供修复建议
         msg = str(e)
-        suggestion = '检查配置是否包含 Source/Target、Target.MomentCenter、Target.Q、Target.S 等必需字段，或使用 creator.py 生成兼容配置。'
+        suggestion = "检查配置是否包含 Source/Target、Target.MomentCenter、Target.Q、Target.S 等必需字段，或使用 creator.py 生成兼容配置。"
         if strict:
-            return False, None, {'message': msg, 'suggestion': suggestion}
+            return False, None, {"message": msg, "suggestion": suggestion}
         raise
     except Exception as e:
         # 未知错误：返回通用建议
         if strict:
-            return False, None, {'message': str(e), 'suggestion': '查看完整异常并检查文件权限/编码。'}
+            return False, None, {"message": str(e), "suggestion": "查看完整异常并检查文件权限/编码。"}
         raise

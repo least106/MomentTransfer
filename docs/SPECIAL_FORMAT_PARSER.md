@@ -1,201 +1,84 @@
-# 特殊格式数据文件解析器
+## Special Format Parser — 使用说明（精简版）
 
-## 功能说明
+目的：解析项目中自定义的批处理表格文件（常见扩展名 `.mtfmt`），把每个 part 的表格数据抽取为 Pandas DataFrame，供 `AeroCalculator` 计算力/力矩系数。
 
-`src/special_format_parser.py` 提供了针对特殊格式数据文件的智能解析功能，能够：
+适用场景：当你需要把实验/仿真导出的多段表格（含元数据、part 名、表头与数据块）转为结构化数据并批量计算时使用。
 
-> 建议使用扩展名：`.mtfmt`（或 `.mtdata`）。批处理已支持默认匹配 `*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat`。
+主要行为要点
 
-1. **自动跳过元数据行**：识别并忽略文件开头的描述性文本（如"计算坐标系:X向后、Y向右、z向上"）
-2. **智能识别 part 名称**：自动检测用户自定义的 part 名称（如 quanji、BODY、DUAHUI 等）
-3. **过滤汇总行**：自动跳过 CLa、Cdmin、CmCL 等汇总统计行
-4. **结构化输出**：将每个 part 的数据解析为 pandas DataFrame
+- 编码回退：优先尝试 `utf-8`，失败回退 `gbk`，最后 `latin-1`（实现：`_read_text_file_lines()`）。
+- 行判定：解析器区分元数据、part 名、表头、数据行与汇总行；短中文行会优先识别为 `part` 名而非元数据。
+- 表头识别：通过表头关键词（例如 `Alpha`, `CL`, `CD`, `Cm`, `Cx`, `Cy`, `Cz`）进行识别，支持大小写与常见变体。
+- 列名规范：使用 `_normalize_column_mapping()` 把常见变体映射为标准列名（示例：`cz_fn`/`czfn`/`cz/fn` → `Cz/FN`，`cmx` → `CMx`）。
 
-## 文件格式示例
+主要 API（概要）
 
-```
-计算坐标系:X向后、Y向右、z向上
-计算Ma:1.4 计算H:10000m 计算侧滑角:0°
-参考面积:9.73m2 纵向参考长度:2.548m 横向参考长度:8.5m 参考重心:6.97m
-quanji
-Alpha CL CD Cm Cc Cn C1 K CDp CDv Swet Cx Cy Cz/FN CMx CMy CMz
--2.00 -0.10625 0.03809 0.00626 0.03059 -0.01136 0.01894 -2.78977 0.03161 0.00658 36.52923 0.03436 0.03059 -0.10751 -0.01894 0.00626 0.01136
-0.00 0.00652 0.03443 -0.02196 0.02898 -0.01158 -0.00198 0.18941 0.02786 0.00667 36.52923 0.03443 0.02898 0.00652 0.00198 -0.02196 0.01158
-CLa Cdmin CmCL Cm0 Kmax
-0.05638 0.03443 -0.25025 -0.02033 5.01666
+- `parse_special_format_file(path: Path) -> Dict[str, pd.DataFrame]`
+  - 读取并解析指定文件，返回 {part_name: DataFrame} 映射。DataFrame 列已做名称规范化并尽可能转换为数值类型。
 
-BODY
-Alpha CL CD Cm Cc Cn C1 K CDp CDv Swet Cx Cy Cz/FN CMx CMy CMz
--2.00 -0.03869 0.02362 -0.00061 0.02961 -0.01279 0.00106 -1.63808 0.02046 0.00316 18.74060 0.02225 0.02961 -0.03949 -0.00106 -0.00061 0.01279
-```
+- `process_special_format_file(path: Path, project_data, output_dir: Path) -> Dict`（概要）
+  - 对每个被解析到的 part：校验是否在 `project_data` 的目标列表中，检查必要列，使用 `AeroCalculator` 计算，写出带时间戳的 CSV，并在返回的报告中记录每个 part 的 `status`（`success`/`skipped`/`failed`）及原因。
 
-## 使用方法
+输入/输出要点
 
-### 1. 基本使用
+- 输入：文本文件（含元数据行、part 名行、表头行、若干数据行），列分隔通常由空格或制表符分隔。解析器会对连续空格做分割容错。
+- 输出：按 part 生成 DataFrame；`process_special_format_file` 会输出 CSV 并返回包含每个 part 处理状态的报告字典。
 
-```python
-from pathlib import Path
-from src.special_format_parser import parse_special_format_file, get_part_names
-
-# 解析文件
-file_path = Path('data/data_tmp')
-data_dict = parse_special_format_file(file_path)
-
-# data_dict 结构: {'quanji': DataFrame, 'BODY': DataFrame, ...}
-for part_name, df in data_dict.items():
-    print(f"Part: {part_name}")
-    print(f"  行数: {len(df)}")
-    print(f"  列数: {len(df.columns)}")
-    print(df.head())
-```
-
-### 2. 快速获取 part 名称列表
-
-```python
-from src.special_format_parser import get_part_names
-
-parts = get_part_names(Path('data/data_tmp'))
-print(f"找到的 part: {parts}")
-# 输出: ['quanji', 'BODY', 'DUAHUI', 'WING', 'YAYI']
-```
-
-### 3. 在批处理中使用
-
-```python
-from src.special_format_parser import parse_special_format_file
-from src.physics import AeroCalculator
-
-# 解析文件
-data_dict = parse_special_format_file(file_path)
-
-# 假设你的 ProjectData 中有对应的 Target part
-for part_name, df in data_dict.items():
-    # 检查配置中是否有对应的 Target part
-    if part_name in project_data.Target:
-        calculator = AeroCalculator(project_data)
-        
-        # 处理每一行数据
-        for idx, row in df.iterrows():
-            # 提取力和力矩（根据实际列名调整）
-            force = [row['Cx'], row['Cy'], row['Cz/FN']]  # 示例
-            moment = [row['CMx'], row['CMy'], row['CMz']]  # 示例
-            
-            result = calculator.process_frame(force, moment)
-            # 处理结果...
-
-## 与批处理的集成
-
-特殊格式解析器可作为批处理的后备解析器：当批处理未传入 `--format-file` 且 `--enable-sidecar` 未启用时，批处理会尝试使用 `parse_special_format_file` 对扩展名为 `.mtfmt` / `.mtdata` 的文件进行解析并提取 part 数据。
-
-示例：在批处理中，将解析结果转换为标准 `format-file` 或直接映射列名后处理：
+简短示例
 
 ```python
 from pathlib import Path
 from src.special_format_parser import parse_special_format_file
-from src.cli_helpers import generate_format_from_dataframe  # 项目内可用的辅助函数示例
 
-data_dict = parse_special_format_file(Path('data/special_input.mtfmt'))
-for part, df in data_dict.items():
-    # generate_format_from_dataframe 为辅助函数示例，基于 DataFrame 的列生成批处理需用的 `columns` 配置
-    fmt = generate_format_from_dataframe(df)
-    # 可将 fmt 写为临时 format-file 或直接在内存中供批处理使用
-```
+parts = parse_special_format_file(Path('data/example.mtfmt'))
+if 'Wing' in parts:
+    df = parts['Wing']
+    # df 已规范列名，可直接用于后续计算
 ```
 
-## API 参考
+常见问题与解决
 
-### `parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]`
+- 未识别 part：确保 part 名为单独一行且下一行为表头；避免在 part 名行内混入注释性冒号（`:`）。
+- 列名不匹配：在 `_normalize_column_mapping()` 中添加你的列名变体映射，或先预处理文件去除单位后缀（例如 `Cz/FN(%)` → `Cz/FN`）。
+- 编码错误：若文件使用其他编码，请在 `_read_text_file_lines()` 中增加编码候选项。
 
-解析特殊格式文件，返回字典。
+扩展建议
 
-**参数：**
-- `file_path`: 文件路径（Path 对象）
+- 若需识别更多表头变体，可把候选关键字做为子串匹配而非严格整词匹配；
+- 若想记录更多元数据（例如试验条件），可在解析时把元数据块解析为字典并与对应 part 关联返回。
 
-**返回：**
-- 字典，键为 part 名称（字符串），值为对应的 DataFrame
+---
+文档更新时间：2026-01-09
+# Special Format Parser 使用说明
 
-**示例：**
+简洁说明 `src/special_format_parser.py` 的目的、主要行为与常见故障排查要点。
+
+## 目的
+
+解析自定义批处理数据文件（推荐扩展名 `.mtfmt`），将每个 part 的表格数据抽取为 Pandas DataFrame，供 `AeroCalculator` 使用。
+
+## 主要要点
+
+- 编码：优先 `utf-8`，失败回退 `gbk`、`latin-1`（实现：`_read_text_file_lines()`）。
+- 行判定：区分元数据、part 名、表头、数据行与汇总行；支持短中文 part 名识别。
+- 表头与列名：通过关键词识别表头；使用 `_normalize_column_mapping()` 将常见变体映射到标准列名（例如 `cz_fn` → `Cz/FN`，`cmx` → `CMx`）。
+- 批处理：`process_special_format_file()` 为每个 part 做列名规范化、必要列检查、调用 `AeroCalculator` 并写出带时间戳的结果 CSV。每个 part 的状态会记录在返回的报告中。
+
+## 快速使用示例
+
 ```python
-data_dict = parse_special_format_file(Path('data/data_tmp'))
-# {'quanji': DataFrame(...), 'BODY': DataFrame(...), ...}
+from pathlib import Path
+from src.special_format_parser import parse_special_format_file
+
+parts = parse_special_format_file(Path('data/example.mtfmt'))
+df = parts.get('Wing')  # 如果存在
 ```
 
-### `get_part_names(file_path: Path) -> List[str]`
+## 常见故障排查
 
-快速获取文件中的所有 part 名称，不解析完整数据。
+- 未识别 part：确保 part 名为单独一行且下一行是表头。
+- 数据被跳过：确认数据行列数与表头一致且首列为数值。
+- 列名未匹配：在 `_normalize_column_mapping()` 中添加新的变体规则或清理单位后缀。
 
-**参数：**
-- `file_path`: 文件路径（Path 对象）
-
-**返回：**
-- part 名称列表
-
-**示例：**
-```python
-parts = get_part_names(Path('data/data_tmp'))
-# ['quanji', 'BODY', 'DUAHUI', 'WING', 'YAYI']
-```
-
-## 解析规则
-
-### 元数据行识别规则
-
-以下情况会被识别为元数据行并跳过：
-- 空行
-- 包含中文或英文冒号的描述行
-- 包含中文字符的参数说明行
-
-### Part 名称识别规则
-
-满足以下条件会被识别为 part 名称：
-- 单独一行，内容简短（少于 20 字符）
-- 不是数字开头的行
-- 下一行包含典型的表头关键词（Alpha, CL, CD, Cm 等）
-
-### 数据行识别规则
-
-满足以下条件会被识别为数据行：
-- 第一个 token 可以转换为浮点数（可能带负号）
-- 列数与表头一致
-
-### 汇总行识别规则
-
-满足以下条件会被识别为汇总行并跳过：
-- 第一个 token 不是数字
-- 包含 CLa、Cdmin、CmCL、Cm0、Kmax 等关键词
-
-## 注意事项
-
-1. **编码**：文件默认使用 UTF-8 编码读取
-2. **列分隔符**：使用空白字符（空格/制表符）分隔
-3. **数值转换**：所有可能的列都会尝试转换为数值类型
-4. **Part 名称**：支持中文和英文，大小写敏感
-5. **容错性**：列数不匹配的数据行会被跳过并记录日志
-
-## 测试
-
-运行测试：
-```bash
-conda activate MomentTransfer
-python src/special_format_parser.py
-```
-
-## 故障排查
-
-### Q: 某个 part 没有被识别？
-
-A: 检查：
-1. part 名称是否单独一行
-2. part 名称后是否紧跟表头行（包含 Alpha, CL 等）
-3. 是否有意外的空格或特殊字符
-
-### Q: 数据行被跳过？
-
-A: 检查：
-1. 数据行列数是否与表头一致
-2. 第一列是否为有效数字
-3. 查看日志中的警告信息
-
-### Q: 汇总行没有被过滤？
-
-A: 如果汇总行格式特殊，可以修改 `is_summary_line()` 函数添加自定义关键词。
+---
+更新日期：2026-01-09

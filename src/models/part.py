@@ -1,10 +1,12 @@
 """
 部件与变体数据模型。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List
+
 from .coordinate_system import CoordinateSystem
 
 
@@ -40,13 +42,14 @@ class Variant:
         mc = data.get("MomentCenter")
         if mc is not None:
             from numpy import array
+
             cs.moment_center = array(mc, dtype=float)
-        
+
         # 支持多种字段名：S, Sref, S_ref
         sref = data.get("S") or data.get("Sref") or data.get("S_ref") or 10.0
         cref = data.get("Cref") or data.get("C_ref") or 1.0
         bref = data.get("Bref") or data.get("B_ref") or 1.0
-        
+
         return cls(
             part_name=data.get("PartName", ""),
             coord_system=cs,

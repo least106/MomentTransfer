@@ -8,33 +8,34 @@
 4. 系统默认值（最低优先级）
 """
 
-import os
 import json
 import logging
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Dict, Any, List
+from dataclasses import asdict, dataclass, field
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class DataTreatmentStrategy(Enum):
     """非数值数据处理策略"""
-    DROP = 'drop'          # 丢弃非数值行
-    NAN = 'nan'            # 保留为 NaN
-    ZERO = 'zero'          # 替换为 0
+
+    DROP = "drop"  # 丢弃非数值行
+    NAN = "nan"  # 保留为 NaN
+    ZERO = "zero"  # 替换为 0
 
 
 @dataclass
 class CacheConfig:
     """缓存系统配置"""
+
     # 缓存启用标志
     enabled: bool = True
     # 最大缓存条目数（LRU 缓存）
     max_entries: int = 1000
     # 缓存的计算结果类型：'rotation', 'transformation', 'all'
-    cache_types: List[str] = field(default_factory=lambda: ['rotation', 'transformation'])
+    cache_types: List[str] = field(default_factory=lambda: ["rotation", "transformation"])
     # 缓存键生成时是否考虑精度（用于浮点数）
     precision_digits: int = 10
 
@@ -42,6 +43,7 @@ class CacheConfig:
 @dataclass
 class BatchProcessConfig:
     """批处理配置"""
+
     # 数据块大小（行数）
     chunk_size: int = 10000
     # 非数值处理策略
@@ -65,6 +67,7 @@ class BatchProcessConfig:
 @dataclass
 class PhysicsConfig:
     """物理计算配置"""
+
     # 旋转矩阵计算精度阈值
     rotation_precision_threshold: float = 1e-10
     # 力臂计算精度阈值
@@ -78,8 +81,9 @@ class PhysicsConfig:
 @dataclass
 class PluginConfig:
     """插件系统配置"""
+
     # 插件目录
-    plugin_dirs: List[str] = field(default_factory=lambda: ['./plugins', './custom_plugins'])
+    plugin_dirs: List[str] = field(default_factory=lambda: ["./plugins", "./custom_plugins"])
     # 自动加载插件
     auto_load: bool = True
     # 启用的插件列表（空列表表示加载所有）
@@ -91,6 +95,7 @@ class PluginConfig:
 @dataclass
 class SystemConfig:
     """系统配置 - 集中管理所有系统参数"""
+
     # 子配置
     cache: CacheConfig = field(default_factory=CacheConfig)
     batch: BatchProcessConfig = field(default_factory=BatchProcessConfig)
@@ -99,7 +104,7 @@ class SystemConfig:
 
     # 通用设置
     debug_mode: bool = False
-    log_level: str = 'INFO'
+    log_level: str = "INFO"
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -110,28 +115,32 @@ class SystemConfig:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'SystemConfig':
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "SystemConfig":
         """从字典创建配置"""
-        cache_config = CacheConfig(**{k: v for k, v in config_dict.get('cache', {}).items()
-                                      if k in CacheConfig.__dataclass_fields__})
-        batch_config = BatchProcessConfig(**{k: v for k, v in config_dict.get('batch', {}).items()
-                                             if k in BatchProcessConfig.__dataclass_fields__})
-        physics_config = PhysicsConfig(**{k: v for k, v in config_dict.get('physics', {}).items()
-                                          if k in PhysicsConfig.__dataclass_fields__})
-        plugin_config = PluginConfig(**{k: v for k, v in config_dict.get('plugin', {}).items()
-                                        if k in PluginConfig.__dataclass_fields__})
+        cache_config = CacheConfig(
+            **{k: v for k, v in config_dict.get("cache", {}).items() if k in CacheConfig.__dataclass_fields__}
+        )
+        batch_config = BatchProcessConfig(
+            **{k: v for k, v in config_dict.get("batch", {}).items() if k in BatchProcessConfig.__dataclass_fields__}
+        )
+        physics_config = PhysicsConfig(
+            **{k: v for k, v in config_dict.get("physics", {}).items() if k in PhysicsConfig.__dataclass_fields__}
+        )
+        plugin_config = PluginConfig(
+            **{k: v for k, v in config_dict.get("plugin", {}).items() if k in PluginConfig.__dataclass_fields__}
+        )
 
         return cls(
             cache=cache_config,
             batch=batch_config,
             physics=physics_config,
             plugin=plugin_config,
-            debug_mode=config_dict.get('debug_mode', False),
-            log_level=config_dict.get('log_level', 'INFO'),
+            debug_mode=config_dict.get("debug_mode", False),
+            log_level=config_dict.get("log_level", "INFO"),
         )
 
     @classmethod
-    def from_json_file(cls, filepath: str) -> 'SystemConfig':
+    def from_json_file(cls, filepath: str) -> "SystemConfig":
         """从 JSON 配置文件加载"""
         path = Path(filepath)
         if not path.exists():
@@ -139,7 +148,7 @@ class SystemConfig:
             return cls()
 
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 config_dict = json.load(f)
             logger.info(f"从 {filepath} 加载配置成功")
             return cls.from_dict(config_dict)
@@ -152,7 +161,7 @@ class SystemConfig:
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(path, 'w', encoding='utf-8') as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(self.to_json())
             logger.info(f"配置已保存到 {filepath}")
         except Exception as e:

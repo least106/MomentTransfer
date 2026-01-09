@@ -8,10 +8,10 @@
 """
 
 import logging
-from functools import lru_cache
-from typing import Tuple, Optional
-import numpy as np
 from collections import OrderedDict
+from typing import Optional, Tuple
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class CalculationCache:
     def __init__(self, max_entries: int = 1000):
         """
         初始化缓存
-        
+
         参数：
             max_entries: 最大缓存条目数
         """
@@ -88,12 +88,12 @@ class CalculationCache:
         total = self.hits + self.misses
         hit_rate = (self.hits / total * 100) if total > 0 else 0
         return {
-            'hits': self.hits,
-            'misses': self.misses,
-            'total': total,
-            'hit_rate': f'{hit_rate:.1f}%',
-            'entries': len(self.cache),
-            'max_entries': self.max_entries,
+            "hits": self.hits,
+            "misses": self.misses,
+            "total": total,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "entries": len(self.cache),
+            "max_entries": self.max_entries,
         }
 
 

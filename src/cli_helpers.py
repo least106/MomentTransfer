@@ -2,35 +2,36 @@
 
 包含日志配置与几何配置加载的公共逻辑，供 `cli.py` 和 `batch.py` 复用。
 """
-import logging
+
 import json
-from src.data_loader import load_data, ProjectData
-from src.physics import AeroCalculator
+import logging
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
 
+from src.data_loader import ProjectData, load_data
+from src.physics import AeroCalculator
 
 
 class BatchConfig:
     """批处理配置类（供 batch.py 使用，抽取以便复用）。"""
+
     def __init__(self):
         self.skip_rows = 0
         self.column_mappings = {
-            'alpha': None,
-            'fx': None,
-            'fy': None,
-            'fz': None,
-            'mx': None,
-            'my': None,
-            'mz': None,
+            "alpha": None,
+            "fx": None,
+            "fy": None,
+            "fz": None,
+            "mx": None,
+            "my": None,
+            "mz": None,
         }
         self.passthrough_columns = []
         self.chunksize = None
         self.name_template = "{stem}_result_{timestamp}.csv"
         self.timestamp_format = "%Y%m%d_%H%M%S"
         self.overwrite = False
-        self.treat_non_numeric = 'zero'
+        self.treat_non_numeric = "zero"
         self.sample_rows = 5
 
 
@@ -48,7 +49,7 @@ def load_format_from_file(path: str) -> BatchConfig:
                 raise FileNotFoundError(f"格式文件未找到: {path}")
         else:
             raise FileNotFoundError(f"格式文件未找到: {path}")
-    with open(p, 'r', encoding='utf-8') as fh:
+    with open(p, "r", encoding="utf-8") as fh:
         text = fh.read()
     if not text or not text.strip():
         raise ValueError(f"格式文件为空或仅包含空白: {path}")
@@ -58,29 +59,29 @@ def load_format_from_file(path: str) -> BatchConfig:
         raise ValueError(f"格式文件不是有效的 JSON: {path} -> {e}") from e
 
     cfg = BatchConfig()
-    cfg.skip_rows = int(data.get('skip_rows', 0))
-    cols = data.get('columns', {})
+    cfg.skip_rows = int(data.get("skip_rows", 0))
+    cols = data.get("columns", {})
     for k in cfg.column_mappings.keys():
         if k in cols:
             v = cols[k]
             cfg.column_mappings[k] = int(v) if v is not None else None
-    cfg.passthrough_columns = [int(x) for x in data.get('passthrough', [])]
-    if 'chunksize' in data:
+    cfg.passthrough_columns = [int(x) for x in data.get("passthrough", [])]
+    if "chunksize" in data:
         try:
-            cfg.chunksize = int(data.get('chunksize'))
+            cfg.chunksize = int(data.get("chunksize"))
         except (TypeError, ValueError):
             cfg.chunksize = None
-    if 'name_template' in data:
-        cfg.name_template = str(data.get('name_template'))
-    if 'timestamp_format' in data:
-        cfg.timestamp_format = str(data.get('timestamp_format'))
-    if 'overwrite' in data:
-        cfg.overwrite = bool(data.get('overwrite'))
-    if 'treat_non_numeric' in data:
-        cfg.treat_non_numeric = str(data.get('treat_non_numeric'))
-    if 'sample_rows' in data:
+    if "name_template" in data:
+        cfg.name_template = str(data.get("name_template"))
+    if "timestamp_format" in data:
+        cfg.timestamp_format = str(data.get("timestamp_format"))
+    if "overwrite" in data:
+        cfg.overwrite = bool(data.get("overwrite"))
+    if "treat_non_numeric" in data:
+        cfg.treat_non_numeric = str(data.get("treat_non_numeric"))
+    if "sample_rows" in data:
         try:
-            cfg.sample_rows = int(data.get('sample_rows'))
+            cfg.sample_rows = int(data.get("sample_rows"))
         except (TypeError, ValueError):
             cfg.sample_rows = 5
     return cfg
@@ -108,18 +109,18 @@ def get_user_file_format() -> BatchConfig:
     alpha_col = input("  迎角 Alpha 列号: ").strip()
     if alpha_col:
         try:
-            config.column_mappings['alpha'] = int(alpha_col)
+            config.column_mappings["alpha"] = int(alpha_col)
         except ValueError:
             pass
 
     # 必需的力和力矩列
     required_mappings = {
-        'fx': '轴向力 Fx',
-        'fy': '侧向力 Fy', 
-        'fz': '法向力 Fz',
-        'mx': '滚转力矩 Mx',
-        'my': '俯仰力矩 My',
-        'mz': '偏航力矩 Mz'
+        "fx": "轴向力 Fx",
+        "fy": "侧向力 Fy",
+        "fz": "法向力 Fz",
+        "mx": "滚转力矩 Mx",
+        "my": "俯仰力矩 My",
+        "mz": "偏航力矩 Mz",
     }
 
     for key, label in required_mappings.items():
@@ -139,7 +140,7 @@ def get_user_file_format() -> BatchConfig:
     passthrough = input("  列号: ").strip()
     if passthrough:
         try:
-            config.passthrough_columns = [int(x.strip()) for x in passthrough.split(',')]
+            config.passthrough_columns = [int(x.strip()) for x in passthrough.split(",")]
         except ValueError:
             print("[警告] 格式错误，将不保留额外列")
 
@@ -149,11 +150,15 @@ def get_user_file_format() -> BatchConfig:
 from src.format_registry import get_format_for_file
 
 
-def resolve_file_format(file_path: str, global_cfg: BatchConfig, *,
-                        enable_sidecar: bool = False,
-                        registry_db: str = None,
-                        sidecar_suffixes=('.format.json', '.json'),
-                        dir_default_name='format.json') -> BatchConfig:
+def resolve_file_format(
+    file_path: str,
+    global_cfg: BatchConfig,
+    *,
+    enable_sidecar: bool = False,
+    registry_db: str = None,
+    sidecar_suffixes=(".format.json", ".json"),
+    dir_default_name="format.json",
+) -> BatchConfig:
     """为单个数据文件解析并返回最终的 BatchConfig。
 
     **重要变化**: 默认情况下（`enable_sidecar=False`）不会查询 file-sidecar、目录级 `format.json` 或 registry，
@@ -241,7 +246,7 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     - 每次调用会重置该 logger 的 handlers（避免重复添加）。
     """
     log_level = logging.DEBUG if verbose else logging.INFO
-    logger = logging.getLogger('batch')
+    logger = logging.getLogger("batch")
     logger.setLevel(log_level)
 
     # 清理已有 handlers（如果有），避免重复输出或多次添加
@@ -253,7 +258,7 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
             # 仅记录调试信息，避免在关闭 handler 时抛出
             logger.debug("关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True)
 
-    fmt = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+    fmt = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
 
     stream_h = logging.StreamHandler()
     stream_h.setLevel(log_level)
@@ -261,7 +266,7 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     logger.addHandler(stream_h)
 
     if log_file:
-        file_h = logging.FileHandler(log_file, encoding='utf-8')
+        file_h = logging.FileHandler(log_file, encoding="utf-8")
         # 若指定了 log_file，文件中记录详细调试信息（包含完整堆栈）以便排查
         file_h.setLevel(logging.DEBUG)
         file_h.setFormatter(fmt)
@@ -272,7 +277,14 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     return logger
 
 
-def load_project_calculator(config_path: str, *, source_part: str = None, source_variant: int = 0, target_part: str = None, target_variant: int = 0):
+def load_project_calculator(
+    config_path: str,
+    *,
+    source_part: str = None,
+    source_variant: int = 0,
+    target_part: str = None,
+    target_variant: int = 0,
+):
     """加载几何/项目配置并返回 (project_data, AeroCalculator)
 
     支持可选的 part/variant 指定以便直接构造使用特定 variant 的计算器。
@@ -288,12 +300,19 @@ def load_project_calculator(config_path: str, *, source_part: str = None, source
                 target_part = next(iter(project_data.target_parts.keys()))
             else:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "配置包含多个 Target part，未指定 --target-part，已自动选择第一个 Part（建议在 CLI 中显式使用 --target-part/--target-variant）。"
                 )
                 target_part = next(iter(project_data.target_parts.keys()))
 
-        calculator = AeroCalculator(project_data, source_part=source_part, source_variant=source_variant, target_part=target_part, target_variant=target_variant)
+        calculator = AeroCalculator(
+            project_data,
+            source_part=source_part,
+            source_variant=source_variant,
+            target_part=target_part,
+            target_variant=target_variant,
+        )
         return project_data, calculator
     except FileNotFoundError as e:
         raise ValueError(f"配置文件未找到: {config_path}") from e

@@ -1,10 +1,12 @@
 """
 坐标系数据模型。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, Iterable
+
 import numpy as np
 
 

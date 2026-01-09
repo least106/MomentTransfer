@@ -1,14 +1,16 @@
-import numpy as np
-import warnings
 import logging
+import warnings
 from dataclasses import dataclass
-from typing import List, Dict, Union, Optional
+from typing import Dict, List, Optional, Union
 
-# 保持原有的 import
-from src.data_loader import ProjectData, FrameConfiguration
+import numpy as np
+
 from src import geometry
 from src.cache import get_rotation_cache, get_transformation_cache
 from src.config import get_config
+
+# 保持原有的 import
+from src.data_loader import FrameConfiguration, ProjectData
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,7 @@ class AeroCalculator:
                     target_part = next(iter(project.target_parts.keys()))
                 else:
                     import warnings
+
                     warnings.warn(
                         "ProjectData 包含多个 Target part，未显式指定 target_part，将使用第一个 Part。建议在 CLI/脚本中显式指定 --target-part/--target-variant。",
                         UserWarning,
@@ -79,19 +82,21 @@ class AeroCalculator:
         tgt = self.target_frame.coord_system
         self.basis_source = geometry.construct_basis_matrix(src.x_axis, src.y_axis, src.z_axis)
         self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
-        
+
         # 尝试从缓存获取旋转矩阵，如果缓存未命中则计算
         cfg = get_config()
         # 兼容性检查：cfg 可能为 None 或者不包含 cache 字段
-        cache_cfg = getattr(cfg, 'cache', None)
+        cache_cfg = getattr(cfg, "cache", None)
         try:
-            if cache_cfg and getattr(cache_cfg, 'enabled', False) and 'rotation' in getattr(cache_cfg, 'cache_types', []):
-                rotation_cache = get_rotation_cache(getattr(cache_cfg, 'max_entries', None))
+            if (
+                cache_cfg
+                and getattr(cache_cfg, "enabled", False)
+                and "rotation" in getattr(cache_cfg, "cache_types", [])
+            ):
+                rotation_cache = get_rotation_cache(getattr(cache_cfg, "max_entries", None))
                 try:
                     self.R_matrix = rotation_cache.get_rotation_matrix(
-                        self.basis_source,
-                        self.basis_target,
-                        getattr(cache_cfg, 'precision_digits', None)
+                        self.basis_source, self.basis_target, getattr(cache_cfg, "precision_digits", None)
                     )
                 except Exception:
                     # 如果缓存接口异常，回退为直接计算
@@ -105,7 +110,7 @@ class AeroCalculator:
                             self.basis_source,
                             self.basis_target,
                             self.R_matrix,
-                            getattr(cache_cfg, 'precision_digits', None)
+                            getattr(cache_cfg, "precision_digits", None),
                         )
                         logger.debug("旋转矩阵缓存未命中，已计算并缓存")
                     except Exception:
@@ -120,21 +125,25 @@ class AeroCalculator:
             self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
 
         # 计算力臂时优先使用 Source 的 MomentCenter（如果定义），否则退回到 Source 的 origin
-        source_moment_ref = self.source_frame.moment_center if self.source_frame.moment_center is not None else src.origin
+        source_moment_ref = (
+            self.source_frame.moment_center if self.source_frame.moment_center is not None else src.origin
+        )
         self.r_global = geometry.compute_moment_arm_global(
             source_origin=source_moment_ref,
             target_moment_center=self.target_frame.moment_center,
         )
-        
+
         # 尝试从缓存获取转换结果
         try:
-            if cache_cfg and getattr(cache_cfg, 'enabled', False) and 'transformation' in getattr(cache_cfg, 'cache_types', []):
-                transformation_cache = get_transformation_cache(getattr(cache_cfg, 'max_entries', None))
+            if (
+                cache_cfg
+                and getattr(cache_cfg, "enabled", False)
+                and "transformation" in getattr(cache_cfg, "cache_types", [])
+            ):
+                transformation_cache = get_transformation_cache(getattr(cache_cfg, "max_entries", None))
                 try:
                     self.r_target = transformation_cache.get_transformation(
-                        self.basis_target,
-                        self.r_global,
-                        getattr(cache_cfg, 'precision_digits', None)
+                        self.basis_target, self.r_global, getattr(cache_cfg, "precision_digits", None)
                     )
                 except Exception:
                     logger.debug("力臂转换缓存调用失败，回退到直接计算", exc_info=True)
@@ -147,7 +156,7 @@ class AeroCalculator:
                             self.basis_target,
                             self.r_global,
                             self.r_target,
-                            getattr(cache_cfg, 'precision_digits', None)
+                            getattr(cache_cfg, "precision_digits", None),
                         )
                         logger.debug("力臂转换缓存未命中，已计算并缓存")
                     except Exception:
@@ -162,7 +171,11 @@ class AeroCalculator:
 
         # 额外校验：确保 R_matrix 与 r_target 具有期望的形状和值；若缓存返回异常形状或 NaN，则回退为直接计算
         try:
-            if not isinstance(self.R_matrix, np.ndarray) or self.R_matrix.shape != (3, 3) or np.isnan(self.R_matrix).any():
+            if (
+                not isinstance(self.R_matrix, np.ndarray)
+                or self.R_matrix.shape != (3, 3)
+                or np.isnan(self.R_matrix).any()
+            ):
                 logger.debug("检测到无效的 R_matrix，重新计算")
                 self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
         except Exception:
@@ -241,10 +254,10 @@ class AeroCalculator:
         results = self.process_batch(f_arr, m_arr)
 
         return AeroResult(
-            force_transformed=results['force_transformed'][0].tolist(),
-            moment_transformed=results['moment_transformed'][0].tolist(),
-            coeff_force=results['coeff_force'][0].tolist(),
-            coeff_moment=results['coeff_moment'][0].tolist()
+            force_transformed=results["force_transformed"][0].tolist(),
+            moment_transformed=results["moment_transformed"][0].tolist(),
+            coeff_force=results["coeff_force"][0].tolist(),
+            coeff_moment=results["coeff_moment"][0].tolist(),
         )
 
     def process_batch(self, forces: np.ndarray, moments: np.ndarray) -> Dict[str, np.ndarray]:
@@ -265,15 +278,15 @@ class AeroCalculator:
             if forces.size == 3:
                 forces = forces.reshape(1, 3)
             else:
-                raise ValueError('forces 必须为形状 (N,3) 或长度为3 的向量')
+                raise ValueError("forces 必须为形状 (N,3) 或长度为3 的向量")
         if moments.ndim == 1:
             if moments.size == 3:
                 moments = moments.reshape(1, 3)
             else:
-                raise ValueError('moments 必须为形状 (N,3) 或长度为3 的向量')
+                raise ValueError("moments 必须为形状 (N,3) 或长度为3 的向量")
 
         if forces.shape != moments.shape:
-            raise ValueError('forces 与 moments 必须具有相同形状')
+            raise ValueError("forces 与 moments 必须具有相同形状")
 
         # 1. 批量旋转 (Matrix Multiplication)
         # 公式: F_new = (R @ F_old.T).T  或者更高效的 F_old @ R.T
@@ -291,10 +304,10 @@ class AeroCalculator:
         M_final = M_rotated + M_transfer
 
         # 4. 无量纲化（使用选定的 target_frame）
-        q = getattr(self.target_frame, 'q', None)
-        s = getattr(self.target_frame, 's_ref', None)
-        b = getattr(self.target_frame, 'b_ref', None)
-        c = getattr(self.target_frame, 'c_ref', None)
+        q = getattr(self.target_frame, "q", None)
+        s = getattr(self.target_frame, "s_ref", None)
+        b = getattr(self.target_frame, "b_ref", None)
+        c = getattr(self.target_frame, "c_ref", None)
         denom_force = q * s
         # 使用统一的安全除法处理标量/按轴分母的各种场景
         C_F = self._safe_divide(
@@ -316,9 +329,4 @@ class AeroCalculator:
             warn_msg="动压(q) 或 参考长度 b_ref/c_ref 为零，相关轴的力矩系数已设为0。",
         )
 
-        return {
-            "force_transformed": F_final,
-            "moment_transformed": M_final,
-            "coeff_force": C_F,
-            "coeff_moment": C_M
-        }
+        return {"force_transformed": F_final, "moment_transformed": M_final, "coeff_force": C_F, "coeff_moment": C_M}
