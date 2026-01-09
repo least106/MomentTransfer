@@ -20,8 +20,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # 安装系统依赖，解决 PySide6 在无头 runner 上缺少 libEGL 等共享库的问题
+          sudo apt-get update
+          sudo apt-get install -y libegl1-mesa libgl1-mesa-glx libxkbcommon0 libxrender1 libx11-6 libxcb1 xvfb
           pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-      - name: Run tests
+      - name: Run tests (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
-          pytest -q
+          # 使用 xvfb-run 在无头环境中运行 GUI 测试
+          xvfb-run -s "-screen 0 1920x1080x24" pytest -q
