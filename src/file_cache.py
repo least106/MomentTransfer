@@ -43,8 +43,8 @@ class FileCache:
             # 使用路径+修改时间+文件大小作为键
             key_str = f"{file_path}_{stat.st_mtime}_{stat.st_size}"
             return hashlib.md5(key_str.encode()).hexdigest()
-        except Exception:
-            # 如果无法获取文件状态，使用路径作为键
+        except OSError:
+            # 如果无法获取文件状态（权限/不存在等），使用路径作为键
             return hashlib.md5(str(file_path).encode()).hexdigest()
 
     def get_file_content(
@@ -63,36 +63,46 @@ class FileCache:
         if not file_path.exists():
             return None
 
+        result: Optional[str] = None
+
         # 检查文件大小是否超过限制
         try:
             file_size = file_path.stat().st_size
             if file_size > self.max_file_size:
                 # 超过大小限制，直接读取不缓存
-                with open(file_path, "r", encoding=encoding, errors="ignore") as f:
-                    return f.read()
-        except Exception:
-            return None
+                try:
+                    with open(file_path, "r", encoding=encoding, errors="ignore") as f:
+                        result = f.read()
+                except (OSError, UnicodeDecodeError):
+                    result = None
+        except OSError:
+            result = None
 
         # 生成缓存键
         cache_key = self._get_file_key(file_path)
 
-        # 检查缓存
+        # 检查缓存（优先）
         with self._lock:
-            if cache_key in self._content_cache:
-                return self._content_cache[cache_key]
+            cached = self._content_cache.get(cache_key)
 
-        # 读取文件
-        try:
-            with open(file_path, "r", encoding=encoding, errors="ignore") as f:
-                content = f.read()
+        if cached is not None:
+            result = cached
+        else:
+            # 如果之前未因为超大文件读取过内容，则尝试正常读取并缓存
+            if result is None:
+                try:
+                    with open(file_path, "r", encoding=encoding, errors="ignore") as f:
+                        content = f.read()
 
-            # 存入缓存
-            with self._lock:
-                self._content_cache[cache_key] = content
+                    # 存入缓存
+                    with self._lock:
+                        self._content_cache[cache_key] = content
 
-            return content
-        except Exception:
-            return None
+                    result = content
+                except (OSError, UnicodeDecodeError):
+                    result = None
+
+        return result
 
     def get_file_header(
         self, file_path: Path, num_lines: int = 10, encoding: str = "utf-8-sig"
@@ -129,7 +139,7 @@ class FileCache:
                 self._metadata_cache[cache_key] = {"header": lines}
 
             return lines
-        except Exception:
+        except (OSError, StopIteration, UnicodeDecodeError):
             return None
 
     def set_metadata(self, file_path: Path, key: str, value: Any) -> None:
@@ -185,9 +195,7 @@ class FileCache:
         with self._lock:
             self._content_cache.pop(cache_key, None)
             # 清除所有相关的元数据缓存
-            keys_to_remove = [
-                k for k in self._metadata_cache.keys() if k.startswith(cache_key)
-            ]
+            keys_to_remove = [k for k in list(self._metadata_cache) if k.startswith(cache_key)]
             for k in keys_to_remove:
                 self._metadata_cache.pop(k, None)
 
@@ -205,16 +213,31 @@ class FileCache:
             }
 
 
-# 全局缓存实例
-_global_cache = None
+# 使用管理器单例，避免模块级 global
+class FileCacheManager:
+    """管理 `FileCache` 实例的单例管理器。"""
+
+    def __init__(self) -> None:
+        self._file_cache: Optional[FileCache] = None
+
+    def get_file_cache(self) -> FileCache:
+        """返回或创建 `FileCache` 单例实例。"""
+        if self._file_cache is None:
+            self._file_cache = FileCache()
+        return self._file_cache
+
+    def clear(self) -> None:
+        """清空已创建的 `FileCache` 缓存（如果存在）。"""
+        if self._file_cache is not None:
+            self._file_cache.clear()
+
+
+_FILE_CACHE_MANAGER = FileCacheManager()
 
 
 def get_file_cache() -> FileCache:
-    """获取全局文件缓存实例"""
-    global _global_cache
-    if _global_cache is None:
-        _global_cache = FileCache()
-    return _global_cache
+    """获取文件缓存实例（代理到 `_FILE_CACHE_MANAGER`）。"""
+    return _FILE_CACHE_MANAGER.get_file_cache()
 
 
 @lru_cache(maxsize=128)
@@ -240,5 +263,5 @@ def get_file_hash(file_path: str) -> Optional[str]:
                 md5_hash.update(chunk)
 
         return md5_hash.hexdigest()
-    except Exception:
+    except OSError:
         return None
