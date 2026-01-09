@@ -70,3 +70,37 @@ jobs:
           path: |
             coverage.xml
             coverage_html
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python for lint
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+      - name: Run black (check)
+        run: |
+          black --check src/ tests/ || (echo 'Run `black src/ tests/` to format' && exit 1)
+
+      - name: Run pylint
+        run: |
+          # 允许 pylint 返回非零以显示所有问题，但将退出非零以阻止合并
+          pylint src/ --exit-zero || true
+          # 汇总重要得分并在失败阈以下退出
+          SCORE=$(pylint src/ --score=y | tail -n1 | awk -F"/" '{print $1}' | awk '{print $NF}')
+          echo "Pylint score: $SCORE"
+          python - <<'PY'
+import sys
+score=float('$SCORE')
+if score<7.0:
+    print('Pylint score below 7.0, failing CI')
+    sys.exit(1)
+PY
