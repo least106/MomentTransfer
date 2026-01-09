@@ -91,7 +91,9 @@ class PerformanceMonitor:
         if self.process:
             try:
                 metrics.memory_after_mb = self.process.memory_info().rss / 1024 / 1024
-                metrics.memory_delta_mb = metrics.memory_after_mb - metrics.memory_before_mb
+                metrics.memory_delta_mb = (
+                    metrics.memory_after_mb - metrics.memory_before_mb
+                )
                 metrics.cpu_percent = self.process.cpu_percent(interval=0.01)
             except Exception:
                 pass
@@ -104,7 +106,11 @@ class PerformanceMonitor:
     def record_metric(self, metric_name: str, duration_ms: float, **kwargs) -> None:
         """直接记录指标"""
         metrics = PerformanceMetrics(
-            metric_name=metric_name, start_time=time.time(), end_time=time.time(), duration_ms=duration_ms, **kwargs
+            metric_name=metric_name,
+            start_time=time.time(),
+            end_time=time.time(),
+            duration_ms=duration_ms,
+            **kwargs,
         )
         with self.lock:
             self.metrics[metric_name].append(metrics)
@@ -164,7 +170,9 @@ class PerformanceMonitor:
             try:
                 stats["cpu_percent"] = psutil.cpu_percent(interval=0.1)
                 stats["memory_percent"] = psutil.virtual_memory().percent
-                stats["memory_available_mb"] = psutil.virtual_memory().available / 1024 / 1024
+                stats["memory_available_mb"] = (
+                    psutil.virtual_memory().available / 1024 / 1024
+                )
             except Exception:
                 pass
         return stats

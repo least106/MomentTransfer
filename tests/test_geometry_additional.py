@@ -27,13 +27,17 @@ def test_construct_basis_non_orthogonal_warn_and_strict():
     # 非 strict 模式下应当发出警告而不是抛出
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        basis = construct_basis_matrix(x, y, z, orthogonality_threshold=0.01, strict=False, orthogonalize=False)
+        basis = construct_basis_matrix(
+            x, y, z, orthogonality_threshold=0.01, strict=False, orthogonalize=False
+        )
         assert len(w) >= 1
         assert basis.shape == (3, 3)
 
     # strict=True 时应抛出 ValueError
     with pytest.raises(ValueError):
-        construct_basis_matrix(x, y, z, orthogonality_threshold=0.01, strict=True, orthogonalize=False)
+        construct_basis_matrix(
+            x, y, z, orthogonality_threshold=0.01, strict=True, orthogonalize=False
+        )
 
 
 def test_construct_basis_orthogonalize_success():
@@ -42,7 +46,9 @@ def test_construct_basis_orthogonalize_success():
     y = [0.02, 1.0, 0.0]
     z = [0.0, 0.0, 1.0]
 
-    basis = construct_basis_matrix(x, y, z, orthogonality_threshold=0.01, orthogonalize=True)
+    basis = construct_basis_matrix(
+        x, y, z, orthogonality_threshold=0.01, orthogonalize=True
+    )
     # 检查正交性：任意两行点积接近 0
     assert abs(np.dot(basis[0], basis[1])) < 1e-6
     assert abs(np.dot(basis[1], basis[2])) < 1e-6

@@ -80,5 +80,7 @@ class Part:
     def from_dict(cls, data: Dict) -> "Part":
         name = data.get("PartName", "")
         variants_data = data.get("Variants") or []
-        variants = [Variant.from_dict(v) for v in variants_data] if variants_data else []
+        variants = (
+            [Variant.from_dict(v) for v in variants_data] if variants_data else []
+        )
         return cls(name=name, variants=variants)

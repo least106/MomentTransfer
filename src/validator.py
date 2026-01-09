@@ -29,7 +29,9 @@ class DataValidator:
     """数据验证器 - 验证各类输入数据"""
 
     @staticmethod
-    def validate_coordinate(coord: Any, name: str = "coordinate") -> Tuple[float, float, float]:
+    def validate_coordinate(
+        coord: Any, name: str = "coordinate"
+    ) -> Tuple[float, float, float]:
         """
         验证坐标（列表或数组）
 
@@ -63,7 +65,10 @@ class DataValidator:
 
     @staticmethod
     def validate_numeric_range(
-        value: Any, min_val: Optional[float] = None, max_val: Optional[float] = None, name: str = "value"
+        value: Any,
+        min_val: Optional[float] = None,
+        max_val: Optional[float] = None,
+        name: str = "value",
     ) -> float:
         """
         验证数值范围
@@ -95,7 +100,9 @@ class DataValidator:
             raise ValidationError(f"数值验证失败: {e}")
 
     @staticmethod
-    def validate_file_path(filepath: str, must_exist: bool = True, writable: bool = False) -> Path:
+    def validate_file_path(
+        filepath: str, must_exist: bool = True, writable: bool = False
+    ) -> Path:
         """
         验证文件路径安全性
 
@@ -112,7 +119,9 @@ class DataValidator:
 
             # 检查路径遍历攻击
             if ".." in path.parts:
-                raise ValidationError(f"路径包含 '..'，可能存在目录遍历攻击: {filepath}")
+                raise ValidationError(
+                    f"路径包含 '..'，可能存在目录遍历攻击: {filepath}"
+                )
 
             if must_exist and not path.exists():
                 raise ValidationError(f"文件不存在: {filepath}")
@@ -131,7 +140,9 @@ class DataValidator:
             raise ValidationError(f"路径验证失败: {e}")
 
     @staticmethod
-    def validate_csv_safety(filepath: str, max_size_mb: float = 1024, max_rows: int = 1000000) -> Path:
+    def validate_csv_safety(
+        filepath: str, max_size_mb: float = 1024, max_rows: int = 1000000
+    ) -> Path:
         """
         验证 CSV 文件安全性
 
@@ -149,7 +160,9 @@ class DataValidator:
             # 检查文件大小
             file_size_mb = path.stat().st_size / 1024 / 1024
             if file_size_mb > max_size_mb:
-                raise ValidationError(f"CSV 文件过大: {file_size_mb:.2f} MB > {max_size_mb} MB")
+                raise ValidationError(
+                    f"CSV 文件过大: {file_size_mb:.2f} MB > {max_size_mb} MB"
+                )
 
             # 检查行数（通过采样）
             try:
@@ -158,7 +171,9 @@ class DataValidator:
                     # 读取几行来估计总行数
                     total_lines = sum(1 for _ in open(path))
                     if total_lines > max_rows:
-                        raise ValidationError(f"CSV 文件行数过多: {total_lines} > {max_rows}")
+                        raise ValidationError(
+                            f"CSV 文件行数过多: {total_lines} > {max_rows}"
+                        )
             except pd.errors.ParserError as e:
                 raise ValidationError(f"CSV 格式无效: {e}")
 
@@ -171,7 +186,9 @@ class DataValidator:
 
     @staticmethod
     def validate_data_frame(
-        df: pd.DataFrame, required_columns: Optional[List[str]] = None, max_rows: int = 1000000
+        df: pd.DataFrame,
+        required_columns: Optional[List[str]] = None,
+        max_rows: int = 1000000,
     ) -> pd.DataFrame:
         """
         验证 DataFrame 的完整性和安全性
@@ -256,6 +273,8 @@ def validate_coordinates(coords: List[List[float]]) -> List[Tuple[float, float, 
     return [DataValidator.validate_coordinate(coord) for coord in coords]
 
 
-def validate_numeric(value: Any, min_val: float = -1e10, max_val: float = 1e10) -> float:
+def validate_numeric(
+    value: Any, min_val: float = -1e10, max_val: float = 1e10
+) -> float:
     """快速验证数值"""
     return DataValidator.validate_numeric_range(value, min_val, max_val)

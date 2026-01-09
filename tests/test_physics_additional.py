@@ -7,7 +7,9 @@ from src.data_loader import FrameConfiguration, CoordSystemDefinition
 
 
 def make_frame(q=2.0, s_ref=5.0, b_ref=2.0, c_ref=3.0):
-    coord = CoordSystemDefinition(origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1])
+    coord = CoordSystemDefinition(
+        origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1]
+    )
     return FrameConfiguration(
         part_name="P",
         coord_system=coord,

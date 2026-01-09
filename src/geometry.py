@@ -67,7 +67,9 @@ def construct_basis_matrix(
     zx_dot = abs(np.dot(vz, vx))
 
     non_orthogonal = (
-        xy_dot > orthogonality_threshold or yz_dot > orthogonality_threshold or zx_dot > orthogonality_threshold
+        xy_dot > orthogonality_threshold
+        or yz_dot > orthogonality_threshold
+        or zx_dot > orthogonality_threshold
     )
 
     if non_orthogonal:
@@ -95,7 +97,9 @@ def construct_basis_matrix(
                 u2 = normalize(u2)
                 u3 = normalize(u3)
             except ValueError as e:
-                raise ValueError(f"正交化失败：输入向量可能线性相关或接近退化，无法构造正交基。详情: {e}") from e
+                raise ValueError(
+                    f"正交化失败：输入向量可能线性相关或接近退化，无法构造正交基。详情: {e}"
+                ) from e
 
             basis = np.array([u1, u2, u3])
         else:
@@ -110,12 +114,16 @@ def construct_basis_matrix(
     # 进一步检查基矩阵的线性相关性（行列式接近零表示基向量线性相关 -> 奇异矩阵）
     det = np.linalg.det(basis)
     if abs(det) < singularity_threshold:
-        raise ValueError(f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。")
+        raise ValueError(
+            f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。"
+        )
 
     return basis
 
 
-def compute_rotation_matrix(source_basis: np.ndarray, target_basis: np.ndarray) -> np.ndarray:
+def compute_rotation_matrix(
+    source_basis: np.ndarray, target_basis: np.ndarray
+) -> np.ndarray:
     """
     计算从源坐标系到目标坐标系的旋转矩阵 R。
 
@@ -128,7 +136,9 @@ def compute_rotation_matrix(source_basis: np.ndarray, target_basis: np.ndarray) 
 
 
 # 空间位置与投影逻辑
-def compute_moment_arm_global(source_origin: List[float], target_moment_center: List[float]) -> np.ndarray:
+def compute_moment_arm_global(
+    source_origin: List[float], target_moment_center: List[float]
+) -> np.ndarray:
     """
     计算力臂矢量 r (在全局/绝对坐标系下)。
 
@@ -141,7 +151,9 @@ def compute_moment_arm_global(source_origin: List[float], target_moment_center: 
     return p_src - p_tgt
 
 
-def project_vector_to_frame(vec_global: np.ndarray, frame_basis: np.ndarray) -> np.ndarray:
+def project_vector_to_frame(
+    vec_global: np.ndarray, frame_basis: np.ndarray
+) -> np.ndarray:
     """
     将全局坐标系下的向量投影到特定坐标系（如目标坐标系）。
 
@@ -152,7 +164,9 @@ def project_vector_to_frame(vec_global: np.ndarray, frame_basis: np.ndarray) -> 
     return np.dot(frame_basis, vec_global)
 
 
-def euler_angles_to_basis(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:
+def euler_angles_to_basis(
+    roll_deg: float, pitch_deg: float, yaw_deg: float
+) -> np.ndarray:
     """
     将欧拉角转换为 3x3 基向量矩阵 (X, Y, Z 轴向量)。
     旋转顺序（对列向量右乘时的实际应用顺序）为: Roll (X) -> Pitch (Y) -> Yaw (Z)，对应组合矩阵 R = Rz @ Ry @ Rx
@@ -169,24 +183,38 @@ def euler_angles_to_basis(roll_deg: float, pitch_deg: float, yaw_deg: float) -> 
     # 旋转矩阵构建
     # rotation_matrix_z (Yaw)
     rotation_matrix_z = np.array(
-        [[np.cos(yaw_rad), -np.sin(yaw_rad), 0], [np.sin(yaw_rad), np.cos(yaw_rad), 0], [0, 0, 1]]
+        [
+            [np.cos(yaw_rad), -np.sin(yaw_rad), 0],
+            [np.sin(yaw_rad), np.cos(yaw_rad), 0],
+            [0, 0, 1],
+        ]
     )
 
     # rotation_matrix_y (Pitch)
     rotation_matrix_y = np.array(
-        [[np.cos(pitch_rad), 0, np.sin(pitch_rad)], [0, 1, 0], [-np.sin(pitch_rad), 0, np.cos(pitch_rad)]]
+        [
+            [np.cos(pitch_rad), 0, np.sin(pitch_rad)],
+            [0, 1, 0],
+            [-np.sin(pitch_rad), 0, np.cos(pitch_rad)],
+        ]
     )
 
     # rotation_matrix_x (Roll)
     rotation_matrix_x = np.array(
-        [[1, 0, 0], [0, np.cos(roll_rad), -np.sin(roll_rad)], [0, np.sin(roll_rad), np.cos(roll_rad)]]
+        [
+            [1, 0, 0],
+            [0, np.cos(roll_rad), -np.sin(roll_rad)],
+            [0, np.sin(roll_rad), np.cos(roll_rad)],
+        ]
     )
 
     # 复合旋转矩阵（按顺序 Rz * Ry * Rx 得到最终变换）
     # 注意：这里的基向量是列向量概念，或者是将全局坐标转到局部。
     # 我们需要的是：在全局坐标系下，局部坐标轴指向哪里。
     # 这等同于旋转矩阵的 列 (Columns)。
-    composite_rotation_matrix = rotation_matrix_z @ rotation_matrix_y @ rotation_matrix_x
+    composite_rotation_matrix = (
+        rotation_matrix_z @ rotation_matrix_y @ rotation_matrix_x
+    )
 
     # composite_rotation_matrix 的第一列是 X轴，第二列是 Y轴，第三列是 Z轴
     x_axis = composite_rotation_matrix[:, 0]

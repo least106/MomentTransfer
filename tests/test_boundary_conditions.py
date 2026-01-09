@@ -7,7 +7,12 @@ from src.data_loader import FrameConfiguration
 def make_cfg(q=1.0, s=1.0, cref=0.1, bref=0.3):
     cfg = {
         "PartName": "boundary_example",
-        "CoordSystem": {"Orig": [0, 0, 0], "X": [1, 0, 0], "Y": [0, 1, 0], "Z": [0, 0, 1]},
+        "CoordSystem": {
+            "Orig": [0, 0, 0],
+            "X": [1, 0, 0],
+            "Y": [0, 1, 0],
+            "Z": [0, 0, 1],
+        },
         "MomentCenter": [0.0, 0.0, 0.0],
         "Q": q,
         "S": s,

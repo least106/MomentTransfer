@@ -24,9 +24,13 @@ class CoordSystemDefinition:
 
         def validate_vector(vec, field_name):
             if not isinstance(vec, (list, tuple)):
-                raise ValueError(f"字段 {field_name} 必须是列表或元组，当前类型: {type(vec).__name__}")
+                raise ValueError(
+                    f"字段 {field_name} 必须是列表或元组，当前类型: {type(vec).__name__}"
+                )
             if len(vec) != 3:
-                raise ValueError(f"字段 {field_name} 必须包含 3 个元素，当前长度: {len(vec)}")
+                raise ValueError(
+                    f"字段 {field_name} 必须包含 3 个元素，当前长度: {len(vec)}"
+                )
             try:
                 [float(x) for x in vec]
             except (ValueError, TypeError) as e:
@@ -37,7 +41,9 @@ class CoordSystemDefinition:
         validate_vector(data["Y"], "Y")
         validate_vector(data["Z"], "Z")
 
-        return cls(origin=data["Orig"], x_axis=data["X"], y_axis=data["Y"], z_axis=data["Z"])
+        return cls(
+            origin=data["Orig"], x_axis=data["X"], y_axis=data["Y"], z_axis=data["Z"]
+        )
 
 
 @dataclass
@@ -81,11 +87,16 @@ class FrameConfiguration:
         for mc_key in ["MomentCenter", "TargetMomentCenter", "SourceMomentCenter"]:
             if mc_key in data:
                 moment_center = data[mc_key]
-                if not isinstance(moment_center, (list, tuple)) or len(moment_center) != 3:
+                if (
+                    not isinstance(moment_center, (list, tuple))
+                    or len(moment_center) != 3
+                ):
                     raise ValueError(f"{mc_key} 必须是长度为 3 的列表")
                 break
         if moment_center is None:
-            raise ValueError(f"{frame_type} 定义必须包含 MomentCenter 字段（长度为3的列表）")
+            raise ValueError(
+                f"{frame_type} 定义必须包含 MomentCenter 字段（长度为3的列表）"
+            )
 
         # 获取数值参数 (都是可选的) - 支持多种字段名以保证兼容性
         c_ref = data.get("Cref") or data.get("C_ref")
@@ -109,7 +120,9 @@ class FrameConfiguration:
             try:
                 f = float(val)
             except (ValueError, TypeError):
-                raise ValueError(f"字段 {name} 的值必须是数值类型，当前值: {val} (type={type(val).__name__})")
+                raise ValueError(
+                    f"字段 {name} 的值必须是数值类型，当前值: {val} (type={type(val).__name__})"
+                )
             if strictly_positive:
                 if f <= 0:
                     raise ValueError(f"字段 {name} 必须为严格正数 (>0)，当前值: {val}")
@@ -118,8 +131,16 @@ class FrameConfiguration:
                     raise ValueError(f"字段 {name} 必须为非负数 (>=0)，当前值: {val}")
             return f
 
-        c_ref = parse_numeric_value("Cref", c_ref, strictly_positive=True) if c_ref is not None else None
-        b_ref = parse_numeric_value("Bref", b_ref, strictly_positive=True) if b_ref is not None else None
+        c_ref = (
+            parse_numeric_value("Cref", c_ref, strictly_positive=True)
+            if c_ref is not None
+            else None
+        )
+        b_ref = (
+            parse_numeric_value("Bref", b_ref, strictly_positive=True)
+            if b_ref is not None
+            else None
+        )
         s_ref = parse_numeric_value("S", s_ref, strictly_positive=True)
         q = parse_numeric_value("Q", q, strictly_positive=False)
 
@@ -170,11 +191,17 @@ class ProjectData:
     target_parts: Dict[str, List[FrameConfiguration]]
 
     @classmethod
-    def _parse_parts_section(cls, section: Any, section_name: str) -> Dict[str, List[FrameConfiguration]]:
+    def _parse_parts_section(
+        cls, section: Any, section_name: str
+    ) -> Dict[str, List[FrameConfiguration]]:
         """解析 Source/Target 部分，支持新格式（含 Parts 列表）和旧格式（单个对象）。"""
         parts: Dict[str, List[FrameConfiguration]] = {}
         # 新格式：必须包含 Parts 列表（严格模式：不再支持旧的直接对象格式）
-        if not (isinstance(section, dict) and "Parts" in section and isinstance(section["Parts"], list)):
+        if not (
+            isinstance(section, dict)
+            and "Parts" in section
+            and isinstance(section["Parts"], list)
+        ):
             raise ValueError(
                 f"{section_name} 必须为对象且包含 'Parts' 列表。示例: {{'Parts':[{{'PartName':'Name','Variants':[{{...}}]}}]}}"
             )
@@ -186,20 +213,30 @@ class ProjectData:
                 part_name = p.get("PartName") or "Unnamed"
                 variants_raw = p.get("Variants")
                 variants: List[FrameConfiguration] = []
-                if variants_raw is None or not isinstance(variants_raw, list) or len(variants_raw) == 0:
+                if (
+                    variants_raw is None
+                    or not isinstance(variants_raw, list)
+                    or len(variants_raw) == 0
+                ):
                     raise ValueError(
                         f"{section_name} Part '{part_name}' 必须包含非空的 'Variants' 列表或至少一个变体对象"
                     )
 
                 for v in variants_raw:
                     if not isinstance(v, dict):
-                        raise ValueError(f"{section_name} Part {part_name} 的 variant 必须为对象")
+                        raise ValueError(
+                            f"{section_name} Part {part_name} 的 variant 必须为对象"
+                        )
                     # 确保每个 variant 有 PartName 字段以便 from_dict 验证；若无则注入 parent 名称
                     v_copy = dict(v)
                     if "PartName" not in v_copy:
                         v_copy["PartName"] = part_name
                     # FrameConfiguration.from_dict 已会对 CoordSystem 和必需字段进行校验
-                    variants.append(FrameConfiguration.from_dict(v_copy, frame_type=f"{section_name}.{part_name}"))
+                    variants.append(
+                        FrameConfiguration.from_dict(
+                            v_copy, frame_type=f"{section_name}.{part_name}"
+                        )
+                    )
 
                 parts[part_name] = variants
 
@@ -235,9 +272,13 @@ class ProjectData:
                         f"Target Part '{part_name}' Variant[{idx}] 缺少有效的 MomentCenter（长度为3的列表）"
                     )
                 if var.q is None:
-                    raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少动压 Q（数值）")
+                    raise ValueError(
+                        f"Target Part '{part_name}' Variant[{idx}] 缺少动压 Q（数值）"
+                    )
                 if var.s_ref is None:
-                    raise ValueError(f"Target Part '{part_name}' Variant[{idx}] 缺少参考面积 S（数值）")
+                    raise ValueError(
+                        f"Target Part '{part_name}' Variant[{idx}] 缺少参考面积 S（数值）"
+                    )
 
         return cls(source_parts=source_parts, target_parts=target_parts)
 
@@ -263,7 +304,9 @@ class ProjectData:
         return self.source_config.coord_system
 
     # 便捷访问器
-    def get_source_part(self, part_name: str, variant_index: int = 0) -> FrameConfiguration:
+    def get_source_part(
+        self, part_name: str, variant_index: int = 0
+    ) -> FrameConfiguration:
         parts = self.source_parts.get(part_name)
         if not parts:
             raise KeyError(f"找不到 Source part: {part_name}")
@@ -272,7 +315,9 @@ class ProjectData:
         except IndexError:
             raise IndexError(f"Part {part_name} 没有索引 {variant_index} 的 variant")
 
-    def get_target_part(self, part_name: str, variant_index: int = 0) -> FrameConfiguration:
+    def get_target_part(
+        self, part_name: str, variant_index: int = 0
+    ) -> FrameConfiguration:
         parts = self.target_parts.get(part_name)
         if not parts:
             raise KeyError(f"找不到 Target part: {part_name}")
@@ -314,7 +359,10 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
         pd = load_data(file_path)
         return True, pd, None
     except FileNotFoundError as e:
-        info = {"message": str(e), "suggestion": "检查路径或使用 creator.py 生成 data/input.json。"}
+        info = {
+            "message": str(e),
+            "suggestion": "检查路径或使用 creator.py 生成 data/input.json。",
+        }
         if strict:
             return False, None, info
         raise
@@ -336,5 +384,9 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
     except Exception as e:
         # 未知错误：返回通用建议
         if strict:
-            return False, None, {"message": str(e), "suggestion": "查看完整异常并检查文件权限/编码。"}
+            return (
+                False,
+                None,
+                {"message": str(e), "suggestion": "查看完整异常并检查文件权限/编码。"},
+            )
         raise

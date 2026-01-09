@@ -140,7 +140,9 @@ def get_user_file_format() -> BatchConfig:
     passthrough = input("  列号: ").strip()
     if passthrough:
         try:
-            config.passthrough_columns = [int(x.strip()) for x in passthrough.split(",")]
+            config.passthrough_columns = [
+                int(x.strip()) for x in passthrough.split(",")
+            ]
         except ValueError:
             print("[警告] 格式错误，将不保留额外列")
 
@@ -337,5 +339,7 @@ def attempt_load_project_data(path: str, *, strict: bool = True):
         return project_data
     if strict:
         # 抛出包含建议的错误，便于上层捕获并显示
-        raise ValueError(f"加载配置失败: {info.get('message')} 建议: {info.get('suggestion')}")
+        raise ValueError(
+            f"加载配置失败: {info.get('message')} 建议: {info.get('suggestion')}"
+        )
     return None, info

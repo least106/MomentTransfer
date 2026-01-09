@@ -1,9 +1,16 @@
 """
 坐标系模型单元测试 - 验证 CoordinateSystem 与 ReferenceValues 的基本功能
 """
+
 import pytest
 import numpy as np
-from src.models.project_model import CoordinateSystem, ReferenceValues, PartVariant, Part, ProjectConfigModel
+from src.models.project_model import (
+    CoordinateSystem,
+    ReferenceValues,
+    PartVariant,
+    Part,
+    ProjectConfigModel,
+)
 
 
 class TestCoordinateSystem:
@@ -25,7 +32,7 @@ class TestCoordinateSystem:
             x_axis=[1.0, 0.0, 0.0],
             y_axis=[0.0, 1.0, 0.0],
             z_axis=[0.0, 0.0, 1.0],
-            moment_center=[0.5, 0.5, 0.5]
+            moment_center=[0.5, 0.5, 0.5],
         )
         assert cs.origin == [1.0, 2.0, 3.0]
         assert cs.moment_center == [0.5, 0.5, 0.5]
@@ -36,7 +43,7 @@ class TestCoordinateSystem:
             origin=[0.0, 0.0, 0.0],
             x_axis=[1.0, 0.0, 0.0],
             y_axis=[0.0, 1.0, 0.0],
-            z_axis=[0.0, 0.0, 1.0]
+            z_axis=[0.0, 0.0, 1.0],
         )
         matrix = cs.to_matrix()
         expected = np.eye(3)
@@ -47,21 +54,21 @@ class TestCoordinateSystem:
         cs = CoordinateSystem(
             origin=[1.0, 0.0, 0.0],
             x_axis=[1.0, 0.0, 0.0],
-            moment_center=[0.5, 0.5, 0.5]
+            moment_center=[0.5, 0.5, 0.5],
         )
         data = cs.to_dict()
-        assert data['Orig'] == [1.0, 0.0, 0.0]
-        assert data['X'] == [1.0, 0.0, 0.0]
-        assert data['MomentCenter'] == [0.5, 0.5, 0.5]
+        assert data["Orig"] == [1.0, 0.0, 0.0]
+        assert data["X"] == [1.0, 0.0, 0.0]
+        assert data["MomentCenter"] == [0.5, 0.5, 0.5]
 
     def test_coordinate_system_from_dict(self):
         """测试从字典反序列化"""
         data = {
-            'Orig': [1.0, 2.0, 3.0],
-            'X': [1.0, 0.0, 0.0],
-            'Y': [0.0, 1.0, 0.0],
-            'Z': [0.0, 0.0, 1.0],
-            'MomentCenter': [0.5, 0.5, 0.5]
+            "Orig": [1.0, 2.0, 3.0],
+            "X": [1.0, 0.0, 0.0],
+            "Y": [0.0, 1.0, 0.0],
+            "Z": [0.0, 0.0, 1.0],
+            "MomentCenter": [0.5, 0.5, 0.5],
         }
         cs = CoordinateSystem.from_dict(data)
         assert cs.origin == [1.0, 2.0, 3.0]
@@ -75,7 +82,7 @@ class TestCoordinateSystem:
             x_axis=[1.0, 0.1, 0.0],
             y_axis=[0.0, 1.0, 0.2],
             z_axis=[0.0, 0.0, 1.0],
-            moment_center=[0.7, 0.8, 0.9]
+            moment_center=[0.7, 0.8, 0.9],
         )
         data = original.to_dict()
         restored = CoordinateSystem.from_dict(data)
@@ -107,20 +114,20 @@ class TestReferenceValues:
         """测试参考值序列化"""
         refs = ReferenceValues(cref=2.0, bref=3.0, sref=20.0, q=2000.0)
         data = refs.to_dict()
-        assert data['Cref'] == 2.0
-        assert data['Bref'] == 3.0
-        assert data['S'] == 20.0
-        assert data['Q'] == 2000.0
+        assert data["Cref"] == 2.0
+        assert data["Bref"] == 3.0
+        assert data["S"] == 20.0
+        assert data["Q"] == 2000.0
 
     def test_reference_values_from_dict(self):
         """测试参考值反序列化（支持多种字段名）"""
         # 支持 'S' 或 'Sref'
-        data1 = {'Cref': 2.0, 'Bref': 3.0, 'S': 20.0, 'Q': 2000.0}
+        data1 = {"Cref": 2.0, "Bref": 3.0, "S": 20.0, "Q": 2000.0}
         refs1 = ReferenceValues.from_dict(data1)
         assert refs1.sref == 20.0
 
         # 支持 'Sref' 别名
-        data2 = {'Cref': 2.0, 'Bref': 3.0, 'Sref': 25.0, 'Q': 2000.0}
+        data2 = {"Cref": 2.0, "Bref": 3.0, "Sref": 25.0, "Q": 2000.0}
         refs2 = ReferenceValues.from_dict(data2)
         assert refs2.sref == 25.0
 
@@ -143,27 +150,27 @@ class TestPartVariant:
         refs = ReferenceValues(cref=2.0)
         variant = PartVariant(part_name="Part1", coord_system=cs, refs=refs)
         data = variant.to_dict()
-        assert data['PartName'] == "Part1"
-        assert data['CoordSystem']['Orig'] == [1.0, 0.0, 0.0]
-        assert data['Cref'] == 2.0
+        assert data["PartName"] == "Part1"
+        assert data["CoordSystem"]["Orig"] == [1.0, 0.0, 0.0]
+        assert data["Cref"] == 2.0
 
     def test_part_variant_from_dict(self):
         """测试 PartVariant 反序列化"""
         data = {
-            'PartName': 'Part1',
-            'CoordSystem': {
-                'Orig': [1.0, 0.0, 0.0],
-                'X': [1.0, 0.0, 0.0],
-                'Y': [0.0, 1.0, 0.0],
-                'Z': [0.0, 0.0, 1.0],
+            "PartName": "Part1",
+            "CoordSystem": {
+                "Orig": [1.0, 0.0, 0.0],
+                "X": [1.0, 0.0, 0.0],
+                "Y": [0.0, 1.0, 0.0],
+                "Z": [0.0, 0.0, 1.0],
             },
-            'Cref': 2.0,
-            'Bref': 3.0,
-            'S': 20.0,
-            'Q': 2000.0
+            "Cref": 2.0,
+            "Bref": 3.0,
+            "S": 20.0,
+            "Q": 2000.0,
         }
         variant = PartVariant.from_dict(data)
-        assert variant.part_name == 'Part1'
+        assert variant.part_name == "Part1"
         assert variant.coord_system.origin == [1.0, 0.0, 0.0]
         assert variant.refs.cref == 2.0
 
@@ -187,8 +194,8 @@ class TestPart:
         variant = PartVariant(part_name="Part1", coord_system=cs, refs=refs)
         part = Part(part_name="Part1", variants=[variant])
         data = part.to_dict()
-        assert data['PartName'] == "Part1"
-        assert len(data['Variants']) == 1
+        assert data["PartName"] == "Part1"
+        assert len(data["Variants"]) == 1
 
 
 class TestProjectConfigModel:
@@ -220,33 +227,33 @@ class TestProjectConfigModel:
         part = Part(part_name="Global", variants=[variant])
         model.source_parts["Global"] = part
         data = model.to_dict()
-        assert 'Source' in data
-        assert len(data['Source']['Parts']) == 1
+        assert "Source" in data
+        assert len(data["Source"]["Parts"]) == 1
 
     def test_project_config_model_from_dict(self):
         """测试项目配置反序列化"""
         data = {
-            'Source': {
-                'Parts': [
+            "Source": {
+                "Parts": [
                     {
-                        'PartName': 'Global',
-                        'CoordSystem': {
-                            'Orig': [0.0, 0.0, 0.0],
-                            'X': [1.0, 0.0, 0.0],
-                            'Y': [0.0, 1.0, 0.0],
-                            'Z': [0.0, 0.0, 1.0],
+                        "PartName": "Global",
+                        "CoordSystem": {
+                            "Orig": [0.0, 0.0, 0.0],
+                            "X": [1.0, 0.0, 0.0],
+                            "Y": [0.0, 1.0, 0.0],
+                            "Z": [0.0, 0.0, 1.0],
                         },
-                        'Cref': 1.0,
-                        'Bref': 1.0,
-                        'S': 10.0,
-                        'Q': 1000.0
+                        "Cref": 1.0,
+                        "Bref": 1.0,
+                        "S": 10.0,
+                        "Q": 1000.0,
                     }
                 ]
             },
-            'Target': {'Parts': []}
+            "Target": {"Parts": []},
         }
         model = ProjectConfigModel.from_dict(data)
-        assert 'Global' in model.source_parts
+        assert "Global" in model.source_parts
         assert len(model.target_parts) == 0
 
     def test_project_config_model_roundtrip(self):
@@ -266,10 +273,14 @@ class TestProjectConfigModel:
         restored = ProjectConfigModel.from_dict(data)
 
         # 验证一致性
-        assert 'Part1' in restored.source_parts
-        assert restored.source_parts['Part1'].variants[0].coord_system.origin == [1.0, 2.0, 3.0]
-        assert restored.source_parts['Part1'].variants[0].refs.cref == 2.0
+        assert "Part1" in restored.source_parts
+        assert restored.source_parts["Part1"].variants[0].coord_system.origin == [
+            1.0,
+            2.0,
+            3.0,
+        ]
+        assert restored.source_parts["Part1"].variants[0].refs.cref == 2.0
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

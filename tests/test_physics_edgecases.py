@@ -99,19 +99,20 @@ def test_cache_exceptions_do_not_raise(monkeypatch):
             raise RuntimeError("cache set failed")
 
     def fake_get_config():
-        class C: pass
+        class C:
+            pass
 
         c = C()
         c.cache = C()
         c.cache.enabled = True
-        c.cache.cache_types = ['rotation', 'transformation']
+        c.cache.cache_types = ["rotation", "transformation"]
         c.cache.max_entries = 10
         c.cache.precision_digits = 3
         return c
 
-    monkeypatch.setattr(physics_mod, 'get_config', fake_get_config)
-    monkeypatch.setattr(physics_mod, 'get_rotation_cache', lambda *_: BadCache())
-    monkeypatch.setattr(physics_mod, 'get_transformation_cache', lambda *_: BadCache())
+    monkeypatch.setattr(physics_mod, "get_config", fake_get_config)
+    monkeypatch.setattr(physics_mod, "get_rotation_cache", lambda *_: BadCache())
+    monkeypatch.setattr(physics_mod, "get_transformation_cache", lambda *_: BadCache())
 
     # 应该不会抛出异常（内部回退为直接计算）
     fc = make_simple_frame()
@@ -138,19 +139,24 @@ def test_cache_malformed_shape_fallback(monkeypatch):
             return None
 
     def fake_get_config():
-        class C: pass
+        class C:
+            pass
 
         c = C()
         c.cache = C()
         c.cache.enabled = True
-        c.cache.cache_types = ['rotation', 'transformation']
+        c.cache.cache_types = ["rotation", "transformation"]
         c.cache.max_entries = 10
         c.cache.precision_digits = 3
         return c
 
-    monkeypatch.setattr(physics_mod, 'get_config', fake_get_config)
-    monkeypatch.setattr(physics_mod, 'get_rotation_cache', lambda *_: BadCacheMalformed())
-    monkeypatch.setattr(physics_mod, 'get_transformation_cache', lambda *_: BadCacheMalformed())
+    monkeypatch.setattr(physics_mod, "get_config", fake_get_config)
+    monkeypatch.setattr(
+        physics_mod, "get_rotation_cache", lambda *_: BadCacheMalformed()
+    )
+    monkeypatch.setattr(
+        physics_mod, "get_transformation_cache", lambda *_: BadCacheMalformed()
+    )
 
     fc = make_simple_frame()
     calc = AeroCalculator(fc)

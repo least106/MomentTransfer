@@ -69,7 +69,12 @@ class ReferenceValues:
         )
 
     def to_dict(self) -> Dict:
-        return {"Cref": float(self.cref), "Bref": float(self.bref), "S": float(self.sref), "Q": float(self.q)}
+        return {
+            "Cref": float(self.cref),
+            "Bref": float(self.bref),
+            "S": float(self.sref),
+            "Q": float(self.q),
+        }
 
 
 @dataclass
@@ -91,7 +96,9 @@ class PartVariant:
                 cs.moment_center = list(mc)
             except Exception:
                 pass
-        return cls(part_name=part_name, coord_system=cs, refs=ReferenceValues.from_dict(data))
+        return cls(
+            part_name=part_name, coord_system=cs, refs=ReferenceValues.from_dict(data)
+        )
 
     def to_dict(self) -> Dict:
         return {
@@ -123,7 +130,10 @@ class Part:
         return cls(part_name=part_name, variants=variants)
 
     def to_dict(self) -> Dict:
-        return {"PartName": self.part_name, "Variants": [v.to_dict() for v in self.variants]}
+        return {
+            "PartName": self.part_name,
+            "Variants": [v.to_dict() for v in self.variants],
+        }
 
 
 class ProjectConfigModel:

@@ -3,6 +3,7 @@
 
 使用 `FrameConfiguration` 与 `ProjectData(source_config=..., target_config=...)`。
 """
+
 import pytest
 import numpy as np
 import warnings
@@ -11,7 +12,15 @@ from src.data_loader import ProjectData, CoordSystemDefinition, FrameConfigurati
 from src.physics import AeroCalculator, AeroResult
 
 
-def create_test_project_data(q=100.0, s_ref=1.0, c_ref=1.0, b_ref=2.0, source_origin=None, target_origin=None, target_moment_center=None):
+def create_test_project_data(
+    q=100.0,
+    s_ref=1.0,
+    c_ref=1.0,
+    b_ref=2.0,
+    source_origin=None,
+    target_origin=None,
+    target_moment_center=None,
+):
     if source_origin is None:
         source_origin = [0.0, 0.0, 0.0]
     if target_origin is None:
@@ -19,20 +28,43 @@ def create_test_project_data(q=100.0, s_ref=1.0, c_ref=1.0, b_ref=2.0, source_or
     if target_moment_center is None:
         target_moment_center = [0.0, 0.0, 0.0]
 
-    src_coord = CoordSystemDefinition(origin=source_origin, x_axis=[1.0, 0.0, 0.0], y_axis=[0.0, 1.0, 0.0], z_axis=[0.0, 0.0, 1.0])
-    tgt_coord = CoordSystemDefinition(origin=target_origin, x_axis=[1.0, 0.0, 0.0], y_axis=[0.0, 1.0, 0.0], z_axis=[0.0, 0.0, 1.0])
+    src_coord = CoordSystemDefinition(
+        origin=source_origin,
+        x_axis=[1.0, 0.0, 0.0],
+        y_axis=[0.0, 1.0, 0.0],
+        z_axis=[0.0, 0.0, 1.0],
+    )
+    tgt_coord = CoordSystemDefinition(
+        origin=target_origin,
+        x_axis=[1.0, 0.0, 0.0],
+        y_axis=[0.0, 1.0, 0.0],
+        z_axis=[0.0, 0.0, 1.0],
+    )
 
     source_cfg = FrameConfiguration(part_name="Source", coord_system=src_coord)
-    target_cfg = FrameConfiguration(part_name="TestPart", coord_system=tgt_coord, moment_center=target_moment_center, c_ref=c_ref, b_ref=b_ref, q=q, s_ref=s_ref)
+    target_cfg = FrameConfiguration(
+        part_name="TestPart",
+        coord_system=tgt_coord,
+        moment_center=target_moment_center,
+        c_ref=c_ref,
+        b_ref=b_ref,
+        q=q,
+        s_ref=s_ref,
+    )
 
-    return ProjectData(source_parts={source_cfg.part_name: [source_cfg]}, target_parts={target_cfg.part_name: [target_cfg]})
+    return ProjectData(
+        source_parts={source_cfg.part_name: [source_cfg]},
+        target_parts={target_cfg.part_name: [target_cfg]},
+    )
 
 
 class TestAeroCalculatorProcessFrame:
     def test_identity_transformation(self):
-        project = create_test_project_data(q=100.0, s_ref=1.0, source_origin=[0, 0, 0], target_moment_center=[0, 0, 0])
+        project = create_test_project_data(
+            q=100.0, s_ref=1.0, source_origin=[0, 0, 0], target_moment_center=[0, 0, 0]
+        )
         # 显式指定 target_part/variant
-        calc = AeroCalculator(project, target_part='TestPart', target_variant=0)
+        calc = AeroCalculator(project, target_part="TestPart", target_variant=0)
 
         force = [100.0, 0.0, 1000.0]
         moment = [0.0, 50.0, 0.0]
@@ -44,8 +76,13 @@ class TestAeroCalculatorProcessFrame:
         assert np.isclose(result.coeff_force[0], 1.0, atol=1e-6)
 
     def test_moment_transfer(self):
-        project = create_test_project_data(q=100.0, s_ref=1.0, source_origin=[1.0, 0.0, 0.0], target_moment_center=[0.0, 0.0, 0.0])
-        calc = AeroCalculator(project, target_part='TestPart', target_variant=0)
+        project = create_test_project_data(
+            q=100.0,
+            s_ref=1.0,
+            source_origin=[1.0, 0.0, 0.0],
+            target_moment_center=[0.0, 0.0, 0.0],
+        )
+        calc = AeroCalculator(project, target_part="TestPart", target_variant=0)
 
         force = [0.0, 0.0, 100.0]
         moment = [0.0, 0.0, 0.0]

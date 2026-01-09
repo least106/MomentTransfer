@@ -6,7 +6,9 @@ from src.physics import AeroCalculator
 
 
 def make_coord():
-    return CoordSystemDefinition(origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1])
+    return CoordSystemDefinition(
+        origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1]
+    )
 
 
 def test_zero_q_produces_zero_coeffs_and_warns():

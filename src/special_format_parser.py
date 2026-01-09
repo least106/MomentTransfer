@@ -163,7 +163,9 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
     return False
 
 
-def _read_text_file_lines(file_path: Path, *, max_lines: Optional[int] = None, encodings=None) -> List[str]:
+def _read_text_file_lines(
+    file_path: Path, *, max_lines: Optional[int] = None, encodings=None
+) -> List[str]:
     """尝试以多种编码读取文本文件，返回行列表。
 
     - 默认先尝试 `utf-8`，若失败依次尝试 `gbk` 和 `latin-1`。
@@ -377,7 +379,14 @@ def process_special_format_file(
             if part_name not in project_data.target_parts:
                 msg = f"目标配置中不存在 part '{part_name}'，已跳过该块"
                 logger.warning(msg)
-                report.append({"part": part_name, "status": "skipped", "reason": "target_missing", "message": msg})
+                report.append(
+                    {
+                        "part": part_name,
+                        "status": "skipped",
+                        "reason": "target_missing",
+                        "message": msg,
+                    }
+                )
                 continue
 
         required_cols = ["Cx", "Cy", "Cz/FN", "CMx", "CMy", "CMz"]
@@ -424,7 +433,14 @@ def process_special_format_file(
             if project_data is None:
                 msg = f"缺少 ProjectData，无法为 part '{part_name}' 构建 AeroCalculator，已跳过"
                 logger.warning(msg)
-                report.append({"part": part_name, "status": "skipped", "reason": "no_project_data", "message": msg})
+                report.append(
+                    {
+                        "part": part_name,
+                        "status": "skipped",
+                        "reason": "no_project_data",
+                        "message": msg,
+                    }
+                )
                 continue
             calc = AeroCalculator(project_data, target_part=part_name)
             results = calc.process_batch(forces, moments)
@@ -432,7 +448,13 @@ def process_special_format_file(
             msg = f"part '{part_name}' 处理失败: {e}"
             logger.warning(msg, exc_info=True)
             report.append(
-                {"part": part_name, "status": "failed", "reason": "processing_failed", "message": msg, "error": str(e)}
+                {
+                    "part": part_name,
+                    "status": "failed",
+                    "reason": "processing_failed",
+                    "message": msg,
+                    "error": str(e),
+                }
             )
             continue
 
@@ -455,7 +477,10 @@ def process_special_format_file(
         if out_path.exists() and not overwrite:
             suffix = 1
             while True:
-                candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+                candidate = (
+                    output_dir
+                    / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+                )
                 if not candidate.exists():
                     out_path = candidate
                     break
@@ -465,7 +490,14 @@ def process_special_format_file(
         outputs.append(out_path)
         msg = f"part '{part_name}' 输出: {out_path.name}"
         logger.info(msg)
-        report.append({"part": part_name, "status": "success", "message": msg, "out_path": str(out_path)})
+        report.append(
+            {
+                "part": part_name,
+                "status": "success",
+                "message": msg,
+                "out_path": str(out_path),
+            }
+        )
 
     # 汇总日志
     total = len(data_dict)

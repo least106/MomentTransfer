@@ -24,7 +24,9 @@ def list_cmd(db_path):
             click.echo("（空）")
             return
         for m in items:
-            click.echo(f"[{m['id']}] {m['pattern']} -> {m['format_path']}  (added: {m['added_at']})")
+            click.echo(
+                f"[{m['id']}] {m['pattern']} -> {m['format_path']}  (added: {m['added_at']})"
+            )
     except (sqlite3.Error, FileNotFoundError, PermissionError) as e:
         click.echo(f"数据库错误: {e}")
         logging.exception("Registry list failed")

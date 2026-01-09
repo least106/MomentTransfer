@@ -7,7 +7,12 @@ from src.physics import AeroCalculator
 def make_simple_frame():
     cfg = {
         "PartName": "test",
-        "CoordSystem": {"Orig": [0, 0, 0], "X": [1, 0, 0], "Y": [0, 1, 0], "Z": [0, 0, 1]},
+        "CoordSystem": {
+            "Orig": [0, 0, 0],
+            "X": [1, 0, 0],
+            "Y": [0, 1, 0],
+            "Z": [0, 0, 1],
+        },
         "MomentCenter": [0, 0, 0],
         "Q": 1.0,
         "S": 1.0,

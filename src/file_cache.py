@@ -47,7 +47,9 @@ class FileCache:
             # 如果无法获取文件状态，使用路径作为键
             return hashlib.md5(str(file_path).encode()).hexdigest()
 
-    def get_file_content(self, file_path: Path, encoding: str = "utf-8-sig") -> Optional[str]:
+    def get_file_content(
+        self, file_path: Path, encoding: str = "utf-8-sig"
+    ) -> Optional[str]:
         """
         获取文件内容（优先从缓存）
 
@@ -92,7 +94,9 @@ class FileCache:
         except Exception:
             return None
 
-    def get_file_header(self, file_path: Path, num_lines: int = 10, encoding: str = "utf-8-sig") -> Optional[List[str]]:
+    def get_file_header(
+        self, file_path: Path, num_lines: int = 10, encoding: str = "utf-8-sig"
+    ) -> Optional[List[str]]:
         """
         获取文件头部若干行（用于格式检测）
 
@@ -181,7 +185,9 @@ class FileCache:
         with self._lock:
             self._content_cache.pop(cache_key, None)
             # 清除所有相关的元数据缓存
-            keys_to_remove = [k for k in self._metadata_cache.keys() if k.startswith(cache_key)]
+            keys_to_remove = [
+                k for k in self._metadata_cache.keys() if k.startswith(cache_key)
+            ]
             for k in keys_to_remove:
                 self._metadata_cache.pop(k, None)
 
@@ -193,7 +199,10 @@ class FileCache:
             包含缓存统计的字典
         """
         with self._lock:
-            return {"content_cached": len(self._content_cache), "metadata_cached": len(self._metadata_cache)}
+            return {
+                "content_cached": len(self._content_cache),
+                "metadata_cached": len(self._metadata_cache),
+            }
 
 
 # 全局缓存实例

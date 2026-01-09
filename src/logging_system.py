@@ -126,7 +126,12 @@ class StructuredLogger:
 
     def log_performance(self, operation: str, duration_ms: float, **metrics):
         """记录性能数据"""
-        self.info(f"性能: {operation}", operation=operation, duration_ms=duration_ms, metrics=metrics)
+        self.info(
+            f"性能: {operation}",
+            operation=operation,
+            duration_ms=duration_ms,
+            metrics=metrics,
+        )
 
 
 class LoggerFactory:
@@ -157,7 +162,9 @@ class LoggerFactory:
             formatter = StructuredLogFormatter()
         else:
             # 使用标准格式
-            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
 
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
@@ -188,5 +195,7 @@ def log_operation_context(operation: str, context_id: str, **metadata):
             yield logger
             logger.info(f"完成操作: {operation}", context=ctx.to_dict())
         except Exception as e:
-            logger.error(f"操作失败: {operation}", exception=str(e), context=ctx.to_dict())
+            logger.error(
+                f"操作失败: {operation}", exception=str(e), context=ctx.to_dict()
+            )
             raise

@@ -72,7 +72,9 @@ def list_mappings(db_path: str) -> List[dict]:
     _ensure_db(db_path)
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, pattern, format_path, added_at FROM mappings ORDER BY id ASC")
+        cur.execute(
+            "SELECT id, pattern, format_path, added_at FROM mappings ORDER BY id ASC"
+        )
         rows = cur.fetchall()
     return [dict(id=r[0], pattern=r[1], format_path=r[2], added_at=r[3]) for r in rows]
 
@@ -139,7 +141,9 @@ def delete_mapping(db_path: str, mapping_id: int) -> None:
         conn.commit()
 
 
-def update_mapping(db_path: str, mapping_id: int, pattern: str, format_path: str) -> None:
+def update_mapping(
+    db_path: str, mapping_id: int, pattern: str, format_path: str
+) -> None:
     """更新映射的 pattern 与 format_path（按 id）。若 id 不存在则抛出异常。"""
     if not isinstance(pattern, str) or not pattern.strip():
         raise ValueError("pattern 必须为非空字符串")

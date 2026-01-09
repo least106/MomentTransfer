@@ -4,14 +4,35 @@ from src.physics import AeroCalculator
 
 
 def create_test_project_data(q=10.0, s_ref=2.0, c_ref=1.0, b_ref=4.0):
-    src_coord = CoordSystemDefinition(origin=[0.0, 0.0, 0.0], x_axis=[1.0, 0.0, 0.0], y_axis=[0.0, 1.0, 0.0], z_axis=[0.0, 0.0, 1.0])
-    tgt_coord = CoordSystemDefinition(origin=[0.0, 0.0, 0.0], x_axis=[1.0, 0.0, 0.0], y_axis=[0.0, 1.0, 0.0], z_axis=[0.0, 0.0, 1.0])
+    src_coord = CoordSystemDefinition(
+        origin=[0.0, 0.0, 0.0],
+        x_axis=[1.0, 0.0, 0.0],
+        y_axis=[0.0, 1.0, 0.0],
+        z_axis=[0.0, 0.0, 1.0],
+    )
+    tgt_coord = CoordSystemDefinition(
+        origin=[0.0, 0.0, 0.0],
+        x_axis=[1.0, 0.0, 0.0],
+        y_axis=[0.0, 1.0, 0.0],
+        z_axis=[0.0, 0.0, 1.0],
+    )
 
     source_cfg = FrameConfiguration(part_name="Source", coord_system=src_coord)
-    target_cfg = FrameConfiguration(part_name="Target", coord_system=tgt_coord, moment_center=[0.0, 0.0, 0.0], c_ref=c_ref, b_ref=b_ref, q=q, s_ref=s_ref)
+    target_cfg = FrameConfiguration(
+        part_name="Target",
+        coord_system=tgt_coord,
+        moment_center=[0.0, 0.0, 0.0],
+        c_ref=c_ref,
+        b_ref=b_ref,
+        q=q,
+        s_ref=s_ref,
+    )
 
     # 新的 ProjectData 构造采用 parts 字典形式
-    return ProjectData(source_parts={source_cfg.part_name: [source_cfg]}, target_parts={target_cfg.part_name: [target_cfg]})
+    return ProjectData(
+        source_parts={source_cfg.part_name: [source_cfg]},
+        target_parts={target_cfg.part_name: [target_cfg]},
+    )
 
 
 def test_moment_coeff_mapping():
@@ -31,7 +52,7 @@ def test_moment_coeff_mapping():
     moments = np.array([[8.0, 2.0, 12.0]])  # Roll, Pitch, Yaw
 
     res = calc.process_batch(forces, moments)
-    coeff_m = res['coeff_moment'][0]
+    coeff_m = res["coeff_moment"][0]
 
     # 预期系数：Cl = 8 / (q*s*b), Cm = 2 / (q*s*c), Cn = 12 / (q*s*b)
     expected_cl = 8.0 / (q * s_ref * b_ref)

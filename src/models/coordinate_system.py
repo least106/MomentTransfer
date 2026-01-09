@@ -59,5 +59,11 @@ class CoordinateSystem:
         x_axis = data.get("X", [1.0, 0.0, 0.0])
         y_axis = data.get("Y", [0.0, 1.0, 0.0])
         z_axis = data.get("Z", [0.0, 0.0, 1.0])
-        mc = data.get("MomentCenter") or data.get("TargetMomentCenter") or [0.0, 0.0, 0.0]
-        return cls(origin=origin, x_axis=x_axis, y_axis=y_axis, z_axis=z_axis, moment_center=mc)
+        mc = (
+            data.get("MomentCenter")
+            or data.get("TargetMomentCenter")
+            or [0.0, 0.0, 0.0]
+        )
+        return cls(
+            origin=origin, x_axis=x_axis, y_axis=y_axis, z_axis=z_axis, moment_center=mc
+        )

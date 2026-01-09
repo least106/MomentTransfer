@@ -2,7 +2,14 @@ import tempfile
 from pathlib import Path
 import sqlite3
 
-from src.format_registry import init_db, register_mapping, list_mappings, get_format_for_file, delete_mapping, update_mapping
+from src.format_registry import (
+    init_db,
+    register_mapping,
+    list_mappings,
+    get_format_for_file,
+    delete_mapping,
+    update_mapping,
+)
 
 
 def test_registry_crud_and_lookup(tmp_path):
@@ -37,7 +44,7 @@ def test_registry_crud_and_lookup(tmp_path):
     # delete mapping by id
     # get current items and delete first
     items = list_mappings(str(db_path))
-    first_id = items[0]['id']
+    first_id = items[0]["id"]
     delete_mapping(str(db_path), first_id)
     items2 = list_mappings(str(db_path))
-    assert all(i['id'] != first_id for i in items2)
+    assert all(i["id"] != first_id for i in items2)

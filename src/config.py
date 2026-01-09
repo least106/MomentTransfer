@@ -35,7 +35,9 @@ class CacheConfig:
     # 最大缓存条目数（LRU 缓存）
     max_entries: int = 1000
     # 缓存的计算结果类型：'rotation', 'transformation', 'all'
-    cache_types: List[str] = field(default_factory=lambda: ["rotation", "transformation"])
+    cache_types: List[str] = field(
+        default_factory=lambda: ["rotation", "transformation"]
+    )
     # 缓存键生成时是否考虑精度（用于浮点数）
     precision_digits: int = 10
 
@@ -83,7 +85,9 @@ class PluginConfig:
     """插件系统配置"""
 
     # 插件目录
-    plugin_dirs: List[str] = field(default_factory=lambda: ["./plugins", "./custom_plugins"])
+    plugin_dirs: List[str] = field(
+        default_factory=lambda: ["./plugins", "./custom_plugins"]
+    )
     # 自动加载插件
     auto_load: bool = True
     # 启用的插件列表（空列表表示加载所有）
@@ -118,16 +122,32 @@ class SystemConfig:
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SystemConfig":
         """从字典创建配置"""
         cache_config = CacheConfig(
-            **{k: v for k, v in config_dict.get("cache", {}).items() if k in CacheConfig.__dataclass_fields__}
+            **{
+                k: v
+                for k, v in config_dict.get("cache", {}).items()
+                if k in CacheConfig.__dataclass_fields__
+            }
         )
         batch_config = BatchProcessConfig(
-            **{k: v for k, v in config_dict.get("batch", {}).items() if k in BatchProcessConfig.__dataclass_fields__}
+            **{
+                k: v
+                for k, v in config_dict.get("batch", {}).items()
+                if k in BatchProcessConfig.__dataclass_fields__
+            }
         )
         physics_config = PhysicsConfig(
-            **{k: v for k, v in config_dict.get("physics", {}).items() if k in PhysicsConfig.__dataclass_fields__}
+            **{
+                k: v
+                for k, v in config_dict.get("physics", {}).items()
+                if k in PhysicsConfig.__dataclass_fields__
+            }
         )
         plugin_config = PluginConfig(
-            **{k: v for k, v in config_dict.get("plugin", {}).items() if k in PluginConfig.__dataclass_fields__}
+            **{
+                k: v
+                for k, v in config_dict.get("plugin", {}).items()
+                if k in PluginConfig.__dataclass_fields__
+            }
         )
 
         return cls(
