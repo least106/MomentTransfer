@@ -22,10 +22,21 @@ jobs:
           python -m pip install --upgrade pip
           # 安装系统依赖，尝试多个备选包名并容错安装，避免在不同 Ubuntu 版本中因包名差异导致失败
           sudo apt-get update
-          PACKAGES="libegl1-mesa libegl-mesa0 libgl1-mesa-glx libgl1-mesa-dri libgl1 libxkbcommon0 libxrender1 libx11-6 libxcb1 xvfb"
+          PACKAGES="libegl1-mesa libegl-mesa0 libegl1 libgl1-mesa-glx libgl1-mesa-dri libgl1 libxkbcommon0 libxrender1 libx11-6 libxcb1 xvfb mesa-utils"
           for pkg in $PACKAGES; do
             sudo apt-get install -y --no-install-recommends "$pkg" || true
           done
+          # 如果仍缺少 libEGL，则尝试安装开发/替代包并刷新动态链接缓存
+          if ! ldconfig -p | grep -q libEGL; then
+            echo "libEGL 未找到，尝试安装额外候选包并刷新缓存"
+            sudo apt-get install -y --no-install-recommends libegl1-dev libegl1-mesa-dev libgl1-mesa-dev || true
+            sudo ldconfig || true
+          fi
+          # 最后再确认一次，若仍然没有则列出相关目录供调试
+          if ! ldconfig -p | grep -q libEGL; then
+            echo "最终仍未找到 libEGL，列出 /usr/lib 进行诊断："
+            ls -la /usr/lib/x86_64-linux-gnu | head -n 80 || true
+          fi
           pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
       - name: Run tests (headless)
