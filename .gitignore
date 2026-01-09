@@ -22,3 +22,4 @@ venv/
 data/
 tools/
 .coverage
+legacy_backup/legacy_backup/gui_legacy/*.bak_*
