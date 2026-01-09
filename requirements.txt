@@ -1,7 +1,8 @@
 numpy
 pytest>=7.0.0
-# pin pandas to 2.2.x to support Python 3.10 CI runners
-pandas>=2.2.0,<2.3
+# 为兼容本地 Python 3.8 环境，使用与 3.8 兼容的 pandas 版本范围
+# 如果后续需要 pandas 2.2+，可在 CI 切换到 Python 3.10 或更新约束
+pandas>=1.5.0,<2.2
 # require a more recent PySide6 wheel (6.1.3 has poor availability on some platforms)
 pyside6
 openpyxl
