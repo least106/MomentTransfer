@@ -267,50 +267,27 @@ class PartManager:
             QMessageBox.critical(self.gui, '错误', f'删除失败: {e}')
 
     # ===== Target 管理 =====
-    def add_target_part(self):
-        """添加新 Target Part（使用 ProjectConfigModel）"""
+    def add_target_part(self, suggested_name: str = None):
+        """添加新 Target Part（使用 ProjectConfigModel）。
+
+        不再弹出输入对话框；优先使用传入的 `suggested_name` 或面板上的文本字段。
+        行为与 `add_source_part` 保持一致。
+        """
         if getattr(self.gui, '_is_initializing', False):
             logger.debug("初始化期间跳过 add_target_part")
             return
         if not self._ensure_project_model():
             return
         try:
-            default_name = "NewTargetPart"
-            try:
-                text_val = getattr(self.gui, "tgt_part_name", None)
-                if text_val:
-                    val = text_val.text().strip()
-                    if val:
-                        default_name = val
-            except Exception:
-                pass
-
-            dialog = QInputDialog(self.gui)
-            dialog.setInputMode(QInputDialog.TextInput)
-            dialog.setWindowTitle("添加 Target Part")
-            dialog.setLabelText("输入新 Part 名称:")
-            dialog.setTextValue(default_name)
-
-            try:
-                button_box = dialog.findChild(QDialogButtonBox)
-                if button_box:
-                    ok_btn = button_box.button(QDialogButtonBox.Ok)
-                    if ok_btn:
-                        ok_btn.setAutoDefault(True)
-                        ok_btn.setDefault(True)
-                        ok_btn.setFocus()
-                        center = ok_btn.mapToGlobal(ok_btn.rect().center())
-                        QCursor.setPos(center)
-            except Exception:
-                logger.debug("设置确定按钮焦点或光标失败", exc_info=True)
-
-            result = dialog.exec()
-            name = dialog.textValue().strip()
-            if result != QDialog.Accepted or not name:
-                return
+            base_name = (suggested_name or '').strip()
+            if not base_name:
+                try:
+                    base_name = self.gui.tgt_part_name.text().strip()
+                except Exception:
+                    base_name = "NewTargetPart"
 
             existing = set(self.gui.project_model.target_parts.keys())
-            name = self._unique_name(name, existing)
+            name = self._unique_name(base_name, existing)
 
             try:
                 cs_model = self.gui.target_panel.get_coordinate_system_model()
@@ -321,10 +298,8 @@ class PartManager:
                 raise
 
             self.gui.project_model.target_parts[name] = PMPart(part_name=name, variants=[variant])
-
             self.gui._current_target_part_name = name
 
-            # 无需回写 legacy 字典
             # 发射 SignalBus 事件
             try:
                 self.signal_bus.partAdded.emit('Target', name)
