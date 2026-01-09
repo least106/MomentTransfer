@@ -160,6 +160,26 @@ class AeroCalculator:
             logger.debug("获取/使用力臂转换缓存时发生异常，直接计算 r_target", exc_info=True)
             self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
+        # 额外校验：确保 R_matrix 与 r_target 具有期望的形状和值；若缓存返回异常形状或 NaN，则回退为直接计算
+        try:
+            if not isinstance(self.R_matrix, np.ndarray) or self.R_matrix.shape != (3, 3) or np.isnan(self.R_matrix).any():
+                logger.debug("检测到无效的 R_matrix，重新计算")
+                self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+        except Exception:
+            logger.debug("校验 R_matrix 时发生异常，重新计算旋转矩阵", exc_info=True)
+            self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+
+        try:
+            r_arr = np.asarray(self.r_target, dtype=float)
+            if r_arr.shape != (3,) or np.isnan(r_arr).any():
+                logger.debug("检测到无效的 r_target，重新计算")
+                self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+            else:
+                self.r_target = r_arr
+        except Exception:
+            logger.debug("校验 r_target 时发生异常，重新计算 r_target", exc_info=True)
+            self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+
         # 构造时验证 target 必需字段
         if self.target_frame.moment_center is None:
             raise ValueError("目标 variant 必须包含 MomentCenter 字段（长度为3的列表）")
