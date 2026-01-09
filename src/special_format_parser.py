@@ -7,6 +7,8 @@
 - `process_special_format_file`：直接解析并输出处理结果，便于 CLI/GUI 批处理调用
 """
 
+# pylint: disable=wrong-import-position,too-many-arguments,too-many-locals,too-many-statements,too-many-branches,too-many-return-statements,redefined-outer-name,R0913,R0914,R0915
+
 import logging
 import re
 import sys
@@ -18,6 +20,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+# 放置在 sys.path 调整之后但在其它代码之前的顶级导入
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -26,6 +29,8 @@ import pandas as pd
 from src.physics import AeroCalculator
 
 logger = logging.getLogger(__name__)
+# 在调整 sys.path 后才导入本地模块，允许导入位置非顶层的检查
+# pylint: disable=wrong-import-position
 
 # 推荐扩展名：MomentTransfer 专用批处理格式
 RECOMMENDED_EXT = ".mtfmt"
@@ -95,7 +100,7 @@ def is_summary_line(line: str) -> bool:
 
     first_token = tokens[0]
     # 如果第一个token不像数字（不是负号开头或纯数字）
-    if not (first_token.replace("-", "").replace(".", "").replace("+", "").isdigit()):
+    if not first_token.replace("-", "").replace(".", "").replace("+", "").isdigit():
         # 检查是否包含典型的汇总指标名
         summary_keywords = ["CLa", "Cdmin", "CmCL", "Cm0", "Kmax", "Alpha"]
         if any(kw in line for kw in summary_keywords):
@@ -192,10 +197,10 @@ def _read_text_file_lines(
             if max_lines is None:
                 return fh.readlines()
             return [fh.readline() for _ in range(max_lines)]
-    except Exception:
-        # 最后抛出最初的 Unicode 错误或一般 IO 错误
+    except Exception as e:  # pylint: disable=broad-except
+        # 最后抛出最初的 Unicode 错误或一般 IO 错误，保留原始异常上下文
         if last_exc:
-            raise last_exc
+            raise last_exc from e
         raise
 
 
@@ -240,7 +245,9 @@ def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
     return mapping
 
 
-def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
+def parse_special_format_file(
+    file_path: Path
+) -> Dict[str, pd.DataFrame]:
     """
     解析特殊格式文件，返回 {part_name: DataFrame} 字典
 
@@ -250,6 +257,8 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     Returns:
         字典，键为 part 名称，值为对应的 DataFrame
     """
+    # 该函数实现相对复杂，包含多分支与早期返回，添加 pylint 规则忽略以便逐步改进
+    # pylint: disable=R0915,R0912,R0914,R0911,R1702
     lines = _read_text_file_lines(file_path)
 
     result = {}
@@ -285,9 +294,9 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
                     for col in df.columns:
                         try:
                             df[col] = pd.to_numeric(df[col], errors="coerce")
-                        except Exception:
-                            # 忽略无法转换的列，保留原始内容
-                            pass
+                        except Exception:  # pylint: disable=broad-except
+                            # 忽略无法转换的列，保留原始内容；如需调试可开启 logger.debug
+                            logger.debug("列 %s 转换为数值失败，保留原始值", col, exc_info=True)
                     result[current_part] = df
                     logger.info("解析 part '%s': %d 行数据", current_part, len(df))
                 except ValueError as e:
@@ -338,8 +347,8 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
             for col in df.columns:
                 try:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-                except Exception:
-                    pass
+                except Exception:  # pylint: disable=broad-except
+                    logger.debug("列 %s 转换为数值失败，保留原始值", col, exc_info=True)
             result[current_part] = df
             logger.info("解析 part '%s': %d 行数据", current_part, len(df))
         except ValueError as e:
@@ -348,6 +357,9 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     return result
 
 
+# 复杂函数；允许过多参数/局部变量/语句，待后续重构
+# pylint: disable=R0913,R0914,R0915
+# pylint: disable=R0913,R0914,R0915
 def process_special_format_file(
     file_path: Path,
     project_data,
@@ -356,7 +368,7 @@ def process_special_format_file(
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
     return_report: bool = False,
-) -> List[Path]:
+) -> List[Path]:  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches
     """
     直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
 
@@ -369,41 +381,35 @@ def process_special_format_file(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    data_dict = parse_special_format_file(file_path)
-    outputs: List[Path] = []
-
-    report = []
-    for part_name, df in data_dict.items():
+    # 函数复杂度较高（参数较多/局部变量众多/语句多），添加 pylint 忽略以逐步重构
+    # pylint: disable=R0915,R0914,R0913,R0912
+    # 为了降低单函数复杂度，将单个 part 的处理抽取到独立函数
+    def _handle_single_part(part_name: str, df: pd.DataFrame):
+        """处理单个 part，返回 (out_path or None, report_entry dict)."""
         # 校验 Target part 是否存在
         if project_data is not None and hasattr(project_data, "target_parts"):
             if part_name not in project_data.target_parts:
                 msg = f"目标配置中不存在 part '{part_name}'，已跳过该块"
                 logger.warning(msg)
-                report.append(
-                    {
-                        "part": part_name,
-                        "status": "skipped",
-                        "reason": "target_missing",
-                        "message": msg,
-                    }
-                )
-                continue
+                return None, {
+                    "part": part_name,
+                    "status": "skipped",
+                    "reason": "target_missing",
+                    "message": msg,
+                }
 
         required_cols = ["Cx", "Cy", "Cz/FN", "CMx", "CMy", "CMz"]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             msg = f"part '{part_name}' 缺少必需列 {missing}，已跳过"
             logger.warning(msg)
-            report.append(
-                {
-                    "part": part_name,
-                    "status": "skipped",
-                    "reason": "missing_columns",
-                    "message": msg,
-                    "missing": missing,
-                }
-            )
-            continue
+            return None, {
+                "part": part_name,
+                "status": "skipped",
+                "reason": "missing_columns",
+                "message": msg,
+                "missing": missing,
+            }
 
         try:
             cx = pd.to_numeric(df["Cx"], errors="coerce")
@@ -412,19 +418,16 @@ def process_special_format_file(
             cmx = pd.to_numeric(df["CMx"], errors="coerce")
             cmy = pd.to_numeric(df["CMy"], errors="coerce")
             cmz = pd.to_numeric(df["CMz"], errors="coerce")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             msg = f"part '{part_name}' 数值转换失败: {e}"
             logger.warning(msg)
-            report.append(
-                {
-                    "part": part_name,
-                    "status": "failed",
-                    "reason": "numeric_conversion_failed",
-                    "message": msg,
-                    "error": str(e),
-                }
-            )
-            continue
+            return None, {
+                "part": part_name,
+                "status": "failed",
+                "reason": "numeric_conversion_failed",
+                "message": msg,
+                "error": str(e),
+            }
 
         forces = pd.concat([cx, cy, cz], axis=1).to_numpy()
         moments = pd.concat([cmx, cmy, cmz], axis=1).to_numpy()
@@ -433,30 +436,24 @@ def process_special_format_file(
             if project_data is None:
                 msg = f"缺少 ProjectData，无法为 part '{part_name}' 构建 AeroCalculator，已跳过"
                 logger.warning(msg)
-                report.append(
-                    {
-                        "part": part_name,
-                        "status": "skipped",
-                        "reason": "no_project_data",
-                        "message": msg,
-                    }
-                )
-                continue
+                return None, {
+                    "part": part_name,
+                    "status": "skipped",
+                    "reason": "no_project_data",
+                    "message": msg,
+                }
             calc = AeroCalculator(project_data, target_part=part_name)
             results = calc.process_batch(forces, moments)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             msg = f"part '{part_name}' 处理失败: {e}"
             logger.warning(msg, exc_info=True)
-            report.append(
-                {
-                    "part": part_name,
-                    "status": "failed",
-                    "reason": "processing_failed",
-                    "message": msg,
-                    "error": str(e),
-                }
-            )
-            continue
+            return None, {
+                "part": part_name,
+                "status": "failed",
+                "reason": "processing_failed",
+                "message": msg,
+                "error": str(e),
+            }
 
         out_df = df.copy()
         out_df["Fx_new"] = results["force_transformed"][:, 0]
@@ -477,27 +474,30 @@ def process_special_format_file(
         if out_path.exists() and not overwrite:
             suffix = 1
             while True:
-                candidate = (
-                    output_dir
-                    / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
-                )
+                candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
                 if not candidate.exists():
                     out_path = candidate
                     break
                 suffix += 1
 
         out_df.to_csv(out_path, index=False)
-        outputs.append(out_path)
         msg = f"part '{part_name}' 输出: {out_path.name}"
         logger.info(msg)
-        report.append(
-            {
-                "part": part_name,
-                "status": "success",
-                "message": msg,
-                "out_path": str(out_path),
-            }
-        )
+        return out_path, {
+            "part": part_name,
+            "status": "success",
+            "message": msg,
+            "out_path": str(out_path),
+        }
+
+    data_dict = parse_special_format_file(file_path)
+    outputs: List[Path] = []
+    report = []
+    for part_name, df in data_dict.items():
+        out_path, entry = _handle_single_part(part_name, df)
+        if out_path:
+            outputs.append(out_path)
+        report.append(entry)
 
     # 汇总日志
     total = len(data_dict)
