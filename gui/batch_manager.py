@@ -648,10 +648,16 @@ class BatchManager:
             item = iterator.value()
             # 只反选文件项（有用户数据中存储了路径的项）
             if item.data(0, Qt.UserRole):
-                if item.checkState(0) == Qt.Checked:
-                    item.setCheckState(0, Qt.Unchecked)
-                else:
-                    item.setCheckState(0, Qt.Checked)
+                # 仅在项可由用户修改复选框时才改变状态
+                try:
+                    if bool(item.flags() & Qt.ItemIsUserCheckable):
+                        if item.checkState(0) == Qt.Checked:
+                            item.setCheckState(0, Qt.Unchecked)
+                        else:
+                            item.setCheckState(0, Qt.Checked)
+                except Exception:
+                    # 保守处理：若检查 flags 失败，则跳过该项
+                    pass
             iterator += 1
     
     def _set_all_file_items_checked(self, check_state):
@@ -666,7 +672,13 @@ class BatchManager:
             item = iterator.value()
             # 只选中文件项（有用户数据中存储了路径的项）
             if item.data(0, Qt.UserRole):
-                item.setCheckState(0, check_state)
+                # 仅对允许用户改变复选框的项执行设置，尊重单文件模式下禁用的复选框
+                try:
+                    if bool(item.flags() & Qt.ItemIsUserCheckable):
+                        item.setCheckState(0, check_state)
+                except Exception:
+                    # 保守处理：若检查 flags 失败，则跳过
+                    pass
             iterator += 1
     
     # 批处理控制方法（从 main_window 迁移）
