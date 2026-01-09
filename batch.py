@@ -321,32 +321,79 @@ def process_df_chunk(chunk_df: pd.DataFrame,
         csv_bytes = out_df.to_csv(index=False, header=header, encoding='utf-8').encode('utf-8')
         for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
             try:
-                # 以二进制追加打开并尝试加锁写入（若可用）
-                with open(out_path, 'ab') as f:
-                    try:
-                        if portalocker:
+                # 以二进制追加打开并尝试加锁写入（首选 portalocker；若不可用，回退到 lockfile 方案）
+                if portalocker:
+                    with open(out_path, 'ab') as f:
+                        try:
                             try:
                                 portalocker.lock(f, portalocker.LOCK_EX)
                             except Exception as le:
                                 logger.debug("portalocker.lock 失败，继续以无锁追加写入：%s", le)
-                        else:
-                            logger.debug("portalocker 不可用，按附加模式直接写入（best-effort）: %s", out_path)
-                    except Exception:
-                        logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
-
-                    try:
-                        f.write(csv_bytes)
-                        f.flush()
-                        try:
-                            os.fsync(f.fileno())
                         except Exception:
-                            pass
-                    finally:
-                        if portalocker:
+                            logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
+
+                        try:
+                            f.write(csv_bytes)
+                            f.flush()
+                            try:
+                                os.fsync(f.fileno())
+                            except Exception:
+                                pass
+                        finally:
                             try:
                                 portalocker.unlock(f)
                             except Exception:
                                 logger.debug("portalocker.unlock 失败（忽略）")
+                else:
+                    # 回退：使用一个简单的 lockfile 来序列化对目标文件的 append 操作
+                    lock_path = out_path.with_suffix(out_path.suffix + '.lock')
+                    lock_acquired = False
+                    lock_fd = None
+                    try:
+                        # 尝试创建 lockfile（O_EXCL 确保原子性）
+                        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                        lock_acquired = True
+                    except FileExistsError:
+                        # 竞争中无法立即获取锁，等待并重试
+                        waited = 0.0
+                        while waited < WRITE_RETRY_BACKOFF_SECONDS[-1]:
+                            time.sleep(0.01)
+                            waited += 0.01
+                            try:
+                                lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                                lock_acquired = True
+                                break
+                            except FileExistsError:
+                                continue
+
+                    if not lock_acquired:
+                        # 最后一搏：在无锁的情况下直接追加（best-effort）
+                        with open(out_path, 'ab') as f:
+                            f.write(csv_bytes)
+                            f.flush()
+                            try:
+                                os.fsync(f.fileno())
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            with open(out_path, 'ab') as f:
+                                f.write(csv_bytes)
+                                f.flush()
+                                try:
+                                    os.fsync(f.fileno())
+                                except Exception:
+                                    pass
+                        finally:
+                            try:
+                                os.close(lock_fd)
+                            except Exception:
+                                pass
+                            try:
+                                if lock_path.exists():
+                                    lock_path.unlink()
+                            except Exception:
+                                logger.debug("无法删除 lockfile：%s（忽略）", lock_path)
                 # 成功写入
                 last_exc = None
                 break
