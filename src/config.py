@@ -164,16 +164,16 @@ class SystemConfig:
         """从 JSON 配置文件加载"""
         path = Path(filepath)
         if not path.exists():
-            logger.warning(f"配置文件不存在: {filepath}，使用默认配置")
+            logger.warning("配置文件不存在: %s，使用默认配置", filepath)
             return cls()
 
         try:
             with open(path, "r", encoding="utf-8") as f:
                 config_dict = json.load(f)
-            logger.info(f"从 {filepath} 加载配置成功")
+            logger.info("从 %s 加载配置成功", filepath)
             return cls.from_dict(config_dict)
-        except Exception as e:
-            logger.error(f"加载配置文件失败: {e}，使用默认配置")
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.error("加载配置文件失败: %s，使用默认配置", exc)
             return cls()
 
     def save_to_json_file(self, filepath: str) -> None:
@@ -183,37 +183,59 @@ class SystemConfig:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(self.to_json())
-            logger.info(f"配置已保存到 {filepath}")
-        except Exception as e:
-            logger.error(f"保存配置失败: {e}")
+            logger.info("配置已保存到 %s", filepath)
+        except OSError as exc:
+            logger.error("保存配置失败: %s", exc)
 
 
-# 全局配置实例（单例模式）
-_global_config: Optional[SystemConfig] = None
+# 使用 ConfigManager 单例管理配置，避免模块级 global
+
+
+class ConfigManager:
+    """管理 `SystemConfig` 单例的管理器。"""
+
+    def __init__(self) -> None:
+        self._config: Optional[SystemConfig] = None
+
+    def get_config(self) -> SystemConfig:
+        """返回当前配置实例（不存在则创建默认配置）。"""
+        if self._config is None:
+            self._config = SystemConfig()
+        return self._config
+
+    def set_config(self, config: SystemConfig) -> None:
+        """设置配置实例。"""
+        self._config = config
+
+    def load_config_from_file(self, filepath: str) -> SystemConfig:
+        """从文件加载配置并设置为当前配置。"""
+        config = SystemConfig.from_json_file(filepath)
+        self.set_config(config)
+        return config
+
+    def reset_config(self) -> None:
+        """重置为默认配置实例。"""
+        self._config = SystemConfig()
+
+
+_CONFIG_MANAGER = ConfigManager()
 
 
 def get_config() -> SystemConfig:
-    """获取全局配置实例"""
-    global _global_config
-    if _global_config is None:
-        _global_config = SystemConfig()
-    return _global_config
+    """获取全局配置实例（代理到 `_CONFIG_MANAGER`）。"""
+    return _CONFIG_MANAGER.get_config()
 
 
 def set_config(config: SystemConfig) -> None:
-    """设置全局配置实例"""
-    global _global_config
-    _global_config = config
+    """设置全局配置实例（代理到 `_CONFIG_MANAGER`）。"""
+    _CONFIG_MANAGER.set_config(config)
 
 
 def load_config_from_file(filepath: str) -> SystemConfig:
-    """加载配置文件并设置为全局配置"""
-    config = SystemConfig.from_json_file(filepath)
-    set_config(config)
-    return config
+    """加载配置文件并设置为全局配置（代理到 `_CONFIG_MANAGER`）。"""
+    return _CONFIG_MANAGER.load_config_from_file(filepath)
 
 
 def reset_config() -> None:
-    """重置为默认配置"""
-    global _global_config
-    _global_config = SystemConfig()
+    """重置为默认配置（代理到 `_CONFIG_MANAGER`）。"""
+    _CONFIG_MANAGER.reset_config()
