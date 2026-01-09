@@ -21,3 +21,4 @@ venv/
 .Python
 data/
 tools/
+.coverage
