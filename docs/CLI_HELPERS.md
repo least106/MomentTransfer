@@ -34,6 +34,22 @@ from src.cli_helpers import get_user_file_format
 cfg = get_user_file_format()
 ```
 
+CLI 子命令（示例）
+
+- 直接启动交互式 CLI：
+
+```bash
+python cli.py
+```
+
+- 非交互式调用（示例）:
+
+```bash
+python cli.py calculate --config data/input.json --input-file data/sample.csv --format-file data/sample.format.json
+```
+
+说明：项目中的 CLI 支持交互与非交互两种模式。生产环境默认不启用 per-file 侧车覆盖，除非显式传入 `--enable-sidecar`。
+
 测试
 
 已为 `load_format_from_file` 与 `get_user_file_format` 增加单元测试，位于 `tests/test_cli_helpers.py`。
@@ -44,4 +60,6 @@ cfg = get_user_file_format()
 - `resolve_file_format` 新增参数 `enable_sidecar: bool = False`，默认返回传入的 `global_cfg` 的拷贝而不做本地查找。
 
 - 新增命令行选项 `--enable-sidecar`（默认关闭）以显式启用 per-file 覆盖；`--registry-db` 仍保留但作为实验性隐藏选项，仅在需要时与 `--enable-sidecar` 一起使用。
+  - 在需要逐文件覆盖格式或从 registry 查找格式时，可以加上 `--enable-sidecar`。
+  - `--registry-db` 为实验性选项，配合 `--enable-sidecar` 使用时会在 registry 中查找 per-file 格式定义。
 - 如果你想为每个 CSV 启用侧车或 registry 覆盖（仅作为示例或调试），请参考示例脚本：`examples/per_file_config_demo.py`，其中包含完整的查找逻辑和说明。
