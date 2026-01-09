@@ -56,5 +56,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          # 使用 xvfb-run 在无头环境中运行 GUI 测试
-          xvfb-run -s "-screen 0 1920x1080x24" pytest -q
+          # 使用 xvfb-run 在无头环境中运行 GUI 测试，同时收集覆盖率并生成报告
+          xvfb-run -s "-screen 0 1920x1080x24" pytest -q --cov=src --cov-report=xml:coverage.xml --cov-report=html:coverage_html
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage_html
