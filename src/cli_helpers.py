@@ -4,15 +4,21 @@
 """
 
 import json
+# pylint: disable=too-many-arguments,too-many-locals
 import logging
 from pathlib import Path
+from copy import deepcopy
 from typing import Optional
 
-from src.data_loader import ProjectData, load_data
+from src.data_loader import ProjectData, load_data, try_load_project_data
 from src.physics import AeroCalculator
+from src.format_registry import get_format_for_file
+
+# 模块级 logger，供文件中函数使用（配置由 `configure_logging` 管理）
+logger = logging.getLogger("batch")
 
 
-class BatchConfig:
+class BatchConfig:  # pylint: disable=R0902,R0903
     """批处理配置类（供 batch.py 使用，抽取以便复用）。"""
 
     def __init__(self):
@@ -35,7 +41,7 @@ class BatchConfig:
         self.sample_rows = 5
 
 
-def load_format_from_file(path: str) -> BatchConfig:
+def load_format_from_file(path: str) -> BatchConfig:  # pylint: disable=R0912
     """从 JSON 文件加载 BatchConfig（保留原有行为并提高错误说明）。"""
     p = Path(path)
     if not p.exists():
@@ -61,7 +67,7 @@ def load_format_from_file(path: str) -> BatchConfig:
     cfg = BatchConfig()
     cfg.skip_rows = int(data.get("skip_rows", 0))
     cols = data.get("columns", {})
-    for k in cfg.column_mappings.keys():
+    for k in cfg.column_mappings:
         if k in cols:
             v = cols[k]
             cfg.column_mappings[k] = int(v) if v is not None else None
@@ -149,7 +155,6 @@ def get_user_file_format() -> BatchConfig:
     return config
 
 
-from src.format_registry import get_format_for_file
 
 
 def resolve_file_format(
@@ -170,9 +175,6 @@ def resolve_file_format(
     返回的是一个 `BatchConfig` 的深拷贝，基于 `global_cfg` ，并由本地配置覆盖相应字段（仅当
     enable_sidecar=True 时才会执行覆盖逻辑）。
     """
-    from copy import deepcopy
-    from pathlib import Path
-
     p = Path(file_path)
     # 开始于全局配置的拷贝
     cfg = deepcopy(global_cfg)
@@ -193,7 +195,7 @@ def resolve_file_format(
                 return cfg
         except (OSError, ValueError) as exc:
             # registry 查询失败时不阻塞，降级到本地侧车/目录/全局策略，但记录具体原因便于排查
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Registry lookup failed for file %r with registry_db %r: %s",
                 file_path,
                 registry_db,
@@ -248,37 +250,40 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     - 每次调用会重置该 logger 的 handlers（避免重复添加）。
     """
     log_level = logging.DEBUG if verbose else logging.INFO
-    logger = logging.getLogger("batch")
-    logger.setLevel(log_level)
+    batch_logger = logging.getLogger("batch")
+    batch_logger.setLevel(log_level)
 
     # 清理已有 handlers（如果有），避免重复输出或多次添加
-    for h in list(logger.handlers):
-        logger.removeHandler(h)
+    for h in list(batch_logger.handlers):
+        batch_logger.removeHandler(h)
         try:
             h.close()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             # 仅记录调试信息，避免在关闭 handler 时抛出
-            logger.debug("关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True)
+            batch_logger.debug(
+                "关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True
+            )
 
     fmt = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
 
     stream_h = logging.StreamHandler()
     stream_h.setLevel(log_level)
     stream_h.setFormatter(fmt)
-    logger.addHandler(stream_h)
+    batch_logger.addHandler(stream_h)
 
     if log_file:
         file_h = logging.FileHandler(log_file, encoding="utf-8")
         # 若指定了 log_file，文件中记录详细调试信息（包含完整堆栈）以便排查
         file_h.setLevel(logging.DEBUG)
         file_h.setFormatter(fmt)
-        logger.addHandler(file_h)
+        batch_logger.addHandler(file_h)
     # 不向根 logger 传播，避免重复日志
-    logger.propagate = False
+    batch_logger.propagate = False
 
-    return logger
+    return batch_logger
 
 
+# pylint: disable=too-many-arguments,too-many-locals
 def load_project_calculator(
     config_path: str,
     *,
@@ -286,12 +291,13 @@ def load_project_calculator(
     source_variant: int = 0,
     target_part: str = None,
     target_variant: int = 0,
-):
+):  # pylint: disable=too-many-arguments,too-many-locals
     """加载几何/项目配置并返回 (project_data, AeroCalculator)
 
     支持可选的 part/variant 指定以便直接构造使用特定 variant 的计算器。
     若加载失败会抛出 ValueError，消息对用户更友好。
     """
+    # pylint: disable=too-many-arguments,too-many-locals
     try:
         project_data = load_data(config_path)
         # 在包含多个 Target part 的情况下：
@@ -301,10 +307,8 @@ def load_project_calculator(
             if len(project_data.target_parts) == 1:
                 target_part = next(iter(project_data.target_parts.keys()))
             else:
-                import logging
-
-                logging.getLogger(__name__).warning(
-                    "配置包含多个 Target part，未指定 --target-part，已自动选择第一个 Part（建议在 CLI 中显式使用 --target-part/--target-variant）。"
+                logger.warning(
+                    "配置包含多个 Target part，未指定 --target-part，已自动选择第一个 Part。建议在 CLI 中显式指定。"
                 )
                 target_part = next(iter(project_data.target_parts.keys()))
 
@@ -332,8 +336,6 @@ def attempt_load_project_data(path: str, *, strict: bool = True):
     - 失败且 strict=True：抛出 ValueError，消息友好
     - 失败且 strict=False：返回 (None, info_dict)
     """
-    from src.data_loader import try_load_project_data
-
     ok, project_data, info = try_load_project_data(path, strict=strict)
     if ok:
         return project_data
