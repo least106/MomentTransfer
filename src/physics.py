@@ -81,26 +81,42 @@ class AeroCalculator:
         self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
         
         # 尝试从缓存获取旋转矩阵，如果缓存未命中则计算
-        config = get_config()
-        if config.cache.enabled and 'rotation' in config.cache.cache_types:
-            rotation_cache = get_rotation_cache(config.cache.max_entries)
-            self.R_matrix = rotation_cache.get_rotation_matrix(
-                self.basis_source,
-                self.basis_target,
-                config.cache.precision_digits
-            )
-            if self.R_matrix is None:
-                self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
-                rotation_cache.set_rotation_matrix(
-                    self.basis_source,
-                    self.basis_target,
-                    self.R_matrix,
-                    config.cache.precision_digits
-                )
-                logger.debug("旋转矩阵缓存未命中，已计算并缓存")
+        cfg = get_config()
+        # 兼容性检查：cfg 可能为 None 或者不包含 cache 字段
+        cache_cfg = getattr(cfg, 'cache', None)
+        try:
+            if cache_cfg and getattr(cache_cfg, 'enabled', False) and 'rotation' in getattr(cache_cfg, 'cache_types', []):
+                rotation_cache = get_rotation_cache(getattr(cache_cfg, 'max_entries', None))
+                try:
+                    self.R_matrix = rotation_cache.get_rotation_matrix(
+                        self.basis_source,
+                        self.basis_target,
+                        getattr(cache_cfg, 'precision_digits', None)
+                    )
+                except Exception:
+                    # 如果缓存接口异常，回退为直接计算
+                    logger.debug("旋转矩阵缓存调用失败，回退到直接计算", exc_info=True)
+                    self.R_matrix = None
+
+                if self.R_matrix is None:
+                    self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+                    try:
+                        rotation_cache.set_rotation_matrix(
+                            self.basis_source,
+                            self.basis_target,
+                            self.R_matrix,
+                            getattr(cache_cfg, 'precision_digits', None)
+                        )
+                        logger.debug("旋转矩阵缓存未命中，已计算并缓存")
+                    except Exception:
+                        logger.debug("旋转矩阵缓存写入失败，已忽略", exc_info=True)
+                else:
+                    logger.debug("旋转矩阵缓存命中")
             else:
-                logger.debug("旋转矩阵缓存命中")
-        else:
+                self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+        except Exception:
+            # 任何意外情况下都回退为直接计算
+            logger.debug("获取缓存配置失败或异常，直接计算旋转矩阵", exc_info=True)
             self.R_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
 
         # 计算力臂时优先使用 Source 的 MomentCenter（如果定义），否则退回到 Source 的 origin
@@ -111,25 +127,37 @@ class AeroCalculator:
         )
         
         # 尝试从缓存获取转换结果
-        if config.cache.enabled and 'transformation' in config.cache.cache_types:
-            transformation_cache = get_transformation_cache(config.cache.max_entries)
-            self.r_target = transformation_cache.get_transformation(
-                self.basis_target,
-                self.r_global,
-                config.cache.precision_digits
-            )
-            if self.r_target is None:
-                self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
-                transformation_cache.set_transformation(
-                    self.basis_target,
-                    self.r_global,
-                    self.r_target,
-                    config.cache.precision_digits
-                )
-                logger.debug("力臂转换缓存未命中，已计算并缓存")
+        try:
+            if cache_cfg and getattr(cache_cfg, 'enabled', False) and 'transformation' in getattr(cache_cfg, 'cache_types', []):
+                transformation_cache = get_transformation_cache(getattr(cache_cfg, 'max_entries', None))
+                try:
+                    self.r_target = transformation_cache.get_transformation(
+                        self.basis_target,
+                        self.r_global,
+                        getattr(cache_cfg, 'precision_digits', None)
+                    )
+                except Exception:
+                    logger.debug("力臂转换缓存调用失败，回退到直接计算", exc_info=True)
+                    self.r_target = None
+
+                if self.r_target is None:
+                    self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+                    try:
+                        transformation_cache.set_transformation(
+                            self.basis_target,
+                            self.r_global,
+                            self.r_target,
+                            getattr(cache_cfg, 'precision_digits', None)
+                        )
+                        logger.debug("力臂转换缓存未命中，已计算并缓存")
+                    except Exception:
+                        logger.debug("力臂转换写入失败，已忽略", exc_info=True)
+                else:
+                    logger.debug("力臂转换缓存命中")
             else:
-                logger.debug("力臂转换缓存命中")
-        else:
+                self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+        except Exception:
+            logger.debug("获取/使用力臂转换缓存时发生异常，直接计算 r_target", exc_info=True)
             self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
         # 构造时验证 target 必需字段
@@ -181,7 +209,7 @@ class AeroCalculator:
                 result[zero_mask] = 0.0
         except Exception:
             # 若形状不匹配，回退为原始结果
-            pass
+            logger.debug("_safe_divide: 形状不匹配，无法按列屏蔽 zero_mask", exc_info=True)
 
         return result
 
@@ -208,6 +236,25 @@ class AeroCalculator:
         输出:
             Dictionary containing (N, 3) arrays
         """
+        # 输入校验并强制为 numpy 数组
+        forces = np.asarray(forces, dtype=float)
+        moments = np.asarray(moments, dtype=float)
+
+        # 强制形状为 (N,3)
+        if forces.ndim == 1:
+            if forces.size == 3:
+                forces = forces.reshape(1, 3)
+            else:
+                raise ValueError('forces 必须为形状 (N,3) 或长度为3 的向量')
+        if moments.ndim == 1:
+            if moments.size == 3:
+                moments = moments.reshape(1, 3)
+            else:
+                raise ValueError('moments 必须为形状 (N,3) 或长度为3 的向量')
+
+        if forces.shape != moments.shape:
+            raise ValueError('forces 与 moments 必须具有相同形状')
+
         # 1. 批量旋转 (Matrix Multiplication)
         # 公式: F_new = (R @ F_old.T).T  或者更高效的 F_old @ R.T
         # R_matrix 是 (3,3), forces 是 (N,3)
