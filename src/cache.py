@@ -67,15 +67,16 @@ class CalculationCache:
     def set(self, key: Tuple, value: object) -> None:
         """设置缓存值"""
         if key in self.cache:
+            # 已存在时移动到末尾并更新值
             self.cache.move_to_end(key)
-        else:
             self.cache[key] = value
-            # 超过限制时删除最旧的条目
+        else:
+            # 新增条目
+            self.cache[key] = value
+            # 超过限制时删除最旧的条目（使用 popitem 更简洁）
             if len(self.cache) > self.max_entries:
-                oldest_key = next(iter(self.cache))
-                del self.cache[oldest_key]
-            else:
-                self.cache[key] = value
+                # popitem(last=False) 弹出最旧的条目
+                self.cache.popitem(last=False)
 
     def clear(self) -> None:
         """清空缓存"""
@@ -159,32 +160,51 @@ class TransformationCache(CalculationCache):
         self.set(key, result)
 
 
-# 全局缓存实例
-_rotation_cache: Optional[RotationMatrixCache] = None
-_transformation_cache: Optional[TransformationCache] = None
+# 使用单例管理器来维护缓存实例，避免使用 `global` 语句
+class CacheManager:
+    """管理不同类型缓存的单例对象。"""
+
+    def __init__(self) -> None:
+        self.rotation_cache: Optional[RotationMatrixCache] = None
+        self.transformation_cache: Optional[TransformationCache] = None
+
+    def get_rotation_cache(self, max_entries: int = 1000) -> RotationMatrixCache:
+        """返回或创建旋转矩阵缓存实例。"""
+        if self.rotation_cache is None:
+            self.rotation_cache = RotationMatrixCache(max_entries)
+        return self.rotation_cache
+
+    def get_transformation_cache(
+        self, max_entries: int = 1000
+    ) -> TransformationCache:
+        """返回或创建坐标转换缓存实例。"""
+        if self.transformation_cache is None:
+            self.transformation_cache = TransformationCache(max_entries)
+        return self.transformation_cache
+
+    def clear_all(self) -> None:
+        """清空管理器中持有的所有缓存。"""
+        if self.rotation_cache:
+            self.rotation_cache.clear()
+        if self.transformation_cache:
+            self.transformation_cache.clear()
+        logger.info("所有缓存已清空")
+
+
+# 模块级单例管理器（直接赋值而非使用 global 语句）
+_CACHE_MANAGER = CacheManager()
 
 
 def get_rotation_cache(max_entries: int = 1000) -> RotationMatrixCache:
-    """获取全局旋转矩阵缓存实例"""
-    global _rotation_cache
-    if _rotation_cache is None:
-        _rotation_cache = RotationMatrixCache(max_entries)
-    return _rotation_cache
+    """获取旋转矩阵缓存实例（代理到 `_CACHE_MANAGER`）。"""
+    return _CACHE_MANAGER.get_rotation_cache(max_entries)
 
 
 def get_transformation_cache(max_entries: int = 1000) -> TransformationCache:
-    """获取全局坐标转换缓存实例"""
-    global _transformation_cache
-    if _transformation_cache is None:
-        _transformation_cache = TransformationCache(max_entries)
-    return _transformation_cache
+    """获取坐标转换缓存实例（代理到 `_CACHE_MANAGER`）。"""
+    return _CACHE_MANAGER.get_transformation_cache(max_entries)
 
 
 def clear_all_caches() -> None:
-    """清空所有缓存"""
-    global _rotation_cache, _transformation_cache
-    if _rotation_cache:
-        _rotation_cache.clear()
-    if _transformation_cache:
-        _transformation_cache.clear()
-    logger.info("所有缓存已清空")
+    """清空所有缓存（代理到 `_CACHE_MANAGER`）。"""
+    _CACHE_MANAGER.clear_all()
