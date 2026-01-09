@@ -65,7 +65,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          # 给 artifact 名称添加 matrix 和 run 信息以避免不同作业/重复上传时产生同名冲突
+          name: coverage-report-${{ matrix.python-version }}-run${{ github.run_number }}
           path: |
             coverage.xml
             coverage_html
