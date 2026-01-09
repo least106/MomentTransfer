@@ -10,7 +10,7 @@
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -121,32 +121,33 @@ class SystemConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SystemConfig":
         """从字典创建配置"""
+        cache_fields = {f.name for f in fields(CacheConfig)}
         cache_config = CacheConfig(
             **{
                 k: v
                 for k, v in config_dict.get("cache", {}).items()
-                if k in CacheConfig.__dataclass_fields__
-            }
+                if k in cache_fields
+                }
         )
         batch_config = BatchProcessConfig(
             **{
                 k: v
                 for k, v in config_dict.get("batch", {}).items()
-                if k in BatchProcessConfig.__dataclass_fields__
+                if k in {f.name for f in fields(BatchProcessConfig)}
             }
         )
         physics_config = PhysicsConfig(
             **{
                 k: v
                 for k, v in config_dict.get("physics", {}).items()
-                if k in PhysicsConfig.__dataclass_fields__
+                if k in {f.name for f in fields(PhysicsConfig)}
             }
         )
         plugin_config = PluginConfig(
             **{
                 k: v
                 for k, v in config_dict.get("plugin", {}).items()
-                if k in PluginConfig.__dataclass_fields__
+                if k in {f.name for f in fields(PluginConfig)}
             }
         )
 
