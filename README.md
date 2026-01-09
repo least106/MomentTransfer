@@ -19,8 +19,35 @@ MomentTransfer 是一个用于航空航天领域的力矩坐标变换计算工�
 
 ### 环境要求
 
-- Python 3.8 或更高版本
-- 推荐使用 Anaconda 环境管理
+
+## Physics 模块（示例）
+
+`src.physics` 提供 `AeroCalculator`，用于在不同坐标系间变换力/力矩并计算无量纲系数。
+
+示例用法：
+
+```python
+from src.data_loader import FrameConfiguration
+from src.physics import AeroCalculator
+
+# 构造简单配置示例（示意）
+cfg = {
+  "PartName": "example",
+  "CoordSystem": {"Orig": [0,0,0], "X": [1,0,0], "Y": [0,1,0], "Z": [0,0,1]},
+  "MomentCenter": [0,0,0],
+  "Q": 1.0,
+  "S": 1.0,
+}
+frame = FrameConfiguration.from_dict(cfg)
+calc = AeroCalculator(frame)
+
+forces = [[100.0, 0.0, 0.0]]
+moments = [[0.0, 0.0, 0.0]]
+res = calc.process_batch(forces, moments)
+print(res['coeff_force'])
+```
+
+更多细节请参见 `src/physics.py` 的 docstring。
 
 ### 安装步骤
 
