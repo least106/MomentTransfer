@@ -21,7 +21,7 @@ class ColumnMappingDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("数据格式配置")
-        self.resize(500, 600)
+        self.resize(500, 200)
         self.init_ui()
 
     def init_ui(self):
@@ -57,6 +57,15 @@ class ColumnMappingDialog(QDialog):
             spin.setRange(0, 1000)
             spin.setValue(0)
 
+        # 默认将列映射控件置为不可编辑（灰显），需要用户显式启用后才能修改
+        # 这样可以避免误操作。若需要立即启用，请在代码中调用控件的 setEnabled(True)。
+        for spin in [self.col_alpha, self.col_fx, self.col_fy, self.col_fz,
+                     self.col_mx, self.col_my, self.col_mz]:
+            try:
+                spin.setEnabled(False)
+            except Exception:
+                pass
+
         form_cols.addRow("迎角 Alpha (可选):", self.col_alpha)
         form_cols.addRow("轴向力 Fx:", self.col_fx)
         form_cols.addRow("侧向力 Fy:", self.col_fy)
@@ -66,6 +75,11 @@ class ColumnMappingDialog(QDialog):
         form_cols.addRow("偏航力矩 Mz:", self.col_mz)
 
         grp_columns.setLayout(form_cols)
+        # 临时隐藏列映射分组（用户要求先隐藏这些控件）
+        try:
+            grp_columns.setVisible(False)
+        except Exception:
+            pass
 
         # 保留列
         grp_pass = QGroupBox("需要保留输出的其他列")
