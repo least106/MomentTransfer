@@ -37,20 +37,20 @@ class BasePlugin(ABC):
     @abstractmethod
     def metadata(self) -> PluginMetadata:
         """返回插件元数据"""
-        pass
+        raise NotImplementedError()
 
-    def initialize(self, config: Dict[str, Any]) -> None:
+    def initialize(self, _config: Dict[str, Any]) -> None:
         """
         初始化插件（可选）
 
         参数：
             config: 插件特定的配置字典
         """
-        pass
+        return None
 
     def shutdown(self) -> None:
         """关闭插件时的清理工作（可选）"""
-        pass
+        return None
 
 
 class CoordSystemPlugin(BasePlugin):
@@ -69,12 +69,12 @@ class CoordSystemPlugin(BasePlugin):
             'z_axis': [x, y, z]
         }
         """
-        pass
+        raise NotImplementedError()
 
     @abstractmethod
     def list_coordinate_systems(self) -> List[str]:
         """列出所有可用的坐标系"""
-        pass
+        raise NotImplementedError()
 
 
 class TransformationPlugin(BasePlugin):
@@ -100,7 +100,7 @@ class TransformationPlugin(BasePlugin):
         返回：
             包含转换后的力、力矩和系数的字典
         """
-        pass
+        raise NotImplementedError()
 
 
 class OutputPlugin(BasePlugin):
@@ -116,12 +116,12 @@ class OutputPlugin(BasePlugin):
             output_path: 输出文件路径
             kwargs: 其他选项
         """
-        pass
+        raise NotImplementedError()
 
     @abstractmethod
     def get_supported_formats(self) -> List[str]:
         """获取支持的文件格式"""
-        pass
+        raise NotImplementedError()
 
 
 class PluginRegistry:
@@ -138,22 +138,21 @@ class PluginRegistry:
         """注册插件"""
         metadata = plugin.metadata
         name = metadata.name
-
         if name in self.plugins:
-            logger.warning(f"插件 {name} 已存在，将被覆盖")
+            logger.warning("插件 %s 已存在，将被覆盖", name)
 
         self.plugins[name] = plugin
 
         # 按类型分类注册
         if isinstance(plugin, CoordSystemPlugin):
             self.coord_system_plugins[name] = plugin
-            logger.info(f"已注册坐标系插件: {name} v{metadata.version}")
+            logger.info("已注册坐标系插件: %s v%s", name, metadata.version)
         elif isinstance(plugin, TransformationPlugin):
             self.transformation_plugins[name] = plugin
-            logger.info(f"已注册转换插件: {name} v{metadata.version}")
+            logger.info("已注册转换插件: %s v%s", name, metadata.version)
         elif isinstance(plugin, OutputPlugin):
             self.output_plugins[name] = plugin
-            logger.info(f"已注册输出插件: {name} v{metadata.version}")
+            logger.info("已注册输出插件: %s v%s", name, metadata.version)
 
     def unregister(self, name: str) -> None:
         """注销插件"""
@@ -169,7 +168,7 @@ class PluginRegistry:
             elif isinstance(plugin, OutputPlugin):
                 del self.output_plugins[name]
 
-            logger.info(f"已注销插件: {name}")
+            logger.info("已注销插件: %s", name)
 
     def get_plugin(self, name: str) -> Optional[BasePlugin]:
         """获取指定的插件"""
@@ -191,12 +190,12 @@ class PluginRegistry:
         """列出所有插件"""
         if plugin_type == "coord_system":
             return list(self.coord_system_plugins.keys())
-        elif plugin_type == "transformation":
+        if plugin_type == "transformation":
             return list(self.transformation_plugins.keys())
-        elif plugin_type == "output":
+        if plugin_type == "output":
             return list(self.output_plugins.keys())
-        else:
-            return list(self.plugins.keys())
+
+        return list(self.plugins.keys())
 
 
 class PluginLoader:
@@ -215,14 +214,14 @@ class PluginLoader:
         """
         filepath = Path(filepath)
         if not filepath.exists():
-            logger.error(f"插件文件不存在: {filepath}")
+            logger.error("插件文件不存在: %s", filepath)
             return None
 
         try:
             # 动态加载模块
             spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
             if spec is None or spec.loader is None:
-                logger.error(f"无法加载模块: {filepath}")
+                logger.error("无法加载模块: %s", filepath)
                 return None
 
             module = importlib.util.module_from_spec(spec)
@@ -232,21 +231,26 @@ class PluginLoader:
             if hasattr(module, "create_plugin"):
                 plugin = module.create_plugin()
                 self.registry.register(plugin)
-                logger.info(f"成功加载插件: {filepath}")
+                logger.info("成功加载插件: %s", filepath)
                 return plugin
-            else:
-                logger.error(f"插件 {filepath} 不包含 create_plugin() 函数")
-                return None
 
-        except Exception as e:
-            logger.error(f"加载插件 {filepath} 失败: {e}", exc_info=True)
+            logger.error("插件 %s 不包含 create_plugin() 函数", filepath)
+            return None
+
+        except (OSError, ImportError, AttributeError, SyntaxError) as exc:
+            # 捕获常见的加载/语法错误并记录
+            logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
+            return None
+        except Exception as exc:  # pylint: disable=broad-except
+            # 插件代码可能在导入时抛出任意异常；记录并继续
+            logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
             return None
 
     def load_plugins_from_directory(self, directory: Path) -> List[BasePlugin]:
         """从目录加载所有插件"""
         directory = Path(directory)
         if not directory.exists():
-            logger.warning(f"插件目录不存在: {directory}")
+            logger.warning("插件目录不存在: %s", directory)
             return []
 
         plugins = []
@@ -258,20 +262,44 @@ class PluginLoader:
             if plugin:
                 plugins.append(plugin)
 
-        logger.info(f"从 {directory} 加载了 {len(plugins)} 个插件")
+        logger.info("从 %s 加载了 %d 个插件", directory, len(plugins))
         return plugins
 
 
-# 全局插件注册表实例
-_plugin_registry: Optional[PluginRegistry] = None
+# 使用 PluginManager 单例管理插件注册表，避免模块级 global
+
+
+class PluginManager:
+    """管理全局 `PluginRegistry` 实例的管理器。"""
+
+    def __init__(self) -> None:
+        self._registry: Optional[PluginRegistry] = None
+
+    def get_registry(self) -> PluginRegistry:
+        """返回或创建 `PluginRegistry` 单例实例。"""
+        if self._registry is None:
+            self._registry = PluginRegistry()
+        return self._registry
+
+    def clear(self) -> None:
+        """清空已创建的 `PluginRegistry`（若存在）。"""
+        if self._registry is not None:
+            # 注销并清理所有插件
+            for name in list(self._registry.list_plugins()):
+                try:
+                    self._registry.unregister(name)
+                except Exception:  # pylint: disable=broad-except
+                    # 忽略注销时的插件错误
+                    pass
+            self._registry = None
+
+
+_PLUGIN_MANAGER = PluginManager()
 
 
 def get_plugin_registry() -> PluginRegistry:
-    """获取全局插件注册表"""
-    global _plugin_registry
-    if _plugin_registry is None:
-        _plugin_registry = PluginRegistry()
-    return _plugin_registry
+    """获取全局插件注册表（代理到 `_PLUGIN_MANAGER`）。"""
+    return _PLUGIN_MANAGER.get_registry()
 
 
 def load_plugins_from_config(config_dirs: List[str]) -> None:
