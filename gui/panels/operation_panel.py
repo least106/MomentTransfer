@@ -80,7 +80,7 @@ class OperationPanel(QWidget):
         gui_instance.info_tab_widget = None
         gui_instance.txt_batch_log = bp.txt_batch_log
         gui_instance.btn_config_format = bp.btn_config_format
-        gui_instance.btn_batch = bp.btn_batch
+        gui_instance.btn_batch = getattr(bp, 'btn_batch_in_toolbar', None)  # 兼容性别名，指向工具栏按钮
         gui_instance.btn_undo = bp.btn_undo
         gui_instance.tab_logs_widget = bp.log_tab
         gui_instance.lbl_format_summary = getattr(bp, 'lbl_format_summary', None)

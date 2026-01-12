@@ -36,6 +36,7 @@ class BatchManager:
         """初始化批处理管理器"""
         self.gui = gui_instance
         self.batch_thread = None
+        self._bus_connected = False
 
         # 特殊格式：缓存每个文件的 source->target 映射控件
         # key: (file_path_str, source_part)
@@ -57,9 +58,16 @@ class BatchManager:
         self._special_preview_tables = {}
         # 常规表格：key=file_path_str -> QTableWidget
         self._table_preview_tables = {}
+        
+        # 快速筛选状态
+        self._quick_filter_column = ""
+        self._quick_filter_operator = "包含"
+        self._quick_filter_value = ""
 
         # 连接文件树交互与配置/Part 变更事件
         self._connect_ui_signals()
+        self._connect_signal_bus_events()
+        self._connect_quick_filter()
 
     def _connect_ui_signals(self) -> None:
         """连接文件树与 SignalBus 事件，保证状态/映射随配置变化刷新。"""
@@ -75,6 +83,69 @@ class BatchManager:
                     logger.debug('连接 file_tree.itemChanged 失败', exc_info=True)
         except Exception:
             pass
+
+    def _connect_signal_bus_events(self) -> None:
+        """将配置/Part 变更信号与文件状态刷新绑定（只注册一次）。"""
+        if self._bus_connected:
+            return
+        try:
+            bus = getattr(self.gui, 'signal_bus', None)
+            if bus is None:
+                return
+            try:
+                bus.configLoaded.connect(lambda _m=None: self.refresh_file_statuses())
+            except Exception:
+                pass
+            try:
+                bus.configApplied.connect(lambda: self.refresh_file_statuses())
+            except Exception:
+                pass
+            try:
+                bus.partAdded.connect(lambda _side=None, _name=None: self.refresh_file_statuses())
+            except Exception:
+                pass
+            try:
+                bus.partRemoved.connect(lambda _side=None, _name=None: self.refresh_file_statuses())
+            except Exception:
+                pass
+            self._bus_connected = True
+        except Exception:
+            logger.debug('连接 SignalBus 刷新事件失败', exc_info=True)
+
+    def _connect_quick_filter(self) -> None:
+        """连接快速筛选信号"""
+        try:
+            if hasattr(self.gui, 'batch_panel') and hasattr(self.gui.batch_panel, 'quickFilterChanged'):
+                self.gui.batch_panel.quickFilterChanged.connect(self._on_quick_filter_changed)
+                logger.info('快速筛选信号连接成功')
+            else:
+                logger.warning('快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在')
+        except Exception as e:
+            logger.error(f'连接快速筛选信号失败: {e}', exc_info=True)
+
+    def _on_quick_filter_changed(self, column: str, operator: str, value: str) -> None:
+        """快速筛选条件变化，刷新所有表格的行显示"""
+        try:
+            logger.info(f'快速筛选变化: 列={column}, 运算符={operator}, 值={value}')
+            self._quick_filter_column = column
+            self._quick_filter_operator = operator
+            self._quick_filter_value = value
+            
+            # 刷新所有常规表格
+            for fp_str, table in list(self._table_preview_tables.items()):
+                try:
+                    self._apply_quick_filter_to_table(table, fp_str)
+                except Exception:
+                    logger.debug(f'刷新表格筛选 {fp_str} 失败', exc_info=True)
+            
+            # 刷新所有特殊格式表格
+            for (fp_str, source_part), table in list(self._special_preview_tables.items()):
+                try:
+                    self._apply_quick_filter_to_special_table(table, fp_str, source_part)
+                except Exception:
+                    logger.debug(f'刷新特殊格式表格筛选 {fp_str}/{source_part} 失败', exc_info=True)
+        except Exception:
+            logger.debug('快速筛选刷新失败', exc_info=True)
 
     def _get_item_meta(self, item):
         """读取文件树节点元信息（保存在 Qt.UserRole+1）。"""
@@ -200,6 +271,136 @@ class BatchManager:
         table.resizeRowsToContents()
         table.setMaximumHeight(min(320, table.verticalHeader().length() + 40))
         return table
+
+    def _apply_quick_filter_to_table(self, table: QTableWidget, file_path_str: str) -> None:
+        """对常规表格应用快速筛选（灰显不匹配的行）"""
+        try:
+            from PySide6.QtGui import QColor
+            
+            # 如果没有筛选条件，恢复所有行
+            if not self._quick_filter_column or not self._quick_filter_value:
+                for r in range(table.rowCount()):
+                    for c in range(1, table.columnCount()):  # 跳过勾选列
+                        item = table.item(r, c)
+                        if item:
+                            item.setBackground(QColor(255, 255, 255))
+                            item.setForeground(QColor(0, 0, 0))
+                return
+            
+            # 获取数据
+            cached = self._table_data_cache.get(file_path_str)
+            if not cached or cached.get('df') is None:
+                return
+            
+            df = cached.get('df')
+            if df is None or df.empty or self._quick_filter_column not in df.columns:
+                return
+            
+            # 应用筛选
+            gray_color = QColor(220, 220, 220)
+            text_color = QColor(160, 160, 160)
+            operator = self._quick_filter_operator
+            
+            for r in range(min(table.rowCount(), len(df))):
+                try:
+                    row_value = df.iloc[r][self._quick_filter_column]
+                    matches = self._evaluate_filter(row_value, operator, self._quick_filter_value)
+                    
+                    for c in range(1, table.columnCount()):  # 跳过勾选列
+                        item = table.item(r, c)
+                        if item:
+                            if matches:
+                                item.setBackground(QColor(255, 255, 255))
+                                item.setForeground(QColor(0, 0, 0))
+                            else:
+                                item.setBackground(gray_color)
+                                item.setForeground(text_color)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f'应用表格快速筛选失败: {e}', exc_info=True)
+    
+    def _evaluate_filter(self, row_value, operator: str, filter_value: str) -> bool:
+        """评估筛选条件是否匹配"""
+        try:
+            if operator == "包含":
+                return str(filter_value).lower() in str(row_value).lower()
+            elif operator == "不包含":
+                return str(filter_value).lower() not in str(row_value).lower()
+            elif operator in ["=", "≠", "<", ">", "≤", "≥", "≈"]:
+                # 数值比较
+                try:
+                    val = float(row_value)
+                    flt = float(filter_value)
+                except (ValueError, TypeError):
+                    return False
+                
+                if operator == "=":
+                    return abs(val - flt) < 1e-10
+                elif operator == "≠":
+                    return abs(val - flt) >= 1e-10
+                elif operator == "<":
+                    return val < flt
+                elif operator == ">":
+                    return val > flt
+                elif operator == "≤":
+                    return val <= flt
+                elif operator == "≥":
+                    return val >= flt
+                elif operator == "≈":
+                    # 近似相等（误差在1%以内）
+                    if abs(flt) > 1e-10:
+                        return abs(val - flt) / abs(flt) < 0.01
+                    else:
+                        return abs(val - flt) < 1e-10
+            return False
+        except Exception:
+            return False
+
+    def _apply_quick_filter_to_special_table(self, table: QTableWidget, file_path_str: str, source_part: str) -> None:
+        """对特殊格式表格应用快速筛选（灰显不匹配的行）"""
+        try:
+            from PySide6.QtGui import QColor
+            
+            # 如果没有筛选条件，恢复所有行
+            if not self._quick_filter_column or not self._quick_filter_value:
+                for r in range(table.rowCount()):
+                    for c in range(1, table.columnCount()):
+                        item = table.item(r, c)
+                        if item:
+                            item.setBackground(QColor(255, 255, 255))
+                            item.setForeground(QColor(0, 0, 0))
+                return
+            
+            # 获取数据
+            data_dict = self._get_special_data_dict(Path(file_path_str))
+            df = data_dict.get(source_part)
+            if df is None or df.empty or self._quick_filter_column not in df.columns:
+                return
+            
+            # 应用筛选
+            gray_color = QColor(220, 220, 220)
+            text_color = QColor(160, 160, 160)
+            operator = self._quick_filter_operator
+            
+            for r in range(min(table.rowCount(), len(df))):
+                try:
+                    row_value = df.iloc[r][self._quick_filter_column]
+                    matches = self._evaluate_filter(row_value, operator, self._quick_filter_value)
+                    
+                    for c in range(1, table.columnCount()):
+                        item = table.item(r, c)
+                        if item:
+                            if matches:
+                                item.setBackground(QColor(255, 255, 255))
+                                item.setForeground(QColor(0, 0, 0))
+                            else:
+                                item.setBackground(gray_color)
+                                item.setForeground(text_color)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f'应用特殊格式表格快速筛选失败: {e}', exc_info=True)
 
     def _build_table_row_preview_text(self, row_index: int, row_series) -> str:
         """构造表格（CSV/Excel）数据行预览文本。"""
@@ -376,6 +577,19 @@ class BatchManager:
         try:
             self.gui.file_tree.setItemWidget(group, 0, table)
             self._table_preview_tables[fp_str] = table
+            
+            # 更新快速筛选列选项
+            try:
+                if hasattr(self.gui, 'batch_panel'):
+                    self.gui.batch_panel.update_filter_columns(list(df.columns))
+            except Exception:
+                pass
+            
+            # 应用当前筛选
+            try:
+                self._apply_quick_filter_to_table(table, fp_str)
+            except Exception:
+                pass
         except Exception:
             logger.debug('embed table preview failed', exc_info=True)
 
@@ -452,6 +666,19 @@ class BatchManager:
         try:
             self.gui.file_tree.setItemWidget(group, 0, table)
             self._special_preview_tables[(fp_str, str(source_part))] = table
+            
+            # 更新快速筛选列选项
+            try:
+                if hasattr(self.gui, 'batch_panel'):
+                    self.gui.batch_panel.update_filter_columns(list(df.columns))
+            except Exception:
+                pass
+            
+            # 应用当前筛选
+            try:
+                self._apply_quick_filter_to_special_table(table, fp_str, source_part)
+            except Exception:
+                pass
         except Exception:
             logger.debug('embed special preview table failed', exc_info=True)
 
@@ -530,28 +757,7 @@ class BatchManager:
         except Exception:
             logger.debug('处理数据行勾选变化失败', exc_info=True)
 
-        try:
-            bus = getattr(self.gui, 'signal_bus', None)
-            if bus is None:
-                return
-            try:
-                bus.configLoaded.connect(lambda _m=None: self.refresh_file_statuses())
-            except Exception:
-                pass
-            try:
-                bus.configApplied.connect(lambda: self.refresh_file_statuses())
-            except Exception:
-                pass
-            try:
-                bus.partAdded.connect(lambda _side=None, _name=None: self.refresh_file_statuses())
-            except Exception:
-                pass
-            try:
-                bus.partRemoved.connect(lambda _side=None, _name=None: self.refresh_file_statuses())
-            except Exception:
-                pass
-        except Exception:
-            logger.debug('连接 SignalBus 刷新事件失败', exc_info=True)
+        # SignalBus 事件在初始化阶段已注册
     
     def browse_batch_input(self):
         """浏览并选择输入文件或目录，沿用 GUI 原有文件列表面板。"""
@@ -1365,15 +1571,16 @@ class BatchManager:
                 except Exception:
                     pass
 
-                # 若已进入映射模式（该文件存在映射 dict），则刷新其映射行的 target 下拉列表
                 try:
-                    mapping = (getattr(self.gui, 'special_part_mapping_by_file', {}) or {}).get(fp_str)
-                    if mapping is None:
-                        continue
-                    if looks_like_special_format(Path(fp_str)):
-                        self._ensure_special_mapping_rows(item, Path(fp_str))
+                    p = Path(fp_str)
+                    if looks_like_special_format(p):
+                        # 特殊格式：刷新映射行和推测
+                        self._ensure_special_mapping_rows(item, p)
+                    else:
+                        # 常规表格：刷新 Source/Target 下拉并重跑推测
+                        self._ensure_regular_file_selector_rows(item, p)
                 except Exception:
-                    pass
+                    logger.debug('刷新文件节点失败: %s', fp_str, exc_info=True)
         except Exception:
             logger.debug('refresh_file_statuses failed', exc_info=True)
 

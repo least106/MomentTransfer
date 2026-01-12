@@ -6,10 +6,11 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,
     QTabWidget, QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel,
-    QHeaderView, QSizePolicy, QLineEdit, QFormLayout, QComboBox, QCheckBox
+    QHeaderView, QSizePolicy, QLineEdit, QFormLayout, QComboBox, QCheckBox,
+    QCompleter
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QDoubleValidator
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class BatchPanel(QWidget):
     selectAllRequested = Signal()  # 全选文件
     selectNoneRequested = Signal()  # 全不选
     invertSelectionRequested = Signal()  # 反选
+    quickFilterChanged = Signal(str, str, str)  # 快速筛选变化(列名, 运算符, 筛选值)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -240,6 +242,46 @@ class BatchPanel(QWidget):
         except Exception:
             pass
         btn_row.addWidget(self.chk_bulk_row_selection)
+        
+        # 快速筛选：简洁的单列筛选
+        filter_label = QLabel("快速筛选:")
+        filter_label.setStyleSheet("margin-left: 10px;")
+        btn_row.addWidget(filter_label)
+        
+        # 列名输入框（带自动补全）
+        self.inp_filter_column = QLineEdit()
+        self.inp_filter_column.setPlaceholderText("列名...")
+        self.inp_filter_column.setMaximumWidth(100)
+        self.inp_filter_column.setToolTip("输入列名（支持自动补全）")
+        self._filter_completer = QCompleter()
+        self._filter_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.inp_filter_column.setCompleter(self._filter_completer)
+        btn_row.addWidget(self.inp_filter_column)
+        
+        # 运算符选择
+        self.cmb_filter_operator = QComboBox()
+        self.cmb_filter_operator.addItems(["包含", "不包含", "=", "≠", "<", ">", "≤", "≥", "≈"])
+        self.cmb_filter_operator.setMaximumWidth(60)
+        self.cmb_filter_operator.setToolTip("选择筛选运算符")
+        btn_row.addWidget(self.cmb_filter_operator)
+        
+        # 值输入框
+        self.inp_filter_value = QLineEdit()
+        self.inp_filter_value.setPlaceholderText("筛选值...")
+        self.inp_filter_value.setMaximumWidth(100)
+        self.inp_filter_value.setToolTip("输入筛选值")
+        btn_row.addWidget(self.inp_filter_value)
+        
+        # 连接筛选信号
+        try:
+            self.inp_filter_column.textChanged.connect(self._on_quick_filter_changed)
+            self.cmb_filter_operator.currentTextChanged.connect(self._on_operator_changed)
+            self.inp_filter_value.textChanged.connect(self._on_quick_filter_changed)
+        except Exception:
+            logger.debug('连接快速筛选信号失败', exc_info=True)
+        
+        btn_row.addStretch()
+        
         # 加载配置：移动到文件列表右上角（替代旧的全局 Source 显示）
         self.btn_load_config = QPushButton("加载配置")
         try:
@@ -252,8 +294,23 @@ class BatchPanel(QWidget):
         except Exception:
             logger.debug('无法连接 btn_load_config 信号', exc_info=True)
 
-        btn_row.addStretch()
+        # 开始批量处理：紧跟在加载配置后
+        self.btn_batch_in_toolbar = QPushButton("开始处理")
+        try:
+            self.btn_batch_in_toolbar.setMaximumWidth(80)
+            self.btn_batch_in_toolbar.setToolTip("开始批量处理（Ctrl+R）")
+        except Exception:
+            pass
+        try:
+            self.btn_batch_in_toolbar.clicked.connect(self.batchStartRequested.emit)
+        except Exception:
+            logger.debug('无法连接 btn_batch_in_toolbar 信号', exc_info=True)
+
+        # 兼容旧字段名
+        self.btn_batch = self.btn_batch_in_toolbar
+
         btn_row.addWidget(self.btn_load_config)
+        btn_row.addWidget(self.btn_batch_in_toolbar)
         layout.addLayout(btn_row)
         
         # 文件树
@@ -290,6 +347,46 @@ class BatchPanel(QWidget):
                 win.load_config()
         except Exception:
             logger.debug('load config from file list failed', exc_info=True)
+    
+    def _on_quick_filter_changed(self) -> None:
+        """快速筛选条件变化"""
+        try:
+            column = self.inp_filter_column.text().strip()
+            operator = self.cmb_filter_operator.currentText()
+            value = self.inp_filter_value.text()
+            self.quickFilterChanged.emit(column, operator, value)
+        except Exception:
+            logger.debug('快速筛选变化处理失败', exc_info=True)
+    
+    def _on_operator_changed(self) -> None:
+        """运算符变化时更新值输入框验证器"""
+        try:
+            operator = self.cmb_filter_operator.currentText()
+            # 数值运算符：=、≠、<、>、≤、≥、≈
+            if operator in ["=", "≠", "<", ">", "≤", "≥", "≈"]:
+                # 设置数值验证器
+                validator = QDoubleValidator()
+                validator.setNotation(QDoubleValidator.StandardNotation)
+                self.inp_filter_value.setValidator(validator)
+                self.inp_filter_value.setToolTip("输入数值")
+            else:
+                # 字符串运算符：包含、不包含
+                self.inp_filter_value.setValidator(None)
+                self.inp_filter_value.setToolTip("输入文本（区分大小写）")
+            
+            # 触发筛选更新
+            self._on_quick_filter_changed()
+        except Exception:
+            logger.debug('运算符变化处理失败', exc_info=True)
+    
+    def update_filter_columns(self, columns: list) -> None:
+        """更新快速筛选的列自动补全列表"""
+        try:
+            from PySide6.QtCore import QStringListModel
+            model = QStringListModel([str(col) for col in columns])
+            self._filter_completer.setModel(model)
+        except Exception:
+            logger.debug('更新筛选列补全列表失败', exc_info=True)
     
     def _create_tab_widget(self) -> QTabWidget:
         """创建Tab容器"""
@@ -351,17 +448,6 @@ class BatchPanel(QWidget):
         self.btn_config_format.setVisible(False)
         self.btn_config_format.setEnabled(False)
         
-        # 执行按钮
-        self.btn_batch = QPushButton("开始\n批量处理")
-        try:
-            self.btn_batch.setObjectName('primaryButton')
-            self.btn_batch.setShortcut('Ctrl+R')
-            self.btn_batch.setToolTip('开始批量处理')
-        except Exception:
-            pass
-        self.btn_batch.setFixedWidth(100)
-        self.btn_batch.setFixedHeight(50)
-        self.btn_batch.clicked.connect(self.batchStartRequested.emit)
         
         # 撤销按钮
         self.btn_undo = QPushButton("撤销\n批处理")
@@ -378,7 +464,6 @@ class BatchPanel(QWidget):
         self.btn_undo.setEnabled(False)
         
         # layout.addWidget(self.btn_config_format)  # 已移除
-        layout.addWidget(self.btn_batch)
         layout.addWidget(self.btn_undo)
         layout.addStretch()
         
