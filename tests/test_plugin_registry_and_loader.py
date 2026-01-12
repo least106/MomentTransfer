@@ -1,8 +1,12 @@
 from pathlib import Path
 import textwrap
 import types
+import sys
 
 import pytest
+
+# 确保在导入 src 包之前将项目根目录加入 sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import plugin as pl
 
