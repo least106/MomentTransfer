@@ -85,6 +85,21 @@ class IntegratedAeroGUI(QMainWindow):
         self.data_config = None
         self.canvas3d = None
         self.visualization_window = None
+
+        # 特殊格式：每个文件的 source->target part 映射（用于 GUI 文件列表内联编辑）
+        self.special_part_mapping_by_file = {}
+
+        # 特殊格式：每个文件、每个 source part 的“选中数据行索引集合”
+        # {str(file_path): {source_part: set([row_index, ...])}}
+        self.special_part_row_selection_by_file = {}
+
+        # 常规文件（CSV/Excel 等）：每个文件选择的 source/target part
+        # {str(file_path): {"source": str, "target": str}}
+        self.file_part_selection_by_file = {}
+
+        # 常规文件（CSV/Excel 等）：每个文件的“选中数据行索引集合”
+        # {str(file_path): set([row_index, ...])}；None 表示默认全选
+        self.table_row_selection_by_file = {}
         
         # 管理器占位（将由 InitializationManager 初始化）
         self.config_manager = None
@@ -112,6 +127,24 @@ class IntegratedAeroGUI(QMainWindow):
             self._connect_signals()
         except Exception:
             logger.debug("_connect_signals 初始化失败（占位）", exc_info=True)
+
+    def set_config_panel_visible(self, visible: bool) -> None:
+        """按流程显示/隐藏配置编辑器，减少初始化干扰。"""
+        try:
+            panel = getattr(self, 'config_panel', None)
+            splitter = getattr(self, 'main_splitter', None)
+            if panel is None or splitter is None:
+                return
+            panel.setVisible(bool(visible))
+            try:
+                if visible:
+                    splitter.setSizes([380, 420])
+                else:
+                    splitter.setSizes([0, 1])
+            except Exception:
+                pass
+        except Exception:
+            logger.debug('set_config_panel_visible failed', exc_info=True)
 
     def _connect_signals(self):
         """集中信号连接"""
@@ -230,12 +263,21 @@ class IntegratedAeroGUI(QMainWindow):
 
     # 配置格式方法委托给 ConfigManager
     def configure_data_format(self):
-        if self.config_manager:
-            self.config_manager.configure_data_format()
+        # 全局数据格式配置已移除：请使用 per-file format（file-sidecar/目录 format.json/registry）。
+        try:
+            QMessageBox.information(
+                self,
+                "提示",
+                "已移除全局数据格式配置。\n"
+                "请为每类数据文件提供 format.json（同目录）或 <文件名>.format.json（侧车），"
+                "或使用 registry 进行格式匹配。",
+            )
+        except Exception:
+            pass
     
     def update_config_preview(self):
-        if self.config_manager:
-            self.config_manager.update_config_preview()
+        # 兼容保留：全局格式摘要已移除
+        return
 
 
     def browse_batch_input(self):
@@ -321,8 +363,11 @@ class IntegratedAeroGUI(QMainWindow):
             dlg = QMessageBox(self)
             dlg.setIcon(QMessageBox.Critical)
             dlg.setWindowTitle("处理失败")
-            dlg.setText("批处理过程中发生错误，已记录到日志。请检查输入文件与数据格式配置。")
-            dlg.setInformativeText("建议：检查数据格式映射（列索引）、Target 配置中的 MomentCenter/Q/S，或在 GUI 中打开“配置数据格式”进行修正。")
+            dlg.setText("批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。")
+            dlg.setInformativeText(
+                "建议：检查 per-file 格式定义（<文件名>.format.json / 同目录 format.json / registry），"
+                "以及 Target 配置中的 MomentCenter/Q/S。"
+            )
             dlg.setDetailedText(str(error_msg))
             dlg.exec()
         except Exception:
