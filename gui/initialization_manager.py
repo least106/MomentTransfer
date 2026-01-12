@@ -50,14 +50,20 @@ class InitializationManager:
             splitter = QSplitter(Qt.Vertical)
             splitter.addWidget(config_panel)
             splitter.addWidget(operation_panel)
+
+            # 记录 splitter，便于后续按流程动态显示/隐藏配置面板
+            self.main_window.main_splitter = splitter
             
+            # 初始化阶段：默认隐藏配置编辑器，避免页面初始化可选项过多导致注意力分散。
+            # 在用户选中数据文件后再显示配置编辑器。
             try:
-                splitter.setSizes([380, 420])
+                config_panel.setVisible(False)
+                splitter.setSizes([0, 1])
             except Exception:
-                logger.debug("splitter.setSizes failed (non-fatal)", exc_info=True)
+                logger.debug("splitter initial hide failed (non-fatal)", exc_info=True)
             
             main_layout.addWidget(splitter)
-            self.main_window.statusBar().showMessage("就绪 - 请加载或创建配置")
+            self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
             
             logger.info("UI 组件初始化成功")
         except Exception as e:
