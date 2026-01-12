@@ -21,7 +21,20 @@ class BatchProcessThread(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, calculator, file_list, output_dir, data_config, registry_db=None, project_data=None, timestamp_format: str = "%Y%m%d_%H%M%S"):
+    def __init__(
+        self,
+        calculator,
+        file_list,
+        output_dir,
+        data_config,
+        registry_db=None,
+        project_data=None,
+        timestamp_format: str = "%Y%m%d_%H%M%S",
+        special_part_mapping_by_file: dict = None,
+        special_row_selection_by_file: dict = None,
+        file_part_selection_by_file: dict = None,
+        table_row_selection_by_file: dict = None,
+    ):
         super().__init__()
         self.calculator = calculator
         self.file_list = file_list
@@ -31,6 +44,57 @@ class BatchProcessThread(QThread):
         self._stop_requested = False
         self.project_data = project_data
         self.timestamp_format = timestamp_format
+        # {str(file_path): {source_part: target_part}}
+        self.special_part_mapping_by_file = special_part_mapping_by_file or {}
+        # {str(file_path): {source_part: set(row_indices)}}
+        self.special_row_selection_by_file = special_row_selection_by_file or {}
+        # {str(file_path): {"source": str, "target": str}}
+        self.file_part_selection_by_file = file_part_selection_by_file or {}
+        # {str(file_path): set([row_index, ...])}
+        self.table_row_selection_by_file = table_row_selection_by_file or {}
+
+        # 全局批处理格式默认值（已不再提供 GUI 入口配置）；但保留作为 per-file 解析的 base。
+        try:
+            from src.cli_helpers import BatchConfig
+
+            base = BatchConfig()
+            # 兼容旧：若传入 dict，则用其覆盖 base
+            if isinstance(data_config, dict):
+                try:
+                    base.skip_rows = int(data_config.get('skip_rows', base.skip_rows))
+                except Exception:
+                    pass
+                cols = data_config.get('columns') or {}
+                for k in base.column_mappings.keys():
+                    if k in cols and cols.get(k) is not None:
+                        try:
+                            base.column_mappings[k] = int(cols.get(k))
+                        except Exception:
+                            pass
+                try:
+                    base.passthrough_columns = [int(x) for x in data_config.get('passthrough', base.passthrough_columns)]
+                except Exception:
+                    pass
+                if 'overwrite' in data_config:
+                    try:
+                        base.overwrite = bool(data_config.get('overwrite'))
+                    except Exception:
+                        pass
+            self._global_batch_cfg = base
+        except Exception:
+            self._global_batch_cfg = None
+
+    def _resolve_cfg_for_file(self, file_path: Path):
+        """解析单文件最终的 BatchConfig（优先 sidecar/目录/registry）。"""
+        from src.cli_helpers import resolve_file_format, BatchConfig
+
+        base = self._global_batch_cfg if self._global_batch_cfg is not None else BatchConfig()
+        return resolve_file_format(
+            str(file_path),
+            base,
+            enable_sidecar=True,
+            registry_db=self.registry_db,
+        )
 
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""
@@ -45,10 +109,24 @@ class BatchProcessThread(QThread):
             except Exception:
                 overwrite_flag = False
 
+            part_mapping = None
+            try:
+                part_mapping = self.special_part_mapping_by_file.get(str(Path(file_path)))
+            except Exception:
+                part_mapping = None
+
+            row_selection = None
+            try:
+                row_selection = self.special_row_selection_by_file.get(str(Path(file_path)))
+            except Exception:
+                row_selection = None
+
             outputs, report = process_special_format_file(
                 Path(file_path),
                 self.project_data,
                 self.output_dir,
+                part_target_mapping=part_mapping,
+                part_row_selection=row_selection,
                 timestamp_format=self.timestamp_format,
                 overwrite=overwrite_flag,
                 return_report=True,
@@ -96,35 +174,14 @@ class BatchProcessThread(QThread):
             else:
                 return outputs
 
-        cfg_to_use = self.data_config
-        if getattr(self, 'enable_sidecar', False):
+        try:
+            cfg_to_use = self._resolve_cfg_for_file(Path(file_path))
+        except Exception as e:
             try:
-                from src.cli_helpers import resolve_file_format, BatchConfig as _BatchConfig
-                base_cfg = _BatchConfig()
-                if isinstance(self.data_config, dict):
-                    base_cfg.skip_rows = int(self.data_config.get('skip_rows', base_cfg.skip_rows))
-                    cols = self.data_config.get('columns') or {}
-                    for k in base_cfg.column_mappings.keys():
-                        if k in cols and cols.get(k) is not None:
-                            base_cfg.column_mappings[k] = int(cols.get(k))
-                    base_cfg.passthrough_columns = [int(x) for x in self.data_config.get('passthrough', base_cfg.passthrough_columns)]
-                    if 'chunksize' in self.data_config:
-                        try:
-                            base_cfg.chunksize = int(self.data_config.get('chunksize'))
-                        except Exception:
-                            base_cfg.chunksize = None
-                    if 'sample_rows' in self.data_config:
-                        try:
-                            base_cfg.sample_rows = int(self.data_config.get('sample_rows'))
-                        except Exception:
-                            base_cfg.sample_rows = base_cfg.sample_rows
-                else:
-                    base_cfg = self.data_config
-
-                cfg_to_use = resolve_file_format(str(file_path), base_cfg, enable_sidecar=True, registry_db=self.registry_db)
-            except Exception as e:
-                self.log_message.emit(f"为文件 {file_path.name} 解析 per-file 配置失败: {e}")
-                raise
+                self.log_message.emit(f"为文件 {Path(file_path).name} 解析 per-file 格式失败: {e}")
+            except Exception:
+                logger.debug('无法发送 per-file 格式失败日志', exc_info=True)
+            raise
 
         if file_path.suffix.lower() == '.csv':
             # 记录用于调试的配置信息和读取数据预览
@@ -137,7 +194,7 @@ class BatchProcessThread(QThread):
             except Exception:
                 pass
 
-            df = pd.read_csv(file_path, header=None, skiprows=(cfg_to_use.get('skip_rows', 0) if isinstance(cfg_to_use, dict) else 0))
+            df = pd.read_csv(file_path, header=None, skiprows=int(getattr(cfg_to_use, 'skip_rows', 0)))
             try:
                 logger.debug("已读取 CSV: %s 行, %s 列", df.shape[0], df.shape[1])
                 try:
@@ -147,13 +204,32 @@ class BatchProcessThread(QThread):
             except Exception:
                 pass
         else:
-            df = pd.read_excel(file_path, header=None, skiprows=cfg_to_use.get('skip_rows', 0))
+            df = pd.read_excel(file_path, header=None, skiprows=int(getattr(cfg_to_use, 'skip_rows', 0)))
 
-        cols = cfg_to_use.get('columns', {})
+        # 若用户在文件列表选择了“处理哪些数据行”，则按选择过滤。
+        # 注意：此时不再执行“自动表头检测/丢弃首行”，以保证索引与 GUI 预览一致。
+        try:
+            fp_str = str(Path(file_path))
+            sel = (self.table_row_selection_by_file or {}).get(fp_str)
+            if sel is not None:
+                sel_sorted = sorted(int(x) for x in set(sel))
+                df = df.iloc[sel_sorted].reset_index(drop=True)
+        except Exception as e:
+            try:
+                self.log_message.emit(f"按行选择过滤失败: {Path(file_path).name} -> {e}")
+            except Exception:
+                pass
+            raise
+
+        cols = getattr(cfg_to_use, 'column_mappings', {}) or {}
 
         # 自动检测并跳过可能的表头行：
         # 如果在映射的关键力/力矩列中多数值在第一行无法解析为数值，判断第一行为表头并丢弃。
+        # 当存在“按行选择过滤”时，该逻辑已被禁用（索引需与 GUI 预览保持一致）。
         try:
+            fp_str = str(Path(file_path))
+            if (self.table_row_selection_by_file or {}).get(fp_str) is not None:
+                raise RuntimeError('skip header auto-detect due to explicit row selection')
             required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
             mapped = [cols.get(k) for k in required_keys if cols.get(k) is not None]
             mapped = [int(x) for x in mapped if isinstance(x, (int, float)) or (isinstance(x, str) and str(x).isdigit())]
@@ -225,10 +301,60 @@ class BatchProcessThread(QThread):
                 logger.debug("无法通过 signal 发送失败消息: %s", e, exc_info=True)
             raise
 
-        results = self.calculator.process_batch(forces, moments)
+        calc_to_use = self.calculator
+        # 新语义：若提供了 project_data，则按“每文件选择的 source/target”创建计算器
+        if self.project_data is not None:
+            try:
+                from src.physics import AeroCalculator
+
+                fp_str = str(Path(file_path))
+                sel = (self.file_part_selection_by_file or {}).get(fp_str) or {}
+                source_sel = (sel.get('source') or '').strip()
+                target_sel = (sel.get('target') or '').strip()
+
+                # 允许唯一 part 自动推断
+                try:
+                    source_names = list((getattr(self.project_data, 'source_parts', {}) or {}).keys())
+                except Exception:
+                    source_names = []
+                try:
+                    target_names = list((getattr(self.project_data, 'target_parts', {}) or {}).keys())
+                except Exception:
+                    target_names = []
+
+                if not source_sel and len(source_names) == 1:
+                    source_sel = str(source_names[0])
+                if not target_sel and len(target_names) == 1:
+                    target_sel = str(target_names[0])
+
+                if not source_sel or not target_sel:
+                    raise ValueError(f"文件未选择 Source/Target: {Path(file_path).name}")
+
+                calc_to_use = AeroCalculator(
+                    self.project_data,
+                    source_part=source_sel,
+                    target_part=target_sel,
+                )
+            except Exception as e:
+                try:
+                    self.log_message.emit(f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: {e}")
+                except Exception:
+                    logger.debug('无法发送 per-file 计算器失败日志', exc_info=True)
+                raise
+
+        if calc_to_use is None:
+            raise ValueError("缺少计算器：请先加载配置并为文件选择 Source/Target")
+
+        results = calc_to_use.process_batch(forces, moments)
         output_df = pd.DataFrame()
 
-        for col_idx in self.data_config.get('passthrough', []):
+        passthrough = []
+        try:
+            passthrough = list(getattr(cfg_to_use, 'passthrough_columns', []) or [])
+        except Exception:
+            passthrough = []
+
+        for col_idx in passthrough:
             try:
                 idx = int(col_idx)
             except (ValueError, TypeError):
