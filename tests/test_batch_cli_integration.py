@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from src.cli_helpers import BatchConfig
-from batch import run_batch_processing_v2
+from batch import run_batch_processing
 
 
 def test_batch_non_interactive_output_json(tmp_path):
@@ -24,7 +24,7 @@ def test_batch_non_interactive_output_json(tmp_path):
 
     # 调用批处理，非交互模式：提供 data_config 与 registry_db（可为空文件路径）
     registry_db = tmp_path / "reg.db"
-    run_batch_processing_v2(
+    run_batch_processing(
         config_path="data/input.json",
         input_path=str(tmp_path),
         data_config=cfg,

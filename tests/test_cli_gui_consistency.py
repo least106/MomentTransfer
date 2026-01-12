@@ -141,14 +141,14 @@ def test_process_single_file_signature():
         assert param in params, f"参数 {param} 缺失"
 
 
-def test_run_batch_processing_v2_signature():
+def test_run_batch_processing_signature():
     """
-    验证 run_batch_processing_v2 的函数签名包含新参数
+    验证 run_batch_processing 的函数签名包含新参数
     """
     import inspect
-    from batch import run_batch_processing_v2
+    from batch import run_batch_processing
     
-    sig = inspect.signature(run_batch_processing_v2)
+    sig = inspect.signature(run_batch_processing)
     params = list(sig.parameters.keys())
     
     expected_new_params = ['file_source_target_map', 'file_row_selection']

@@ -3,7 +3,7 @@
 公共 API:
 - `AeroCalculator(config, source_part=None, target_part=None, ...)`
     - `process_batch(forces, moments)`：批量计算，输入/输出均为 (N,3) 数组。
-    - `process_frame(force, moment)`：单点兼容接口，返回 `AeroResult`。
+    - `process_frame(force, moment)`：单点计算接口，返回 `AeroResult`。
 
 示例:
     >>> from src.data_loader import FrameConfiguration
@@ -26,18 +26,16 @@ from src import geometry
 from src.cache import get_rotation_cache, get_transformation_cache
 from src.config import get_config
 
-# 保持原有的 import
 from src.data_loader import FrameConfiguration, ProjectData
 
 logger = logging.getLogger(__name__)
 # 该模块包含物理学惯例命名（如 R, F_rotated 等），接受非 snake_case 命名风格
-# 同时 __init__ 参数较多属于兼容性要求，允许过多参数检查
 # pylint: disable=invalid-name,too-many-arguments
 
 
 @dataclass
 class AeroResult:
-    """单点计算结果容器（兼容 GUI 与测试）。"""
+    """单点计算结果容器。"""
     force_transformed: List[float]
     moment_transformed: List[float]
     coeff_force: List[float]
@@ -49,7 +47,7 @@ class AeroCalculator:
 
     设计目标：
     - 支持批量计算（`process_batch`）以提高性能。
-    - 保持对旧的单点接口 `process_frame` 的兼容性。
+    - 支持单点计算（`process_frame`）以支持交互式和简单场景。
     - 将缓存、旋转、移轴与无量纲化逻辑拆分为小方法，便于测试与维护。
     """
 
@@ -65,17 +63,16 @@ class AeroCalculator:
         """
         初始化 AeroCalculator。
 
-        参数支持多种用法以保持向后兼容：
-        - 传入一个 `ProjectData`：使用其第一个 source/target，或通过 `source_part`/`target_part` 指定特定 part/variant。
-        - 传入 `FrameConfiguration`：被视为 target 配置（source 将使用 target 的坐标系作为回退，保持旧行为）。
-        - 也可以直接传入两个 `FrameConfiguration`（通过在外部先获得）并分别创建计算器。
+        参数用法：
+        - 传入 `ProjectData`：使用其 source/target，或通过 `source_part`/`target_part` 指定特定 part/variant。
+        - 传入 `FrameConfiguration`：同时用作 source 和 target 坐标系。
         """
-        # 支持传入单个 FrameConfiguration（视为 target）或完整的 ProjectData
+        # 支持传入 FrameConfiguration 或完整的 ProjectData
         if isinstance(config, ProjectData):
             project: ProjectData = config
             # 使用 ProjectData 时若未显式提供 target_part：
-            # - 若仅包含单个 Target part，则自动选取该 part（便于测试与简单项目）；
-            # - 若包含多个 Target part，则默认选取第一个并记录警告（保持向后兼容，同时鼓励在 CLI 中显式传入）。
+            # - 若仅包含单个 Target part，则自动选取该 part；
+            # - 若包含多个 Target part，则默认选取第一个并记录警告。
             if target_part is None:
                 if len(project.target_parts) == 1:
                     target_part = next(iter(project.target_parts.keys()))
@@ -94,7 +91,7 @@ class AeroCalculator:
             # 选择 target frame（已确保不为 None）
             target_frame = project.get_target_part(target_part, target_variant)
         elif isinstance(config, FrameConfiguration):
-            # 仅提供单个 FrameConfiguration：把它视为 target_frame，source 使用同一配置的坐标系（向后兼容）
+            # 仅提供单个 FrameConfiguration：source 和 target 使用同一配置
             source_frame = config
             target_frame = config
         else:
@@ -115,10 +112,9 @@ class AeroCalculator:
             tgt.x_axis, tgt.y_axis, tgt.z_axis
         )
 
-        # 尝试从缓存获取旋转矩阵，如果缓存未命中则计算
+        # 从配置获取缓存设置（若存在）
         cfg = get_config()
-        # 兼容性检查：cfg 可能为 None 或者不包含 cache 字段
-        cache_cfg = getattr(cfg, "cache", None)
+        cache_cfg = getattr(cfg, "cache", None) if cfg else None
         # 从私有方法初始化旋转矩阵（含缓存回退逻辑）
         self.rotation_matrix = self._init_rotation_matrix(cache_cfg)
 

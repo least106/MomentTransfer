@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from src.format_registry import init_db, register_mapping
-from batch import run_batch_processing_v2
+from batch import run_batch_processing
 from src.cli_helpers import BatchConfig
 
 
@@ -58,7 +58,7 @@ def test_noninteractive_with_registry(tmp_path):
     ch.load_project_calculator = _patched_loader
 
     # 运行串行批处理（会在 tmp_path 下生成输出文件）
-    run_batch_processing_v2(
+    run_batch_processing(
         "data/input.json",
         str(tmp_path),
         data_config=global_cfg,

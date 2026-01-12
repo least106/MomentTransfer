@@ -51,15 +51,12 @@
 ### 4. **批处理函数签名扩展** ✅
 
 ```python
-# 旧签名
-def process_single_file(file_path, calculator, config, output_dir, project_data=None)
-
-# 新签名
+# 重命名：run_batch_processing_v2 → run_batch_processing
 def process_single_file(file_path, calculator, config, output_dir, project_data=None,
                        source_part=None, target_part=None, selected_rows=None)
 ```
 
-`run_batch_processing_v2()` 也新增了以下参数：
+`run_batch_processing()` 支持以下参数：
 ```python
 file_source_target_map: dict = None   # {str(file_path): {"source": str, "target": str}}
 file_row_selection: dict = None       # {str(file_path): set([row_idx, ...])}
@@ -79,32 +76,31 @@ file_row_selection: dict = None       # {str(file_path): set([row_idx, ...])}
 
 ## 使用场景
 
-### CLI 中使用新特性
+### CLI 中的应用
 
-**目前**：CLI 的 `main()` 函数尚未暴露这些参数的交互接口。但后续可通过以下方式扩展：
+CLI 已完全参数化，示例用法：
 
-```python
-# 未来可能的 CLI 扩展
-@click.command()
-@click.option('--file-mapping', type=str, default=None, help='文件映射 JSON (path -> {"source": str, "target": str})')
-def batch(config, input_path, file_mapping=None):
-    # 解析 file_mapping JSON 并传递给 run_batch_processing_v2()
-    pass
+```bash
+# 基础批处理
+python -m batch data/input.json ./data/examples
+
+# 单帧计算（已参数化，无交互式提示）
+python -m cli run -c data/input.json --force 100 0 -50 --moment 0 500 0
 ```
 
-### GUI 中的应用
+**关键变化**：
+- 删除了所有 `input()` 调用
+- 删除了 `prompt_vector()` 交互函数
+- 删除了确认对话框和文件选择对话框
+- 所有参数均在命令行明确指定
 
-GUI 已完整实现文件级别的配置：
-1. 文件树中为每个文件选择 source/target part
-2. 表格中按行复选框选择要处理的数据
-3. 自动检测表头并智能跳过
+## 向后兼容性说明
 
-## 向后兼容性
-
-✅ **完全向后兼容**
-- 新参数都有默认值 `None`
-- 若不提供文件级参数，则使用全局 calculator（原有行为）
-- 现有 CLI 脚本无需修改
+⚠️ **此版本为清理旧兼容代码，删除了所有交互式提示和版本标记**
+- 所有参数现在均为可选，默认值为 `None`
+- 删除了 `run_batch_processing_v2()` 版本标记，统一使用 `run_batch_processing()`
+- 若未指定文件级参数，使用全局 calculator（原有行为）
+- CLI 现已完全参数化，不再有交互式输入提示
 
 ## 单元测试建议
 
