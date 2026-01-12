@@ -8,13 +8,15 @@ from src import special_format_parser as sfp
 
 
 class SimpleProjectData:
-    def __init__(self, targets=None):
+    def __init__(self, sources=None, targets=None):
+        self.source_parts = sources or {}
         self.target_parts = targets or {}
 
 
 class FakeCalc:
-    def __init__(self, project_data, target_part=None):
+    def __init__(self, project_data, source_part=None, target_part=None):
         self.project_data = project_data
+        self.source_part = source_part
         self.target_part = target_part
 
     def process_batch(self, forces, moments):
@@ -48,7 +50,7 @@ def test_process_special_format_file_success(tmp_path: Path, monkeypatch):
 
     outdir = tmp_path / "out"
 
-    project_data = SimpleProjectData(targets={"PARTX": [1]})
+    project_data = SimpleProjectData(sources={"PARTX": [1]}, targets={"PARTX": [1]})
 
     # replace AeroCalculator with fake
     monkeypatch.setattr(sfp, "AeroCalculator", FakeCalc)
@@ -82,7 +84,7 @@ def test_process_special_format_file_missing_columns(tmp_path: Path):
     p.write_text(content, encoding="utf-8")
     outdir = tmp_path / "out3"
 
-    project_data = SimpleProjectData(targets={"PARTZ": [1]})
+    project_data = SimpleProjectData(sources={"PARTZ": [1]}, targets={"PARTZ": [1]})
     outputs, report = sfp.process_special_format_file(
         p, project_data, outdir, return_report=True
     )
@@ -95,7 +97,7 @@ def test_process_special_format_file_processing_failure(tmp_path: Path, monkeypa
     p.write_text(make_sample_content("FAILP"), encoding="utf-8")
     outdir = tmp_path / "out4"
 
-    project_data = SimpleProjectData(targets={"FAILP": [1]})
+    project_data = SimpleProjectData(sources={"FAILP": [1]}, targets={"FAILP": [1]})
     monkeypatch.setattr(sfp, "AeroCalculator", FakeCalcRaise)
 
     outputs, report = sfp.process_special_format_file(
