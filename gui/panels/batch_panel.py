@@ -6,7 +6,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,
     QTabWidget, QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel,
-    QHeaderView, QSizePolicy, QLineEdit, QFormLayout, QComboBox
+    QHeaderView, QSizePolicy, QLineEdit, QFormLayout, QComboBox, QCheckBox
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
@@ -69,6 +69,12 @@ class BatchPanel(QWidget):
         # 兼容字段：存储文件节点
         self._file_tree_items = {}
 
+        # 初始化阶段：按流程先隐藏非必要控件
+        try:
+            self.set_workflow_step('init')
+        except Exception:
+            logger.debug('set_workflow_step init failed', exc_info=True)
+
     def _init_input_rows(self):
         """初始化输入路径与模式控件（兼容旧接口）。"""
         # 输入路径
@@ -84,12 +90,13 @@ class BatchPanel(QWidget):
         input_row = QHBoxLayout()
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(self.btn_browse_input)
-        self.file_form.addRow("输入路径:", input_row)
+        self.row_input_widget = QWidget()
+        self.row_input_widget.setLayout(input_row)
+        self.file_form.addRow("输入路径:", self.row_input_widget)
 
-        # 数据格式摘要（实时显示跳过行/保留列/列映射）
-        self.lbl_format_summary = QLabel("格式摘要: 未设置")
-        self.lbl_format_summary.setToolTip("显示当前的数据格式配置，包括跳过行、列映射和保留列")
-        self.file_form.addRow("格式摘要:", self.lbl_format_summary)
+        # 全局数据格式配置已移除：表格列映射由 per-file sidecar/目录 format.json/registry 自动解析。
+        self.lbl_format_summary = None
+        self.row_format_summary_widget = None
 
         # 匹配模式
         self.inp_pattern = QLineEdit("*.csv")
@@ -148,7 +155,43 @@ class BatchPanel(QWidget):
         pattern_row = QHBoxLayout()
         pattern_row.addWidget(self.inp_pattern)
         pattern_row.addWidget(self.cmb_pattern_preset)
-        self.file_form.addRow("匹配模式:", pattern_row)
+        self.row_pattern_widget = QWidget()
+        self.row_pattern_widget.setLayout(pattern_row)
+        self.file_form.addRow("匹配模式:", self.row_pattern_widget)
+
+    def set_workflow_step(self, step: str) -> None:
+        """按流程显示/隐藏控件，减少初始化时的注意力分散。"""
+        step = (step or '').strip()
+
+        def _set_row_visible(field_widget: QWidget, visible: bool) -> None:
+            if field_widget is None:
+                return
+            try:
+                label = self.file_form.labelForField(field_widget)
+                if label is not None:
+                    label.setVisible(visible)
+            except Exception:
+                pass
+            try:
+                field_widget.setVisible(visible)
+            except Exception:
+                pass
+
+        # init：只保留“输入路径”；其他行隐藏
+        if step in ('init', 'step1'):
+            _set_row_visible(getattr(self, 'row_format_summary_widget', None), False)
+            _set_row_visible(getattr(self, 'row_pattern_widget', None), False)
+            return
+
+        # step2：展示文件列表相关（匹配模式在目录模式下才有意义，默认显示）
+        if step == 'step2':
+            _set_row_visible(getattr(self, 'row_format_summary_widget', None), False)
+            _set_row_visible(getattr(self, 'row_pattern_widget', None), True)
+            return
+
+        # step3+：全部显示
+        _set_row_visible(getattr(self, 'row_format_summary_widget', None), False)
+        _set_row_visible(getattr(self, 'row_pattern_widget', None), True)
     
     def _create_file_list(self) -> QWidget:
         """创建文件列表区域"""
@@ -175,11 +218,42 @@ class BatchPanel(QWidget):
         btn_row.addWidget(self.btn_select_all)
         btn_row.addWidget(self.btn_select_none)
         btn_row.addWidget(self.btn_select_invert)
-        # 显示当前应用的 Source Part 名称
-        self.lbl_source_part_applied = QLabel("Source: -")
-        self.lbl_source_part_applied.setMinimumWidth(140)
+
+        # 配置编辑器显示控制：默认不弹出，用户勾选后再显示
+        self.chk_show_config = QCheckBox("显示配置编辑器")
+        try:
+            self.chk_show_config.setChecked(False)
+            self.chk_show_config.setToolTip("勾选后显示配置编辑器；不勾选则保持隐藏")
+        except Exception:
+            pass
+        try:
+            self.chk_show_config.toggled.connect(self._on_toggle_config_panel)
+        except Exception:
+            logger.debug('无法连接 chk_show_config 信号', exc_info=True)
+        btn_row.addWidget(self.chk_show_config)
+
+        # 行选择批量作用域：当用户在数据行上执行“全选/全不选/反选”时，可对所有选中文件生效
+        self.chk_bulk_row_selection = QCheckBox("行选择批量作用域")
+        try:
+            self.chk_bulk_row_selection.setChecked(True)
+            self.chk_bulk_row_selection.setToolTip("勾选后：在数据行上点击全选/全不选/反选，会对所有选中文件生效")
+        except Exception:
+            pass
+        btn_row.addWidget(self.chk_bulk_row_selection)
+        # 加载配置：移动到文件列表右上角（替代旧的全局 Source 显示）
+        self.btn_load_config = QPushButton("加载配置")
+        try:
+            self.btn_load_config.setMaximumWidth(90)
+            self.btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
+        except Exception:
+            pass
+        try:
+            self.btn_load_config.clicked.connect(self._on_load_config_clicked)
+        except Exception:
+            logger.debug('无法连接 btn_load_config 信号', exc_info=True)
+
         btn_row.addStretch()
-        btn_row.addWidget(self.lbl_source_part_applied)
+        btn_row.addWidget(self.btn_load_config)
         layout.addLayout(btn_row)
         
         # 文件树
@@ -198,6 +272,24 @@ class BatchPanel(QWidget):
         layout.addWidget(self.file_tree)
         
         return widget
+
+    def _on_toggle_config_panel(self, checked: bool) -> None:
+        """用户勾选后再显示配置编辑器，避免点击文件时突然弹出。"""
+        try:
+            win = self.window()
+            if win is not None and hasattr(win, 'set_config_panel_visible'):
+                win.set_config_panel_visible(bool(checked))
+        except Exception:
+            logger.debug('toggle config panel failed', exc_info=True)
+
+    def _on_load_config_clicked(self) -> None:
+        """从文件列表入口加载配置（替代旧的全局 Source 显示区）。"""
+        try:
+            win = self.window()
+            if win is not None and hasattr(win, 'load_config'):
+                win.load_config()
+        except Exception:
+            logger.debug('load config from file list failed', exc_info=True)
     
     def _create_tab_widget(self) -> QTabWidget:
         """创建Tab容器"""
@@ -254,6 +346,10 @@ class BatchPanel(QWidget):
         self.btn_config_format.setFixedWidth(100)
         self.btn_config_format.setFixedHeight(50)
         self.btn_config_format.clicked.connect(self.formatConfigRequested.emit)
+        # 新流程：不再使用“配置数据格式”按钮（格式相关逻辑交由 per-file/特殊格式解析负责）。
+        # 为保持旧代码兼容，保留对象但隐藏/禁用。
+        self.btn_config_format.setVisible(False)
+        self.btn_config_format.setEnabled(False)
         
         # 执行按钮
         self.btn_batch = QPushButton("开始\n批量处理")
@@ -281,7 +377,7 @@ class BatchPanel(QWidget):
         self.btn_undo.setVisible(False)
         self.btn_undo.setEnabled(False)
         
-        layout.addWidget(self.btn_config_format)
+        # layout.addWidget(self.btn_config_format)  # 已移除
         layout.addWidget(self.btn_batch)
         layout.addWidget(self.btn_undo)
         layout.addStretch()
