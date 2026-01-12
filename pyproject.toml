@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "momenttransfer"
+version = "0.0.0"
+description = "坐标系间的力/力矩变换与气动力系数计算工具"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [ { name = "least", email = "least106@163.com" } ]
+keywords = ["aero", "moment", "coordinate", "wind-tunnel"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/least106/MomentTransfer"
+"Repository" = "https://github.com/least106/MomentTransfer"
+
+[tool.setuptools]
+packages = { find = {} }
+
+[tool.setuptools.entry-points.console_scripts]
+momenttransfer-cli = "cli:main"
+momenttransfer-gui = "gui_main:main"
