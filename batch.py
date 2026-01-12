@@ -482,35 +482,6 @@ def find_matching_files(directory: str, pattern: str) -> list:
     return sorted(matched_files)
 
 
-def parse_selection(sel_str: str, n: int) -> list:
-    """解析用户选择的文件索引字符串，支持 all、逗号分隔和区间（如 2-4）。
-
-    返回有效的 0-based 索引列表（已排序且去重）。
-    """
-    if not sel_str or sel_str in ('all', 'a'):
-        return list(range(n))
-    parts = [s.strip() for s in sel_str.split(',') if s.strip()]
-    idxs = []
-    for part in parts:
-        if '-' in part:
-            try:
-                a, b = part.split('-', 1)
-                a_i = int(a) - 1
-                b_i = int(b) - 1
-                # 限界检查将在后面进行
-                idxs.extend(range(a_i, b_i + 1))
-            except (ValueError, TypeError):
-                logging.warning("批处理文件选择解析时忽略了无效区间片段 '%s'（原始输入: '%s'）。", part, sel_str)
-                continue
-        else:
-            try:
-                idxs.append(int(part) - 1)
-            except (ValueError, TypeError):
-                logging.warning("批处理文件选择解析时忽略了无效索引片段 '%s'（原始输入: '%s'）。", part, sel_str)
-
-    # 规范化：去重、排序，并限定在 [0, n-1]
-    valid = sorted({i for i in idxs if 0 <= i < n})
-    return valid
 
 
 def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
@@ -884,19 +855,13 @@ def _worker_process(args):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, enable_sidecar: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0, file_source_target_map: dict = None, file_row_selection: dict = None):
-    """增强版批处理主函数
-
-    使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
-    """
+def run_batch_processing(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, enable_sidecar: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0, file_source_target_map: dict = None, file_row_selection: dict = None):
+    """批处理主函数"""
     logger = logging.getLogger('batch')
 
-    # 使用模块级的 _error_exit_json 工具进行错误退出（已在模块顶部定义）
     logger.info("%s", "=" * 70)
-    logger.info("MomentTransfer v2.0")
+    logger.info("MomentTransfer Batch Processing")
     logger.info("%s", "=" * 70)
-    
-    # 1. 加载配置（支持新版对等的 Source/Target 结构，向后兼容旧的 SourceCoordSystem）
     logger.info("[1/5] 加载几何配置: %s", config_path)
     try:
         project_data, calculator = load_project_calculator(config_path, target_part=target_part, target_variant=target_variant)
@@ -929,44 +894,19 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
         output_dir = input_path.parent
     elif input_path.is_dir():
         logger.info("  模式: 目录批处理")
-        if non_interactive_mode:
-            # 非交互自动模式：使用默认模式匹配所有 CSV 文件并全部处理
-            pattern = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
-            files = find_matching_files(str(input_path), pattern)
-            logger.info("  自动模式下找到 %d 个匹配文件 (pattern=%s)", len(files), pattern)
-            files_to_process = files
-            output_dir = input_path
-        else:
-            pattern = input("  文件名匹配模式 (如 *.csv;*.mtfmt): ").strip()
-            if not pattern:
-                pattern = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
-            files = find_matching_files(str(input_path), pattern)
-            logger.info("  找到 %d 个匹配文件:", len(files))
-            for i, fp in enumerate(files, start=1):
-                logger.info("    %d. %s", i, fp.name)
-
-            sel = input("  选择要处理的文件（默认 all）: ").strip().lower()
-            chosen_idxs = parse_selection(sel, len(files))
-            if not chosen_idxs:
-                logger.info("  未选择有效文件，已取消")
-                return
-
-            files_to_process = [files[i] for i in chosen_idxs]
-            # 输出目录默认为输入目录
-            output_dir = input_path
+        # 使用默认模式匹配所有常见数据文件
+        pattern = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
+        files = find_matching_files(str(input_path), pattern)
+        logger.info("  找到 %d 个匹配文件", len(files))
+        files_to_process = files
+        output_dir = input_path
     else:
         print(f"  [错误] 无效的输入路径: {input_path}")
         logger.error("  [错误] 无效的输入路径: %s", input_path)
     
-    # 4. 确认处理
+    # 4. 验证
     logger.info("[4/5] 准备处理 %d 个文件", len(files_to_process))
     logger.info("  输出目录: %s", output_dir)
-    # 若自动模式则默认确认
-    if not non_interactive_mode:
-        confirm = input("  确认开始处理? (y/n): ").strip().lower()
-        if confirm != 'y':
-            logger.info("  已取消")
-            return
     
     # 5. 批量处理
     logger.info("[5/5] 开始批量处理...")
@@ -998,10 +938,10 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
             from src.cli_helpers import resolve_file_format
             cfg_local = resolve_file_format(str(file_path), data_config, enable_sidecar=bool(registry_db), registry_db=registry_db)
         except Exception:
-            # 解析失败：记录并根据 strict 决定是否中止
-            logger.warning("解析文件 %s 的格式失败，使用全局配置作为回退。", file_path)
-            if strict and non_interactive_mode:
-                logger.error("strict 模式下解析失败，终止批处理。")
+            # 解析失败：记录并回退到全局配置
+            logger.warning("解析文件 %s 的格式失败，回退到全局配置", file_path)
+            if strict:
+                logger.error("strict 模式下解析失败，终止批处理")
                 return
             cfg_local = data_config
 
@@ -1116,7 +1056,7 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
 @click.option('--target-variant', 'target_variant', type=int, default=0, help='目标 variant 索引（从0开始，默认0）')
 @click.option('--enable-sidecar', 'enable_sidecar', is_flag=True, default=False, help='启用 per-file 覆盖（file-sidecar / dir-default / registry），默认关闭')
 @click.option('--registry-db', 'registry_db', default=None, help='(实验) SQLite registry 数据库路径（仅在启用 per-file 覆盖时使用）', hidden=True)
-@click.option('--strict', 'strict', is_flag=True, help='非交互模式下 registry/format 解析失败时终止（默认回退到全局配置）')
+@click.option('--strict', 'strict', is_flag=True, help='registry/format 解析失败时终止（默认回退到全局配置）')
 @click.option('--dry-run', 'dry_run', is_flag=True, help='仅解析并显示将处理的文件与输出路径，但不实际写入')
 @click.option('--progress', 'show_progress', is_flag=True, help='显示处理进度与 ETA（串行/并行均支持）')
 @click.option('--output-json', 'output_json', default=None, help='将处理结果以 JSON 写入指定文件')
@@ -1344,8 +1284,8 @@ def main(**cli_options):
             sys.exit(0 if success_count == len(files_to_process) else 1)
 
         else:
-            # 串行模式：委托原有 run_batch_processing_v2（交互或已读取 data_config）
-            run_batch_processing_v2(
+            # 串行模式：调用批处理函数
+            run_batch_processing(
                 config,
                 input_path,
                 data_config,
