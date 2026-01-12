@@ -31,7 +31,11 @@ class CompatibilityManager:
             self.main_window.btn_remove_target_part = self.main_window.target_panel.btn_remove_part
             
             # Config 面板按钮引用
-            self.main_window.btn_load = self.main_window.config_panel.btn_load
+            # “加载配置”入口已统一到文件列表右上角，config_panel 内已不再提供 btn_load。
+            try:
+                self.main_window.btn_load = getattr(getattr(self.main_window, 'batch_panel', None), 'btn_load_config', None)
+            except Exception:
+                self.main_window.btn_load = None
             self.main_window.btn_save = self.main_window.config_panel.btn_save
             self.main_window.btn_apply = self.main_window.config_panel.btn_apply
             
