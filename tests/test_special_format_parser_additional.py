@@ -112,7 +112,7 @@ def test_process_special_format_file_success(tmp_path):
 
     # 构造 ProjectData，包含目标 part
     frame = make_frame_for_part("WingX")
-    proj = ProjectData(source_parts={"src": [frame]}, target_parts={"WingX": [frame]})
+    proj = ProjectData(source_parts={"WingX": [frame]}, target_parts={"WingX": [frame]})
 
     out_dir = tmp_path / "out"
     outputs, report = sfp.process_special_format_file(
@@ -135,13 +135,13 @@ def test_process_special_format_file_skip_missing_target(tmp_path):
     )
     write_file(p, content)
 
-    # Empty ProjectData without matching target
-    frame = make_frame_for_part("Other")
-    proj = ProjectData(source_parts={"src": [frame]}, target_parts={"Other": [frame]})
+    # source 存在，但将其显式映射到不存在的 target，用于触发 target_missing
+    frame = make_frame_for_part("MissingPart")
+    proj = ProjectData(source_parts={"MissingPart": [frame]}, target_parts={"Other": [frame]})
 
     out_dir = tmp_path / "out2"
     outputs, report = sfp.process_special_format_file(
-        p, proj, out_dir, return_report=True
+        p, proj, out_dir, return_report=True, part_target_mapping={"MissingPart": "NoSuchTarget"}
     )
     assert len(outputs) == 0
     assert (
@@ -163,7 +163,7 @@ def test_process_special_format_file_missing_columns_skips(tmp_path):
     write_file(p, content)
 
     frame = make_frame_for_part("PartA")
-    proj = ProjectData(source_parts={"src": [frame]}, target_parts={"PartA": [frame]})
+    proj = ProjectData(source_parts={"PartA": [frame]}, target_parts={"PartA": [frame]})
     out_dir = tmp_path / "out3"
     outputs, report = sfp.process_special_format_file(
         p, proj, out_dir, return_report=True
@@ -236,6 +236,20 @@ def test_looks_like_special_format_by_extension(tmp_path: Path):
     p = tmp_path / "x.mtfmt"
     p.write_text("dummy", encoding="utf-8")
     assert sfp.looks_like_special_format(p)
+
+
+def test_looks_like_special_format_skips_csv(tmp_path: Path):
+    content = "\n".join(
+        [
+            "Alpha,CL,CD,Cm",
+            "0,0.1,0.2,0.0",
+            "1,0.2,0.3,0.0",
+        ]
+    )
+    p = tmp_path / "plain.csv"
+    p.write_text(content, encoding="utf-8")
+
+    assert not sfp.looks_like_special_format(p)
 
 
 def test_parse_skips_mismatched_rows_and_summary(tmp_path: Path):
