@@ -328,10 +328,11 @@ def parse_special_format_file(
         # 检查是否为数据行
         if current_part and current_header and is_data_line(line):
             tokens = line.split()
+            # 列数不匹配时按原先策略直接舍弃该行（不输出 DEBUG 日志以避免污染处理日志）
             if len(tokens) == len(current_header):
                 current_data.append(tokens)
-            else:
-                logger.debug("数据行列数不匹配，跳过: %s", line[:50])
+            i += 1
+            continue
             i += 1
             continue
 
