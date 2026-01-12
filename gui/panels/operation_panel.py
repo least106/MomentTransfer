@@ -84,7 +84,7 @@ class OperationPanel(QWidget):
         gui_instance.btn_undo = bp.btn_undo
         gui_instance.tab_logs_widget = bp.log_tab
         gui_instance.lbl_format_summary = getattr(bp, 'lbl_format_summary', None)
-        gui_instance.lbl_source_part_applied = getattr(bp, 'lbl_source_part_applied', None)
+        gui_instance.lbl_source_part_applied = None
 
 
 __all__ = ["OperationPanel"]
