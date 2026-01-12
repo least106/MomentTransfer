@@ -184,12 +184,9 @@ class ConfigManager:
             
             QMessageBox.information(self.gui, "成功", f"配置已加载:\n{fname}")
             self.gui.statusBar().showMessage(f"已加载: {fname}")
-            
-            # 自动应用
-            try:
-                self.apply_config()
-            except Exception:
-                logger.debug("自动应用配置失败", exc_info=True)
+
+            # 仅加载配置：不再自动应用为“全局计算器”。
+            # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
             
             # 添加到最近项目
             try:
@@ -337,50 +334,28 @@ class ConfigManager:
                     logger.debug("apply_config: 回退构造 ProjectConfigModel 失败", exc_info=True)
 
             self.gui.current_config = ProjectData.from_dict(data)
-            
-            # 获取选定的 target part
-            if (hasattr(self.gui, 'cmb_target_parts') and 
-                self.gui.cmb_target_parts.isVisible() and 
-                self.gui.cmb_target_parts.count() > 0):
-                sel_part = self.gui.cmb_target_parts.currentText()
-                sel_variant = 0
-            else:
-                sel_part = self.gui.tgt_part_name.text()
-                sel_variant = 0
-            
-            # 创建计算器
-            self.gui.calculator = AeroCalculator(
-                self.gui.current_config, 
-                target_part=sel_part, 
-                target_variant=sel_variant
-            )
-            
-            # 获取 source part
-            try:
-                if (hasattr(self.gui, 'cmb_source_parts') and 
-                    self.gui.cmb_source_parts.isVisible() and 
-                    self.gui.cmb_source_parts.count() > 0):
-                    src_sel = self.gui.cmb_source_parts.currentText()
-                else:
-                    src_sel = self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else 'Source'
-            except Exception:
-                src_sel = self.gui.src_part_name.text() if hasattr(self.gui, 'src_part_name') else 'Source'
-            
-            tgt_sel = sel_part or (self.gui.tgt_part_name.text() if hasattr(self.gui, 'tgt_part_name') else 'Target')
-            
-            self.gui.statusBar().showMessage(f"配置已应用: {src_sel} -> {tgt_sel}")
 
-            # 显示当前 source part 名称到批处理面板
+            # 不再创建“全局 calculator”，避免批处理对所有文件套用同一组 source/target。
+            # 现在的语义是：用户在文件列表为每个文件（或每个 source part）选择 target，
+            # 批处理线程会按文件动态创建 AeroCalculator。
             try:
-                if hasattr(self.gui, 'lbl_source_part_applied') and self.gui.lbl_source_part_applied is not None:
-                    self.gui.lbl_source_part_applied.setText(f"Source: {src_sel}")
+                self.gui.calculator = None
             except Exception:
-                logger.debug("更新 source part 标签失败", exc_info=True)
-            
-            QMessageBox.information(
-                self.gui, "成功", 
-                f"配置已应用!\n{src_sel} -> {tgt_sel}\n现在可以进行计算了。"
-            )
+                pass
+
+            try:
+                self.gui.statusBar().showMessage("配置已更新：请在文件列表为每个文件选择 source/target")
+            except Exception:
+                pass
+
+            try:
+                QMessageBox.information(
+                    self.gui,
+                    "成功",
+                    "配置已更新！\n请在文件列表为每个文件选择 source/target 后再运行批处理。",
+                )
+            except Exception:
+                pass
             
             try:
                 self.gui.update_config_preview()
