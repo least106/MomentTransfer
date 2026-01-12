@@ -48,14 +48,9 @@ class ConfigPanel(QWidget):
         btn_layout.setSpacing(8)
         btn_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_load = QPushButton("加载配置", btn_widget)
-        self.btn_load.setFixedHeight(40)
-        try:
-            self.btn_load.setObjectName('secondaryButton')
-            self.btn_load.setToolTip('从磁盘加载配置文件')
-        except Exception:
-            pass
-        self.btn_load.clicked.connect(self.loadRequested.emit)
+        # “加载配置”入口已统一移动到文件列表右上角：避免用户在配置编辑器内重复入口。
+        # 为保持向后兼容，这里保留 loadRequested 信号，但不再展示加载按钮。
+        self.btn_load = None
 
         self.btn_save = QPushButton("保存配置", btn_widget)
         self.btn_save.setFixedHeight(40)
@@ -77,7 +72,6 @@ class ConfigPanel(QWidget):
             pass
         self.btn_apply.clicked.connect(self.applyRequested.emit)
 
-        btn_layout.addWidget(self.btn_load)
         btn_layout.addWidget(self.btn_save)
         btn_layout.addWidget(self.btn_apply)
         btn_layout.addStretch()
