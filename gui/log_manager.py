@@ -67,7 +67,19 @@ class LoggingManager:
                 for handler in log.handlers[:]:
                     if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
                         log.removeHandler(handler)
-                log.addHandler(gui_handler)
+                # 如果已经存在相同的 GUI 处理器则跳过，保证幂等性
+                existing = False
+                for handler in log.handlers:
+                    if isinstance(handler, GUILogHandler) and getattr(handler, 'text_widget', None) is text_widget:
+                        existing = True
+                        break
+                if not existing:
+                    log.addHandler(gui_handler)
+                # 禁止向上级传播，避免被 root handler 重复输出
+                try:
+                    log.propagate = False
+                except Exception:
+                    pass
                 log.setLevel(logging.DEBUG)
                 
         except Exception as e:

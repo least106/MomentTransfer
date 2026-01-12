@@ -80,6 +80,11 @@ class BatchPanel(QWidget):
     def _init_input_rows(self):
         """初始化输入路径与模式控件（兼容旧接口）。"""
         # 输入路径
+        # 调整表单标签对齐为右侧垂直居中，确保标签与输入控件垂直对齐
+        try:
+            self.file_form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        except Exception:
+            pass
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
         self.btn_browse_input = QPushButton("浏览")
@@ -89,7 +94,16 @@ class BatchPanel(QWidget):
         except Exception:
             pass
         self.btn_browse_input.clicked.connect(self.browseRequested.emit)
+        # 保持输入框与按钮高度一致以使其与表单标签对齐
+        try:
+            h = max(self.inp_batch_input.sizeHint().height(), 26)
+            self.inp_batch_input.setFixedHeight(h)
+            self.btn_browse_input.setFixedHeight(h)
+        except Exception:
+            pass
+
         input_row = QHBoxLayout()
+        input_row.setContentsMargins(0, 0, 0, 0)
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(self.btn_browse_input)
         self.row_input_widget = QWidget()
@@ -154,7 +168,16 @@ class BatchPanel(QWidget):
         except Exception:
             logger.debug("无法连接 inp_pattern 信号", exc_info=True)
 
+        # 保持匹配模式输入与下拉高度一致
+        try:
+            h2 = max(self.inp_pattern.sizeHint().height(), 26)
+            self.inp_pattern.setFixedHeight(h2)
+            self.cmb_pattern_preset.setFixedHeight(h2)
+        except Exception:
+            pass
+
         pattern_row = QHBoxLayout()
+        pattern_row.setContentsMargins(0, 0, 0, 0)
         pattern_row.addWidget(self.inp_pattern)
         pattern_row.addWidget(self.cmb_pattern_preset)
         self.row_pattern_widget = QWidget()
