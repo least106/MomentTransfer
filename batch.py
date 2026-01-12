@@ -533,15 +533,53 @@ def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
 
 def process_single_file(file_path: Path, calculator: AeroCalculator,
                        config: BatchConfig, output_dir: Path,
-                       project_data=None) -> bool:
+                       project_data=None, source_part: str = None, target_part: str = None, 
+                       selected_rows: set = None) -> bool:
     """处理单个文件（支持 chunked CSV）。
 
     实现要点：
     - 使用临时文件写入，完成后原子替换到目标文件；
     - 在写入开始写入 `.partial`，成功时写入 `.complete`；
     - 在异常时清理临时并在 partial 中记录错误信息。
+    - 支持每文件指定 source/target part 和行过滤
+    
+    参数：
+    - source_part: 该文件使用的 source part（若提供则覆盖全局设置）
+    - target_part: 该文件使用的 target part（若提供则覆盖全局设置）
+    - selected_rows: 要处理的行索引集合，若为 None 则处理全部
     """
     logger = logging.getLogger('batch')
+
+    # 若提供了 project_data 和文件级的 source/target，创建独立的计算器
+    calculator_to_use = calculator
+    if project_data is not None and (source_part is not None or target_part is not None):
+        try:
+            # 如果未指定则使用唯一的 part（若存在）或抛出错误
+            source_names = list((getattr(project_data, 'source_parts', {}) or {}).keys())
+            target_names = list((getattr(project_data, 'target_parts', {}) or {}).keys())
+            
+            actual_source = source_part
+            actual_target = target_part
+            
+            # 允许唯一 part 自动推断
+            if not actual_source and len(source_names) == 1:
+                actual_source = str(source_names[0])
+            if not actual_target and len(target_names) == 1:
+                actual_target = str(target_names[0])
+            
+            if not actual_source or not actual_target:
+                raise ValueError(f"文件 {file_path.name} 未指定 source/target part，且无法唯一推断")
+            
+            # 为此文件创建独立的计算器
+            calculator_to_use = AeroCalculator(
+                project_data,
+                source_part=actual_source,
+                target_part=actual_target,
+            )
+            logger.debug(f"为文件 {file_path.name} 创建独立计算器: source={actual_source}, target={actual_target}")
+        except Exception as e:
+            logger.error(f"为文件 {file_path.name} 创建计算器失败: {e}")
+            raise
 
     # 特殊格式路径：直接用专用解析器处理并按 part 输出
     if project_data is not None and looks_like_special_format(file_path):
@@ -591,6 +629,40 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
     my_i = config.column_mappings['my']
     mz_i = config.column_mappings['mz']
 
+    # 若非流式且提供了行选择，则在此处应用过滤
+    if not use_chunks and selected_rows is not None and len(selected_rows) > 0:
+        selected_rows_sorted = sorted(int(x) for x in set(selected_rows))
+        df = df.iloc[selected_rows_sorted].reset_index(drop=True)
+        logger.debug(f"按行选择过滤: {len(selected_rows_sorted)} 行")
+
+    # 自动检测表头：若提供了行选择则跳过此步（保持索引与 GUI 预览一致）
+    if not use_chunks and (selected_rows is None or len(selected_rows) == 0):
+        try:
+            required_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
+            mapped_cols = [config.column_mappings.get(k) for k in required_keys if config.column_mappings.get(k) is not None]
+            mapped_cols = [int(x) for x in mapped_cols if isinstance(x, (int, float)) or (isinstance(x, str) and str(x).isdigit())]
+            
+            if mapped_cols and len(df) > 0:
+                non_numeric_count = 0
+                checked = 0
+                for idx in mapped_cols:
+                    if 0 <= idx < len(df.columns):
+                        checked += 1
+                        val = df.iloc[0, idx]
+                        try:
+                            nv = pd.to_numeric(pd.Series([val]), errors='coerce').iloc[0]
+                        except Exception:
+                            nv = None
+                        if pd.isna(nv) and pd.notna(val):
+                            non_numeric_count += 1
+                
+                # 若大多数（>=60%）映射列在首行为非数值，则认为首行为表头并跳过
+                if checked > 0 and non_numeric_count / checked >= 0.6:
+                    logger.info(f"检测到可能的表头，已跳过首行")
+                    df = df.iloc[1:].reset_index(drop=True)
+        except Exception:
+            logger.debug("表头自动检测发生异常，继续按原始数据处理", exc_info=True)
+
     out_path = generate_output_path(file_path, output_dir, config)
     temp_fd, temp_name = tempfile.mkstemp(prefix=out_path.name + '.', dir=str(out_path.parent), text=True)
     os.close(temp_fd)
@@ -630,7 +702,7 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
                     raise ValueError(f"列映射缺失或越界: {key} -> {col_idx}")
 
             proc, dropped, non_num, first_chunk = process_df_chunk(
-                first, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator, config, temp_out_path, first_chunk, logger
+                first, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator_to_use, config, temp_out_path, first_chunk, logger
             )
             total_processed += proc
             total_dropped += dropped
@@ -638,14 +710,14 @@ def process_single_file(file_path: Path, calculator: AeroCalculator,
 
             for chunk in reader:
                 proc, dropped, non_num, first_chunk = process_df_chunk(
-                    chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator, config, temp_out_path, first_chunk, logger
+                    chunk, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator_to_use, config, temp_out_path, first_chunk, logger
                 )
                 total_processed += proc
                 total_dropped += dropped
                 total_non_numeric += non_num
         else:
             proc, dropped, non_num, first_chunk = process_df_chunk(
-                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator, config, temp_out_path, first_chunk, logger
+                df, fx_i, fy_i, fz_i, mx_i, my_i, mz_i, calculator_to_use, config, temp_out_path, first_chunk, logger
             )
             total_processed += proc
             total_dropped += dropped
@@ -812,7 +884,7 @@ def _worker_process(args):
             False,
             tb
         )
-def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, enable_sidecar: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0):
+def run_batch_processing_v2(config_path: str, input_path: str, data_config: BatchConfig = None, registry_db: str = None, strict: bool = False, enable_sidecar: bool = False, dry_run: bool = False, show_progress: bool = False, output_json: str = None, summary: bool = False, target_part: str = None, target_variant: int = 0, file_source_target_map: dict = None, file_row_selection: dict = None):
     """增强版批处理主函数
 
     使用 `logger` 输出运行信息；若 `strict` 为 True，则在 registry/format 解析失败时中止。
@@ -933,8 +1005,24 @@ def run_batch_processing_v2(config_path: str, input_path: str, data_config: Batc
                 return
             cfg_local = data_config
 
+        # 获取该文件的 source/target part 映射（若提供）
+        file_source = None
+        file_target = None
+        if file_source_target_map and str(file_path) in file_source_target_map:
+            mapping = file_source_target_map[str(file_path)]
+            file_source = mapping.get('source')
+            file_target = mapping.get('target')
+        
+        # 获取该文件的行选择（若提供）
+        selected_rows = None
+        if file_row_selection and str(file_path) in file_row_selection:
+            selected_rows = file_row_selection[str(file_path)]
+
         t0 = datetime.now()
-        ok = process_single_file(file_path, calculator, cfg_local, output_dir, project_data)
+        ok = process_single_file(
+            file_path, calculator, cfg_local, output_dir, project_data,
+            source_part=file_source, target_part=file_target, selected_rows=selected_rows
+        )
         elapsed = (datetime.now() - t0).total_seconds()
         if ok:
             success_count += 1
@@ -1270,6 +1358,8 @@ def main(**cli_options):
                 summary=summary,
                 target_part=target_part,
                 target_variant=target_variant,
+                file_source_target_map=None,
+                file_row_selection=None,
             )
             sys.exit(0)
     except Exception:

@@ -161,7 +161,18 @@ def project_vector_to_frame(
     我们需要计算 r x F，但 r 是在全局坐标系算出来的，F 是在目标坐标系下的。
     必须先把 r 投影到目标坐标系 (Target Frame)，才能进行叉乘。
     """
-    return np.dot(frame_basis, vec_global)
+    # 输入校验：确保 frame_basis 为 3x3，vec_global 为长度 3 的向量
+    fb = np.asarray(frame_basis, dtype=float)
+    v = np.asarray(vec_global, dtype=float)
+    if fb.shape != (3, 3):
+        raise ValueError(f"frame_basis 必须为形状 (3,3)，当前形状: {fb.shape}")
+    if v.shape not in ((3,), (3, 1)):
+        # 允许 (3,) 或 (3,1) 的列向量输入
+        raise ValueError(f"vec_global 必须为长度为3的向量，当前形状: {v.shape}")
+
+    # 计算：基矩阵的行向量为在全局坐标系下的轴方向，
+    # 将全局向量投影到该坐标系的坐标分量相当于对每个基向量做点积
+    return fb.dot(v).reshape(3,)
 
 
 def euler_angles_to_basis(

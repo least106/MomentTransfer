@@ -1,4 +1,30 @@
 import numpy as np
+import warnings
+
+from src.data_loader import CoordSystemDefinition, FrameConfiguration
+from src.physics import AeroCalculator
+
+
+def _make_frame_obj():
+    cs = CoordSystemDefinition(origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1])
+    # 构造一个 q=0, s_ref=0 的 FrameConfiguration（用于测试零分母处理）
+    fc = FrameConfiguration(part_name='P', coord_system=cs, moment_center=[0, 0, 0], c_ref=1.0, b_ref=1.0, q=0.0, s_ref=0.0)
+    return fc
+
+
+def test_aerocalc_zero_q_s_yields_zero_coeffs_and_warns():
+    fc = _make_frame_obj()
+    # 传入单个 FrameConfiguration（会被视为 source 和 target）
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter('always')
+        calc = AeroCalculator(fc)
+        res = calc.process_frame([1.0, 0.0, 0.0], [0.0, 0.0, 0.0])
+
+        # 系数应该被设为零（安全除法保护）
+        assert all(abs(x) < 1e-12 for x in res.coeff_force)
+        assert all(abs(x) < 1e-12 for x in res.coeff_moment)
+        assert any('动压' in str(r.message) or '分母' in str(r.message) for r in w if hasattr(r, 'message') or hasattr(r, 'category')) or len(w) >= 1
+import numpy as np
 import pytest
 
 from src.data_loader import CoordSystemDefinition, FrameConfiguration
