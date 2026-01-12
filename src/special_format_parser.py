@@ -1,10 +1,11 @@
-"""
-特殊格式数据文件解析器
+"""特殊格式数据文件解析器。
+
 处理包含多个 part 数据块的文件，自动识别 part 名称和数据行。
 
-新增：
-- `looks_like_special_format`：用于快速判断文件是否为特殊格式
-- `process_special_format_file`：直接解析并输出处理结果，便于 CLI/GUI 批处理调用
+约定（重要）：
+- 特殊格式文件中的 part 名称视为 Source part 名称。
+- Target part 仅通过 GUI/CLI 提供的映射（source->target）确定；若未提供映射，
+    则仅在存在“同名 Target part”时才允许处理该块。
 """
 
 # pylint: disable=wrong-import-position,too-many-arguments,too-many-locals,too-many-statements,too-many-branches,too-many-return-statements,redefined-outer-name,R0913,R0914,R0915
@@ -67,7 +68,12 @@ def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> 
     2) 前若干行包含典型表头关键词（Alpha/CL/CD/Cm/Cx/Cy/Cz）或 part 名后跟表头
     """
     p = Path(file_path)
-    if p.suffix.lower() in SUPPORTED_EXTS:
+    suffix = p.suffix.lower()
+    # CSV/Excel 始终按常规表格处理，避免因表头关键字被误判为特殊格式
+    if suffix in {".csv", ".tsv", ".xlsx", ".xls", ".xlsm", ".xlsb"}:
+        return False
+
+    if suffix in SUPPORTED_EXTS:
         return True
 
     try:
@@ -365,18 +371,19 @@ def process_special_format_file(
     project_data,
     output_dir: Path,
     *,
+    part_target_mapping: dict = None,
+    part_row_selection: dict = None,
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
     return_report: bool = False,
 ) -> List[Path]:  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches
-    """
-    直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
+    """直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
 
-    - 默认将 part 名映射到同名的 Target part；若不存在则跳过并记录警告。
-    - 输入文件假定使用统一的源坐标系/参考值（由 ProjectData 的 source frame 定义），
-      每个 Target part 使用自身的参考量进行系数转换。
-    - 当前假定列名包含 `Cx`, `Cy`, `Cz/FN`, `CMx`, `CMy`, `CMz`；
-      如列名变动，可在后续迭代中扩展映射规则。
+    约定：
+    - part 名视为 Source part 名。
+    - Target part 通过 `part_target_mapping` 选择；若未提供映射，则仅支持“同名 Target part”。
+    - 可选参数 `part_row_selection` 支持按 part 过滤行：仅处理被选择的行索引集合。
+    - 当前假定列名包含 `Cx`, `Cy`, `Cz/FN`, `CMx`, `CMy`, `CMz`。
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -386,17 +393,79 @@ def process_special_format_file(
     # 为了降低单函数复杂度，将单个 part 的处理抽取到独立函数
     def _handle_single_part(part_name: str, df: pd.DataFrame):
         """处理单个 part，返回 (out_path or None, report_entry dict)."""
-        # 校验 Target part 是否存在
-        if project_data is not None and hasattr(project_data, "target_parts"):
-            if part_name not in project_data.target_parts:
-                msg = f"目标配置中不存在 part '{part_name}'，已跳过该块"
-                logger.warning(msg)
-                return None, {
-                    "part": part_name,
-                    "status": "skipped",
-                    "reason": "target_missing",
-                    "message": msg,
-                }
+        # 特殊格式约定：part_name 一律视为 Source part
+        source_part = part_name
+
+        # 行选择：默认处理全部；若提供 selection，则仅处理选中的索引
+        try:
+            selected = None
+            if isinstance(part_row_selection, dict):
+                selected = part_row_selection.get(part_name)
+            if selected is not None:
+                selected_idx = sorted({int(x) for x in selected})
+                df = df.iloc[selected_idx]
+        except Exception:
+            logger.debug("按行过滤失败，回退为全量处理 (part=%s)", part_name, exc_info=True)
+
+        if df is None or len(df) == 0:
+            msg = f"part '{part_name}' 未选择任何数据行，已跳过"
+            logger.warning(msg)
+            return None, {
+                "part": part_name,
+                "source_part": source_part,
+                "target_part": (part_target_mapping or {}).get(part_name) or None,
+                "status": "skipped",
+                "reason": "no_rows_selected",
+                "message": msg,
+            }
+
+        # Target part：优先映射；若未提供映射或未映射，则仅允许同名 Target part（由后续校验决定）
+        target_part = None
+        explicit_mapping_used = False
+        try:
+            if isinstance(part_target_mapping, dict) and part_target_mapping.get(part_name):
+                target_part = part_target_mapping.get(part_name)
+                explicit_mapping_used = True
+            else:
+                target_part = part_name
+        except Exception:
+            target_part = part_name
+
+        # 校验 source/target part 是否存在
+        if project_data is not None:
+            if hasattr(project_data, "source_parts"):
+                if source_part not in (getattr(project_data, "source_parts", {}) or {}):
+                    msg = f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
+                    logger.warning(msg)
+                    return None, {
+                        "part": part_name,
+                        "source_part": source_part,
+                        "target_part": target_part,
+                        "status": "skipped",
+                        "reason": "source_missing",
+                        "message": msg,
+                    }
+
+            if hasattr(project_data, "target_parts"):
+                target_parts = getattr(project_data, "target_parts", {}) or {}
+                if target_part not in target_parts:
+                    if explicit_mapping_used:
+                        msg = f"目标配置中不存在 Target part '{target_part}'，已跳过该块"
+                        reason = "target_missing"
+                    else:
+                        msg = (
+                            f"part '{part_name}' 未提供 Target 映射，且不存在同名 Target part '{target_part}'，已跳过该块"
+                        )
+                        reason = "target_not_mapped"
+                    logger.warning(msg)
+                    return None, {
+                        "part": part_name,
+                        "source_part": source_part,
+                        "target_part": target_part,
+                        "status": "skipped",
+                        "reason": reason,
+                        "message": msg,
+                    }
 
         required_cols = ["Cx", "Cy", "Cz/FN", "CMx", "CMy", "CMz"]
         missing = [c for c in required_cols if c not in df.columns]
@@ -442,13 +511,15 @@ def process_special_format_file(
                     "reason": "no_project_data",
                     "message": msg,
                 }
-            calc = AeroCalculator(project_data, target_part=part_name)
+            calc = AeroCalculator(project_data, source_part=source_part, target_part=target_part)
             results = calc.process_batch(forces, moments)
         except Exception as e:  # pylint: disable=broad-except
             msg = f"part '{part_name}' 处理失败: {e}"
             logger.warning(msg, exc_info=True)
             return None, {
                 "part": part_name,
+                "source_part": source_part,
+                "target_part": target_part,
                 "status": "failed",
                 "reason": "processing_failed",
                 "message": msg,
@@ -485,6 +556,8 @@ def process_special_format_file(
         logger.info(msg)
         return out_path, {
             "part": part_name,
+            "source_part": source_part,
+            "target_part": target_part,
             "status": "success",
             "message": msg,
             "out_path": str(out_path),
@@ -520,8 +593,7 @@ def process_special_format_file(
 
 
 def get_part_names(file_path: Path) -> List[str]:
-    """
-    快速获取文件中的所有 part 名称（不解析完整数据）
+    """快速获取文件中的所有 part 名称（不解析完整数据）。
 
     Args:
         file_path: 文件路径
@@ -529,7 +601,7 @@ def get_part_names(file_path: Path) -> List[str]:
     Returns:
         part 名称列表
     """
-    part_names = []
+    part_names: List[str] = []
 
     lines = _read_text_file_lines(file_path)
 
