@@ -1,4 +1,4 @@
-# MomentTransfer
+# MomentTransfer - 气动力矩坐标变换工具
 
 [![CI](https://github.com/least106/MomentTransfer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/least106/MomentTransfer/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
