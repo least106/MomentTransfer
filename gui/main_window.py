@@ -117,6 +117,14 @@ class IntegratedAeroGUI(QMainWindow):
         self.initialization_manager.setup_ui()
         self.initialization_manager.setup_managers()
         self.initialization_manager.setup_logging()
+
+        # 启动时默认展示处理日志页面，避免分散用户注意力
+        try:
+            bp = getattr(self, 'batch_panel', None)
+            if bp is not None:
+                bp.switch_to_log_tab()
+        except Exception:
+            logger.debug('启动时切换默认页面到日志页失败', exc_info=True)
         
         # 设置兼容性
         self.compatibility_manager.setup_legacy_aliases()

@@ -213,6 +213,17 @@ class BatchPanel(QWidget):
         for btn in [self.btn_select_all, self.btn_select_none, self.btn_select_invert]:
             btn.setMaximumWidth(70)
         
+        try:
+            # 设置快捷键：Ctrl+A 全选，Ctrl+Shift+A 全不选，Ctrl+I 反选
+            self.btn_select_all.setShortcut('Ctrl+A')
+            self.btn_select_all.setToolTip('全选（Ctrl+A）')
+            self.btn_select_none.setShortcut('Ctrl+Shift+A')
+            self.btn_select_none.setToolTip('全不选（Ctrl+Shift+A）')
+            self.btn_select_invert.setShortcut('Ctrl+I')
+            self.btn_select_invert.setToolTip('反选（Ctrl+I）')
+        except Exception:
+            pass
+
         self.btn_select_all.clicked.connect(self.selectAllRequested.emit)
         self.btn_select_none.clicked.connect(self.selectNoneRequested.emit)
         self.btn_select_invert.clicked.connect(self.invertSelectionRequested.emit)

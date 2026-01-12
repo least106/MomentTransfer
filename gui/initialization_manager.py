@@ -63,7 +63,21 @@ class InitializationManager:
                 logger.debug("splitter initial hide failed (non-fatal)", exc_info=True)
             
             main_layout.addWidget(splitter)
-            self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
+            # 将状态信息显示为状态栏右侧的永久标签，避免默认消息框在左侧分散注意力
+            try:
+                from PySide6.QtWidgets import QLabel, QSizePolicy
+                lbl = QLabel("步骤1：选择文件或目录")
+                lbl.setObjectName('statusMessage')
+                lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+                lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                # 添加为永久部件，位于状态栏右侧
+                self.main_window.statusBar().addPermanentWidget(lbl, 1)
+            except Exception:
+                # 回退到默认行为
+                try:
+                    self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
+                except Exception:
+                    pass
             
             logger.info("UI 组件初始化成功")
         except Exception as e:
@@ -144,7 +158,17 @@ class InitializationManager:
     def trigger_initial_layout_update(self):
         """触发初始布局更新"""
         try:
-            QTimer.singleShot(50, self.main_window.update_button_layout)
-            QTimer.singleShot(120, self.main_window._force_layout_refresh)
+            # 合并为一次定时调用，减少启动时的多次视觉刷新
+            def _do_initial_updates():
+                try:
+                    self.main_window.update_button_layout()
+                except Exception:
+                    pass
+                try:
+                    self.main_window._force_layout_refresh()
+                except Exception:
+                    pass
+
+            QTimer.singleShot(120, _do_initial_updates)
         except Exception:
             logger.debug("Initial layout update scheduling failed", exc_info=True)

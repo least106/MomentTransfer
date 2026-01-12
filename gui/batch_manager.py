@@ -224,14 +224,19 @@ class BatchManager:
                 continue
         if not parts:
             return f"第{row_index + 1}行"
-        return f"第{row_index + 1}行：" + " ".join(parts[:6])
+        # 显示全部已格式化的列键值对，而不是仅前6项
+        return f"第{row_index + 1}行：" + " ".join(parts)
 
-    def _create_preview_table(self, df, selected_set: set, on_toggle, *, max_rows: int = 200, max_cols: int = 8):
+    def _create_preview_table(self, df, selected_set: set, on_toggle, *, max_rows: int = 200, max_cols: int = None):
         """创建带勾选列的数据预览表格（复用特殊格式与常规表格）。"""
         table = QTableWidget()
         try:
             rows = min(len(df), int(max_rows))
-            cols = min(len(df.columns), int(max_cols))
+            # 如果未指定 max_cols，则显示全部列
+            if max_cols is None:
+                cols = len(df.columns)
+            else:
+                cols = min(len(df.columns), int(max_cols))
         except Exception:
             rows, cols = 0, 0
 
@@ -573,7 +578,7 @@ class BatchManager:
             except Exception:
                 logger.debug('table toggle failed', exc_info=True)
 
-        table = self._create_preview_table(df, set(sel or set()), _on_toggle, max_rows=200, max_cols=8)
+        table = self._create_preview_table(df, set(sel or set()), _on_toggle, max_rows=200, max_cols=None)
         try:
             self.gui.file_tree.setItemWidget(group, 0, table)
             self._table_preview_tables[fp_str] = table
@@ -662,7 +667,7 @@ class BatchManager:
             except Exception:
                 logger.debug('special table toggle failed', exc_info=True)
 
-        table = self._create_preview_table(df, set(sel or set()), _on_toggle, max_rows=200, max_cols=8)
+        table = self._create_preview_table(df, set(sel or set()), _on_toggle, max_rows=200, max_cols=None)
         try:
             self.gui.file_tree.setItemWidget(group, 0, table)
             self._special_preview_tables[(fp_str, str(source_part))] = table
@@ -2426,6 +2431,13 @@ class BatchManager:
                 # 清空批处理记录
                 self.gui._batch_output_dir = None
                 self.gui._batch_existing_files = set()
+                # 隐藏并禁用撤销按钮，避免用户误以为仍可撤销
+                try:
+                    if hasattr(self.gui, 'btn_undo'):
+                        self.gui.btn_undo.setEnabled(False)
+                        self.gui.btn_undo.setVisible(False)
+                except Exception:
+                    pass
                 
             except Exception as e:
                 logger.error(f"撤销批处理失败: {e}", exc_info=True)
