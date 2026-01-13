@@ -1,7 +1,3 @@
-import os
-import time
-from pathlib import Path
-
 import pytest
 
 pytest.importorskip("PySide6")
@@ -13,7 +9,7 @@ from gui import BatchProcessThread
 
 def test_gui_background_thread_processing(tmp_path, qtbot=None):
     # 创建 QApplication（若测试运行环境中尚未创建）
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
 
     # 使用项目自带的配置加载计算器
     project_data, calculator = load_project_calculator("data/input.json")

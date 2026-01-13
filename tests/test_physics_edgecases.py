@@ -111,8 +111,12 @@ def test_cache_exceptions_do_not_raise(monkeypatch):
         return c
 
     monkeypatch.setattr(physics_mod, "get_config", fake_get_config)
-    monkeypatch.setattr(physics_mod, "get_rotation_cache", lambda *_: BadCache())
-    monkeypatch.setattr(physics_mod, "get_transformation_cache", lambda *_: BadCache())
+    monkeypatch.setattr(
+        physics_mod, "get_rotation_cache", lambda *_: BadCache()
+    )
+    monkeypatch.setattr(
+        physics_mod, "get_transformation_cache", lambda *_: BadCache()
+    )
 
     # 应该不会抛出异常（内部回退为直接计算）
     fc = make_simple_frame()

@@ -1,6 +1,6 @@
 import pytest
 
-from src.data_loader import FrameConfiguration, CoordSystemDefinition, ProjectData
+from src.data_loader import FrameConfiguration
 
 
 def base_coord():

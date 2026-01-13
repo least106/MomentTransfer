@@ -1,6 +1,4 @@
-import tempfile
 from pathlib import Path
-import sqlite3
 
 from src.format_registry import (
     init_db,
@@ -8,7 +6,6 @@ from src.format_registry import (
     list_mappings,
     get_format_for_file,
     delete_mapping,
-    update_mapping,
 )
 
 

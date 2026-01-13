@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.cli_helpers import BatchConfig, load_project_calculator, load_format_from_file
+from src.cli_helpers import load_project_calculator, load_format_from_file
 from batch import process_single_file
 
 

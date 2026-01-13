@@ -1,5 +1,9 @@
 import numpy as np
-from src.data_loader import ProjectData, CoordSystemDefinition, FrameConfiguration
+from src.data_loader import (
+    ProjectData,
+    CoordSystemDefinition,
+    FrameConfiguration,
+)
 from src.physics import AeroCalculator
 
 
@@ -42,7 +46,9 @@ def test_moment_coeff_mapping():
     b_ref = 4.0
     c_ref = 1.0
 
-    project = create_test_project_data(q=q, s_ref=s_ref, c_ref=c_ref, b_ref=b_ref)
+    project = create_test_project_data(
+        q=q, s_ref=s_ref, c_ref=c_ref, b_ref=b_ref
+    )
     calc = AeroCalculator(project)
     # 为新版 AeroCalculator 注入 cfg 引用
     calc.cfg = project

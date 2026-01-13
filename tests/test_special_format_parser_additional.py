@@ -1,12 +1,14 @@
 from pathlib import Path
 import textwrap
 import pandas as pd
-import numpy as np
 
-import pytest
 
 from src import special_format_parser as sfp
-from src.data_loader import FrameConfiguration, CoordSystemDefinition, ProjectData
+from src.data_loader import (
+    FrameConfiguration,
+    CoordSystemDefinition,
+    ProjectData,
+)
 
 
 def write_file(path: Path, content: str):
@@ -112,7 +114,9 @@ def test_process_special_format_file_success(tmp_path):
 
     # 构造 ProjectData，包含目标 part
     frame = make_frame_for_part("WingX")
-    proj = ProjectData(source_parts={"WingX": [frame]}, target_parts={"WingX": [frame]})
+    proj = ProjectData(
+        source_parts={"WingX": [frame]}, target_parts={"WingX": [frame]}
+    )
 
     out_dir = tmp_path / "out"
     outputs, report = sfp.process_special_format_file(
@@ -137,11 +141,17 @@ def test_process_special_format_file_skip_missing_target(tmp_path):
 
     # source 存在，但将其显式映射到不存在的 target，用于触发 target_missing
     frame = make_frame_for_part("MissingPart")
-    proj = ProjectData(source_parts={"MissingPart": [frame]}, target_parts={"Other": [frame]})
+    proj = ProjectData(
+        source_parts={"MissingPart": [frame]}, target_parts={"Other": [frame]}
+    )
 
     out_dir = tmp_path / "out2"
     outputs, report = sfp.process_special_format_file(
-        p, proj, out_dir, return_report=True, part_target_mapping={"MissingPart": "NoSuchTarget"}
+        p,
+        proj,
+        out_dir,
+        return_report=True,
+        part_target_mapping={"MissingPart": "NoSuchTarget"},
     )
     assert len(outputs) == 0
     assert (
@@ -163,23 +173,15 @@ def test_process_special_format_file_missing_columns_skips(tmp_path):
     write_file(p, content)
 
     frame = make_frame_for_part("PartA")
-    proj = ProjectData(source_parts={"PartA": [frame]}, target_parts={"PartA": [frame]})
+    proj = ProjectData(
+        source_parts={"PartA": [frame]}, target_parts={"PartA": [frame]}
+    )
     out_dir = tmp_path / "out3"
     outputs, report = sfp.process_special_format_file(
         p, proj, out_dir, return_report=True
     )
     assert len(outputs) == 0
     assert report and any(r.get("reason") == "missing_columns" for r in report)
-
-
-from pathlib import Path
-
-import pandas as pd
-import pytest
-
-from src import special_format_parser as sfp
-
-
 def test_is_metadata_summary_and_data_line():
     assert sfp.is_metadata_line("")
     assert sfp.is_metadata_line("计算坐标系:X向后、Y向右")
@@ -201,7 +203,7 @@ def test_is_part_name_line_with_next_header():
     assert sfp.is_part_name_line("WING")
 
 
-def test_get_part_names_and_parse(tmp_path: Path):
+def test_get_part_names_and_parse_complex(tmp_path: Path):
     content = "\n".join(
         [
             "计算坐标系:X向后",

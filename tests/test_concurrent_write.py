@@ -19,7 +19,14 @@ def _worker_write(args):
     # 在子进程中也确保 calculator 包含 cfg（新版要求）
     calculator.cfg = project_data
     cfg = BatchConfig()
-    cfg.column_mappings = {"fx": 0, "fy": 1, "fz": 2, "mx": 3, "my": 4, "mz": 5}
+    cfg.column_mappings = {
+        "fx": 0,
+        "fy": 1,
+        "fz": 2,
+        "mx": 3,
+        "my": 4,
+        "mz": 5,
+    }
     cfg.passthrough_columns = []
     cfg.treat_non_numeric = "zero"
 
@@ -61,7 +68,14 @@ def test_concurrent_appends_to_same_file(tmp_path):
     # 主进程也设置 cfg
     calculator.cfg = project_data
     cfg = BatchConfig()
-    cfg.column_mappings = {"fx": 0, "fy": 1, "fz": 2, "mx": 3, "my": 4, "mz": 5}
+    cfg.column_mappings = {
+        "fx": 0,
+        "fy": 1,
+        "fz": 2,
+        "mx": 3,
+        "my": 4,
+        "mz": 5,
+    }
     cfg.passthrough_columns = []
     cfg.treat_non_numeric = "zero"
 

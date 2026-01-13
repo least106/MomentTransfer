@@ -1,4 +1,3 @@
-import warnings
 import numpy as np
 import pytest
 
@@ -26,7 +25,9 @@ def test_safe_divide_scalar_zero_warn():
     calc = AeroCalculator(f)
 
     with pytest.warns(UserWarning):
-        out = calc._safe_divide(np.array([1.0, 2.0, 3.0]), 0.0, warn_msg="test")
+        out = calc._safe_divide(
+            np.array([1.0, 2.0, 3.0]), 0.0, warn_msg="test"
+        )
 
     assert np.all(out == 0.0)
 

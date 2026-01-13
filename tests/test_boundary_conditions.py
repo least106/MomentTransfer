@@ -1,4 +1,3 @@
-import pytest
 import numpy as np
 from src.physics import AeroCalculator
 from src.data_loader import FrameConfiguration

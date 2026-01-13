@@ -1,9 +1,7 @@
 from pathlib import Path
 import textwrap
-import types
 import sys
 
-import pytest
 
 # 确保在导入 src 包之前将项目根目录加入 sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -46,7 +44,11 @@ class SimpleCoordPlugin(pl.CoordSystemPlugin):
 class SimpleOutputPlugin(pl.OutputPlugin):
     def __init__(self, name="out1"):
         self._meta = pl.PluginMetadata(
-            name=name, version="0.1", author="me", description="d", plugin_type="output"
+            name=name,
+            version="0.1",
+            author="me",
+            description="d",
+            plugin_type="output",
         )
         self.written = False
 
@@ -81,7 +83,11 @@ def test_register_overwrite_logs(monkeypatch):
     p2 = SimpleCoordPlugin(name="dup")
     called = {}
     # monkeypatch logger.warning to capture call (accept any args/kwargs)
-    monkeypatch.setattr(pl.logger, "warning", lambda *args, **kwargs: called.setdefault("w", args or kwargs))
+    monkeypatch.setattr(
+        pl.logger,
+        "warning",
+        lambda *args, **kwargs: called.setdefault("w", args or kwargs),
+    )
     reg.register(p1)
     reg.register(p2)
     assert "w" in called

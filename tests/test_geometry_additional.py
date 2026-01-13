@@ -9,7 +9,6 @@ from src.geometry import (
     compute_moment_arm_global,
     project_vector_to_frame,
     euler_angles_to_basis,
-    ZERO_VECTOR_THRESHOLD,
 )
 
 
@@ -28,7 +27,12 @@ def test_construct_basis_non_orthogonal_warn_and_strict():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         basis = construct_basis_matrix(
-            x, y, z, orthogonality_threshold=0.01, strict=False, orthogonalize=False
+            x,
+            y,
+            z,
+            orthogonality_threshold=0.01,
+            strict=False,
+            orthogonalize=False,
         )
         assert len(w) >= 1
         assert basis.shape == (3, 3)
@@ -36,7 +40,12 @@ def test_construct_basis_non_orthogonal_warn_and_strict():
     # strict=True 时应抛出 ValueError
     with pytest.raises(ValueError):
         construct_basis_matrix(
-            x, y, z, orthogonality_threshold=0.01, strict=True, orthogonalize=False
+            x,
+            y,
+            z,
+            orthogonality_threshold=0.01,
+            strict=True,
+            orthogonalize=False,
         )
 
 

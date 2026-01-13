@@ -6,7 +6,6 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Dict
 
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -181,7 +180,9 @@ class TestDataValidation:
     def test_validate_file_path_not_exists(self):
         """测试不存在的文件路径"""
         with pytest.raises(ValidationError):
-            DataValidator.validate_file_path("/nonexistent/path.txt", must_exist=True)
+            DataValidator.validate_file_path(
+                "/nonexistent/path.txt", must_exist=True
+            )
 
     def test_validate_path_traversal(self):
         """测试路径遍历防护"""

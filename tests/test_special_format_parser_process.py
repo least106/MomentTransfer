@@ -1,8 +1,6 @@
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
-import pytest
 
 from src import special_format_parser as sfp
 
@@ -20,7 +18,7 @@ class FakeCalc:
         self.target_part = target_part
 
     def process_batch(self, forces, moments):
-        n = forces.shape[0]
+        _n = forces.shape[0]
         ft = forces + 1.0
         mt = moments + 1.0
         cf = np.zeros_like(forces)
@@ -50,7 +48,9 @@ def test_process_special_format_file_success(tmp_path: Path, monkeypatch):
 
     outdir = tmp_path / "out"
 
-    project_data = SimpleProjectData(sources={"PARTX": [1]}, targets={"PARTX": [1]})
+    project_data = SimpleProjectData(
+        sources={"PARTX": [1]}, targets={"PARTX": [1]}
+    )
 
     # replace AeroCalculator with fake
     monkeypatch.setattr(sfp, "AeroCalculator", FakeCalc)
@@ -84,7 +84,9 @@ def test_process_special_format_file_missing_columns(tmp_path: Path):
     p.write_text(content, encoding="utf-8")
     outdir = tmp_path / "out3"
 
-    project_data = SimpleProjectData(sources={"PARTZ": [1]}, targets={"PARTZ": [1]})
+    project_data = SimpleProjectData(
+        sources={"PARTZ": [1]}, targets={"PARTZ": [1]}
+    )
     outputs, report = sfp.process_special_format_file(
         p, project_data, outdir, return_report=True
     )
@@ -92,12 +94,16 @@ def test_process_special_format_file_missing_columns(tmp_path: Path):
     assert any(r.get("reason") == "missing_columns" for r in report)
 
 
-def test_process_special_format_file_processing_failure(tmp_path: Path, monkeypatch):
+def test_process_special_format_file_processing_failure(
+    tmp_path: Path, monkeypatch
+):
     p = tmp_path / "in4.mtfmt"
     p.write_text(make_sample_content("FAILP"), encoding="utf-8")
     outdir = tmp_path / "out4"
 
-    project_data = SimpleProjectData(sources={"FAILP": [1]}, targets={"FAILP": [1]})
+    project_data = SimpleProjectData(
+        sources={"FAILP": [1]}, targets={"FAILP": [1]}
+    )
     monkeypatch.setattr(sfp, "AeroCalculator", FakeCalcRaise)
 
     outputs, report = sfp.process_special_format_file(
