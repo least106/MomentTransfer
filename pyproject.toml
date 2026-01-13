@@ -17,13 +17,13 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 
+[project.scripts]
+momenttransfer-cli = "cli:main"
+momenttransfer-gui = "gui_main:main"
+
 [project.urls]
 "Homepage" = "https://github.com/least106/MomentTransfer"
 "Repository" = "https://github.com/least106/MomentTransfer"
 
 [tool.setuptools]
 packages = { find = {} }
-
-[tool.setuptools.entry-points.console_scripts]
-momenttransfer-cli = "cli:main"
-momenttransfer-gui = "gui_main:main"
