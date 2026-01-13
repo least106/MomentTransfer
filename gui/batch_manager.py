@@ -177,6 +177,15 @@ class BatchManager:
         except Exception:
             logger.debug("快速筛选刷新失败", exc_info=True)
 
+    def open_quick_select_dialog(self) -> None:
+        """打开“快速选择”对话框，支持多文件/part 批量取消勾选指定行。"""
+        try:
+            from gui.quick_select_dialog import QuickSelectDialog
+            dlg = QuickSelectDialog(self, parent=self.gui)
+            dlg.exec()
+        except Exception as e:
+            logger.error(f"快速选择对话框失败: {e}")
+
     def _get_item_meta(self, item):
         """读取文件树节点元信息（保存在 Qt.UserRole+1）。"""
         try:
@@ -283,61 +292,71 @@ class BatchManager:
         max_rows: int = 200,
         max_cols: int = None,
     ):
-        """创建带勾选列的数据预览表格（复用特殊格式与常规表格）。"""
-        table = QTableWidget()
+        """创建带勾选列的数据预览表格（分页版）。
+
+        为了适配 5000+ 行数据，使用分页容器 PagedTableWidget，其中每页默认显示
+        max_rows 行，并内置上一页/下一页按钮，且与快速筛选联动。
+        """
         try:
+            from gui.paged_table import PagedTableWidget
+        except Exception:
+            # 回退：若导入失败，使用旧表格方式
+            table = QTableWidget()
             rows = min(len(df), int(max_rows))
-            # 如果未指定 max_cols，则显示全部列
             if max_cols is None:
                 cols = len(df.columns)
             else:
                 cols = min(len(df.columns), int(max_cols))
-        except Exception:
-            rows, cols = 0, 0
-
-        table.setRowCount(rows)
-        table.setColumnCount(cols + 1)  # 首列为勾选
-        try:
-            headers = ["选中"] + [str(c) for c in list(df.columns)[:cols]]
-            table.setHorizontalHeaderLabels(headers)
-        except Exception:
-            pass
-
-        for r in range(rows):
-            # 勾选列
-            cb = QCheckBox()
+            table.setRowCount(rows)
+            table.setColumnCount(cols + 1)
             try:
-                cb.setChecked(r in selected_set)
-            except Exception:
-                cb.setChecked(True)
-            try:
-                cb.stateChanged.connect(
-                    lambda state, row=r: on_toggle(row, state == Qt.Checked)
-                )
+                headers = ["选中"] + [str(c) for c in list(df.columns)[:cols]]
+                table.setHorizontalHeaderLabels(headers)
             except Exception:
                 pass
-            table.setCellWidget(r, 0, cb)
-
-            # 数据列
-            for c in range(cols):
+            for r in range(rows):
+                cb = QCheckBox()
+                cb.setChecked(r in (selected_set or set()))
                 try:
-                    val = df.iloc[r, c]
-                    text = "" if val is None else str(val)
+                    cb.stateChanged.connect(
+                        lambda state, row=r: on_toggle(row, state == Qt.Checked)
+                    )
                 except Exception:
-                    text = ""
-                item = QTableWidgetItem(text)
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                table.setItem(r, c + 1, item)
+                    pass
+                table.setCellWidget(r, 0, cb)
+                for c in range(cols):
+                    try:
+                        val = df.iloc[r, c]
+                        text = "" if val is None else str(val)
+                    except Exception:
+                        text = ""
+                    item = QTableWidgetItem(text)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(r, c + 1, item)
+            try:
+                table.resizeColumnsToContents()
+                table.resizeRowsToContents()
+            except Exception:
+                pass
+            return table
 
-        table.resizeColumnsToContents()
-        table.resizeRowsToContents()
-        table.setMaximumHeight(min(320, table.verticalHeader().length() + 40))
-        return table
+        widget = PagedTableWidget(
+            df,
+            set(selected_set or set()),
+            on_toggle,
+            page_size=max(1, int(max_rows)),
+            max_cols=max_cols,
+        )
+        return widget
 
     def _apply_quick_filter_to_table(
-        self, table: QTableWidget, file_path_str: str
+        self, table, file_path_str: str
     ) -> None:
-        """对常规表格应用快速筛选（灰显不匹配的行）"""
+        """对常规表格应用快速筛选。
+
+        - 若为分页表格，调用其 set_filter_with_df 以联动翻页。
+        - 否则回退为灰显不匹配行。
+        """
         try:
             from PySide6.QtGui import QColor
 
@@ -363,6 +382,17 @@ class BatchManager:
                 or self._quick_filter_column not in df.columns
             ):
                 return
+
+            # 分页组件联动：优先使用分页表格的筛选跳页
+            try:
+                # 避免循环导入，仅通过 duck-typing 调用
+                if hasattr(table, "set_filter_with_df"):
+                    def _eval(v):
+                        return self._evaluate_filter(v, operator, self._quick_filter_value)
+                    table.set_filter_with_df(df, _eval, self._quick_filter_column)
+                    return
+            except Exception:
+                pass
 
             # 应用筛选
             gray_color = QColor(220, 220, 220)
@@ -430,9 +460,13 @@ class BatchManager:
             return False
 
     def _apply_quick_filter_to_special_table(
-        self, table: QTableWidget, file_path_str: str, source_part: str
+        self, table, file_path_str: str, source_part: str
     ) -> None:
-        """对特殊格式表格应用快速筛选（灰显不匹配的行）"""
+        """对特殊格式表格应用快速筛选。
+
+        - 若为分页表格，调用其 set_filter_with_df 以联动翻页。
+        - 否则回退为灰显不匹配行。
+        """
         try:
             from PySide6.QtGui import QColor
 
@@ -455,6 +489,16 @@ class BatchManager:
                 or self._quick_filter_column not in df.columns
             ):
                 return
+
+            # 分页组件联动
+            try:
+                if hasattr(table, "set_filter_with_df"):
+                    def _eval(v):
+                        return self._evaluate_filter(v, operator, self._quick_filter_value)
+                    table.set_filter_with_df(df, _eval, self._quick_filter_column)
+                    return
+            except Exception:
+                pass
 
             # 应用筛选
             gray_color = QColor(220, 220, 220)
@@ -2256,34 +2300,32 @@ class BatchManager:
             if item is None:
                 selected = self.gui.file_tree.selectedItems()
                 item = selected[0] if selected else None
-            if item is None:
-                # 尝试通过焦点的表格反推上下文
-                try:
-                    from PySide6.QtWidgets import QApplication
+            # 无论当前项情况如何，都尝试通过焦点反推一次（修复表格聚焦但树项未切换时无法识别的问题）
+            try:
+                from PySide6.QtWidgets import QApplication
 
-                    fw = (
-                        QApplication.instance().focusWidget()
-                        if QApplication.instance()
-                        else None
-                    )
-                    if fw is not None:
-                        for (fp_str, sp), table in (
-                            self._special_preview_tables or {}
-                        ).items():
-                            w = fw
-                            while w is not None:
-                                if w is table:
-                                    # 找到对应的part节点
-                                    part_item = self._find_special_part_item(
-                                        fp_str, sp
-                                    )
-                                    if part_item is not None:
-                                        return part_item, fp_str, sp
-                                    break
-                                w = w.parentWidget()
-                except Exception:
-                    pass
-                return None, None, None
+                fw = (
+                    QApplication.instance().focusWidget()
+                    if QApplication.instance()
+                    else None
+                )
+                if fw is not None:
+                    for (fp_str, sp), table in (
+                        self._special_preview_tables or {}
+                    ).items():
+                        w = fw
+                        inner = getattr(table, "table", None)
+                        while w is not None:
+                            if w is table or (inner is not None and w is inner):
+                                part_item = self._find_special_part_item(
+                                    fp_str, sp
+                                )
+                                if part_item is not None:
+                                    return part_item, fp_str, sp
+                                break
+                            w = w.parentWidget()
+            except Exception:
+                pass
 
             meta = self._get_item_meta(item)
             if not isinstance(meta, dict):
@@ -2326,33 +2368,32 @@ class BatchManager:
             if item is None:
                 selected = self.gui.file_tree.selectedItems()
                 item = selected[0] if selected else None
-            if item is None:
-                # 通过焦点表格反推文件项
-                try:
-                    from PySide6.QtWidgets import QApplication
+            # 始终尝试通过焦点反推上下文，避免当前树项干扰
+            try:
+                from PySide6.QtWidgets import QApplication
 
-                    fw = (
-                        QApplication.instance().focusWidget()
-                        if QApplication.instance()
-                        else None
-                    )
-                    if fw is not None:
-                        for fp_str, table in (
-                            self._table_preview_tables or {}
-                        ).items():
-                            w = fw
-                            while w is not None:
-                                if w is table:
-                                    file_item = getattr(
-                                        self.gui, "_file_tree_items", {}
-                                    ).get(fp_str)
-                                    if file_item is not None:
-                                        return file_item, fp_str
-                                    break
-                                w = w.parentWidget()
-                except Exception:
-                    pass
-                return None, None
+                fw = (
+                    QApplication.instance().focusWidget()
+                    if QApplication.instance()
+                    else None
+                )
+                if fw is not None:
+                    for fp_str, table in (
+                        self._table_preview_tables or {}
+                    ).items():
+                        w = fw
+                        inner = getattr(table, "table", None)
+                        while w is not None:
+                            if w is table or (inner is not None and w is inner):
+                                file_item = getattr(
+                                    self.gui, "_file_tree_items", {}
+                                ).get(fp_str)
+                                if file_item is not None:
+                                    return file_item, fp_str
+                                break
+                            w = w.parentWidget()
+            except Exception:
+                pass
 
             meta = self._get_item_meta(item)
             if not isinstance(meta, dict):

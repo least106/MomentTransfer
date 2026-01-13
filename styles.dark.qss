@@ -1,0 +1,61 @@
+/* 暗色主题样式（Windows 深色模式自适配） */
+
+QWidget { 
+  background-color: #2d2d30; 
+  color: #e6e6e6;
+}
+
+QMainWindow, QDialog { 
+  background-color: #2d2d30; 
+}
+
+QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+  background-color: #252526;
+  color: #e6e6e6;
+  border: 1px solid #3f3f46;
+  selection-background-color: #0078d7;
+  selection-color: #ffffff;
+}
+
+QTreeWidget, QTableWidget, QTableView, QListView {
+  background-color: #1e1e1e;
+  alternate-background-color: #252526;
+  color: #e6e6e6;
+  gridline-color: #3f3f46;
+  selection-background-color: #0e639c;
+  selection-color: #ffffff;
+}
+
+QHeaderView::section {
+  background-color: #3f3f46;
+  color: #e6e6e6;
+  border: 0px;
+  padding: 4px;
+}
+
+QPushButton {
+  background-color: #3a3a3d;
+  color: #e6e6e6;
+  border: 1px solid #505055;
+  padding: 4px 8px;
+}
+QPushButton:hover { background-color: #47474b; }
+QPushButton:pressed { background-color: #2f2f31; }
+QPushButton:disabled { color: #888888; border-color: #3f3f46; }
+
+QProgressBar {
+  border: 1px solid #3f3f46;
+  background-color: #252526;
+  color: #e6e6e6;
+}
+QProgressBar::chunk { background-color: #0078d7; }
+
+QToolTip { 
+  background-color: #2d2d30; 
+  color: #e6e6e6; 
+  border: 1px solid #3f3f46; 
+}
+
+/* 小按钮与标签轻微对比 */
+QLabel[variant="muted"] { color: #a0a0a0; }
+QLabel[variant="error"] { color: #ff6b6b; }

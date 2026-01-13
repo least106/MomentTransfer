@@ -28,6 +28,7 @@ class OperationPanel(QWidget):
         on_select_all: Callable[[], None],
         on_select_none: Callable[[], None],
         on_invert_selection: Callable[[], None],
+        on_quick_select: Callable[[], None],
     ) -> None:
         super().__init__(parent)
         app = QApplication.instance()
@@ -58,6 +59,7 @@ class OperationPanel(QWidget):
             self.batch_panel.invertSelectionRequested.connect(
                 on_invert_selection
             )
+            self.batch_panel.quickSelectRequested.connect(on_quick_select)
         finally:
             try:
                 if app:

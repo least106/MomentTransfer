@@ -42,6 +42,7 @@ class BatchPanel(QWidget):
     quickFilterChanged = Signal(
         str, str, str
     )  # 快速筛选变化(列名, 运算符, 筛选值)
+    quickSelectRequested = Signal()  # 快速选择
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -254,11 +255,13 @@ class BatchPanel(QWidget):
         self.btn_select_all = QPushButton("全选")
         self.btn_select_none = QPushButton("全不选")
         self.btn_select_invert = QPushButton("反选")
+        self.btn_quick_select = QPushButton("快速选择")
 
         for btn in [
             self.btn_select_all,
             self.btn_select_none,
             self.btn_select_invert,
+            self.btn_quick_select,
         ]:
             btn.setMaximumWidth(70)
 
@@ -278,10 +281,12 @@ class BatchPanel(QWidget):
         self.btn_select_invert.clicked.connect(
             self.invertSelectionRequested.emit
         )
+        self.btn_quick_select.clicked.connect(self.quickSelectRequested.emit)
 
         btn_row.addWidget(self.btn_select_all)
         btn_row.addWidget(self.btn_select_none)
         btn_row.addWidget(self.btn_select_invert)
+        btn_row.addWidget(self.btn_quick_select)
 
         # 配置编辑器显示控制：默认不弹出，用户勾选后再显示
         self.chk_show_config = QCheckBox("显示配置编辑器")

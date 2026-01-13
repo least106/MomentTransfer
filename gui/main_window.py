@@ -170,6 +170,7 @@ class IntegratedAeroGUI(QMainWindow):
             on_select_all=self._select_all_files,
             on_select_none=self._select_none_files,
             on_invert_selection=self._invert_file_selection,
+            on_quick_select=self._quick_select,
         )
 
         # 兼容旧属性映射
@@ -188,6 +189,13 @@ class IntegratedAeroGUI(QMainWindow):
             )
 
         return panel
+
+    def _quick_select(self):
+        if self.batch_manager:
+            try:
+                self.batch_manager.open_quick_select_dialog()
+            except Exception:
+                logger.debug("打开快速选择对话框失败", exc_info=True)
 
     # 文件选择方法委托给 BatchManager
     def _select_all_files(self):
@@ -623,14 +631,47 @@ def main():
         app.setFont(QFont("Segoe UI", 10))
     except Exception:
         pass
+    # 按系统主题自动加载明/暗样式
     try:
-        # main_window 位于 gui/ 下，样式文件在仓库根目录
-        qss_path = Path(__file__).resolve().parent.parent / "styles.qss"
-        if qss_path.exists():
-            with open(qss_path, "r", encoding="utf-8") as fh:
+        def _is_windows_dark_mode() -> bool:
+            try:
+                import platform
+                if platform.system().lower() != "windows":
+                    return False
+                import winreg
+                key_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                    # 0 表示暗色，1 表示浅色
+                    val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                    return int(val) == 0
+            except Exception:
+                return False
+
+        base_dir = Path(__file__).resolve().parent.parent
+        dark = _is_windows_dark_mode()
+        qss_file = base_dir / ("styles.dark.qss" if dark else "styles.qss")
+        if qss_file.exists():
+            with open(qss_file, "r", encoding="utf-8") as fh:
                 app.setStyleSheet(fh.read())
+        elif dark:
+            # 兜底：若无暗色QSS，应用深色调色板
+            from PySide6.QtGui import QPalette, QColor
+            pal = QPalette()
+            pal.setColor(QPalette.Window, QColor(45,45,48))
+            pal.setColor(QPalette.WindowText, QColor(230,230,230))
+            pal.setColor(QPalette.Base, QColor(37,37,38))
+            pal.setColor(QPalette.AlternateBase, QColor(45,45,48))
+            pal.setColor(QPalette.ToolTipBase, QColor(45,45,48))
+            pal.setColor(QPalette.ToolTipText, QColor(230,230,230))
+            pal.setColor(QPalette.Text, QColor(230,230,230))
+            pal.setColor(QPalette.Button, QColor(45,45,48))
+            pal.setColor(QPalette.ButtonText, QColor(230,230,230))
+            pal.setColor(QPalette.BrightText, QColor(255,0,0))
+            pal.setColor(QPalette.Highlight, QColor(0,120,215))
+            pal.setColor(QPalette.HighlightedText, QColor(255,255,255))
+            app.setPalette(pal)
     except Exception:
-        logger.debug("加载 styles.qss 失败（忽略）", exc_info=True)
+        logger.debug("自动主题加载失败（忽略）", exc_info=True)
     window = IntegratedAeroGUI()
     window.show()
     sys.exit(app.exec())
