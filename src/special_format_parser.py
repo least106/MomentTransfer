@@ -150,35 +150,32 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
     3. 下一行很可能是表头（包含 Alpha, CL, CD 等）
     """
     line = line.strip()
-    if not line:
-        return False
+    is_part = False
 
-    # 如果是数据行或汇总行，肯定不是 part 名
-    if is_data_line(line) or is_summary_line(line):
-        return False
-
-    # part 名特征：简短的文本（通常少于20个字符）
-    tokens = line.split()
-    if len(tokens) == 1 and len(line) < 20:
-        # 中文短文本优先视为 part 名（避免被误判为元数据）
-        contains_non_ascii = any(ord(ch) > 127 for ch in line)
-        if contains_non_ascii and re.search(r"[\u4e00-\u9fff]", line):
+    # 空行或数据/汇总行均不是 part 名
+    if line and not is_data_line(line) and not is_summary_line(line):
+        # part 名特征：单 token 且长度受限（通常少于20个字符）
+        tokens = line.split()
+        if len(tokens) == 1 and len(line) < 20:
+            # 快速判定：单 token 且较短的行通常视为 part 名
+            is_part = True
+        else:
+            # 对于非短单词（多 token 或较长文本），使用更细化的启发式判断：
+            # - 含中文的文本更可能为描述/元数据，只有当下一行看起来像表头时才判定为 part 名（保守）
+            # - 非中文文本若下一行为表头则判定为 part 名，若无下一行或下一行不是表头则对非中文采取较宽松策略
+            contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
             if next_line:
                 next_tokens = next_line.split()
-                header_keywords = ["Alpha", "CL", "CD", "Cm", "Cx", "Cy", "Cz"]
-                if any(kw in next_tokens for kw in header_keywords):
-                    return True
-            return True
+                if _tokens_looks_like_header(next_tokens):
+                    is_part = True
+                else:
+                    # 下一行不是表头：中文倾向认为不是 part，非中文则较宽松地视为 part
+                    is_part = not contains_chinese
+            else:
+                # 无下一行时：中文保守（非 part），非中文宽松（视为 part）
+                is_part = not contains_chinese
 
-        # 如果下一行是表头，更有可能是 part 名
-        if next_line:
-            next_tokens = next_line.split()
-            header_keywords = ["Alpha", "CL", "CD", "Cm", "Cx", "Cy", "Cz"]
-            if any(kw in next_tokens for kw in header_keywords):
-                return True
-        return True
-
-    return False
+    return is_part
 
 
 def _read_text_file_lines(
