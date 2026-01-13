@@ -167,7 +167,11 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
             if next_line:
                 next_tokens = next_line.split()
                 if _tokens_looks_like_header(next_tokens):
-                    is_part = True
+                    # 若文本包含中文且较长（>=20），保守对待；否则视为 part
+                    if contains_chinese and len(line) >= 20:
+                        is_part = False
+                    else:
+                        is_part = True
                 else:
                     # 下一行不是表头：中文倾向认为不是 part，非中文则较宽松地视为 part
                     is_part = not contains_chinese
