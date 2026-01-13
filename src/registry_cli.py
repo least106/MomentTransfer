@@ -1,3 +1,8 @@
+"""命令行工具：管理格式映射注册表（SQLite）。
+
+提供 `list` / `register` / `remove` 子命令，用于操作本地 registry 数据库。
+"""
+
 import logging
 import sqlite3
 import sys
@@ -15,7 +20,7 @@ from src.format_registry import (
 @click.group()
 def registry():
     """管理 format registry（SQLite）"""
-    pass
+
 
 
 @registry.command("list")
@@ -36,7 +41,7 @@ def list_cmd(db_path):
         click.echo(f"数据库错误: {e}")
         logging.exception("Registry list failed")
         sys.exit(2)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         # 捕获意外错误并记录完整 traceback 以便排查
         logging.exception("Unexpected error while listing registry mappings")
         click.echo(f"未知错误: {e}; 详情已记录到日志")
@@ -62,7 +67,7 @@ def register_cmd(db_path, pattern, format_path):
         click.echo(f"错误: {e}")
         logging.exception("Registry register failed")
         sys.exit(2)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.exception("Unexpected error while registering mapping")
         click.echo(f"未知错误: {e}; 详情已记录到日志")
         sys.exit(3)
@@ -71,17 +76,17 @@ def register_cmd(db_path, pattern, format_path):
 @registry.command("remove")
 @click.argument("db_path", required=True)
 @click.argument("id", type=int, required=True)
-def remove_cmd(db_path, id):
-    """按 ID 删除映射"""
+def remove_cmd(db_path, mapping_id):
+    """按 ID 删除映射（参数名为 mapping_id，CLI 帮助仍显示为 id）。"""
     try:
         init_db(db_path)
-        delete_mapping(db_path, id)
+        delete_mapping(db_path, mapping_id)
         click.echo("已删除")
     except (KeyError, sqlite3.Error, FileNotFoundError, PermissionError) as e:
         click.echo(f"错误: {e}")
         logging.exception("Registry remove failed")
         sys.exit(2)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.exception("Unexpected error while removing mapping")
         click.echo(f"未知错误: {e}; 详情已记录到日志")
         sys.exit(3)

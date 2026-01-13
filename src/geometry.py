@@ -1,3 +1,9 @@
+"""几何与线性代数工具。
+
+包含向量归一化、基向量矩阵构造、旋转矩阵计算以及向量在坐标系间的投影等函数，
+为力矩/力的坐标变换提供基础数学支持。
+"""
+
 import warnings
 from typing import List
 
@@ -58,6 +64,8 @@ def construct_basis_matrix(
     Raises:
         ValueError: 当输入向量为零或基矩阵接近奇异时抛出异常
     """
+    # 该函数参数与局部变量较多，后续建议重构以降低复杂度
+    # pylint: disable=too-many-arguments,too-many-locals
     vx = normalize(to_numpy_vec(x))
     vy = normalize(to_numpy_vec(y))
     vz = normalize(to_numpy_vec(z))
@@ -107,8 +115,7 @@ def construct_basis_matrix(
         else:
             if strict:
                 raise ValueError(msg)
-            else:
-                warnings.warn(msg, UserWarning)
+            warnings.warn(msg, UserWarning)
             basis = np.array([vx, vy, vz])
     else:
         basis = np.array([vx, vy, vz])

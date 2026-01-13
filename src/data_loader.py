@@ -1,3 +1,11 @@
+"""数据加载与解析模块。
+
+负责从 JSON 配置文件加载项目数据并将其转换为内部数据结构（`ProjectData`、
+`FrameConfiguration`、`CoordSystemDefinition` 等）。
+
+包含输入校验与向后兼容的适配逻辑。
+"""
+
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -36,7 +44,7 @@ class CoordSystemDefinition:
             except (ValueError, TypeError) as e:
                 raise ValueError(
                     f"字段 {field_name} 的元素必须是数值类型: {e}"
-                )
+                ) from e
 
         validate_vector(data["Orig"], "Orig")
         validate_vector(data["X"], "X")
@@ -134,10 +142,10 @@ class FrameConfiguration:
                 return None
             try:
                 f = float(val)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as exc:
                 raise ValueError(
                     f"字段 {name} 的值必须是数值类型，当前值: {val} (type={type(val).__name__})"
-                )
+                ) from exc
             if strictly_positive:
                 if f <= 0:
                     raise ValueError(
@@ -193,7 +201,6 @@ class TargetDefinition(FrameConfiguration):
     为了向后兼容保留此类
     """
 
-    pass
 
 
 @dataclass
@@ -222,7 +229,10 @@ class ProjectData:
             and isinstance(section["Parts"], list)
         ):
             raise ValueError(
-                f"{section_name} 必须为对象且包含 'Parts' 列表。示例: {{'Parts':[{{'PartName':'Name','Variants':[{{...}}]}}]}}"
+                (
+                    f"{section_name} 必须为对象且包含 'Parts' 列表。示例: "
+                    "{'Parts':[{'PartName':'Name','Variants':[{'...'}]}]}"
+                )
             )
 
         if isinstance(section["Parts"], list):
@@ -308,7 +318,7 @@ class ProjectData:
     # 兼容性访问器：返回第一个 Part 的第一个 Variant，保持与旧 API 的语义
     @property
     def source_config(self) -> FrameConfiguration:
-        # 取第一个 part 的第一个 variant
+        """返回向后兼容的默认 source 配置（第一个 Part 的第一个 Variant）。"""
         first_part = next(iter(self.source_parts.values()), None)
         if not first_part:
             raise ValueError("source_parts 为空")
@@ -316,6 +326,7 @@ class ProjectData:
 
     @property
     def target_config(self) -> FrameConfiguration:
+        """返回向后兼容的默认 target 配置（第一个 Part 的第一个 Variant）。"""
         first_part = next(iter(self.target_parts.values()), None)
         if not first_part:
             raise ValueError("target_parts 为空")
@@ -330,28 +341,30 @@ class ProjectData:
     def get_source_part(
         self, part_name: str, variant_index: int = 0
     ) -> FrameConfiguration:
+        """按名称和变体索引返回 source 部件的 `FrameConfiguration`。"""
         parts = self.source_parts.get(part_name)
         if not parts:
             raise KeyError(f"找不到 Source part: {part_name}")
         try:
             return parts[variant_index]
-        except IndexError:
+        except IndexError as exc:
             raise IndexError(
                 f"Part {part_name} 没有索引 {variant_index} 的 variant"
-            )
+            ) from exc
 
     def get_target_part(
         self, part_name: str, variant_index: int = 0
     ) -> FrameConfiguration:
+        """按名称和变体索引返回 target 部件的 `FrameConfiguration`。"""
         parts = self.target_parts.get(part_name)
         if not parts:
             raise KeyError(f"找不到 Target part: {part_name}")
         try:
             return parts[variant_index]
-        except IndexError:
+        except IndexError as exc:
             raise IndexError(
                 f"Part {part_name} 没有索引 {variant_index} 的 variant"
-            )
+            ) from exc
 
 
 def load_data(file_path: str) -> ProjectData:
@@ -366,14 +379,14 @@ def load_data(file_path: str) -> ProjectData:
 
         return ProjectData.from_dict(raw_data)
 
-    except FileNotFoundError:
-        raise FileNotFoundError(f"错误: 找不到文件 {file_path}，请检查路径。")
-    except json.JSONDecodeError:
-        raise ValueError(f"错误: 文件 {file_path} 不是有效的 JSON 格式。")
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"错误: 找不到文件 {file_path}，请检查路径。") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"错误: 文件 {file_path} 不是有效的 JSON 格式。") from exc
     except KeyError as e:
         raise KeyError(
             f"错误: JSON 数据缺少关键字段 {e}，请检查输入文件结构。"
-        )
+        ) from e
 
 
 def try_load_project_data(file_path: str, *, strict: bool = True):
@@ -406,7 +419,10 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
     except (ValueError, KeyError) as e:
         # 语义/缺失字段类错误，提供修复建议
         msg = str(e)
-        suggestion = "检查配置是否包含 Source/Target、Target.MomentCenter、Target.Q、Target.S 等必需字段，或使用 creator.py 生成兼容配置。"
+        suggestion = (
+            "检查配置是否包含 Source/Target、Target.MomentCenter、"
+            "Target.Q、Target.S 等必需字段，或使用 creator.py 生成兼容配置。"
+        )
         if strict:
             return False, None, {"message": msg, "suggestion": suggestion}
         raise

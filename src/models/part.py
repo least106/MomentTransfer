@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List
+import numpy as np
 
 from .coordinate_system import CoordinateSystem
 
@@ -23,9 +24,11 @@ class Variant:
 
     @property
     def moment_center(self):
+        """返回该变体的力矩中心坐标（3 元向量）。"""
         return self.coord_system.moment_center
 
     def to_dict(self) -> Dict:
+        """将 Variant 序列化为与 `input.json` 兼容的字典结构。"""
         return {
             "PartName": self.part_name,
             "CoordSystem": self.coord_system.to_dict(),
@@ -38,12 +41,11 @@ class Variant:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "Variant":
+        """从字典创建 Variant（反序列化）。"""
         cs = CoordinateSystem.from_dict(data.get("CoordSystem") or {})
         mc = data.get("MomentCenter")
         if mc is not None:
-            from numpy import array
-
-            cs.moment_center = array(mc, dtype=float)
+            cs.moment_center = np.array(mc, dtype=float)
 
         # 支持多种字段名：S, Sref, S_ref
         sref = data.get("S") or data.get("Sref") or data.get("S_ref") or 10.0
@@ -68,9 +70,11 @@ class Part:
     variants: List[Variant] = field(default_factory=list)
 
     def add_variant(self, variant: Variant) -> None:
+        """向 Part 中添加一个变体实例。"""
         self.variants.append(variant)
 
     def to_dict(self) -> Dict:
+        """将 Part 序列化为字典，用于输出或持久化。"""
         return {
             "PartName": self.name,
             "Variants": [v.to_dict() for v in self.variants] or [{}],
@@ -78,6 +82,7 @@ class Part:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "Part":
+        """从字典创建 Part 实例（反序列化）。"""
         name = data.get("PartName", "")
         variants_data = data.get("Variants") or []
         variants = (

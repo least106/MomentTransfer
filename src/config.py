@@ -43,7 +43,7 @@ class CacheConfig:
 
 
 @dataclass
-class BatchProcessConfig:
+class BatchProcessConfig:  # pylint: disable=R0902
     """批处理配置"""
 
     # 数据块大小（行数）

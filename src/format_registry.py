@@ -69,6 +69,10 @@ def register_mapping(db_path: str, pattern: str, format_path: str):
 
 
 def list_mappings(db_path: str) -> List[dict]:
+    """返回按 id 升序的所有映射记录的列表。
+
+    每个元素为字典，包含 `id`, `pattern`, `format_path`, `added_at`。
+    """
     _ensure_db(db_path)
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
@@ -77,7 +81,7 @@ def list_mappings(db_path: str) -> List[dict]:
         )
         rows = cur.fetchall()
     return [
-        dict(id=r[0], pattern=r[1], format_path=r[2], added_at=r[3])
+        {"id": r[0], "pattern": r[1], "format_path": r[2], "added_at": r[3]}
         for r in rows
     ]
 

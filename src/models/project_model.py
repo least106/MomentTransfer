@@ -32,6 +32,7 @@ class CoordinateSystem:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "CoordinateSystem":
+        """从字典创建 CoordinateSystem（反序列化）。"""
         return cls(
             origin=list(data.get("Orig", [0.0, 0.0, 0.0])),
             x_axis=list(data.get("X", [1.0, 0.0, 0.0])),
@@ -41,6 +42,7 @@ class CoordinateSystem:
         )
 
     def to_dict(self) -> Dict:
+        """序列化为字典（用于输出到 JSON）。"""
         return {
             "Orig": list(self.origin),
             "X": list(self.x_axis),
@@ -61,6 +63,7 @@ class ReferenceValues:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "ReferenceValues":
+        """从字典创建 ReferenceValues（反序列化）。"""
         return cls(
             cref=float(data.get("Cref", 1.0)),
             bref=float(data.get("Bref", 1.0)),
@@ -69,6 +72,7 @@ class ReferenceValues:
         )
 
     def to_dict(self) -> Dict:
+        """序列化 ReferenceValues 为字典。"""
         return {
             "Cref": float(self.cref),
             "Bref": float(self.bref),
@@ -87,6 +91,7 @@ class PartVariant:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "PartVariant":
+        """从字典创建 PartVariant（反序列化）。"""
         part_name = str(data.get("PartName", "Unnamed"))
         cs = CoordinateSystem.from_dict(data.get("CoordSystem", {}))
         # input.json 的 MomentCenter 位于 variant 顶层；这里要同步进坐标系模型
@@ -94,7 +99,8 @@ class PartVariant:
         if mc is not None:
             try:
                 cs.moment_center = list(mc)
-            except Exception:
+            except (TypeError, ValueError):
+                # 忽略不可转换为列表的 MomentCenter 值，保持默认值
                 pass
         return cls(
             part_name=part_name,
@@ -103,6 +109,7 @@ class PartVariant:
         )
 
     def to_dict(self) -> Dict:
+        """序列化 PartVariant 为字典，兼容旧版输入格式。"""
         return {
             "PartName": self.part_name,
             "CoordSystem": self.coord_system.to_dict(),
@@ -121,6 +128,7 @@ class Part:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "Part":
+        """从字典创建 Part（反序列化）。"""
         part_name = str(data.get("PartName", "Unnamed"))
         variants: List[PartVariant] = []
         for v in data.get("Variants") or [{}]:
@@ -132,6 +140,7 @@ class Part:
         return cls(part_name=part_name, variants=variants)
 
     def to_dict(self) -> Dict:
+        """序列化 Part 为字典。"""
         return {
             "PartName": self.part_name,
             "Variants": [v.to_dict() for v in self.variants],
@@ -147,6 +156,7 @@ class ProjectConfigModel:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "ProjectConfigModel":
+        """从字典创建 ProjectConfigModel（反序列化）。"""
         model = cls()
         for p in (data.get("Source", {}) or {}).get("Parts", []) or []:
             part = Part.from_dict(p)
@@ -157,6 +167,7 @@ class ProjectConfigModel:
         return model
 
     def to_dict(self) -> Dict:
+        """将 ProjectConfigModel 序列化为字典以便输出或持久化。"""
         return {
             "Source": {
                 "Parts": [p.to_dict() for p in self.source_parts.values()]
