@@ -346,8 +346,6 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
                 current_data.append(tokens)
             i += 1
             continue
-            i += 1
-            continue
 
         # 检查是否为汇总行（跳过）
         if is_summary_line(line):
@@ -382,7 +380,7 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
 
 
 # 复杂函数；允许过多参数/局部变量/语句，待后续重构
-# pylint: disable=R0913,R0914,R0915
+# 模块层面临时允许复杂度告警，后续应重构以移除这些忽略
 # pylint: disable=R0913,R0914,R0915
 def process_special_format_file(
     file_path: Path,
@@ -424,7 +422,7 @@ def process_special_format_file(
             if selected is not None:
                 selected_idx = sorted({int(x) for x in selected})
                 df = df.iloc[selected_idx]
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.debug(
                 "按行过滤失败，回退为全量处理 (part=%s)",
                 part_name,
@@ -455,7 +453,7 @@ def process_special_format_file(
                 explicit_mapping_used = True
             else:
                 target_part = part_name
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             target_part = part_name
 
         # 校验 source/target part 是否存在
@@ -482,7 +480,10 @@ def process_special_format_file(
                         msg = f"目标配置中不存在 Target part '{target_part}'，已跳过该块"
                         reason = "target_missing"
                     else:
-                        msg = f"part '{part_name}' 未提供 Target 映射，且不存在同名 Target part '{target_part}'，已跳过该块"
+                        msg = (
+                            f"part '{part_name}' 未提供 Target 映射，且不存在同名 "
+                            f"Target part '{target_part}'，已跳过该块"
+                        )
                         reason = "target_not_mapped"
                     logger.warning(msg)
                     return None, {
