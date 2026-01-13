@@ -85,9 +85,7 @@ class AeroCalculator:
                     target_part = next(iter(project.target_parts.keys()))
             # 选择 source frame（可选）
             if source_part is not None:
-                source_frame = project.get_source_part(
-                    source_part, source_variant
-                )
+                source_frame = project.get_source_part(source_part, source_variant)
             else:
                 source_frame = project.source_config
 
@@ -142,9 +140,7 @@ class AeroCalculator:
 
         # 构造时验证 target 必需字段
         if self.target_frame.moment_center is None:
-            raise ValueError(
-                "目标 variant 必须包含 MomentCenter 字段（长度为3的列表）"
-            )
+            raise ValueError("目标 variant 必须包含 MomentCenter 字段（长度为3的列表）")
         if self.target_frame.q is None:
             raise ValueError("目标 variant 必须包含动压 Q（数值）")
         if self.target_frame.s_ref is None:
@@ -220,9 +216,7 @@ class AeroCalculator:
                         getattr(cache_cfg, "precision_digits", None),
                     )
                 except Exception:  # pylint: disable=broad-except
-                    logger.debug(
-                        "旋转矩阵缓存调用失败，回退到直接计算", exc_info=True
-                    )
+                    logger.debug("旋转矩阵缓存调用失败，回退到直接计算", exc_info=True)
                     rotation_matrix = None
 
                 if rotation_matrix is None:
@@ -238,9 +232,7 @@ class AeroCalculator:
                         )
                         logger.debug("旋转矩阵缓存未命中，已计算并缓存")
                     except Exception:  # pylint: disable=broad-except
-                        logger.debug(
-                            "旋转矩阵缓存写入失败，已忽略", exc_info=True
-                        )
+                        logger.debug("旋转矩阵缓存写入失败，已忽略", exc_info=True)
                 else:
                     logger.debug("旋转矩阵缓存命中")
             else:
@@ -248,9 +240,7 @@ class AeroCalculator:
                     self.basis_source, self.basis_target
                 )
         except Exception:  # pylint: disable=broad-except
-            logger.debug(
-                "获取缓存配置失败或异常，直接计算旋转矩阵", exc_info=True
-            )
+            logger.debug("获取缓存配置失败或异常，直接计算旋转矩阵", exc_info=True)
             rotation_matrix = geometry.compute_rotation_matrix(
                 self.basis_source, self.basis_target
             )
@@ -277,9 +267,7 @@ class AeroCalculator:
                         getattr(cache_cfg, "precision_digits", None),
                     )
                 except Exception:  # pylint: disable=broad-except
-                    logger.debug(
-                        "力臂转换缓存调用失败，回退到直接计算", exc_info=True
-                    )
+                    logger.debug("力臂转换缓存调用失败，回退到直接计算", exc_info=True)
                     r_t = None
 
                 if r_t is None:
@@ -299,17 +287,13 @@ class AeroCalculator:
                 else:
                     logger.debug("力臂转换缓存命中")
             else:
-                r_t = geometry.project_vector_to_frame(
-                    self.r_global, self.basis_target
-                )
+                r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
         except Exception:  # pylint: disable=broad-except
             logger.debug(
                 "获取/使用力臂转换缓存时发生异常，直接计算 r_target",
                 exc_info=True,
             )
-            r_t = geometry.project_vector_to_frame(
-                self.r_global, self.basis_target
-            )
+            r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
         return r_t
 
@@ -346,9 +330,7 @@ class AeroCalculator:
             else:
                 self.r_target = r_arr
         except Exception:  # pylint: disable=broad-except
-            logger.debug(
-                "校验 r_target 时发生异常，重新计算 r_target", exc_info=True
-            )
+            logger.debug("校验 r_target 时发生异常，重新计算 r_target", exc_info=True)
             self.r_target = geometry.project_vector_to_frame(
                 self.r_global, self.basis_target
             )
@@ -367,9 +349,7 @@ class AeroCalculator:
             array([[1., 0., 0.]])  # 对单位坐标系无变化
         """
         try:
-            return np.dot(
-                np.asarray(vectors, dtype=float), self.rotation_matrix.T
-            )
+            return np.dot(np.asarray(vectors, dtype=float), self.rotation_matrix.T)
         except Exception:  # pylint: disable=broad-except
             logger.debug("旋转向量时发生异常，尝试逐行计算", exc_info=True)
             vecs = np.asarray(vectors, dtype=float)
@@ -398,9 +378,7 @@ class AeroCalculator:
                 out[i] = np.cross(self.r_target, f)
             return out
 
-    def _compute_coefficients(
-        self, F_final: np.ndarray, M_final: np.ndarray
-    ) -> tuple:
+    def _compute_coefficients(self, F_final: np.ndarray, M_final: np.ndarray) -> tuple:
         """
         计算力与力矩的无量纲系数，封装无量纲化逻辑以便测试与复用。
 

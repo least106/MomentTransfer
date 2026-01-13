@@ -83,9 +83,7 @@ def test_projectdata_parse_parts_section_requires_parts_list():
 
 def test_projectdata_variants_empty_raises():
     data = {
-        "Source": {
-            "Parts": [{"PartName": "S", "Variants": [valid_frame_dict()]}]
-        },
+        "Source": {"Parts": [{"PartName": "S", "Variants": [valid_frame_dict()]}]},
         "Target": {"Parts": [{"PartName": "T", "Variants": []}]},
     }
     with pytest.raises(ValueError):

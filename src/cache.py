@@ -29,9 +29,7 @@ class CacheKey:
         return tuple(rounded.flatten().tolist())
 
     @staticmethod
-    def basis_matrix_key(
-        basis: np.ndarray, precision_digits: int = 10
-    ) -> Tuple:
+    def basis_matrix_key(basis: np.ndarray, precision_digits: int = 10) -> Tuple:
         """为基向量矩阵生成缓存键"""
         return CacheKey.array_to_tuple(basis, precision_digits)
 
@@ -170,17 +168,13 @@ class CacheManager:
         self.rotation_cache: Optional[RotationMatrixCache] = None
         self.transformation_cache: Optional[TransformationCache] = None
 
-    def get_rotation_cache(
-        self, max_entries: int = 1000
-    ) -> RotationMatrixCache:
+    def get_rotation_cache(self, max_entries: int = 1000) -> RotationMatrixCache:
         """返回或创建旋转矩阵缓存实例。"""
         if self.rotation_cache is None:
             self.rotation_cache = RotationMatrixCache(max_entries)
         return self.rotation_cache
 
-    def get_transformation_cache(
-        self, max_entries: int = 1000
-    ) -> TransformationCache:
+    def get_transformation_cache(self, max_entries: int = 1000) -> TransformationCache:
         """返回或创建坐标转换缓存实例。"""
         if self.transformation_cache is None:
             self.transformation_cache = TransformationCache(max_entries)

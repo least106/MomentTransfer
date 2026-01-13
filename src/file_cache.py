@@ -71,9 +71,7 @@ class FileCache:
             if file_size > self.max_file_size:
                 # 超过大小限制，直接读取不缓存
                 try:
-                    with open(
-                        file_path, "r", encoding=encoding, errors="ignore"
-                    ) as f:
+                    with open(file_path, "r", encoding=encoding, errors="ignore") as f:
                         result = f.read()
                 except (OSError, UnicodeDecodeError):
                     result = None
@@ -93,9 +91,7 @@ class FileCache:
             # 如果之前未因为超大文件读取过内容，则尝试正常读取并缓存
             if result is None:
                 try:
-                    with open(
-                        file_path, "r", encoding=encoding, errors="ignore"
-                    ) as f:
+                    with open(file_path, "r", encoding=encoding, errors="ignore") as f:
                         content = f.read()
 
                     # 存入缓存
@@ -200,9 +196,7 @@ class FileCache:
             self._content_cache.pop(cache_key, None)
             # 清除所有相关的元数据缓存
             keys_to_remove = [
-                k
-                for k in list(self._metadata_cache)
-                if k.startswith(cache_key)
+                k for k in list(self._metadata_cache) if k.startswith(cache_key)
             ]
             for k in keys_to_remove:
                 self._metadata_cache.pop(k, None)

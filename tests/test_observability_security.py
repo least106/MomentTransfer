@@ -180,9 +180,7 @@ class TestDataValidation:
     def test_validate_file_path_not_exists(self):
         """测试不存在的文件路径"""
         with pytest.raises(ValidationError):
-            DataValidator.validate_file_path(
-                "/nonexistent/path.txt", must_exist=True
-            )
+            DataValidator.validate_file_path("/nonexistent/path.txt", must_exist=True)
 
     def test_validate_path_traversal(self):
         """测试路径遍历防护"""

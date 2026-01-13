@@ -16,9 +16,7 @@ def test_batch_non_interactive_output_json(tmp_path):
 
     # 配置 BatchConfig，映射前六列
     cfg = BatchConfig()
-    cfg.column_mappings.update(
-        {"fx": 0, "fy": 1, "fz": 2, "mx": 3, "my": 4, "mz": 5}
-    )
+    cfg.column_mappings.update({"fx": 0, "fy": 1, "fz": 2, "mx": 3, "my": 4, "mz": 5})
     cfg.passthrough_columns = []
 
     out_json = tmp_path / "result.json"

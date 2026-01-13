@@ -240,9 +240,7 @@ def _merge_batch_config(dst: BatchConfig, src: BatchConfig) -> None:
     dst.sample_rows = int(src.sample_rows)
 
 
-def configure_logging(
-    log_file: Optional[str], verbose: bool
-) -> logging.Logger:
+def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     """配置并返回名为 `batch` 的 logger。
 
     实现要点：
@@ -324,9 +322,7 @@ def load_project_calculator(
     except FileNotFoundError as e:
         raise ValueError(f"配置文件未找到: {config_path}") from e
     except json.JSONDecodeError as e:
-        raise ValueError(
-            f"配置文件不是有效的 JSON: {config_path} -> {e}"
-        ) from e
+        raise ValueError(f"配置文件不是有效的 JSON: {config_path} -> {e}") from e
     except KeyError as e:
         raise ValueError(f"配置文件缺少必要字段: {e}") from e
 

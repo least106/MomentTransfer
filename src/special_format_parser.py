@@ -60,9 +60,7 @@ def is_metadata_line(line: str) -> bool:
     return False
 
 
-def looks_like_special_format(
-    file_path: Path, *, max_probe_lines: int = 20
-) -> bool:
+def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> bool:
     """快速判断文件是否符合特殊格式。
 
     规则：
@@ -108,12 +106,7 @@ def is_summary_line(line: str) -> bool:
 
     first_token = tokens[0]
     # 如果第一个token不像数字（不是负号开头或纯数字）
-    if (
-        not first_token.replace("-", "")
-        .replace(".", "")
-        .replace("+", "")
-        .isdigit()
-    ):
+    if not first_token.replace("-", "").replace(".", "").replace("+", "").isdigit():
         # 检查是否包含典型的汇总指标名
         summary_keywords = ["CLa", "Cdmin", "CmCL", "Cm0", "Kmax", "Alpha"]
         if any(kw in line for kw in summary_keywords):
@@ -160,17 +153,25 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
     if len(tokens) == 1 and len(line) < 20:
         return True
 
-    # 多 token 行：仅当下一行看起来像表头时才认为是 part，避免把表头误判成新的 part
+    # 当前行本身看起来像表头则不是 part 名
+    if _tokens_looks_like_header(tokens):
+        return False
+
+    # 多 token 或较长文本：按下一行是否为表头来判定
     contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
     if next_line:
         next_tokens = next_line.split()
         if _tokens_looks_like_header(next_tokens):
+            # 下一行是表头：中文长描述保守为非 part，其他认为是 part
             if contains_chinese and len(line) >= 20:
                 return False
             return True
-
-    # 其他情况视为描述行，不当作 part
-    return False
+        else:
+            # 下一行不是表头：中文保守认为非 part，非中文宽松认为是 part
+            return not contains_chinese
+    else:
+        # 无下一行：中文保守（非 part），非中文宽松（视为 part）
+        return not contains_chinese
 
 
 def _read_text_file_lines(
@@ -263,7 +264,9 @@ def _tokens_looks_like_header(tokens: List[str]) -> bool:
     return False
 
 
-def _finalize_part(current_part, current_header, current_data, result: Dict[str, pd.DataFrame]):
+def _finalize_part(
+    current_part, current_header, current_data, result: Dict[str, pd.DataFrame]
+):
     """将当前累积的数据转换为 DataFrame 并加入 result（若数据存在）。"""
     if not (current_part and current_header and current_data):
         return
@@ -506,7 +509,9 @@ def _process_single_part(
                 "reason": "no_project_data",
                 "message": msg,
             }
-        calc = AeroCalculator(project_data, source_part=source_part, target_part=target_part)
+        calc = AeroCalculator(
+            project_data, source_part=source_part, target_part=target_part
+        )
         results = calc.process_batch(forces, moments)
     except Exception as e:  # pylint: disable=broad-except
         # 容错：处理阶段捕获所有异常以避免批处理整体失败，记录详细上下文
@@ -541,7 +546,9 @@ def _process_single_part(
     if out_path.exists() and not overwrite:
         suffix = 1
         while True:
-            candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+            candidate = (
+                output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+            )
             if not candidate.exists():
                 out_path = candidate
                 break
@@ -660,6 +667,8 @@ def _process_special_format_file_core(
         return outputs, report
 
     return outputs
+
+
 def process_special_format_file(
     file_path: Path,
     project_data,
@@ -670,9 +679,7 @@ def process_special_format_file(
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
     return_report: bool = False,
-) -> List[
-    Path
-]:
+) -> List[Path]:
     """直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
 
     约定：

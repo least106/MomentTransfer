@@ -124,4 +124,4 @@ def test__process_single_part_writes_output(tmp_path, monkeypatch):
 
 
 if __name__ == "__main__":
-    pytest.main(["-q", "tests/test_special_format_parser.py"]) 
+    pytest.main(["-q", "tests/test_special_format_parser.py"])

@@ -75,9 +75,7 @@ class PerformanceMonitor:
                 memory_before_mb = self.process.memory_info().rss / 1024 / 1024
             except Exception:  # pylint: disable=broad-except
                 # psutil 动态环境下可能抛出多种错误，记录为调试信息并忽略
-                logger.debug(
-                    "无法读取进程内存信息，跳过memory_before", exc_info=True
-                )
+                logger.debug("无法读取进程内存信息，跳过memory_before", exc_info=True)
 
         metrics = PerformanceMetrics(
             metric_name=metric_name,
@@ -86,35 +84,27 @@ class PerformanceMonitor:
         )
         return metrics
 
-    def end_measurement(
-        self, metrics: PerformanceMetrics
-    ) -> PerformanceMetrics:
+    def end_measurement(self, metrics: PerformanceMetrics) -> PerformanceMetrics:
         """结束测量"""
         metrics.end_time = time.time()
         metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
 
         if self.process:
             try:
-                metrics.memory_after_mb = (
-                    self.process.memory_info().rss / 1024 / 1024
-                )
+                metrics.memory_after_mb = self.process.memory_info().rss / 1024 / 1024
                 metrics.memory_delta_mb = (
                     metrics.memory_after_mb - metrics.memory_before_mb
                 )
                 metrics.cpu_percent = self.process.cpu_percent(interval=0.01)
             except Exception:  # pylint: disable=broad-except
-                logger.debug(
-                    "读取进程性能信息失败，略过性能字段", exc_info=True
-                )
+                logger.debug("读取进程性能信息失败，略过性能字段", exc_info=True)
 
         with self.lock:
             self.metrics[metrics.metric_name].append(metrics)
 
         return metrics
 
-    def record_metric(
-        self, metric_name: str, duration_ms: float, **kwargs
-    ) -> None:
+    def record_metric(self, metric_name: str, duration_ms: float, **kwargs) -> None:
         """直接记录指标"""
         metrics = PerformanceMetrics(
             metric_name=metric_name,

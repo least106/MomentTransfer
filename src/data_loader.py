@@ -42,9 +42,7 @@ class CoordSystemDefinition:
             try:
                 [float(x) for x in vec]
             except (ValueError, TypeError) as e:
-                raise ValueError(
-                    f"字段 {field_name} 的元素必须是数值类型: {e}"
-                ) from e
+                raise ValueError(f"字段 {field_name} 的元素必须是数值类型: {e}") from e
 
         validate_vector(data["Orig"], "Orig")
         validate_vector(data["X"], "X")
@@ -127,9 +125,7 @@ class FrameConfiguration:
         s_ref = data.get("S") or data.get("Sref") or data.get("S_ref")
 
         # 如果提供了这些参数，进行验证
-        def parse_numeric_value(
-            name: str, val, strictly_positive: bool = True
-        ):
+        def parse_numeric_value(name: str, val, strictly_positive: bool = True):
             """
             尝试将 val 转为 float 并进行数值校验。
 
@@ -148,14 +144,10 @@ class FrameConfiguration:
                 ) from exc
             if strictly_positive:
                 if f <= 0:
-                    raise ValueError(
-                        f"字段 {name} 必须为严格正数 (>0)，当前值: {val}"
-                    )
+                    raise ValueError(f"字段 {name} 必须为严格正数 (>0)，当前值: {val}")
             else:
                 if f < 0:
-                    raise ValueError(
-                        f"字段 {name} 必须为非负数 (>=0)，当前值: {val}"
-                    )
+                    raise ValueError(f"字段 {name} 必须为非负数 (>=0)，当前值: {val}")
             return f
 
         c_ref = (
@@ -202,7 +194,6 @@ class TargetDefinition(FrameConfiguration):
     """
 
 
-
 @dataclass
 class ProjectData:
     """
@@ -238,9 +229,7 @@ class ProjectData:
         if isinstance(section["Parts"], list):
             for p in section["Parts"]:
                 if not isinstance(p, dict):
-                    raise ValueError(
-                        f"{section_name}.Parts 中的元素必须为对象"
-                    )
+                    raise ValueError(f"{section_name}.Parts 中的元素必须为对象")
                 part_name = p.get("PartName") or "Unnamed"
                 variants_raw = p.get("Variants")
                 variants: List[FrameConfiguration] = []
@@ -292,9 +281,7 @@ class ProjectData:
         # 对 target_parts 做额外的严格校验，确保每个 variant 包含必需字段并给出清晰错误提示
         for part_name, variants in target_parts.items():
             if not variants:
-                raise ValueError(
-                    f"Target 部件 '{part_name}' 必须包含至少一个 Variant"
-                )
+                raise ValueError(f"Target 部件 '{part_name}' 必须包含至少一个 Variant")
             for idx, var in enumerate(variants):
                 if (
                     var.moment_center is None
@@ -384,9 +371,7 @@ def load_data(file_path: str) -> ProjectData:
     except json.JSONDecodeError as exc:
         raise ValueError(f"错误: 文件 {file_path} 不是有效的 JSON 格式。") from exc
     except KeyError as e:
-        raise KeyError(
-            f"错误: JSON 数据缺少关键字段 {e}，请检查输入文件结构。"
-        ) from e
+        raise KeyError(f"错误: JSON 数据缺少关键字段 {e}，请检查输入文件结构。") from e
 
 
 def try_load_project_data(file_path: str, *, strict: bool = True):

@@ -70,9 +70,7 @@ class TestAeroCalculatorProcessFrame:
             target_moment_center=[0, 0, 0],
         )
         # 显式指定 target_part/variant
-        calc = AeroCalculator(
-            project, target_part="TestPart", target_variant=0
-        )
+        calc = AeroCalculator(project, target_part="TestPart", target_variant=0)
 
         force = [100.0, 0.0, 1000.0]
         moment = [0.0, 50.0, 0.0]
@@ -90,9 +88,7 @@ class TestAeroCalculatorProcessFrame:
             source_origin=[1.0, 0.0, 0.0],
             target_moment_center=[0.0, 0.0, 0.0],
         )
-        calc = AeroCalculator(
-            project, target_part="TestPart", target_variant=0
-        )
+        calc = AeroCalculator(project, target_part="TestPart", target_variant=0)
 
         force = [0.0, 0.0, 100.0]
         moment = [0.0, 0.0, 0.0]

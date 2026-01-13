@@ -101,9 +101,7 @@ def get_format_for_file(db_path: str, file_path: str) -> Optional[str]:
     _ensure_db(db_path)
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT pattern, format_path FROM mappings ORDER BY id ASC"
-        )
+        cur.execute("SELECT pattern, format_path FROM mappings ORDER BY id ASC")
         rows = cur.fetchall()
 
     # 尝试匹配
@@ -122,9 +120,7 @@ def get_format_for_file(db_path: str, file_path: str) -> Optional[str]:
             continue
         # 非精确匹配的行，同时作为 fnmatch 候选项收集
         try:
-            if fnmatch.fnmatch(str(p), pattern) or fnmatch.fnmatch(
-                name, pattern
-            ):
+            if fnmatch.fnmatch(str(p), pattern) or fnmatch.fnmatch(name, pattern):
                 fnmatch_candidates.append(fmt)
         except (TypeError, ValueError):
             # 跳过不可匹配的 pattern
@@ -161,9 +157,7 @@ def update_mapping(
     _ensure_db(db_path)
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT COUNT(1) FROM mappings WHERE id = ?", (int(mapping_id),)
-        )
+        cur.execute("SELECT COUNT(1) FROM mappings WHERE id = ?", (int(mapping_id),))
         if cur.fetchone()[0] == 0:
             raise KeyError(f"映射 id={mapping_id} 不存在")
         cur.execute(

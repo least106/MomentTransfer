@@ -22,7 +22,6 @@ def registry():
     """管理 format registry（SQLite）"""
 
 
-
 @registry.command("list")
 @click.argument("db_path", required=True)
 def list_cmd(db_path):
