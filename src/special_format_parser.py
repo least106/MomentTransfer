@@ -150,36 +150,27 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
     3. 下一行很可能是表头（包含 Alpha, CL, CD 等）
     """
     line = line.strip()
-    is_part = False
-
     # 空行或数据/汇总行均不是 part 名
-    if line and not is_data_line(line) and not is_summary_line(line):
-        # part 名特征：单 token 且长度受限（通常少于20个字符）
-        tokens = line.split()
-        if len(tokens) == 1 and len(line) < 20:
-            # 快速判定：单 token 且较短的行通常视为 part 名
-            is_part = True
-        else:
-            # 对于非短单词（多 token 或较长文本），使用更细化的启发式判断：
-            # - 含中文的文本更可能为描述/元数据，只有当下一行看起来像表头时才判定为 part 名（保守）
-            # - 非中文文本若下一行为表头则判定为 part 名，若无下一行或下一行不是表头则对非中文采取较宽松策略
-            contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
-            if next_line:
-                next_tokens = next_line.split()
-                if _tokens_looks_like_header(next_tokens):
-                    # 若文本包含中文且较长（>=20），保守对待；否则视为 part
-                    if contains_chinese and len(line) >= 20:
-                        is_part = False
-                    else:
-                        is_part = True
-                else:
-                    # 下一行不是表头：中文倾向认为不是 part，非中文则较宽松地视为 part
-                    is_part = not contains_chinese
-            else:
-                # 无下一行时：中文保守（非 part），非中文宽松（视为 part）
-                is_part = not contains_chinese
+    if not line or is_data_line(line) or is_summary_line(line):
+        return False
 
-    return is_part
+    tokens = line.split()
+
+    # 单 token 且较短：高概率是 part 名
+    if len(tokens) == 1 and len(line) < 20:
+        return True
+
+    # 多 token 行：仅当下一行看起来像表头时才认为是 part，避免把表头误判成新的 part
+    contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
+    if next_line:
+        next_tokens = next_line.split()
+        if _tokens_looks_like_header(next_tokens):
+            if contains_chinese and len(line) >= 20:
+                return False
+            return True
+
+    # 其他情况视为描述行，不当作 part
+    return False
 
 
 def _read_text_file_lines(
