@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 class ValidationError(ValueError):
     """数据验证错误"""
 
-    pass
 
 
 class DataValidator:
@@ -65,7 +64,7 @@ class DataValidator:
             return tuple(coord_array)
 
         except (TypeError, ValueError) as e:
-            raise ValidationError(f"坐标验证失败: {e}")
+            raise ValidationError(f"坐标验证失败: {e}") from e
 
     @staticmethod
     def validate_numeric_range(
@@ -105,7 +104,7 @@ class DataValidator:
             return float_val
 
         except (TypeError, ValueError) as e:
-            raise ValidationError(f"数值验证失败: {e}")
+            raise ValidationError(f"数值验证失败: {e}") from e
 
     @staticmethod
     def validate_file_path(
@@ -145,7 +144,7 @@ class DataValidator:
         except ValidationError:
             raise
         except Exception as e:
-            raise ValidationError(f"路径验证失败: {e}")
+            raise ValidationError(f"路径验证失败: {e}") from e
 
     @staticmethod
     def validate_csv_safety(
@@ -177,20 +176,21 @@ class DataValidator:
                 df = pd.read_csv(path, nrows=100)
                 if len(df) >= 100:
                     # 读取几行来估计总行数
-                    total_lines = sum(1 for _ in open(path))
+                    with open(path, encoding="utf-8") as _f:
+                        total_lines = sum(1 for _ in _f)
                     if total_lines > max_rows:
                         raise ValidationError(
                             f"CSV 文件行数过多: {total_lines} > {max_rows}"
                         )
             except pd.errors.ParserError as e:
-                raise ValidationError(f"CSV 格式无效: {e}")
+                raise ValidationError(f"CSV 格式无效: {e}") from e
 
             return path
 
         except ValidationError:
             raise
         except Exception as e:
-            raise ValidationError(f"CSV 安全检查失败: {e}")
+            raise ValidationError(f"CSV 安全检查失败: {e}") from e
 
     @staticmethod
     def validate_data_frame(
@@ -233,7 +233,7 @@ class DataValidator:
         except ValidationError:
             raise
         except Exception as e:
-            raise ValidationError(f"DataFrame 验证失败: {e}")
+            raise ValidationError(f"DataFrame 验证失败: {e}") from e
 
     @staticmethod
     def validate_column_mapping(
@@ -278,7 +278,7 @@ class DataValidator:
         except ValidationError:
             raise
         except Exception as e:
-            raise ValidationError(f"列映射验证失败: {e}")
+            raise ValidationError(f"列映射验证失败: {e}") from e
 
 
 # 快速验证函数
