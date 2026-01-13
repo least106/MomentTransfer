@@ -1,21 +1,26 @@
 """
 UI 工具模块 - 提供通用的 UI 组件创建函数
 """
+
 import logging
 from PySide6.QtWidgets import (
-    QLineEdit, QDoubleSpinBox, QLabel, QWidget, QHBoxLayout, QSizePolicy
+    QLineEdit,
+    QDoubleSpinBox,
+    QLabel,
+    QWidget,
+    QHBoxLayout,
+    QSizePolicy,
 )
-from PySide6.QtCore import Qt
 
 logger = logging.getLogger(__name__)
 
 
 def create_input(default_value: str) -> QLineEdit:
     """创建输入框
-    
+
     参数：
         default_value: 默认值
-    
+
     返回：
         QLineEdit 实例
     """
@@ -29,12 +34,14 @@ def create_input(default_value: str) -> QLineEdit:
     return inp
 
 
-def create_triple_spin(a: float = 0.0, b: float = 0.0, c: float = 0.0) -> tuple:
+def create_triple_spin(
+    a: float = 0.0, b: float = 0.0, c: float = 0.0
+) -> tuple:
     """创建一行三个紧凑型 QDoubleSpinBox
-    
+
     参数：
         a, b, c: 初始值 (X, Y, Z)
-    
+
     返回：
         (spin_a, spin_b, spin_c) 元组
     """
@@ -47,7 +54,7 @@ def create_triple_spin(a: float = 0.0, b: float = 0.0, c: float = 0.0) -> tuple:
             s.setDecimals(2)
             s.setSingleStep(0.1)
             s.setValue(0.0)
-            s.setProperty('compact', 'true')
+            s.setProperty("compact", "true")
             s.setMaximumWidth(96)
         except Exception:
             logger.debug("triple spin init failed", exc_info=True)
@@ -56,9 +63,9 @@ def create_triple_spin(a: float = 0.0, b: float = 0.0, c: float = 0.0) -> tuple:
     s3.setValue(float(c))
     # ToolTip 提示
     try:
-        s1.setToolTip('X 分量')
-        s2.setToolTip('Y 分量')
-        s3.setToolTip('Z 分量')
+        s1.setToolTip("X 分量")
+        s2.setToolTip("Y 分量")
+        s3.setToolTip("Z 分量")
     except Exception:
         pass
     return s1, s2, s3
@@ -66,18 +73,18 @@ def create_triple_spin(a: float = 0.0, b: float = 0.0, c: float = 0.0) -> tuple:
 
 def get_numeric_value(widget) -> float:
     """从 QDoubleSpinBox 或 QLineEdit 返回 float 值的统一访问器
-    
+
     参数：
         widget: QDoubleSpinBox 或 QLineEdit 实例
-    
+
     返回：
         float 值
-    
+
     抛出：
         ValueError: 无法解析数值时
     """
     try:
-        if hasattr(widget, 'value'):
+        if hasattr(widget, "value"):
             return float(widget.value())
         else:
             return float(widget.text())
@@ -88,10 +95,10 @@ def get_numeric_value(widget) -> float:
 
 def create_vector_row(inp1, inp2, inp3) -> QWidget:
     """创建向量输入行 [x, y, z]
-    
+
     参数：
         inp1, inp2, inp3: 三个输入控件 (X, Y, Z)
-    
+
     返回：
         包含向量输入的 QWidget
     """
@@ -106,13 +113,13 @@ def create_vector_row(inp1, inp2, inp3) -> QWidget:
     lb2 = QLabel("]")
     for lb in (lb1, lb_comma1, lb_comma2, lb2):
         try:
-            lb.setObjectName('smallLabel')
+            lb.setObjectName("smallLabel")
         except Exception:
             pass
     # 对传入的输入框标记为 compact 以便样式表进行收缩
     try:
         for w in (inp1, inp2, inp3):
-            w.setProperty('compact', 'true')
+            w.setProperty("compact", "true")
             try:
                 w.setMaximumWidth(96)
             except Exception:

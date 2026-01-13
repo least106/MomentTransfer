@@ -1,4 +1,5 @@
 ﻿"""MomentTransfer GUI 应用入口"""
+
 from gui.main_window import main as run_main
 
 

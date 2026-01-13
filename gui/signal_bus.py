@@ -1,6 +1,7 @@
 """
 中央信号总线：集中管理 GUI 内部通信，便于解耦。
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,18 +14,24 @@ class SignalBus(QObject):
     """
 
     # 配置相关
-    configLoaded = Signal(object)         # 载入新模型（ProjectConfigModel 或兼容对象）
-    configSaved = Signal(Path)            # 保存路径
-    configApplied = Signal()              # 已应用配置
+    configLoaded = Signal(
+        object
+    )  # 载入新模型（ProjectConfigModel 或兼容对象）
+    configSaved = Signal(Path)  # 保存路径
+    configApplied = Signal()  # 已应用配置
 
     # Part 相关
-    sourcePartChanged = Signal(str)       # Source 当前 Part 名称
-    targetPartChanged = Signal(str)       # Target 当前 Part 名称
-    partAdded = Signal(str, str)          # side: 'Source'|'Target', part_name
-    partRemoved = Signal(str, str)        # side: 'Source'|'Target', part_name
+    sourcePartChanged = Signal(str)  # Source 当前 Part 名称
+    targetPartChanged = Signal(str)  # Target 当前 Part 名称
+    partAdded = Signal(str, str)  # side: 'Source'|'Target', part_name
+    partRemoved = Signal(str, str)  # side: 'Source'|'Target', part_name
     # Part 请求（由面板发起，管理器响应）
-    partAddRequested = Signal(str, str)   # side: 'Source'|'Target'|'src'|'tgt', desired_name
-    partRemoveRequested = Signal(str, str)# side: 'Source'|'Target'|'src'|'tgt', name
+    partAddRequested = Signal(
+        str, str
+    )  # side: 'Source'|'Target'|'src'|'tgt', desired_name
+    partRemoveRequested = Signal(
+        str, str
+    )  # side: 'Source'|'Target'|'src'|'tgt', name
 
     # 批处理相关
     batchStarted = Signal(list)

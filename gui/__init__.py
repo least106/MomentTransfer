@@ -9,7 +9,12 @@ from gui.dialogs import ColumnMappingDialog, ExperimentalDialog
 from gui.batch_thread import BatchProcessThread
 
 # 导出管理器类
-from gui.ui_utils import create_input, create_triple_spin, get_numeric_value, create_vector_row
+from gui.ui_utils import (
+    create_input,
+    create_triple_spin,
+    get_numeric_value,
+    create_vector_row,
+)
 from gui.config_manager import ConfigManager
 from gui.part_manager import PartManager
 from gui.batch_manager import BatchManager
@@ -32,37 +37,38 @@ if _parent_dir not in sys.path:
 __all__ = [
     # UI 组件
     # 'Mpl3DCanvas' - 已改为延迟加载，不在此导出
-    'ColumnMappingDialog',
-    'ExperimentalDialog',
-    'BatchProcessThread',
+    "ColumnMappingDialog",
+    "ExperimentalDialog",
+    "BatchProcessThread",
     # UI 工具函数
-    'create_input',
-    'create_triple_spin',
-    'get_numeric_value',
-    'create_vector_row',
+    "create_input",
+    "create_triple_spin",
+    "get_numeric_value",
+    "create_vector_row",
     # 管理器
-    'ConfigManager',
-    'PartManager',
-    'BatchManager',
-    'VisualizationManager',
-    'LayoutManager',
+    "ConfigManager",
+    "PartManager",
+    "BatchManager",
+    "VisualizationManager",
+    "LayoutManager",
     # 主窗口
-    'IntegratedAeroGUI',
+    "IntegratedAeroGUI",
 ]
+
 
 # 延迟导入 IntegratedAeroGUI 以避免循环导入（改为加载 gui_main.py）
 def __getattr__(name):
     """支持延迟导入 IntegratedAeroGUI（从顶层脚本 gui_main.py 加载）"""
-    if name == 'IntegratedAeroGUI':
+    if name == "IntegratedAeroGUI":
         parent_dir = Path(__file__).parent.parent
         gui_main_path = parent_dir / "gui_main.py"
         if gui_main_path.exists():
-            spec = importlib.util.spec_from_file_location("_gui_main_module", str(gui_main_path))
+            spec = importlib.util.spec_from_file_location(
+                "_gui_main_module", str(gui_main_path)
+            )
             if spec and spec.loader:
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)
-                return getattr(mod, 'IntegratedAeroGUI')
+                return getattr(mod, "IntegratedAeroGUI")
         raise ImportError("Cannot import IntegratedAeroGUI from gui_main.py")
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-

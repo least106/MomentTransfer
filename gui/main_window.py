@@ -8,61 +8,38 @@ MomentTransfer GUI 主窗口模块
 - BatchProcessThread -> gui/batch_thread.py
 - IntegratedAeroGUI -> 保留在此文件（待进一步拆分）
 """
+
 import sys
 import logging
 
-import json
-import numpy as np
-import pandas as pd
-from datetime import datetime
 from pathlib import Path
-import fnmatch
 
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QGroupBox, QFormLayout, QFileDialog,
-    QTextEdit, QMessageBox, QProgressBar, QSplitter, QCheckBox, QSpinBox,
-    QComboBox,
-    QDialog, QDialogButtonBox, QDoubleSpinBox, QScrollArea, QSizePolicy, QGridLayout,
-    QTabWidget
-)
-from PySide6.QtWidgets import QListWidget, QListWidgetItem
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
-from PySide6.QtGui import QFont
-from src.physics import AeroCalculator
-from src.data_loader import ProjectData
-from typing import Optional, List, Tuple
-from src.format_registry import get_format_for_file
-from src.models import ProjectConfigModel, ReferenceValues, CSModel as CSModelAlias, PartVariant as PMPartVariant
+from PySide6.QtCore import QTimer
+from typing import Optional
+from src.models import ProjectConfigModel
 
 # 从模块化包导入组件
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
-from gui.dialogs import ColumnMappingDialog
-from gui.batch_thread import BatchProcessThread
 from gui.log_manager import LoggingManager
 
 # 导入管理器和工具
-from gui.config_manager import ConfigManager
-from gui.part_manager import PartManager
 from gui.signal_bus import SignalBus
-from gui.batch_manager import BatchManager
-from gui.visualization_manager import VisualizationManager
-from gui.layout_manager import LayoutManager
 from gui.initialization_manager import InitializationManager
 from gui.event_manager import EventManager
 from gui.compatibility_manager import CompatibilityManager
 
 # 导入面板组件
-from gui.panels import SourcePanel, TargetPanel, ConfigPanel, OperationPanel
+from gui.panels import ConfigPanel, OperationPanel
 
 logger = logging.getLogger(__name__)
 
 # 主题常量（便于代码中引用）
-THEME_MAIN = '#0078d7'
-THEME_ACCENT = '#28a745'
-THEME_DANGER = '#ff6b6b'
-THEME_BG = '#f7f9fb'
+THEME_MAIN = "#0078d7"
+THEME_ACCENT = "#28a745"
+THEME_DANGER = "#ff6b6b"
+THEME_BG = "#f7f9fb"
 LAYOUT_MARGIN = 12
 LAYOUT_SPACING = 8
 
@@ -73,10 +50,10 @@ class IntegratedAeroGUI(QMainWindow):
         # 基本属性
         self.setWindowTitle("MomentTransfer")
         self.resize(1500, 900)
-        
+
         # 初始化标志
         self._is_initializing = True
-        
+
         # 核心数据
         self.calculator = None
         self.signal_bus = SignalBus.instance()
@@ -100,19 +77,19 @@ class IntegratedAeroGUI(QMainWindow):
         # 常规文件（CSV/Excel 等）：每个文件的“选中数据行索引集合”
         # {str(file_path): set([row_index, ...])}；None 表示默认全选
         self.table_row_selection_by_file = {}
-        
+
         # 管理器占位（将由 InitializationManager 初始化）
         self.config_manager = None
         self.part_manager = None
         self.batch_manager = None
         self.visualization_manager = None
         self.layout_manager = None
-        
+
         # 新管理器
         self.initialization_manager = InitializationManager(self)
         self.event_manager = EventManager(self)
         self.compatibility_manager = CompatibilityManager(self)
-        
+
         # 执行初始化
         self.initialization_manager.setup_ui()
         self.initialization_manager.setup_managers()
@@ -120,16 +97,16 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 启动时默认展示处理日志页面，避免分散用户注意力
         try:
-            bp = getattr(self, 'batch_panel', None)
+            bp = getattr(self, "batch_panel", None)
             if bp is not None:
                 bp.switch_to_log_tab()
         except Exception:
-            logger.debug('启动时切换默认页面到日志页失败', exc_info=True)
-        
+            logger.debug("启动时切换默认页面到日志页失败", exc_info=True)
+
         # 设置兼容性
         self.compatibility_manager.setup_legacy_aliases()
         self.compatibility_manager.handle_legacy_signals()
-        
+
         # 连接信号
         try:
             self._connect_signals()
@@ -139,8 +116,8 @@ class IntegratedAeroGUI(QMainWindow):
     def set_config_panel_visible(self, visible: bool) -> None:
         """按流程显示/隐藏配置编辑器，减少初始化干扰。"""
         try:
-            panel = getattr(self, 'config_panel', None)
-            splitter = getattr(self, 'main_splitter', None)
+            panel = getattr(self, "config_panel", None)
+            splitter = getattr(self, "main_splitter", None)
             if panel is None or splitter is None:
                 return
             panel.setVisible(bool(visible))
@@ -152,7 +129,7 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 pass
         except Exception:
-            logger.debug('set_config_panel_visible failed', exc_info=True)
+            logger.debug("set_config_panel_visible failed", exc_info=True)
 
     def _connect_signals(self):
         """集中信号连接"""
@@ -161,12 +138,12 @@ class IntegratedAeroGUI(QMainWindow):
             self.signal_bus.controlsLocked.connect(self._set_controls_locked)
         except Exception:
             logger.debug("连接 controlsLocked 信号失败", exc_info=True)
-    
+
     # Part 变更封装方法（委托给 PartManager）
     def _on_source_part_changed_wrapper(self):
         if self.part_manager:
             self.part_manager.on_source_part_changed()
-    
+
     def _on_target_part_changed_wrapper(self):
         if self.part_manager:
             self.part_manager.on_target_part_changed()
@@ -174,11 +151,11 @@ class IntegratedAeroGUI(QMainWindow):
     def create_config_panel(self):
         """创建配置编辑器面板（由 InitializationManager 调用）"""
         panel = ConfigPanel(self)
-        
+
         # 保存面板引用
         self.source_panel = panel.source_panel
         self.target_panel = panel.target_panel
-        
+
         return panel
 
     def create_operation_panel(self):
@@ -205,11 +182,12 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self._setup_gui_logging()
         except Exception:
-            logger.debug("_setup_gui_logging failed in create_operation_panel", exc_info=True)
+            logger.debug(
+                "_setup_gui_logging failed in create_operation_panel",
+                exc_info=True,
+            )
 
         return panel
-
-    
 
     # 文件选择方法委托给 BatchManager
     def _select_all_files(self):
@@ -259,7 +237,7 @@ class IntegratedAeroGUI(QMainWindow):
             self.config_manager.apply_config()
             # 应用配置后自动切换到文件列表
             try:
-                if hasattr(self, 'tab_main'):
+                if hasattr(self, "tab_main"):
                     self.tab_main.setCurrentIndex(0)  # 文件列表在第0个Tab
             except Exception:
                 pass
@@ -282,11 +260,10 @@ class IntegratedAeroGUI(QMainWindow):
             )
         except Exception:
             pass
-    
+
     def update_config_preview(self):
         # 兼容保留：全局格式摘要已移除
         return
-
 
     def browse_batch_input(self):
         """选择输入文件或目录 - 委托给 BatchManager"""
@@ -302,14 +279,18 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.batch_manager.scan_and_populate_files(chosen_path)
         except Exception:
-            logger.debug("_scan_and_populate_files delegated call failed", exc_info=True)
+            logger.debug(
+                "_scan_and_populate_files delegated call failed", exc_info=True
+            )
 
     def _on_pattern_changed(self):
         """当匹配模式改变时刷新文件列表（委托给 BatchManager）。"""
         try:
             self.batch_manager.on_pattern_changed()
         except Exception:
-            logger.debug("_on_pattern_changed delegated call failed", exc_info=True)
+            logger.debug(
+                "_on_pattern_changed delegated call failed", exc_info=True
+            )
 
     def _determine_format_source(self, fp: Path):
         """判断单个文件的格式来源（委托给 BatchManager）。"""
@@ -323,15 +304,16 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             return self.batch_manager._format_label_from(src, src_path)
         except Exception:
-            return ("unknown", "", '#dc3545')
+            return ("unknown", "", "#dc3545")
 
     def _refresh_format_labels(self):
         """刷新文件列表的来源标签（委托给 BatchManager）。"""
         try:
             self.batch_manager.refresh_format_labels()
         except Exception:
-            logger.debug("_refresh_format_labels delegated call failed", exc_info=True)
-
+            logger.debug(
+                "_refresh_format_labels delegated call failed", exc_info=True
+            )
 
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""
@@ -360,18 +342,23 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception as e:
             logger.error(f"处理批处理错误事件失败: {e}")
             try:
-                if hasattr(self, 'btn_cancel'):
+                if hasattr(self, "btn_cancel"):
                     self.btn_cancel.setVisible(False)
                     self.btn_cancel.setEnabled(False)
             except Exception:
-                logger.debug("Failed to hide/disable cancel button after error", exc_info=True)
+                logger.debug(
+                    "Failed to hide/disable cancel button after error",
+                    exc_info=True,
+                )
 
         # 友好的错误提示，包含可行建议
         try:
             dlg = QMessageBox(self)
             dlg.setIcon(QMessageBox.Critical)
             dlg.setWindowTitle("处理失败")
-            dlg.setText("批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。")
+            dlg.setText(
+                "批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。"
+            )
             dlg.setInformativeText(
                 "建议：检查 per-file 格式定义（<文件名>.format.json / 同目录 format.json / registry），"
                 "以及 Target 配置中的 MomentCenter/Q/S。"
@@ -382,6 +369,7 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("无法显示错误对话框", exc_info=True)
 
     BUTTON_LAYOUT_THRESHOLD = 720
+
     def update_button_layout(self, threshold=None):
         """根据窗口宽度在网格中切换按钮位置 - 委托给 LayoutManager"""
         try:
@@ -394,19 +382,19 @@ class IntegratedAeroGUI(QMainWindow):
     # 事件处理方法委托给 EventManager
     def resizeEvent(self, event):
         """窗口大小改变事件"""
-        if hasattr(self, 'event_manager') and self.event_manager:
+        if hasattr(self, "event_manager") and self.event_manager:
             self.event_manager.on_resize_event(event)
         return super().resizeEvent(event)
 
     def showEvent(self, event):
         """在窗口首次显示后触发初始化"""
-        if hasattr(self, 'event_manager') and self.event_manager:
+        if hasattr(self, "event_manager") and self.event_manager:
             self.event_manager.on_show_event(event)
         return super().showEvent(event)
-    
+
     def closeEvent(self, event):
         """处理窗口关闭事件"""
-        if hasattr(self, 'event_manager') and self.event_manager:
+        if hasattr(self, "event_manager") and self.event_manager:
             self.event_manager.on_close_event(event)
         return super().closeEvent(event)
 
@@ -427,9 +415,13 @@ class IntegratedAeroGUI(QMainWindow):
                 cw.layout().activate()
             try:
                 from PySide6.QtWidgets import QApplication
+
                 QApplication.processEvents()
             except Exception:
-                logger.debug("QApplication.processEvents failed in _force_layout_refresh", exc_info=True)
+                logger.debug(
+                    "QApplication.processEvents failed in _force_layout_refresh",
+                    exc_info=True,
+                )
 
             # --- Qt 布局刷新 hack ---
             # 微调窗口宽度 (+2 然后恢复) 以触发底层布局引擎重新布局。
@@ -452,12 +444,19 @@ class IntegratedAeroGUI(QMainWindow):
                 # 触发按钮布局更新和一次强制刷新
                 self.update_button_layout()
             except Exception:
-                logger.debug("update_button_layout failed in _refresh_layouts", exc_info=True)
+                logger.debug(
+                    "update_button_layout failed in _refresh_layouts",
+                    exc_info=True,
+                )
             try:
                 from PySide6.QtWidgets import QApplication
+
                 QApplication.processEvents()
             except Exception:
-                logger.debug("QApplication.processEvents failed in _refresh_layouts", exc_info=True)
+                logger.debug(
+                    "QApplication.processEvents failed in _refresh_layouts",
+                    exc_info=True,
+                )
             # 轻微调整 splitter 大小以促使 Qt 重新布局（仅在必要时）
             try:
                 s = self.findChild(QSplitter)
@@ -465,7 +464,10 @@ class IntegratedAeroGUI(QMainWindow):
                     sizes = s.sizes()
                     s.setSizes(sizes)
             except Exception:
-                logger.debug("Splitter resize refresh failed in _refresh_layouts", exc_info=True)
+                logger.debug(
+                    "Splitter resize refresh failed in _refresh_layouts",
+                    exc_info=True,
+                )
         except Exception:
             logger.debug("_refresh_layouts failed", exc_info=True)
 
@@ -473,7 +475,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _add_source_part(self):
         """添加 Source Part - 委托给 PartManager，移除旧 fallback。"""
-        if getattr(self, '_is_initializing', False):
+        if getattr(self, "_is_initializing", False):
             return
         try:
             self.part_manager.add_source_part()
@@ -482,7 +484,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _remove_source_part(self):
         """删除当前 Source Part - 委托给 PartManager，移除旧 fallback。"""
-        if getattr(self, '_is_initializing', False):
+        if getattr(self, "_is_initializing", False):
             return
         try:
             self.part_manager.remove_source_part()
@@ -491,7 +493,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _add_target_part(self):
         """添加 Target Part - 委托给 PartManager，移除旧 fallback。"""
-        if getattr(self, '_is_initializing', False):
+        if getattr(self, "_is_initializing", False):
             return
         try:
             self.part_manager.add_target_part()
@@ -500,7 +502,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _remove_target_part(self):
         """删除当前 Target Part - 委托给 PartManager，移除旧 fallback。"""
-        if getattr(self, '_is_initializing', False):
+        if getattr(self, "_is_initializing", False):
             return
         try:
             self.part_manager.remove_target_part()
@@ -509,14 +511,14 @@ class IntegratedAeroGUI(QMainWindow):
 
     def _on_src_partname_changed(self, new_text: str):
         """Part Name 文本框变化 - 委托给 PartManager"""
-        if getattr(self, '_is_initializing', False):
+        if getattr(self, "_is_initializing", False):
             return
         if self.part_manager:
             self.part_manager.on_source_part_name_changed(new_text)
 
     def _on_tgt_partname_changed(self, new_text: str):
         """Part Name 文本框变化 - 委托给 PartManager"""
-        if getattr(self, '_is_initializing', False):
+        if getattr(self, "_is_initializing", False):
             return
         if self.part_manager:
             self.part_manager.on_target_part_name_changed(new_text)
@@ -536,7 +538,9 @@ class IntegratedAeroGUI(QMainWindow):
             logging_manager = LoggingManager(self)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
+            logger.debug(
+                f"GUI logging setup failed (non-fatal): {e}", exc_info=True
+            )
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
@@ -544,17 +548,17 @@ class IntegratedAeroGUI(QMainWindow):
         locked=True 时禁用；locked=False 时恢复。此方法尽量保持幂等并静默忽略缺失控件。
         """
         widgets = [
-            getattr(self, 'btn_load', None),
-            getattr(self, 'btn_save', None),
-            getattr(self, 'btn_apply', None),
-            getattr(self, 'btn_config_format', None),
-            getattr(self, 'btn_registry_register', None),
-            getattr(self, 'btn_registry_edit', None),
-            getattr(self, 'btn_registry_remove', None),
-            getattr(self, 'btn_batch', None),
-            getattr(self, 'inp_registry_db', None),
-            getattr(self, 'inp_registry_pattern', None),
-            getattr(self, 'inp_registry_format', None),
+            getattr(self, "btn_load", None),
+            getattr(self, "btn_save", None),
+            getattr(self, "btn_apply", None),
+            getattr(self, "btn_config_format", None),
+            getattr(self, "btn_registry_register", None),
+            getattr(self, "btn_registry_edit", None),
+            getattr(self, "btn_registry_remove", None),
+            getattr(self, "btn_batch", None),
+            getattr(self, "inp_registry_db", None),
+            getattr(self, "inp_registry_pattern", None),
+            getattr(self, "inp_registry_format", None),
         ]
         for w in widgets:
             try:
@@ -565,7 +569,7 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 取消按钮在锁定时仍应保持可见/可用以提供取消能力
         try:
-            if hasattr(self, 'btn_cancel'):
+            if hasattr(self, "btn_cancel"):
                 # 当 locked=True 时显示取消按钮并保持启用；当 locked=False 时隐藏
                 if locked:
                     self.btn_cancel.setVisible(True)
@@ -574,13 +578,16 @@ class IntegratedAeroGUI(QMainWindow):
                     self.btn_cancel.setVisible(False)
                     self.btn_cancel.setEnabled(False)
         except Exception:
-            logger.debug("Failed to set btn_cancel visibility/state in _set_controls_locked", exc_info=True)
+            logger.debug(
+                "Failed to set btn_cancel visibility/state in _set_controls_locked",
+                exc_info=True,
+            )
 
 
 def _initialize_exception_hook():
     """设置初始化期间的异常钩子，用于在初始化期间阻止异常弹窗"""
     original_excepthook = sys.excepthook
-    
+
     def custom_excepthook(exc_type, exc_value, traceback_obj):
         """在初始化期间，仅记录异常而不显示弹窗"""
         # 获取当前正在执行的主窗口实例（如果存在）
@@ -589,38 +596,41 @@ def _initialize_exception_hook():
             if isinstance(obj, IntegratedAeroGUI):
                 main_window = obj
                 break
-        
+
         # 如果主窗口正在初始化，记录异常但不显示弹窗
-        if main_window and getattr(main_window, '_is_initializing', False):
-            logger.debug(f"初始化期间捕获异常（被抑制）: {exc_type.__name__}: {exc_value}")
+        if main_window and getattr(main_window, "_is_initializing", False):
+            logger.debug(
+                f"初始化期间捕获异常（被抑制）: {exc_type.__name__}: {exc_value}"
+            )
             return
-        
+
         # 否则使用原始钩子显示异常
         original_excepthook(exc_type, exc_value, traceback_obj)
-    
+
     sys.excepthook = custom_excepthook
 
 
 def main():
     # 设置初始化异常钩子
     _initialize_exception_hook()
-    
+
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')
+    app.setStyle("Fusion")
     # 设置统一字体与样式表（styles.qss）以实现统一主题与可维护的样式
     try:
         from PySide6.QtGui import QFont
-        app.setFont(QFont('Segoe UI', 10))
+
+        app.setFont(QFont("Segoe UI", 10))
     except Exception:
         pass
     try:
         # main_window 位于 gui/ 下，样式文件在仓库根目录
-        qss_path = Path(__file__).resolve().parent.parent / 'styles.qss'
+        qss_path = Path(__file__).resolve().parent.parent / "styles.qss"
         if qss_path.exists():
-            with open(qss_path, 'r', encoding='utf-8') as fh:
+            with open(qss_path, "r", encoding="utf-8") as fh:
                 app.setStyleSheet(fh.read())
     except Exception:
-        logger.debug('加载 styles.qss 失败（忽略）', exc_info=True)
+        logger.debug("加载 styles.qss 失败（忽略）", exc_info=True)
     window = IntegratedAeroGUI()
     window.show()
     sys.exit(app.exec())

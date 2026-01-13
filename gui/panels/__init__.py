@@ -10,10 +10,10 @@ from .config_panel import ConfigPanel
 from .operation_panel import OperationPanel
 
 __all__ = [
-    'CoordinateSystemPanel',
-    'SourcePanel',
-    'TargetPanel',
-    'BatchPanel',
-    'ConfigPanel',
-    'OperationPanel',
+    "CoordinateSystemPanel",
+    "SourcePanel",
+    "TargetPanel",
+    "BatchPanel",
+    "ConfigPanel",
+    "OperationPanel",
 ]

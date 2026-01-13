@@ -1,9 +1,14 @@
 """
 配置编辑器面板 - 汇总 Source/Target 坐标配置与加载/保存/应用按钮。
 """
+
 import logging
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
 )
 from PySide6.QtCore import Signal
 
@@ -32,7 +37,7 @@ class ConfigPanel(QWidget):
 
         title = QLabel("配置编辑器")
         try:
-            title.setObjectName('panelTitle')
+            title.setObjectName("panelTitle")
         except Exception:
             pass
         main_layout.addWidget(title)
@@ -55,9 +60,9 @@ class ConfigPanel(QWidget):
         self.btn_save = QPushButton("保存配置", btn_widget)
         self.btn_save.setFixedHeight(40)
         try:
-            self.btn_save.setObjectName('primaryButton')
-            self.btn_save.setToolTip('将当前配置保存到磁盘 (Ctrl+S)')
-            self.btn_save.setShortcut('Ctrl+S')
+            self.btn_save.setObjectName("primaryButton")
+            self.btn_save.setToolTip("将当前配置保存到磁盘 (Ctrl+S)")
+            self.btn_save.setShortcut("Ctrl+S")
         except Exception:
             pass
         self.btn_save.clicked.connect(self.saveRequested.emit)
@@ -65,9 +70,11 @@ class ConfigPanel(QWidget):
         self.btn_apply = QPushButton("应用配置", btn_widget)
         self.btn_apply.setFixedHeight(40)
         try:
-            self.btn_apply.setObjectName('primaryButton')
-            self.btn_apply.setShortcut('Ctrl+R')
-            self.btn_apply.setToolTip('应用当前配置并初始化计算器 (Ctrl+Enter)')
+            self.btn_apply.setObjectName("primaryButton")
+            self.btn_apply.setShortcut("Ctrl+R")
+            self.btn_apply.setToolTip(
+                "应用当前配置并初始化计算器 (Ctrl+Enter)"
+            )
         except Exception:
             pass
         self.btn_apply.clicked.connect(self.applyRequested.emit)
