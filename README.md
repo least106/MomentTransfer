@@ -54,7 +54,7 @@ print(res['coeff_force'])
 
 1. **克隆仓库**
 ```bash
-git clone https://github.com/YOUR_USERNAME/MomentTransfer.git
+git clone https://github.com/least106/MomentTransfer.git
 cd MomentTransfer
 ```
 
@@ -66,8 +66,7 @@ conda activate mt
 
 3. **安装依赖**
 ```bash
-# 使用清华镜像源加速（国内推荐）
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -r requirements.txt
 ```
 
 ### 运行示例
@@ -270,10 +269,10 @@ pytest tests/test_cli_click.py::test_cli_structure -v
 # 使用 Anaconda 创建开发环境
 conda create -n mt python=3.8
 conda activate mt
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -r requirements.txt
 
 # 安装开发依赖
-pip install pytest pytest-cov black pylint -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install pytest pytest-cov black pylint
 ```
 
 ### 代码风格检查
@@ -346,10 +345,10 @@ python batch.py process --workers 8 --input-dir ./data/input --output-dir ./data
 某些高级功能可选安装额外依赖：
 ```bash
 # 安装 GUI 相关依赖
-pip install PySide6 matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install PySide6 matplotlib
 
 # 安装数据导出依赖
-pip install openpyxl xlsxwriter -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install openpyxl xlsxwriter
 ```
 
 ## 性能考虑
