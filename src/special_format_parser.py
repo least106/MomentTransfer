@@ -8,7 +8,7 @@
     则仅在存在“同名 Target part”时才允许处理该块。
 """
 
-# pylint: disable=wrong-import-position,too-many-arguments,too-many-locals,too-many-statements,too-many-branches,too-many-return-statements,redefined-outer-name,R0913,R0914,R0915
+# pylint: disable=wrong-import-position
 
 import logging
 import re
@@ -24,6 +24,7 @@ if str(_ROOT) not in sys.path:
 # 放置在 sys.path 调整之后但在其它代码之前的顶级导入
 from datetime import datetime  # noqa: E402
 from typing import Dict, List, Optional  # noqa: E402
+from dataclasses import dataclass
 
 import pandas as pd  # noqa: E402
 
@@ -31,7 +32,6 @@ from src.physics import AeroCalculator  # noqa: E402
 
 logger = logging.getLogger(__name__)
 # 在调整 sys.path 后才导入本地模块，允许导入位置非顶层的检查
-# pylint: disable=wrong-import-position
 
 # 推荐扩展名：MomentTransfer 专用批处理格式
 RECOMMENDED_EXT = ".mtfmt"
@@ -258,6 +258,42 @@ def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
     return mapping
 
 
+def _tokens_looks_like_header(tokens: List[str]) -> bool:
+    """判断一组 token 是否像表头（包含 Alpha/CL/CD/Cm/Cx/Cy/Cz 等关键词）。"""
+    if not tokens:
+        return False
+    header_keywords = ["Alpha", "CL", "CD", "Cm", "Cx", "Cy", "Cz"]
+    hk_lower = [h.lower() for h in header_keywords]
+    for t in tokens:
+        tl = t.lower()
+        if any(h in tl for h in hk_lower):
+            return True
+    return False
+
+
+def _finalize_part(current_part, current_header, current_data, result: Dict[str, pd.DataFrame]):
+    """将当前累积的数据转换为 DataFrame 并加入 result（若数据存在）。"""
+    if not (current_part and current_header and current_data):
+        return
+    try:
+        df = pd.DataFrame(current_data, columns=current_header)
+        col_map = _normalize_column_mapping(list(df.columns))
+        df = df.rename(columns=col_map)
+        for col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            except Exception:  # pylint: disable=broad-except
+                logger.debug(
+                    "列 %s 转换为数值失败，保留原始值",
+                    col,
+                    exc_info=True,
+                )
+        result[current_part] = df
+        logger.info("解析 part '%s': %d 行数据", current_part, len(df))
+    except ValueError as e:
+        logger.warning("创建 DataFrame 失败 (part=%s): %s", current_part, e)
+
+
 def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     """
     解析特殊格式文件，返回 {part_name: DataFrame} 字典
@@ -268,8 +304,8 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     Returns:
         字典，键为 part 名称，值为对应的 DataFrame
     """
-    # 该函数实现相对复杂，包含多分支与早期返回，添加 pylint 规则忽略以便逐步改进
-    # pylint: disable=R0915,R0912,R0914,R0911,R1702
+    # 该函数实现相对复杂，包含多分支与早期返回；暂保留对过多语句的忽略，后续分步重构
+    # pylint: disable=R0915  # 待重构：逐步拆分此函数以移除此项
     lines = _read_text_file_lines(file_path)
 
     result = {}
@@ -295,31 +331,7 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
         next_line = lines[i + 1].strip() if i + 1 < len(lines) else None
         if is_part_name_line(line, next_line):
             # 保存上一个 part 的数据
-            if current_part and current_header and current_data:
-                try:
-                    df = pd.DataFrame(current_data, columns=current_header)
-                    # 规范列名映射，接受常见变体
-                    col_map = _normalize_column_mapping(list(df.columns))
-                    df = df.rename(columns=col_map)
-                    # 转换数值列（使用 errors='coerce' 以避免异常）
-                    for col in df.columns:
-                        try:
-                            df[col] = pd.to_numeric(df[col], errors="coerce")
-                        except Exception:  # pylint: disable=broad-except
-                            # 忽略无法转换的列，保留原始内容；如需调试可开启 logger.debug
-                            logger.debug(
-                                "列 %s 转换为数值失败，保留原始值",
-                                col,
-                                exc_info=True,
-                            )
-                    result[current_part] = df
-                    logger.info(
-                        "解析 part '%s': %d 行数据", current_part, len(df)
-                    )
-                except ValueError as e:
-                    logger.warning(
-                        "创建 DataFrame 失败 (part=%s): %s", current_part, e
-                    )
+            _finalize_part(current_part, current_header, current_data, result)
 
             # 开始新的 part
             current_part = line
@@ -331,9 +343,7 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
         # 检查是否为表头行（包含 Alpha, CL 等关键词）
         if current_part and not current_header:
             tokens = line.split()
-            header_keywords = ["Alpha", "CL", "CD", "Cm", "Cx", "Cy", "Cz"]
-            hk_lower = [h.lower() for h in header_keywords]
-            if any(any(h in t.lower() for h in hk_lower) for t in tokens):
+            if _tokens_looks_like_header(tokens):
                 current_header = tokens
                 i += 1
                 continue
@@ -356,32 +366,308 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
         i += 1
 
     # 保存最后一个 part 的数据
-    if current_part and current_header and current_data:
-        try:
-            df = pd.DataFrame(current_data, columns=current_header)
-            # 规范列名映射，接受常见变体
-            col_map = _normalize_column_mapping(list(df.columns))
-            df = df.rename(columns=col_map)
-            for col in df.columns:
-                try:
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
-                except Exception:  # pylint: disable=broad-except
-                    logger.debug(
-                        "列 %s 转换为数值失败，保留原始值", col, exc_info=True
-                    )
-            result[current_part] = df
-            logger.info("解析 part '%s': %d 行数据", current_part, len(df))
-        except ValueError as e:
-            logger.warning(
-                "创建 DataFrame 失败 (part=%s): %s", current_part, e
-            )
+    _finalize_part(current_part, current_header, current_data, result)
 
     return result
 
 
 # 复杂函数；允许过多参数/局部变量/语句，待后续重构
 # 模块层面临时允许复杂度告警，后续应重构以移除这些忽略
-# pylint: disable=R0913,R0914,R0915
+# pylint: disable=R0913,R0914,R0915,R0912,R0911  # internal helper: 大型函数/实现，计划拆分以移除禁用
+def _process_single_part(
+    part_name,
+    df,
+    file_path,
+    project_data,
+    output_dir,
+    part_target_mapping=None,
+    part_row_selection=None,
+    timestamp_format="%Y%m%d_%H%M%S",
+    overwrite=False,
+):
+    """模块级：处理单个 part 的完整实现，返回 (out_path or None, report_entry dict)。
+
+    该函数从原先内联实现提取，便于单元测试与重构。
+    """
+    source_part = part_name
+
+    # 行选择：默认处理全部；若提供 selection，则仅处理选中的索引
+    try:
+        selected = None
+        if isinstance(part_row_selection, dict):
+            selected = part_row_selection.get(part_name)
+        if selected is not None:
+            selected_idx = sorted({int(x) for x in selected})
+            df = df.iloc[selected_idx]
+    except Exception:  # pylint: disable=broad-except
+        # 容错：行选择的来源可能包含不可预期的值，回退到全量处理并记录异常上下文
+        logger.debug(
+            "按行过滤失败，回退为全量处理 (part=%s)",
+            part_name,
+            exc_info=True,
+        )
+
+    if df is None or len(df) == 0:
+        msg = f"part '{part_name}' 未选择任何数据行，已跳过"
+        logger.warning(msg)
+        return None, {
+            "part": part_name,
+            "source_part": source_part,
+            "target_part": (part_target_mapping or {}).get(part_name) or None,
+            "status": "skipped",
+            "reason": "no_rows_selected",
+            "message": msg,
+        }
+
+    # Target part：优先映射；若未提供映射或未映射，则仅允许同名 Target part（由后续校验决定）
+    target_part = None
+    explicit_mapping_used = False
+    try:
+        if isinstance(part_target_mapping, dict) and part_target_mapping.get(part_name):
+            target_part = part_target_mapping.get(part_name)
+            explicit_mapping_used = True
+        else:
+            target_part = part_name
+    except Exception:  # pylint: disable=broad-except
+        # 容错：映射结构异常时回退为同名 target
+        target_part = part_name
+
+    # 校验 source/target part 是否存在
+    if project_data is not None:
+        if hasattr(project_data, "source_parts"):
+            if source_part not in (getattr(project_data, "source_parts", {}) or {}):
+                msg = f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
+                logger.warning(msg)
+                return None, {
+                    "part": part_name,
+                    "source_part": source_part,
+                    "target_part": target_part,
+                    "status": "skipped",
+                    "reason": "source_missing",
+                    "message": msg,
+                }
+
+        if hasattr(project_data, "target_parts"):
+            target_parts = getattr(project_data, "target_parts", {}) or {}
+            if target_part not in target_parts:
+                if explicit_mapping_used:
+                    msg = f"目标配置中不存在 Target part '{target_part}'，已跳过该块"
+                    reason = "target_missing"
+                else:
+                    msg = (
+                        f"part '{part_name}' 未提供 Target 映射，且不存在同名 "
+                        f"Target part '{target_part}'，已跳过该块"
+                    )
+                    reason = "target_not_mapped"
+                logger.warning(msg)
+                return None, {
+                    "part": part_name,
+                    "source_part": source_part,
+                    "target_part": target_part,
+                    "status": "skipped",
+                    "reason": reason,
+                    "message": msg,
+                }
+
+    required_cols = ["Cx", "Cy", "Cz/FN", "CMx", "CMy", "CMz"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        msg = f"part '{part_name}' 缺少必需列 {missing}，已跳过"
+        logger.warning(msg)
+        return None, {
+            "part": part_name,
+            "status": "skipped",
+            "reason": "missing_columns",
+            "message": msg,
+            "missing": missing,
+        }
+
+    try:
+        cx = pd.to_numeric(df["Cx"], errors="coerce")
+        cy = pd.to_numeric(df["Cy"], errors="coerce")
+        cz = pd.to_numeric(df["Cz/FN"], errors="coerce")
+        cmx = pd.to_numeric(df["CMx"], errors="coerce")
+        cmy = pd.to_numeric(df["CMy"], errors="coerce")
+        cmz = pd.to_numeric(df["CMz"], errors="coerce")
+    except Exception as e:  # pylint: disable=broad-except
+        # 容错：数值转换可能因列缺失或格式异常失败，记录并返回失败状态
+        msg = f"part '{part_name}' 数值转换失败: {e}"
+        logger.warning(msg)
+        return None, {
+            "part": part_name,
+            "status": "failed",
+            "reason": "numeric_conversion_failed",
+            "message": msg,
+            "error": str(e),
+        }
+
+    forces = pd.concat([cx, cy, cz], axis=1).to_numpy()
+    moments = pd.concat([cmx, cmy, cmz], axis=1).to_numpy()
+
+    try:
+        if project_data is None:
+            msg = f"缺少 ProjectData，无法为 part '{part_name}' 构建 AeroCalculator，已跳过"
+            logger.warning(msg)
+            return None, {
+                "part": part_name,
+                "status": "skipped",
+                "reason": "no_project_data",
+                "message": msg,
+            }
+        calc = AeroCalculator(project_data, source_part=source_part, target_part=target_part)
+        results = calc.process_batch(forces, moments)
+    except Exception as e:  # pylint: disable=broad-except
+        # 容错：处理阶段捕获所有异常以避免批处理整体失败，记录详细上下文
+        msg = f"part '{part_name}' 处理失败: {e}"
+        logger.warning(msg, exc_info=True)
+        return None, {
+            "part": part_name,
+            "source_part": source_part,
+            "target_part": target_part,
+            "status": "failed",
+            "reason": "processing_failed",
+            "message": msg,
+            "error": str(e),
+        }
+
+    out_df = df.copy()
+    out_df["Fx_new"] = results["force_transformed"][:, 0]
+    out_df["Fy_new"] = results["force_transformed"][:, 1]
+    out_df["Fz_new"] = results["force_transformed"][:, 2]
+    out_df["Mx_new"] = results["moment_transformed"][:, 0]
+    out_df["My_new"] = results["moment_transformed"][:, 1]
+    out_df["Mz_new"] = results["moment_transformed"][:, 2]
+    out_df["Cx_new"] = results["coeff_force"][:, 0]
+    out_df["Cy_new"] = results["coeff_force"][:, 1]
+    out_df["Cz_new"] = results["coeff_force"][:, 2]
+    out_df["Cl_new"] = results["coeff_moment"][:, 0]
+    out_df["Cm_new"] = results["coeff_moment"][:, 1]
+    out_df["Cn_new"] = results["coeff_moment"][:, 2]
+
+    ts = datetime.now().strftime(timestamp_format)
+    out_path = output_dir / f"{file_path.stem}_{part_name}_result_{ts}.csv"
+    if out_path.exists() and not overwrite:
+        suffix = 1
+        while True:
+            candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+            if not candidate.exists():
+                out_path = candidate
+                break
+            suffix += 1
+
+    out_df.to_csv(out_path, index=False)
+    msg = f"part '{part_name}' 输出: {out_path.name}"
+    logger.info(msg)
+    return out_path, {
+        "part": part_name,
+        "source_part": source_part,
+        "target_part": target_part,
+        "status": "success",
+        "message": msg,
+        "out_path": str(out_path),
+    }
+
+
+def _make_handle_single_part(
+    file_path: Path,
+    project_data,
+    output_dir: Path,
+    part_target_mapping: dict = None,
+    part_row_selection: dict = None,
+    timestamp_format: str = "%Y%m%d_%H%M%S",
+    overwrite: bool = False,
+):
+    """返回一个可调用对象，用于按 (part_name, df) 处理单个 part。
+
+    通过将上下文捕获到闭包中，避免在 `process_special_format_file` 中保留过多局部变量。
+    """
+
+    def _handle(part_name: str, df: pd.DataFrame):
+        return _process_single_part(
+            part_name,
+            df,
+            file_path,
+            project_data,
+            output_dir,
+            part_target_mapping,
+            part_row_selection,
+            timestamp_format,
+            overwrite,
+        )
+
+    return _handle
+
+
+def _summarize_report(report: List[dict]):
+    """汇总 report 列表，返回 (total, success_count, skipped_count, failed_count)。"""
+    total = len(report)
+    success_count = sum(1 for r in report if r.get("status") == "success")
+    skipped_count = sum(1 for r in report if r.get("status") == "skipped")
+    failed_count = sum(1 for r in report if r.get("status") == "failed")
+    return total, success_count, skipped_count, failed_count
+
+
+def _process_parts(handle, data_dict: Dict[str, pd.DataFrame]):
+    """处理多个 part，返回 (outputs, report)。"""
+    outputs: List[Path] = []
+    report: List[dict] = []
+    for part_name, df in data_dict.items():
+        out_path, entry = handle(part_name, df)
+        if out_path:
+            outputs.append(out_path)
+        report.append(entry)
+    return outputs, report
+
+
+@dataclass
+class ProcessOptions:
+    """封装 `process_special_format_file` 的可选参数以便内部传递。"""
+
+    part_target_mapping: Optional[dict] = None
+    part_row_selection: Optional[dict] = None
+    timestamp_format: str = "%Y%m%d_%H%M%S"
+    overwrite: bool = False
+
+
+def _process_special_format_file_core(
+    file_path: Path,
+    project_data,
+    output_dir: Path,
+    options: ProcessOptions,
+    return_report: bool = False,
+):
+    """核心实现：接收打包好的 `options`，减少参数个数以满足静态分析。
+
+    该函数不改变对外行为，所有参数由外层包装器按原有签名传入并封装为 `options`。
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 使用模块级工厂创建处理器，减少本函数的局部变量数量
+    handle = _make_handle_single_part(
+        file_path,
+        project_data,
+        output_dir,
+        part_target_mapping=options.part_target_mapping,
+        part_row_selection=options.part_row_selection,
+        timestamp_format=options.timestamp_format,
+        overwrite=options.overwrite,
+    )
+
+    data_dict = parse_special_format_file(file_path)
+    outputs, report = _process_parts(handle, data_dict)
+
+    # 汇总日志（直接在调用处展开，避免创建多个局部变量）
+    logger.info(
+        "文件 %s 处理完成：%d 个 part（%d 成功，%d 跳过，%d 失败）",
+        file_path.name,
+        *_summarize_report(report),
+    )
+
+    if return_report:
+        return outputs, report
+
+    return outputs
 def process_special_format_file(
     file_path: Path,
     project_data,
@@ -394,7 +680,7 @@ def process_special_format_file(
     return_report: bool = False,
 ) -> List[
     Path
-]:  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches
+]:
     """直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
 
     约定：
@@ -403,226 +689,16 @@ def process_special_format_file(
     - 可选参数 `part_row_selection` 支持按 part 过滤行：仅处理被选择的行索引集合。
     - 当前假定列名包含 `Cx`, `Cy`, `Cz/FN`, `CMx`, `CMy`, `CMz`。
     """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 函数复杂度较高（参数较多/局部变量众多/语句多），添加 pylint 忽略以逐步重构
-    # pylint: disable=R0915,R0914,R0913,R0912
-    # 为了降低单函数复杂度，将单个 part 的处理抽取到独立函数
-    def _handle_single_part(part_name: str, df: pd.DataFrame):
-        """处理单个 part，返回 (out_path or None, report_entry dict)."""
-        # 特殊格式约定：part_name 一律视为 Source part
-        source_part = part_name
-
-        # 行选择：默认处理全部；若提供 selection，则仅处理选中的索引
-        try:
-            selected = None
-            if isinstance(part_row_selection, dict):
-                selected = part_row_selection.get(part_name)
-            if selected is not None:
-                selected_idx = sorted({int(x) for x in selected})
-                df = df.iloc[selected_idx]
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.debug(
-                "按行过滤失败，回退为全量处理 (part=%s)",
-                part_name,
-                exc_info=True,
-            )
-
-        if df is None or len(df) == 0:
-            msg = f"part '{part_name}' 未选择任何数据行，已跳过"
-            logger.warning(msg)
-            return None, {
-                "part": part_name,
-                "source_part": source_part,
-                "target_part": (part_target_mapping or {}).get(part_name)
-                or None,
-                "status": "skipped",
-                "reason": "no_rows_selected",
-                "message": msg,
-            }
-
-        # Target part：优先映射；若未提供映射或未映射，则仅允许同名 Target part（由后续校验决定）
-        target_part = None
-        explicit_mapping_used = False
-        try:
-            if isinstance(
-                part_target_mapping, dict
-            ) and part_target_mapping.get(part_name):
-                target_part = part_target_mapping.get(part_name)
-                explicit_mapping_used = True
-            else:
-                target_part = part_name
-        except Exception:  # pylint: disable=broad-exception-caught
-            target_part = part_name
-
-        # 校验 source/target part 是否存在
-        if project_data is not None:
-            if hasattr(project_data, "source_parts"):
-                if source_part not in (
-                    getattr(project_data, "source_parts", {}) or {}
-                ):
-                    msg = f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
-                    logger.warning(msg)
-                    return None, {
-                        "part": part_name,
-                        "source_part": source_part,
-                        "target_part": target_part,
-                        "status": "skipped",
-                        "reason": "source_missing",
-                        "message": msg,
-                    }
-
-            if hasattr(project_data, "target_parts"):
-                target_parts = getattr(project_data, "target_parts", {}) or {}
-                if target_part not in target_parts:
-                    if explicit_mapping_used:
-                        msg = f"目标配置中不存在 Target part '{target_part}'，已跳过该块"
-                        reason = "target_missing"
-                    else:
-                        msg = (
-                            f"part '{part_name}' 未提供 Target 映射，且不存在同名 "
-                            f"Target part '{target_part}'，已跳过该块"
-                        )
-                        reason = "target_not_mapped"
-                    logger.warning(msg)
-                    return None, {
-                        "part": part_name,
-                        "source_part": source_part,
-                        "target_part": target_part,
-                        "status": "skipped",
-                        "reason": reason,
-                        "message": msg,
-                    }
-
-        required_cols = ["Cx", "Cy", "Cz/FN", "CMx", "CMy", "CMz"]
-        missing = [c for c in required_cols if c not in df.columns]
-        if missing:
-            msg = f"part '{part_name}' 缺少必需列 {missing}，已跳过"
-            logger.warning(msg)
-            return None, {
-                "part": part_name,
-                "status": "skipped",
-                "reason": "missing_columns",
-                "message": msg,
-                "missing": missing,
-            }
-
-        try:
-            cx = pd.to_numeric(df["Cx"], errors="coerce")
-            cy = pd.to_numeric(df["Cy"], errors="coerce")
-            cz = pd.to_numeric(df["Cz/FN"], errors="coerce")
-            cmx = pd.to_numeric(df["CMx"], errors="coerce")
-            cmy = pd.to_numeric(df["CMy"], errors="coerce")
-            cmz = pd.to_numeric(df["CMz"], errors="coerce")
-        except Exception as e:  # pylint: disable=broad-except
-            msg = f"part '{part_name}' 数值转换失败: {e}"
-            logger.warning(msg)
-            return None, {
-                "part": part_name,
-                "status": "failed",
-                "reason": "numeric_conversion_failed",
-                "message": msg,
-                "error": str(e),
-            }
-
-        forces = pd.concat([cx, cy, cz], axis=1).to_numpy()
-        moments = pd.concat([cmx, cmy, cmz], axis=1).to_numpy()
-
-        try:
-            if project_data is None:
-                msg = f"缺少 ProjectData，无法为 part '{part_name}' 构建 AeroCalculator，已跳过"
-                logger.warning(msg)
-                return None, {
-                    "part": part_name,
-                    "status": "skipped",
-                    "reason": "no_project_data",
-                    "message": msg,
-                }
-            calc = AeroCalculator(
-                project_data, source_part=source_part, target_part=target_part
-            )
-            results = calc.process_batch(forces, moments)
-        except Exception as e:  # pylint: disable=broad-except
-            msg = f"part '{part_name}' 处理失败: {e}"
-            logger.warning(msg, exc_info=True)
-            return None, {
-                "part": part_name,
-                "source_part": source_part,
-                "target_part": target_part,
-                "status": "failed",
-                "reason": "processing_failed",
-                "message": msg,
-                "error": str(e),
-            }
-
-        out_df = df.copy()
-        out_df["Fx_new"] = results["force_transformed"][:, 0]
-        out_df["Fy_new"] = results["force_transformed"][:, 1]
-        out_df["Fz_new"] = results["force_transformed"][:, 2]
-        out_df["Mx_new"] = results["moment_transformed"][:, 0]
-        out_df["My_new"] = results["moment_transformed"][:, 1]
-        out_df["Mz_new"] = results["moment_transformed"][:, 2]
-        out_df["Cx_new"] = results["coeff_force"][:, 0]
-        out_df["Cy_new"] = results["coeff_force"][:, 1]
-        out_df["Cz_new"] = results["coeff_force"][:, 2]
-        out_df["Cl_new"] = results["coeff_moment"][:, 0]
-        out_df["Cm_new"] = results["coeff_moment"][:, 1]
-        out_df["Cn_new"] = results["coeff_moment"][:, 2]
-
-        ts = datetime.now().strftime(timestamp_format)
-        out_path = output_dir / f"{file_path.stem}_{part_name}_result_{ts}.csv"
-        if out_path.exists() and not overwrite:
-            suffix = 1
-            while True:
-                candidate = (
-                    output_dir
-                    / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
-                )
-                if not candidate.exists():
-                    out_path = candidate
-                    break
-                suffix += 1
-
-        out_df.to_csv(out_path, index=False)
-        msg = f"part '{part_name}' 输出: {out_path.name}"
-        logger.info(msg)
-        return out_path, {
-            "part": part_name,
-            "source_part": source_part,
-            "target_part": target_part,
-            "status": "success",
-            "message": msg,
-            "out_path": str(out_path),
-        }
-
-    data_dict = parse_special_format_file(file_path)
-    outputs: List[Path] = []
-    report = []
-    for part_name, df in data_dict.items():
-        out_path, entry = _handle_single_part(part_name, df)
-        if out_path:
-            outputs.append(out_path)
-        report.append(entry)
-
-    # 汇总日志
-    total = len(data_dict)
-    success_count = sum(1 for r in report if r.get("status") == "success")
-    skipped_count = sum(1 for r in report if r.get("status") == "skipped")
-    failed_count = sum(1 for r in report if r.get("status") == "failed")
-    logger.info(
-        "文件 %s 处理完成：%d 个 part（%d 成功，%d 跳过，%d 失败）",
-        file_path.name,
-        total,
-        success_count,
-        skipped_count,
-        failed_count,
+    # 保持对外签名兼容：将可选参数封装为 `ProcessOptions` 并委托给核心实现
+    options = ProcessOptions(
+        part_target_mapping=part_target_mapping,
+        part_row_selection=part_row_selection,
+        timestamp_format=timestamp_format,
+        overwrite=overwrite,
     )
-
-    if return_report:
-        return outputs, report
-
-    return outputs
+    return _process_special_format_file_core(
+        file_path, project_data, output_dir, options, return_report=return_report
+    )
 
 
 def get_part_names(file_path: Path) -> List[str]:
@@ -666,13 +742,13 @@ if __name__ == "__main__":
         # 获取 part 名称
         parts = get_part_names(test_file)
         print(f"\n找到 {len(parts)} 个 part:")
-        for p in parts:
-            print(f"  - {p}")
+        for part_item in parts:
+            print(f"  - {part_item}")
 
         # 解析完整数据
-        data_dict = parse_special_format_file(test_file)
+        demo_data_dict = parse_special_format_file(test_file)
         print("\n解析结果:")
-        for part_name, df in data_dict.items():
-            print(f"\n{part_name}:")
-            print(df.head())
-            print(f"  形状: {df.shape}")
+        for demo_part_name, demo_df in demo_data_dict.items():
+            print(f"\n{demo_part_name}:")
+            print(demo_df.head())
+            print(f"  形状: {demo_df.shape}")
