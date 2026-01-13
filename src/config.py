@@ -127,7 +127,7 @@ class SystemConfig:
                 k: v
                 for k, v in config_dict.get("cache", {}).items()
                 if k in cache_fields
-                }
+            }
         )
         batch_config = BatchProcessConfig(
             **{

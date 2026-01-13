@@ -22,12 +22,12 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 # 放置在 sys.path 调整之后但在其它代码之前的顶级导入
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime  # noqa: E402
+from typing import Dict, List, Optional  # noqa: E402
 
-import pandas as pd
+import pandas as pd  # noqa: E402
 
-from src.physics import AeroCalculator
+from src.physics import AeroCalculator  # noqa: E402
 
 logger = logging.getLogger(__name__)
 # 在调整 sys.path 后才导入本地模块，允许导入位置非顶层的检查
@@ -60,7 +60,9 @@ def is_metadata_line(line: str) -> bool:
     return False
 
 
-def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> bool:
+def looks_like_special_format(
+    file_path: Path, *, max_probe_lines: int = 20
+) -> bool:
     """快速判断文件是否符合特殊格式。
 
     规则：
@@ -106,7 +108,12 @@ def is_summary_line(line: str) -> bool:
 
     first_token = tokens[0]
     # 如果第一个token不像数字（不是负号开头或纯数字）
-    if not first_token.replace("-", "").replace(".", "").replace("+", "").isdigit():
+    if (
+        not first_token.replace("-", "")
+        .replace(".", "")
+        .replace("+", "")
+        .isdigit()
+    ):
         # 检查是否包含典型的汇总指标名
         summary_keywords = ["CLa", "Cdmin", "CmCL", "Cm0", "Kmax", "Alpha"]
         if any(kw in line for kw in summary_keywords):
@@ -251,9 +258,7 @@ def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
     return mapping
 
 
-def parse_special_format_file(
-    file_path: Path
-) -> Dict[str, pd.DataFrame]:
+def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     """
     解析特殊格式文件，返回 {part_name: DataFrame} 字典
 
@@ -302,11 +307,19 @@ def parse_special_format_file(
                             df[col] = pd.to_numeric(df[col], errors="coerce")
                         except Exception:  # pylint: disable=broad-except
                             # 忽略无法转换的列，保留原始内容；如需调试可开启 logger.debug
-                            logger.debug("列 %s 转换为数值失败，保留原始值", col, exc_info=True)
+                            logger.debug(
+                                "列 %s 转换为数值失败，保留原始值",
+                                col,
+                                exc_info=True,
+                            )
                     result[current_part] = df
-                    logger.info("解析 part '%s': %d 行数据", current_part, len(df))
+                    logger.info(
+                        "解析 part '%s': %d 行数据", current_part, len(df)
+                    )
                 except ValueError as e:
-                    logger.warning("创建 DataFrame 失败 (part=%s): %s", current_part, e)
+                    logger.warning(
+                        "创建 DataFrame 失败 (part=%s): %s", current_part, e
+                    )
 
             # 开始新的 part
             current_part = line
@@ -355,11 +368,15 @@ def parse_special_format_file(
                 try:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
                 except Exception:  # pylint: disable=broad-except
-                    logger.debug("列 %s 转换为数值失败，保留原始值", col, exc_info=True)
+                    logger.debug(
+                        "列 %s 转换为数值失败，保留原始值", col, exc_info=True
+                    )
             result[current_part] = df
             logger.info("解析 part '%s': %d 行数据", current_part, len(df))
         except ValueError as e:
-            logger.warning("创建 DataFrame 失败 (part=%s): %s", current_part, e)
+            logger.warning(
+                "创建 DataFrame 失败 (part=%s): %s", current_part, e
+            )
 
     return result
 
@@ -377,7 +394,9 @@ def process_special_format_file(
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
     return_report: bool = False,
-) -> List[Path]:  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches
+) -> List[
+    Path
+]:  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches
     """直接处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
 
     约定：
@@ -406,7 +425,11 @@ def process_special_format_file(
                 selected_idx = sorted({int(x) for x in selected})
                 df = df.iloc[selected_idx]
         except Exception:
-            logger.debug("按行过滤失败，回退为全量处理 (part=%s)", part_name, exc_info=True)
+            logger.debug(
+                "按行过滤失败，回退为全量处理 (part=%s)",
+                part_name,
+                exc_info=True,
+            )
 
         if df is None or len(df) == 0:
             msg = f"part '{part_name}' 未选择任何数据行，已跳过"
@@ -414,7 +437,8 @@ def process_special_format_file(
             return None, {
                 "part": part_name,
                 "source_part": source_part,
-                "target_part": (part_target_mapping or {}).get(part_name) or None,
+                "target_part": (part_target_mapping or {}).get(part_name)
+                or None,
                 "status": "skipped",
                 "reason": "no_rows_selected",
                 "message": msg,
@@ -424,7 +448,9 @@ def process_special_format_file(
         target_part = None
         explicit_mapping_used = False
         try:
-            if isinstance(part_target_mapping, dict) and part_target_mapping.get(part_name):
+            if isinstance(
+                part_target_mapping, dict
+            ) and part_target_mapping.get(part_name):
                 target_part = part_target_mapping.get(part_name)
                 explicit_mapping_used = True
             else:
@@ -435,7 +461,9 @@ def process_special_format_file(
         # 校验 source/target part 是否存在
         if project_data is not None:
             if hasattr(project_data, "source_parts"):
-                if source_part not in (getattr(project_data, "source_parts", {}) or {}):
+                if source_part not in (
+                    getattr(project_data, "source_parts", {}) or {}
+                ):
                     msg = f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
                     logger.warning(msg)
                     return None, {
@@ -454,9 +482,7 @@ def process_special_format_file(
                         msg = f"目标配置中不存在 Target part '{target_part}'，已跳过该块"
                         reason = "target_missing"
                     else:
-                        msg = (
-                            f"part '{part_name}' 未提供 Target 映射，且不存在同名 Target part '{target_part}'，已跳过该块"
-                        )
+                        msg = f"part '{part_name}' 未提供 Target 映射，且不存在同名 Target part '{target_part}'，已跳过该块"
                         reason = "target_not_mapped"
                     logger.warning(msg)
                     return None, {
@@ -512,7 +538,9 @@ def process_special_format_file(
                     "reason": "no_project_data",
                     "message": msg,
                 }
-            calc = AeroCalculator(project_data, source_part=source_part, target_part=target_part)
+            calc = AeroCalculator(
+                project_data, source_part=source_part, target_part=target_part
+            )
             results = calc.process_batch(forces, moments)
         except Exception as e:  # pylint: disable=broad-except
             msg = f"part '{part_name}' 处理失败: {e}"
@@ -546,7 +574,10 @@ def process_special_format_file(
         if out_path.exists() and not overwrite:
             suffix = 1
             while True:
-                candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+                candidate = (
+                    output_dir
+                    / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+                )
                 if not candidate.exists():
                     out_path = candidate
                     break

@@ -4,7 +4,12 @@ import sys
 
 import click
 
-from src.format_registry import delete_mapping, init_db, list_mappings, register_mapping
+from src.format_registry import (
+    delete_mapping,
+    init_db,
+    list_mappings,
+    register_mapping,
+)
 
 
 @click.group()
@@ -48,7 +53,12 @@ def register_cmd(db_path, pattern, format_path):
         init_db(db_path)
         register_mapping(db_path, pattern, format_path)
         click.echo("已注册")
-    except (ValueError, sqlite3.Error, FileNotFoundError, PermissionError) as e:
+    except (
+        ValueError,
+        sqlite3.Error,
+        FileNotFoundError,
+        PermissionError,
+    ) as e:
         click.echo(f"错误: {e}")
         logging.exception("Registry register failed")
         sys.exit(2)

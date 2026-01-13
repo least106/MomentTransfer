@@ -85,7 +85,9 @@ class StructuredLogger:
         """初始化记录器"""
         self.logger = logging.getLogger(name)
 
-    def _add_context(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _add_context(
+        self, extra: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """添加上下文信息"""
         context_data = {}
         current_context = LogContext.get_current()
@@ -122,7 +124,9 @@ class StructuredLogger:
         """记录操作结果"""
         message = f"操作 {operation}: {'成功' if success else '失败'}"
         level = "info" if success else "error"
-        getattr(self, level)(message, operation=operation, success=success, **details)
+        getattr(self, level)(
+            message, operation=operation, success=success, **details
+        )
 
     def log_performance(self, operation: str, duration_ms: float, **metrics):
         """记录性能数据"""
@@ -196,6 +200,8 @@ def log_operation_context(operation: str, context_id: str, **metadata):
             logger.info(f"完成操作: {operation}", context=ctx.to_dict())
         except Exception as e:
             logger.error(
-                f"操作失败: {operation}", exception=str(e), context=ctx.to_dict()
+                f"操作失败: {operation}",
+                exception=str(e),
+                context=ctx.to_dict(),
             )
             raise

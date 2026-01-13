@@ -57,7 +57,9 @@ class CoordSystemPlugin(BasePlugin):
     """坐标系定义插件"""
 
     @abstractmethod
-    def get_coordinate_system(self, name: str) -> Optional[Dict[str, List[float]]]:
+    def get_coordinate_system(
+        self, name: str
+    ) -> Optional[Dict[str, List[float]]]:
         """
         获取命名的坐标系定义
 
@@ -107,7 +109,9 @@ class OutputPlugin(BasePlugin):
     """自定义输出格式插件"""
 
     @abstractmethod
-    def write(self, data: Dict[str, np.ndarray], output_path: Path, **kwargs) -> None:
+    def write(
+        self, data: Dict[str, np.ndarray], output_path: Path, **kwargs
+    ) -> None:
         """
         以自定义格式写入数据
 
@@ -174,11 +178,15 @@ class PluginRegistry:
         """获取指定的插件"""
         return self.plugins.get(name)
 
-    def get_coord_system_plugin(self, name: str) -> Optional[CoordSystemPlugin]:
+    def get_coord_system_plugin(
+        self, name: str
+    ) -> Optional[CoordSystemPlugin]:
         """获取坐标系插件"""
         return self.coord_system_plugins.get(name)
 
-    def get_transformation_plugin(self, name: str) -> Optional[TransformationPlugin]:
+    def get_transformation_plugin(
+        self, name: str
+    ) -> Optional[TransformationPlugin]:
         """获取转换插件"""
         return self.transformation_plugins.get(name)
 
@@ -219,7 +227,9 @@ class PluginLoader:
 
         try:
             # 动态加载模块
-            spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
+            spec = importlib.util.spec_from_file_location(
+                filepath.stem, filepath
+            )
             if spec is None or spec.loader is None:
                 logger.error("无法加载模块: %s", filepath)
                 return None

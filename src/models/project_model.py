@@ -97,7 +97,9 @@ class PartVariant:
             except Exception:
                 pass
         return cls(
-            part_name=part_name, coord_system=cs, refs=ReferenceValues.from_dict(data)
+            part_name=part_name,
+            coord_system=cs,
+            refs=ReferenceValues.from_dict(data),
         )
 
     def to_dict(self) -> Dict:
@@ -156,6 +158,10 @@ class ProjectConfigModel:
 
     def to_dict(self) -> Dict:
         return {
-            "Source": {"Parts": [p.to_dict() for p in self.source_parts.values()]},
-            "Target": {"Parts": [p.to_dict() for p in self.target_parts.values()]},
+            "Source": {
+                "Parts": [p.to_dict() for p in self.source_parts.values()]
+            },
+            "Target": {
+                "Parts": [p.to_dict() for p in self.target_parts.values()]
+            },
         }

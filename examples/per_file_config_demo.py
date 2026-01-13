@@ -12,19 +12,27 @@
     python examples/per_file_config_demo.py /path/to/data_dir --registry registry.db
 
 """
+
 from pathlib import Path
 import argparse
-import json
 from copy import deepcopy
 
-from src.cli_helpers import BatchConfig, load_format_from_file, _merge_batch_config
+from src.cli_helpers import (
+    BatchConfig,
+    load_format_from_file,
+    _merge_batch_config,
+)
 from src.format_registry import get_format_for_file
 
 
-def resolve_file_format_demo(file_path: str, global_cfg: BatchConfig, *,
-                             registry_db: str = None,
-                             sidecar_suffixes=('.format.json', '.json'),
-                             dir_default_name='format.json') -> BatchConfig:
+def resolve_file_format_demo(
+    file_path: str,
+    global_cfg: BatchConfig,
+    *,
+    registry_db: str = None,
+    sidecar_suffixes=(".format.json", ".json"),
+    dir_default_name="format.json",
+) -> BatchConfig:
     """教学用：为单个文件解析最终 BatchConfig（包含侧车、目录、registry 查找）。"""
     p = Path(file_path)
     cfg = deepcopy(global_cfg)
@@ -64,19 +72,21 @@ def resolve_file_format_demo(file_path: str, global_cfg: BatchConfig, *,
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('data_dir', help='包含 CSV 的目录')
-    p.add_argument('--registry', help='可选 registry 数据库路径 (.sqlite)')
+    p.add_argument("data_dir", help="包含 CSV 的目录")
+    p.add_argument("--registry", help="可选 registry 数据库路径 (.sqlite)")
     args = p.parse_args()
 
     base_cfg = BatchConfig()
     base_cfg.sample_rows = 5
 
     data_dir = Path(args.data_dir)
-    for fp in sorted(data_dir.glob('*.csv')):
+    for fp in sorted(data_dir.glob("*.csv")):
         print(f"Processing {fp.name}")
-        cfg = resolve_file_format_demo(str(fp), base_cfg, registry_db=args.registry)
+        cfg = resolve_file_format_demo(
+            str(fp), base_cfg, registry_db=args.registry
+        )
         print(f"  -> sample_rows: {cfg.sample_rows}\n")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

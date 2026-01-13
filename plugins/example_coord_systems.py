@@ -14,32 +14,32 @@ class ExampleCoordSystemPlugin(CoordSystemPlugin):
     @property
     def metadata(self) -> PluginMetadata:
         return PluginMetadata(
-            name='example_coord_systems',
-            version='1.0.0',
-            author='MomentTransfer Team',
-            description='提供示例和常见坐标系定义的插件',
-            plugin_type='coord_system'
+            name="example_coord_systems",
+            version="1.0.0",
+            author="MomentTransfer Team",
+            description="提供示例和常见坐标系定义的插件",
+            plugin_type="coord_system",
         )
 
     # 预定义的坐标系数据库
     _COORD_SYSTEMS = {
-        'standard_body_frame': {
-            'origin': [0.0, 0.0, 0.0],
-            'x_axis': [1.0, 0.0, 0.0],
-            'y_axis': [0.0, 1.0, 0.0],
-            'z_axis': [0.0, 0.0, 1.0],
+        "standard_body_frame": {
+            "origin": [0.0, 0.0, 0.0],
+            "x_axis": [1.0, 0.0, 0.0],
+            "y_axis": [0.0, 1.0, 0.0],
+            "z_axis": [0.0, 0.0, 1.0],
         },
-        'wind_frame': {
-            'origin': [0.0, 0.0, 0.0],
-            'x_axis': [1.0, 0.0, 0.0],  # 风向
-            'y_axis': [0.0, 1.0, 0.0],  # 侧向
-            'z_axis': [0.0, 0.0, -1.0],  # 竖直（反向）
+        "wind_frame": {
+            "origin": [0.0, 0.0, 0.0],
+            "x_axis": [1.0, 0.0, 0.0],  # 风向
+            "y_axis": [0.0, 1.0, 0.0],  # 侧向
+            "z_axis": [0.0, 0.0, -1.0],  # 竖直（反向）
         },
-        'stability_frame': {
-            'origin': [0.0, 0.0, 0.0],
-            'x_axis': [1.0, 0.0, 0.0],
-            'y_axis': [0.0, 1.0, 0.0],
-            'z_axis': [0.0, 0.0, 1.0],
+        "stability_frame": {
+            "origin": [0.0, 0.0, 0.0],
+            "x_axis": [1.0, 0.0, 0.0],
+            "y_axis": [0.0, 1.0, 0.0],
+            "z_axis": [0.0, 0.0, 1.0],
         },
     }
 

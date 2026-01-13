@@ -26,7 +26,9 @@ def normalize(vec: np.ndarray) -> np.ndarray:
     """
     norm = np.linalg.norm(vec)
     if norm < ZERO_VECTOR_THRESHOLD:  # 使用模块级阈值以便维护和统一
-        raise ValueError(f"无法归一化零向量或接近零的向量: {vec}，模长: {norm}")
+        raise ValueError(
+            f"无法归一化零向量或接近零的向量: {vec}，模长: {norm}"
+        )
     return vec / norm
 
 
@@ -168,11 +170,15 @@ def project_vector_to_frame(
         raise ValueError(f"frame_basis 必须为形状 (3,3)，当前形状: {fb.shape}")
     if v.shape not in ((3,), (3, 1)):
         # 允许 (3,) 或 (3,1) 的列向量输入
-        raise ValueError(f"vec_global 必须为长度为3的向量，当前形状: {v.shape}")
+        raise ValueError(
+            f"vec_global 必须为长度为3的向量，当前形状: {v.shape}"
+        )
 
     # 计算：基矩阵的行向量为在全局坐标系下的轴方向，
     # 将全局向量投影到该坐标系的坐标分量相当于对每个基向量做点积
-    return fb.dot(v).reshape(3,)
+    return fb.dot(v).reshape(
+        3,
+    )
 
 
 def euler_angles_to_basis(

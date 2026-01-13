@@ -34,7 +34,9 @@ class CoordSystemDefinition:
             try:
                 [float(x) for x in vec]
             except (ValueError, TypeError) as e:
-                raise ValueError(f"字段 {field_name} 的元素必须是数值类型: {e}")
+                raise ValueError(
+                    f"字段 {field_name} 的元素必须是数值类型: {e}"
+                )
 
         validate_vector(data["Orig"], "Orig")
         validate_vector(data["X"], "X")
@@ -42,7 +44,10 @@ class CoordSystemDefinition:
         validate_vector(data["Z"], "Z")
 
         return cls(
-            origin=data["Orig"], x_axis=data["X"], y_axis=data["Y"], z_axis=data["Z"]
+            origin=data["Orig"],
+            x_axis=data["X"],
+            y_axis=data["Y"],
+            z_axis=data["Z"],
         )
 
 
@@ -74,7 +79,11 @@ class FrameConfiguration:
 
         # 坐标系定义的键名兼容
         coord_key = None
-        for possible_key in ["CoordSystem", "TargetCoordSystem", "SourceCoordSystem"]:
+        for possible_key in [
+            "CoordSystem",
+            "TargetCoordSystem",
+            "SourceCoordSystem",
+        ]:
             if possible_key in data:
                 coord_key = possible_key
                 break
@@ -84,7 +93,11 @@ class FrameConfiguration:
 
         # 力矩中心（必需字段）
         moment_center = None
-        for mc_key in ["MomentCenter", "TargetMomentCenter", "SourceMomentCenter"]:
+        for mc_key in [
+            "MomentCenter",
+            "TargetMomentCenter",
+            "SourceMomentCenter",
+        ]:
             if mc_key in data:
                 moment_center = data[mc_key]
                 if (
@@ -106,7 +119,9 @@ class FrameConfiguration:
         s_ref = data.get("S") or data.get("Sref") or data.get("S_ref")
 
         # 如果提供了这些参数，进行验证
-        def parse_numeric_value(name: str, val, strictly_positive: bool = True):
+        def parse_numeric_value(
+            name: str, val, strictly_positive: bool = True
+        ):
             """
             尝试将 val 转为 float 并进行数值校验。
 
@@ -125,10 +140,14 @@ class FrameConfiguration:
                 )
             if strictly_positive:
                 if f <= 0:
-                    raise ValueError(f"字段 {name} 必须为严格正数 (>0)，当前值: {val}")
+                    raise ValueError(
+                        f"字段 {name} 必须为严格正数 (>0)，当前值: {val}"
+                    )
             else:
                 if f < 0:
-                    raise ValueError(f"字段 {name} 必须为非负数 (>=0)，当前值: {val}")
+                    raise ValueError(
+                        f"字段 {name} 必须为非负数 (>=0)，当前值: {val}"
+                    )
             return f
 
         c_ref = (
@@ -209,7 +228,9 @@ class ProjectData:
         if isinstance(section["Parts"], list):
             for p in section["Parts"]:
                 if not isinstance(p, dict):
-                    raise ValueError(f"{section_name}.Parts 中的元素必须为对象")
+                    raise ValueError(
+                        f"{section_name}.Parts 中的元素必须为对象"
+                    )
                 part_name = p.get("PartName") or "Unnamed"
                 variants_raw = p.get("Variants")
                 variants: List[FrameConfiguration] = []
@@ -261,7 +282,9 @@ class ProjectData:
         # 对 target_parts 做额外的严格校验，确保每个 variant 包含必需字段并给出清晰错误提示
         for part_name, variants in target_parts.items():
             if not variants:
-                raise ValueError(f"Target 部件 '{part_name}' 必须包含至少一个 Variant")
+                raise ValueError(
+                    f"Target 部件 '{part_name}' 必须包含至少一个 Variant"
+                )
             for idx, var in enumerate(variants):
                 if (
                     var.moment_center is None
@@ -313,7 +336,9 @@ class ProjectData:
         try:
             return parts[variant_index]
         except IndexError:
-            raise IndexError(f"Part {part_name} 没有索引 {variant_index} 的 variant")
+            raise IndexError(
+                f"Part {part_name} 没有索引 {variant_index} 的 variant"
+            )
 
     def get_target_part(
         self, part_name: str, variant_index: int = 0
@@ -324,7 +349,9 @@ class ProjectData:
         try:
             return parts[variant_index]
         except IndexError:
-            raise IndexError(f"Part {part_name} 没有索引 {variant_index} 的 variant")
+            raise IndexError(
+                f"Part {part_name} 没有索引 {variant_index} 的 variant"
+            )
 
 
 def load_data(file_path: str) -> ProjectData:
@@ -344,7 +371,9 @@ def load_data(file_path: str) -> ProjectData:
     except json.JSONDecodeError:
         raise ValueError(f"错误: 文件 {file_path} 不是有效的 JSON 格式。")
     except KeyError as e:
-        raise KeyError(f"错误: JSON 数据缺少关键字段 {e}，请检查输入文件结构。")
+        raise KeyError(
+            f"错误: JSON 数据缺少关键字段 {e}，请检查输入文件结构。"
+        )
 
 
 def try_load_project_data(file_path: str, *, strict: bool = True):
@@ -387,6 +416,9 @@ def try_load_project_data(file_path: str, *, strict: bool = True):
             return (
                 False,
                 None,
-                {"message": str(e), "suggestion": "查看完整异常并检查文件权限/编码。"},
+                {
+                    "message": str(e),
+                    "suggestion": "查看完整异常并检查文件权限/编码。",
+                },
             )
         raise

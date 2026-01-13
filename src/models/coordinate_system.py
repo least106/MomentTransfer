@@ -65,5 +65,9 @@ class CoordinateSystem:
             or [0.0, 0.0, 0.0]
         )
         return cls(
-            origin=origin, x_axis=x_axis, y_axis=y_axis, z_axis=z_axis, moment_center=mc
+            origin=origin,
+            x_axis=x_axis,
+            y_axis=y_axis,
+            z_axis=z_axis,
+            moment_center=mc,
         )
