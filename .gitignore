@@ -22,3 +22,28 @@ venv/
 data/
 tools/
 .coverage
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+.eggs/
+
+# Python type / cache
+.mypy_cache/
+.pytype/
+.cache/
+
+# Test coverage reports
+htmlcov/
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
