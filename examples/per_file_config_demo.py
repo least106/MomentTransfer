@@ -13,15 +13,12 @@
 
 """
 
-from pathlib import Path
 import argparse
 from copy import deepcopy
+from pathlib import Path
 
-from src.cli_helpers import (
-    BatchConfig,
-    load_format_from_file,
-    _merge_batch_config,
-)
+from src.cli_helpers import (BatchConfig, _merge_batch_config,
+                             load_format_from_file)
 from src.format_registry import get_format_for_file
 
 
@@ -82,9 +79,7 @@ def main():
     data_dir = Path(args.data_dir)
     for fp in sorted(data_dir.glob("*.csv")):
         print(f"Processing {fp.name}")
-        cfg = resolve_file_format_demo(
-            str(fp), base_cfg, registry_db=args.registry
-        )
+        cfg = resolve_file_format_demo(str(fp), base_cfg, registry_db=args.registry)
         print(f"  -> sample_rows: {cfg.sample_rows}\n")
 
 

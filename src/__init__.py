@@ -4,8 +4,8 @@
 """
 
 from . import data_loader as _data_loader
-from . import physics as _physics
 from . import geometry as _geometry
+from . import physics as _physics
 
 # 将需要对外暴露的符号显式绑定到包顶层，避免未使用导入的静态检查警告
 load_data = _data_loader.load_data

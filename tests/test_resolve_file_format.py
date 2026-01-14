@@ -1,5 +1,6 @@
 import json
-from src.cli_helpers import resolve_file_format, BatchConfig
+
+from src.cli_helpers import BatchConfig, resolve_file_format
 
 
 def test_resolve_file_format_default_skips_sidecar(tmp_path):

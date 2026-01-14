@@ -4,16 +4,15 @@
 """
 
 import json
-
 # pylint: disable=too-many-arguments,too-many-locals
 import logging
-from pathlib import Path
 from copy import deepcopy
+from pathlib import Path
 from typing import Optional
 
 from src.data_loader import ProjectData, load_data, try_load_project_data
-from src.physics import AeroCalculator
 from src.format_registry import get_format_for_file
+from src.physics import AeroCalculator
 
 # 模块级 logger，供文件中函数使用（配置由 `configure_logging` 管理）
 logger = logging.getLogger("batch")

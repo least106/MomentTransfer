@@ -3,11 +3,13 @@ Part 管理模块 - 处理 Part 的添加、删除和切换
 """
 
 import logging
+
 from PySide6.QtWidgets import QMessageBox
+
+from gui.signal_bus import SignalBus
 from src.models import ProjectConfigModel
 from src.models.project_model import Part as PMPart
 from src.models.project_model import PartVariant as PMVariant
-from gui.signal_bus import SignalBus
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +21,13 @@ class PartManager:
         """初始化 Part 管理器"""
         self.gui = gui_instance
         try:
-            self.signal_bus = getattr(
-                gui_instance, "signal_bus", SignalBus.instance()
-            )
+            self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
         except Exception:
             self.signal_bus = SignalBus.instance()
         # 连接总线请求信号
         try:
-            self.signal_bus.partAddRequested.connect(
-                self._on_part_add_requested
-            )
-            self.signal_bus.partRemoveRequested.connect(
-                self._on_part_remove_requested
-            )
+            self.signal_bus.partAddRequested.connect(self._on_part_add_requested)
+            self.signal_bus.partRemoveRequested.connect(self._on_part_remove_requested)
         except Exception:
             logger.debug("连接 Part 请求信号失败", exc_info=True)
 
@@ -100,10 +96,7 @@ class PartManager:
 
             # 力矩中心：强类型在 cs.moment_center；legacy 在 variant.moment_center
             mc = None
-            if (
-                cs is not None
-                and getattr(cs, "moment_center", None) is not None
-            ):
+            if cs is not None and getattr(cs, "moment_center", None) is not None:
                 mc = list(getattr(cs, "moment_center"))
             if mc is None:
                 mc = getattr(variant, "moment_center", None)
@@ -252,9 +245,7 @@ class PartManager:
                 refs_model = None
             if cs_model is None or refs_model is None:
                 raise ValueError("无法从 Source 面板读取强类型数据")
-            variant = PMVariant(
-                part_name=name, coord_system=cs_model, refs=refs_model
-            )
+            variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
             self.gui.project_model.source_parts[name] = PMPart(
                 part_name=name, variants=[variant]
             )
@@ -265,9 +256,7 @@ class PartManager:
                 self.signal_bus.partAdded.emit("Source", name)
             except Exception:
                 logger.debug("发射 partAdded 信号失败", exc_info=True)
-            QMessageBox.information(
-                self.gui, "成功", f'Source Part "{name}" 已添加'
-            )
+            QMessageBox.information(self.gui, "成功", f'Source Part "{name}" 已添加')
         except Exception as e:
             logger.error(f"添加 Source Part 失败: {e}")
             QMessageBox.critical(self.gui, "错误", f"添加失败: {e}")
@@ -296,9 +285,7 @@ class PartManager:
                 self.signal_bus.partRemoved.emit("Source", name)
             except Exception:
                 logger.debug("发射 partRemoved 信号失败", exc_info=True)
-            QMessageBox.information(
-                self.gui, "成功", f'Source Part "{name}" 已删除'
-            )
+            QMessageBox.information(self.gui, "成功", f'Source Part "{name}" 已删除')
         except Exception as e:
             logger.error(f"删除 Source Part 失败: {e}")
             QMessageBox.critical(self.gui, "错误", f"删除失败: {e}")
@@ -346,9 +333,7 @@ class PartManager:
                 self.signal_bus.partAdded.emit("Target", name)
             except Exception:
                 logger.debug("发射 partAdded 信号失败", exc_info=True)
-            QMessageBox.information(
-                self.gui, "成功", f'Target Part "{name}" 已添加'
-            )
+            QMessageBox.information(self.gui, "成功", f'Target Part "{name}" 已添加')
         except Exception as e:
             logger.error(f"添加 Target Part 失败: {e}")
             QMessageBox.critical(self.gui, "错误", f"添加失败: {e}")
@@ -365,9 +350,7 @@ class PartManager:
         except Exception:
             name = None
         if not name:
-            QMessageBox.warning(
-                self.gui, "提示", "当前没有可删除的 Target Part"
-            )
+            QMessageBox.warning(self.gui, "提示", "当前没有可删除的 Target Part")
             return
         try:
             self.gui.project_model.target_parts.pop(name, None)
@@ -387,9 +370,7 @@ class PartManager:
                 self.signal_bus.partRemoved.emit("Target", name)
             except Exception:
                 logger.debug("发射 partRemoved 信号失败", exc_info=True)
-            QMessageBox.information(
-                self.gui, "成功", f'Target Part "{name}" 已删除'
-            )
+            QMessageBox.information(self.gui, "成功", f'Target Part "{name}" 已删除')
         except Exception as e:
             logger.error(f"删除 Target Part 失败: {e}")
             QMessageBox.critical(self.gui, "错误", f"删除失败: {e}")

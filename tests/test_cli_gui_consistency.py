@@ -7,9 +7,10 @@ CLI 与 GUI 批处理逻辑一致性测试
 3. 表头检测一致
 """
 
-import pytest
 import tempfile
+
 import pandas as pd
+import pytest
 
 # 导入核心模块
 from batch import process_single_file
@@ -146,6 +147,7 @@ def test_run_batch_processing_signature():
     验证 run_batch_processing 的函数签名包含新参数
     """
     import inspect
+
     from batch import run_batch_processing
 
     sig = inspect.signature(run_batch_processing)

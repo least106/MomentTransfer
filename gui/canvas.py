@@ -3,6 +3,7 @@
 """
 
 import logging
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -12,9 +13,8 @@ try:
     import matplotlib
 
     matplotlib.use("Qt5Agg")
-    from matplotlib.backends.backend_qt5agg import (
-        FigureCanvasQTAgg as FigureCanvas,
-    )
+    from matplotlib.backends.backend_qt5agg import \
+        FigureCanvasQTAgg as FigureCanvas
     from matplotlib.figure import Figure
 
     _HAS_MPL = True

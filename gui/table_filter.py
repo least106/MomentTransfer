@@ -3,17 +3,11 @@
 """
 
 import logging
-from typing import List, Dict, Set
-from PySide6.QtWidgets import (
-    QWidget,
-    QHBoxLayout,
-    QPushButton,
-    QLineEdit,
-    QComboBox,
-    QLabel,
-    QTableWidget,
-)
+from typing import Dict, List, Set
+
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QTableWidget, QWidget)
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +37,7 @@ class TableFilterManager:
             operator: 比较操作符（'==', '!=', '<', '>', '<=', '>=', 'contains', 'not_contains'）
             value: 比较值
         """
-        self.filters.append(
-            {"column": column, "operator": operator, "value": value}
-        )
+        self.filters.append({"column": column, "operator": operator, "value": value})
         self._apply_filters()
 
     def clear_filters(self) -> None:

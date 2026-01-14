@@ -1,6 +1,6 @@
 import pytest
 
-from src.data_loader import ProjectData, FrameConfiguration
+from src.data_loader import FrameConfiguration, ProjectData
 
 
 def test_projectdata_missing_sections():

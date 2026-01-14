@@ -1,6 +1,7 @@
 import numpy as np
-from src.physics import AeroCalculator
+
 from src.data_loader import FrameConfiguration
+from src.physics import AeroCalculator
 
 
 def make_cfg(q=1.0, s=1.0, cref=0.1, bref=0.3):

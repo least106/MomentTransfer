@@ -3,6 +3,7 @@
 """
 
 import logging
+
 from PySide6.QtWidgets import QTextEdit
 
 
@@ -67,17 +68,16 @@ class LoggingManager:
             for log in loggers_to_configure:
                 # 清除之前的 StreamHandler（控制台处理器）
                 for handler in log.handlers[:]:
-                    if isinstance(
-                        handler, logging.StreamHandler
-                    ) and not isinstance(handler, logging.FileHandler):
+                    if isinstance(handler, logging.StreamHandler) and not isinstance(
+                        handler, logging.FileHandler
+                    ):
                         log.removeHandler(handler)
                 # 如果已经存在相同的 GUI 处理器则跳过，保证幂等性
                 existing = False
                 for handler in log.handlers:
                     if (
                         isinstance(handler, GUILogHandler)
-                        and getattr(handler, "text_widget", None)
-                        is text_widget
+                        and getattr(handler, "text_widget", None) is text_widget
                     ):
                         existing = True
                         break
@@ -92,6 +92,4 @@ class LoggingManager:
 
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.debug(
-                f"GUI logging setup failed (non-fatal): {e}", exc_info=True
-            )
+            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)

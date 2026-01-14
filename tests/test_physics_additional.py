@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
+from src.data_loader import CoordSystemDefinition, FrameConfiguration
 from src.physics import AeroCalculator, AeroResult
-from src.data_loader import FrameConfiguration, CoordSystemDefinition
 
 
 def make_frame(q=2.0, s_ref=5.0, b_ref=2.0, c_ref=3.0):

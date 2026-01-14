@@ -3,14 +3,10 @@
 """
 
 import logging
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-)
+
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from .source_panel import SourcePanel
 from .target_panel import TargetPanel
@@ -72,9 +68,7 @@ class ConfigPanel(QWidget):
         try:
             self.btn_apply.setObjectName("primaryButton")
             self.btn_apply.setShortcut("Ctrl+R")
-            self.btn_apply.setToolTip(
-                "应用当前配置并初始化计算器 (Ctrl+Enter)"
-            )
+            self.btn_apply.setToolTip("应用当前配置并初始化计算器 (Ctrl+Enter)")
         except Exception:
             pass
         self.btn_apply.clicked.connect(self.applyRequested.emit)

@@ -1,15 +1,11 @@
-import numpy as np
 import warnings
+
+import numpy as np
 import pytest
 
-from src.geometry import (
-    normalize,
-    construct_basis_matrix,
-    compute_rotation_matrix,
-    compute_moment_arm_global,
-    project_vector_to_frame,
-    euler_angles_to_basis,
-)
+from src.geometry import (compute_moment_arm_global, compute_rotation_matrix,
+                          construct_basis_matrix, euler_angles_to_basis,
+                          normalize, project_vector_to_frame)
 
 
 def test_normalize_zero_raises():

@@ -1,12 +1,7 @@
 from pathlib import Path
 
-from src.format_registry import (
-    init_db,
-    register_mapping,
-    list_mappings,
-    get_format_for_file,
-    delete_mapping,
-)
+from src.format_registry import (delete_mapping, get_format_for_file, init_db,
+                                 list_mappings, register_mapping)
 
 
 def test_registry_crud_and_lookup(tmp_path):

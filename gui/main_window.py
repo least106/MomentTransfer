@@ -9,29 +9,25 @@ MomentTransfer GUI 主窗口模块
 - IntegratedAeroGUI -> 保留在此文件（待进一步拆分）
 """
 
-import sys
 import logging
-
+import sys
 from pathlib import Path
-
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
+from typing import Optional
 
 from PySide6.QtCore import QTimer
-from typing import Optional
-from src.models import ProjectConfigModel
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
 
+from gui.compatibility_manager import CompatibilityManager
+from gui.event_manager import EventManager
+from gui.initialization_manager import InitializationManager
 # 从模块化包导入组件
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
 from gui.log_manager import LoggingManager
-
-# 导入管理器和工具
-from gui.signal_bus import SignalBus
-from gui.initialization_manager import InitializationManager
-from gui.event_manager import EventManager
-from gui.compatibility_manager import CompatibilityManager
-
 # 导入面板组件
 from gui.panels import ConfigPanel, OperationPanel
+# 导入管理器和工具
+from gui.signal_bus import SignalBus
+from src.models import ProjectConfigModel
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +292,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.batch_manager.on_pattern_changed()
         except Exception:
-            logger.debug(
-                "_on_pattern_changed delegated call failed", exc_info=True
-            )
+            logger.debug("_on_pattern_changed delegated call failed", exc_info=True)
 
     def _determine_format_source(self, fp: Path):
         """判断单个文件的格式来源（委托给 BatchManager）。"""
@@ -319,9 +313,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.batch_manager.refresh_format_labels()
         except Exception:
-            logger.debug(
-                "_refresh_format_labels delegated call failed", exc_info=True
-            )
+            logger.debug("_refresh_format_labels delegated call failed", exc_info=True)
 
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""
@@ -546,9 +538,7 @@ class IntegratedAeroGUI(QMainWindow):
             logging_manager = LoggingManager(self)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug(
-                f"GUI logging setup failed (non-fatal): {e}", exc_info=True
-            )
+            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
@@ -633,13 +623,18 @@ def main():
         pass
     # 按系统主题自动加载明/暗样式
     try:
+
         def _is_windows_dark_mode() -> bool:
             try:
                 import platform
+
                 if platform.system().lower() != "windows":
                     return False
                 import winreg
-                key_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+
+                key_path = (
+                    r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                )
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
                     # 0 表示暗色，1 表示浅色
                     val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
@@ -655,20 +650,21 @@ def main():
                 app.setStyleSheet(fh.read())
         elif dark:
             # 兜底：若无暗色QSS，应用深色调色板
-            from PySide6.QtGui import QPalette, QColor
+            from PySide6.QtGui import QColor, QPalette
+
             pal = QPalette()
-            pal.setColor(QPalette.Window, QColor(45,45,48))
-            pal.setColor(QPalette.WindowText, QColor(230,230,230))
-            pal.setColor(QPalette.Base, QColor(37,37,38))
-            pal.setColor(QPalette.AlternateBase, QColor(45,45,48))
-            pal.setColor(QPalette.ToolTipBase, QColor(45,45,48))
-            pal.setColor(QPalette.ToolTipText, QColor(230,230,230))
-            pal.setColor(QPalette.Text, QColor(230,230,230))
-            pal.setColor(QPalette.Button, QColor(45,45,48))
-            pal.setColor(QPalette.ButtonText, QColor(230,230,230))
-            pal.setColor(QPalette.BrightText, QColor(255,0,0))
-            pal.setColor(QPalette.Highlight, QColor(0,120,215))
-            pal.setColor(QPalette.HighlightedText, QColor(255,255,255))
+            pal.setColor(QPalette.Window, QColor(45, 45, 48))
+            pal.setColor(QPalette.WindowText, QColor(230, 230, 230))
+            pal.setColor(QPalette.Base, QColor(37, 37, 38))
+            pal.setColor(QPalette.AlternateBase, QColor(45, 45, 48))
+            pal.setColor(QPalette.ToolTipBase, QColor(45, 45, 48))
+            pal.setColor(QPalette.ToolTipText, QColor(230, 230, 230))
+            pal.setColor(QPalette.Text, QColor(230, 230, 230))
+            pal.setColor(QPalette.Button, QColor(45, 45, 48))
+            pal.setColor(QPalette.ButtonText, QColor(230, 230, 230))
+            pal.setColor(QPalette.BrightText, QColor(255, 0, 0))
+            pal.setColor(QPalette.Highlight, QColor(0, 120, 215))
+            pal.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
             app.setPalette(pal)
     except Exception:
         logger.debug("自动主题加载失败（忽略）", exc_info=True)

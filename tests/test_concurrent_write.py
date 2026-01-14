@@ -8,7 +8,7 @@ import pandas as pd
 def _worker_write(args):
     # 在子进程内导入并执行写入（按 repo 模块路径导入）
     import batch as b
-    from src.cli_helpers import load_project_calculator, BatchConfig
+    from src.cli_helpers import BatchConfig, load_project_calculator
 
     project_path = args["project_path"]
     input_csv = Path(args["input_csv"])
@@ -62,7 +62,7 @@ def test_concurrent_appends_to_same_file(tmp_path):
 
     # 先写入 header（由主进程完成，模拟 first_chunk 已写入场景）
     import batch as b
-    from src.cli_helpers import load_project_calculator, BatchConfig
+    from src.cli_helpers import BatchConfig, load_project_calculator
 
     project_data, calculator = load_project_calculator(project_config)
     # 主进程也设置 cfg

@@ -3,26 +3,14 @@
 """
 
 import logging
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QProgressBar,
-    QTabWidget,
-    QTreeWidget,
-    QTextEdit,
-    QLabel,
-    QHeaderView,
-    QSizePolicy,
-    QLineEdit,
-    QFormLayout,
-    QComboBox,
-    QCheckBox,
-    QCompleter,
-)
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont, QDoubleValidator
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QDoubleValidator, QFont
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFormLayout,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+                               QProgressBar, QPushButton, QSizePolicy,
+                               QTabWidget, QTextEdit, QTreeWidget, QVBoxLayout,
+                               QWidget)
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +27,7 @@ class BatchPanel(QWidget):
     selectAllRequested = Signal()  # 全选文件
     selectNoneRequested = Signal()  # 全不选
     invertSelectionRequested = Signal()  # 反选
-    quickFilterChanged = Signal(
-        str, str, str
-    )  # 快速筛选变化(列名, 运算符, 筛选值)
+    quickFilterChanged = Signal(str, str, str)  # 快速筛选变化(列名, 运算符, 筛选值)
     quickSelectRequested = Signal()  # 快速选择
 
     def __init__(self, parent=None):
@@ -131,9 +117,7 @@ class BatchPanel(QWidget):
 
         # 匹配模式
         self.inp_pattern = QLineEdit("*.csv")
-        self.inp_pattern.setToolTip(
-            "文件名匹配模式，如 *.csv;*.xlsx；支持分号多模式"
-        )
+        self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv;*.xlsx；支持分号多模式")
         self.cmb_pattern_preset = QComboBox()
         try:
             self.cmb_pattern_preset.setObjectName("patternPreset")
@@ -221,24 +205,18 @@ class BatchPanel(QWidget):
 
         # init：只保留“输入路径”；其他行隐藏
         if step in ("init", "step1"):
-            _set_row_visible(
-                getattr(self, "row_format_summary_widget", None), False
-            )
+            _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
             _set_row_visible(getattr(self, "row_pattern_widget", None), False)
             return
 
         # step2：展示文件列表相关（匹配模式在目录模式下才有意义，默认显示）
         if step == "step2":
-            _set_row_visible(
-                getattr(self, "row_format_summary_widget", None), False
-            )
+            _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
             _set_row_visible(getattr(self, "row_pattern_widget", None), True)
             return
 
         # step3+：全部显示
-        _set_row_visible(
-            getattr(self, "row_format_summary_widget", None), False
-        )
+        _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
         _set_row_visible(getattr(self, "row_pattern_widget", None), True)
 
     def _create_file_list(self) -> QWidget:
@@ -278,9 +256,7 @@ class BatchPanel(QWidget):
 
         self.btn_select_all.clicked.connect(self.selectAllRequested.emit)
         self.btn_select_none.clicked.connect(self.selectNoneRequested.emit)
-        self.btn_select_invert.clicked.connect(
-            self.invertSelectionRequested.emit
-        )
+        self.btn_select_invert.clicked.connect(self.invertSelectionRequested.emit)
         self.btn_quick_select.clicked.connect(self.quickSelectRequested.emit)
 
         btn_row.addWidget(self.btn_select_all)
@@ -292,9 +268,7 @@ class BatchPanel(QWidget):
         self.chk_show_config = QCheckBox("显示配置编辑器")
         try:
             self.chk_show_config.setChecked(False)
-            self.chk_show_config.setToolTip(
-                "勾选后显示配置编辑器；不勾选则保持隐藏"
-            )
+            self.chk_show_config.setToolTip("勾选后显示配置编辑器；不勾选则保持隐藏")
         except Exception:
             pass
         try:
@@ -347,15 +321,11 @@ class BatchPanel(QWidget):
 
         # 连接筛选信号
         try:
-            self.inp_filter_column.textChanged.connect(
-                self._on_quick_filter_changed
-            )
+            self.inp_filter_column.textChanged.connect(self._on_quick_filter_changed)
             self.cmb_filter_operator.currentTextChanged.connect(
                 self._on_operator_changed
             )
-            self.inp_filter_value.textChanged.connect(
-                self._on_quick_filter_changed
-            )
+            self.inp_filter_value.textChanged.connect(self._on_quick_filter_changed)
         except Exception:
             logger.debug("连接快速筛选信号失败", exc_info=True)
 
@@ -383,9 +353,7 @@ class BatchPanel(QWidget):
         except Exception:
             pass
         try:
-            self.btn_batch_in_toolbar.clicked.connect(
-                self.batchStartRequested.emit
-            )
+            self.btn_batch_in_toolbar.clicked.connect(self.batchStartRequested.emit)
         except Exception:
             logger.debug("无法连接 btn_batch_in_toolbar 信号", exc_info=True)
 
@@ -503,9 +471,7 @@ class BatchPanel(QWidget):
         self.txt_batch_log.setReadOnly(True)
         self.txt_batch_log.setFont(QFont("Consolas", 9))
         self.txt_batch_log.setMinimumHeight(160)
-        self.txt_batch_log.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout.addWidget(self.txt_batch_log)
 

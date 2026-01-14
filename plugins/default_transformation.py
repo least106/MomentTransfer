@@ -1,9 +1,10 @@
 """默认转换插件：提供参考的坐标旋转与移轴（r x F）实现。"""
+
 from typing import Dict
 
 import numpy as np
 
-from src.plugin import TransformationPlugin, PluginMetadata
+from src.plugin import PluginMetadata, TransformationPlugin
 
 
 class DefaultTransformationPlugin(TransformationPlugin):

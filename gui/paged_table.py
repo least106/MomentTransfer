@@ -3,16 +3,9 @@ from __future__ import annotations
 from typing import Callable, Iterable, List, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QCheckBox,
-)
+from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QPushButton,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout,
+                               QWidget)
 
 
 class PagedTableWidget(QWidget):
@@ -41,7 +34,7 @@ class PagedTableWidget(QWidget):
         self.max_cols = max_cols
         self._current_page = 0
         self._match_flags: Optional[List[bool]] = None  # None 表示未筛选
-        self._match_pages: Optional[List[bool]] = None   # 每页是否有匹配
+        self._match_pages: Optional[List[bool]] = None  # 每页是否有匹配
 
         self.table = QTableWidget(self)
         self.lbl_page = QLabel(self)
@@ -84,7 +77,12 @@ class PagedTableWidget(QWidget):
         self.table.setItem(r, c, item)
 
     # 筛选与页码
-    def set_filter_with_df(self, df, evaluator: Optional[Callable[[object], bool]], column_name: Optional[str] = None):
+    def set_filter_with_df(
+        self,
+        df,
+        evaluator: Optional[Callable[[object], bool]],
+        column_name: Optional[str] = None,
+    ):
         """根据 evaluator 计算匹配行，并跳转到包含匹配的页。evaluator 接收 df[column_name] 的每个值。"""
         if evaluator is None or column_name is None or column_name not in df.columns:
             self._match_flags = None

@@ -5,19 +5,10 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QTextEdit,
-    QWidget,
-    QScrollArea,
-)
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QScrollArea, QTextEdit,
+                               QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+                               QWidget)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +70,8 @@ class QuickSelectDialog(QDialog):
         return files
 
     def _populate_items(self) -> None:
-        from src.special_format_parser import looks_like_special_format, get_part_names
+        from src.special_format_parser import (get_part_names,
+                                               looks_like_special_format)
 
         try:
             self.tree.blockSignals(True)
@@ -192,7 +184,9 @@ class QuickSelectDialog(QDialog):
         if lines:
             preview.setPlainText("\n".join(lines))
 
-    def _render_rows(self, fp_str: str, part: Optional[str], rows: List[int]) -> List[str]:
+    def _render_rows(
+        self, fp_str: str, part: Optional[str], rows: List[int]
+    ) -> List[str]:
         """获取指定行的文本表示，便于在预览中展示。"""
         try:
             fp = Path(fp_str)
@@ -250,9 +244,14 @@ class QuickSelectDialog(QDialog):
                 if part is None:
                     # 普通表格
                     max_need = max(rows) + 1
-                    df = self.batch._get_table_df_preview(fp, max_rows=max(max_need, 200))
+                    df = self.batch._get_table_df_preview(
+                        fp, max_rows=max(max_need, 200)
+                    )
                     row_count = len(df) if df is not None else max_need
-                    sel = self.batch._ensure_table_row_selection_storage(fp, row_count) or set()
+                    sel = (
+                        self.batch._ensure_table_row_selection_storage(fp, row_count)
+                        or set()
+                    )
                     by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
                     cur = by_file.get(str(fp))
                     if cur is None:
@@ -269,7 +268,10 @@ class QuickSelectDialog(QDialog):
                     data = self.batch._get_special_data_dict(fp)
                     df = (data or {}).get(str(part))
                     row_count = len(df) if df is not None else (max(rows) + 1)
-                    by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                    by_file = (
+                        getattr(self.gui, "special_part_row_selection_by_file", {})
+                        or {}
+                    )
                     by_part = by_file.setdefault(str(fp), {})
                     sel = by_part.get(str(part))
                     if sel is None:
@@ -278,7 +280,9 @@ class QuickSelectDialog(QDialog):
                     for r in rows:
                         sel.discard(int(r))
                     self.gui.special_part_row_selection_by_file = by_file
-                    table = (self.batch._special_preview_tables or {}).get((str(fp), str(part)))
+                    table = (self.batch._special_preview_tables or {}).get(
+                        (str(fp), str(part))
+                    )
                     if table is not None and hasattr(table, "uncheck_rows_if_visible"):
                         table.uncheck_rows_if_visible(rows)
         except Exception:

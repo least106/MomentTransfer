@@ -2,15 +2,11 @@
 坐标系模型单元测试 - 验证 CoordinateSystem 与 ReferenceValues 的基本功能
 """
 
-import pytest
 import numpy as np
-from src.models.project_model import (
-    CoordinateSystem,
-    ReferenceValues,
-    PartVariant,
-    Part,
-    ProjectConfigModel,
-)
+import pytest
+
+from src.models.project_model import (CoordinateSystem, Part, PartVariant,
+                                      ProjectConfigModel, ReferenceValues)
 
 
 class TestCoordinateSystem:

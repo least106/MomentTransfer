@@ -1,7 +1,8 @@
 """JSON 输出插件：将 numpy 数据序列化为 JSON 文件。"""
+
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 import numpy as np
 

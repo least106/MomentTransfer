@@ -3,15 +3,16 @@
 """
 
 import logging
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QSplitter
-from PySide6.QtCore import Qt, QTimer
 
-from gui.config_manager import ConfigManager
-from gui.part_manager import PartManager
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+
 from gui.batch_manager import BatchManager
-from gui.visualization_manager import VisualizationManager
+from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager
+from gui.part_manager import PartManager
+from gui.visualization_manager import VisualizationManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,7 @@ class InitializationManager:
                 config_panel.setVisible(False)
                 splitter.setSizes([0, 1])
             except Exception:
-                logger.debug(
-                    "splitter initial hide failed (non-fatal)", exc_info=True
-                )
+                logger.debug("splitter initial hide failed (non-fatal)", exc_info=True)
 
             main_layout.addWidget(splitter)
             # 将状态信息显示为状态栏右侧的永久标签，避免默认消息框在左侧分散注意力
@@ -80,9 +79,7 @@ class InitializationManager:
             except Exception:
                 # 回退到默认行为
                 try:
-                    self.main_window.statusBar().showMessage(
-                        "步骤1：选择文件或目录"
-                    )
+                    self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
                 except Exception:
                     pass
 
@@ -132,9 +129,7 @@ class InitializationManager:
                                 except Exception:
                                     # 兜底：仅更新匹配控件的启用状态
                                     try:
-                                        if hasattr(
-                                            self.main_window, "inp_pattern"
-                                        ):
+                                        if hasattr(self.main_window, "inp_pattern"):
                                             self.main_window.inp_pattern.setEnabled(
                                                 not p.is_file()
                                             )
@@ -156,9 +151,7 @@ class InitializationManager:
                         # 有些 Qt 版本或组件可能不支持该信号，忽略绑定失败
                         pass
             except Exception:
-                logger.debug(
-                    "绑定 inp_batch_input 编辑完成信号失败", exc_info=True
-                )
+                logger.debug("绑定 inp_batch_input 编辑完成信号失败", exc_info=True)
         except Exception as e:
             logger.error(f"管理器初始化失败: {e}", exc_info=True)
             # 继续运行，即使管理器初始化失败
@@ -169,9 +162,7 @@ class InitializationManager:
             logging_manager = LoggingManager(self.main_window)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug(
-                f"GUI logging setup failed (non-fatal): {e}", exc_info=True
-            )
+            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
 
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
@@ -200,6 +191,4 @@ class InitializationManager:
 
             QTimer.singleShot(120, _do_initial_updates)
         except Exception:
-            logger.debug(
-                "Initial layout update scheduling failed", exc_info=True
-            )
+            logger.debug("Initial layout update scheduling failed", exc_info=True)

@@ -8,9 +8,10 @@ MomentTransfer CLI - 单帧坐标变换工具
 
 import json
 import sys
-import click
-from typing import Any
 from pathlib import Path
+from typing import Any
+
+import click
 
 from src.data_loader import load_data
 from src.physics import AeroCalculator
@@ -68,9 +69,7 @@ def cli(verbose):
     default=None,
     help="目标 part 名称（可选，多 part 时指定）",
 )
-@click.option(
-    "--target-variant", type=int, default=0, help="目标 variant 索引，默认 0"
-)
+@click.option("--target-variant", type=int, default=0, help="目标 variant 索引，默认 0")
 def run(config_path, output_path, force, moment, target_part, target_variant):
     """执行单帧坐标变换
 
@@ -127,12 +126,8 @@ def run(config_path, output_path, force, moment, target_part, target_variant):
             output_data = {
                 "input": {"force": forces, "moment": moments},
                 "result": {
-                    "force_transformed": _make_serializable(
-                        result.force_transformed
-                    ),
-                    "moment_transformed": _make_serializable(
-                        result.moment_transformed
-                    ),
+                    "force_transformed": _make_serializable(result.force_transformed),
+                    "moment_transformed": _make_serializable(result.moment_transformed),
                     "coeff_force": _make_serializable(result.coeff_force),
                     "coeff_moment": _make_serializable(result.coeff_moment),
                 },

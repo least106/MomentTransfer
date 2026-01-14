@@ -1,20 +1,20 @@
-import click
+import fnmatch
+import json
 import logging
+import os
+import pickle
 import sys
+import tempfile
+import time
+import traceback
+import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import pandas as pd
-import numpy as np
-
 from datetime import datetime
 from pathlib import Path
-import fnmatch
-import uuid
-import traceback
-import tempfile
-import os
-import time
-import json
-import pickle
+
+import click
+import numpy as np
+import pandas as pd
 
 try:
     import fcntl
@@ -30,20 +30,12 @@ except ImportError:
     portalocker = None
 
 
+from src.cli_helpers import (BatchConfig, configure_logging,
+                             get_user_file_format, load_format_from_file,
+                             load_project_calculator)
 from src.physics import AeroCalculator
-
-from src.cli_helpers import (
-    configure_logging,
-    load_project_calculator,
-    BatchConfig,
-    load_format_from_file,
-    get_user_file_format,
-)
-
-from src.special_format_parser import (
-    looks_like_special_format,
-    process_special_format_file,
-)
+from src.special_format_parser import (looks_like_special_format,
+                                       process_special_format_file)
 
 
 def _error_exit_json(message: str, code: int = 2, hint: str = None):
@@ -81,7 +73,6 @@ DEFAULT_SAMPLE_ROWS = 5
 REQUIRED_KEYS = ["fx", "fy", "fz", "mx", "my", "mz"]
 
 
-
 def generate_output_path(
     file_path: Path,
     output_dir: Path,
@@ -114,9 +105,7 @@ def generate_output_path(
         try:
             candidate.unlink()
         except Exception as e:
-            raise IOError(
-                f"无法覆盖已存在的输出文件: {candidate} -> {e}"
-            ) from e
+            raise IOError(f"无法覆盖已存在的输出文件: {candidate} -> {e}") from e
 
     # 如果不需要在磁盘上创建占位文件（例如 dry-run），仅计算一个不会冲突的名称并返回
     if not create_placeholder:
@@ -178,16 +167,12 @@ def generate_output_path(
         unique = uuid.uuid4().hex
         candidate = output_dir / f"{base}_{unique}{suf}"
         try:
-            fd = os.open(
-                str(candidate), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
-            )
+            fd = os.open(str(candidate), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
             os.close(fd)
             logger.debug("使用 UUID 回退输出名: %s", candidate.name)
         except Exception as e:
             # 最终尝试失败：不可写或权限不足
-            raise IOError(
-                f"无法在输出目录创建唯一输出文件: {candidate} -> {e}"
-            ) from e
+            raise IOError(f"无法在输出目录创建唯一输出文件: {candidate} -> {e}") from e
 
     # 确保路径可写性（占位创建已验证），返回已占位的路径
     return candidate
@@ -221,9 +206,7 @@ def process_df_chunk(
         ("my", my_i),
         ("mz", mz_i),
     ]
-    invalid = [
-        (name, idx) for name, idx in index_specs if idx < 0 or idx >= num_cols
-    ]
+    invalid = [(name, idx) for name, idx in index_specs if idx < 0 or idx >= num_cols]
     if invalid:
         logger.error(
             "文件 %s: 列索引超出范围（chunk 仅有 %d 列）：%s",
@@ -237,16 +220,12 @@ def process_df_chunk(
         )
     # 解析力/力矩列并检测非数值
     # 一次性按位置提取所有 6 列，使用向量化操作而非逐列循环
-    selected_cols = chunk_df.iloc[
-        :, [fx_i, fy_i, fz_i, mx_i, my_i, mz_i]
-    ].copy()
+    selected_cols = chunk_df.iloc[:, [fx_i, fy_i, fz_i, mx_i, my_i, mz_i]].copy()
     # 使用向量化的 apply 替换逐列 pd.to_numeric 循环（性能提升 2-3 倍）
     selected_cols = selected_cols.apply(pd.to_numeric, errors="coerce")
     forces_df = selected_cols.iloc[:, :3]
     moments_df = selected_cols.iloc[:, 3:]
-    mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(
-        axis=1
-    )
+    mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
     # 为避免后续 index 对齐问题，使用 numpy 布尔数组作为掩码
     mask_array = mask_non_numeric.to_numpy()
     n_non = int(mask_non_numeric.sum())
@@ -255,9 +234,7 @@ def process_df_chunk(
     if n_non:
         # 记录示例行用于诊断
         sample_rows_val = (
-            cfg.sample_rows
-            if cfg.sample_rows is not None
-            else DEFAULT_SAMPLE_ROWS
+            cfg.sample_rows if cfg.sample_rows is not None else DEFAULT_SAMPLE_ROWS
         )
         samp_n = min(int(sample_rows_val), n_non)
         if samp_n > 0:
@@ -366,9 +343,9 @@ def process_df_chunk(
 
     # 对于 append 模式，直接在目标文件上以二进制追加写入（减少替换竞争）
     if mode == "a":
-        csv_bytes = out_df.to_csv(
-            index=False, header=header, encoding="utf-8"
-        ).encode("utf-8")
+        csv_bytes = out_df.to_csv(index=False, header=header, encoding="utf-8").encode(
+            "utf-8"
+        )
         for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
             try:
                 # 以二进制追加打开并尝试加锁写入（首选 portalocker；若不可用，回退到 lockfile 方案）
@@ -383,9 +360,7 @@ def process_df_chunk(
                                     le,
                                 )
                         except Exception:
-                            logger.exception(
-                                "尝试加锁时发生意外异常（忽略并继续写入）"
-                            )
+                            logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
                         try:
                             f.write(csv_bytes)
@@ -453,9 +428,7 @@ def process_df_chunk(
                                 if lock_path.exists():
                                     lock_path.unlink()
                             except Exception:
-                                logger.debug(
-                                    "无法删除 lockfile：%s（忽略）", lock_path
-                                )
+                                logger.debug("无法删除 lockfile：%s（忽略）", lock_path)
                 # 成功写入
                 last_exc = None
                 break
@@ -487,9 +460,7 @@ def process_df_chunk(
         # 使用临时文件并替换以实现原子写入（用于首次写入或覆盖）
         for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
             try:
-                with open(
-                    out_path, open_mode, encoding="utf-8", newline=""
-                ) as f:
+                with open(out_path, open_mode, encoding="utf-8", newline="") as f:
                     try:
                         if portalocker:
                             try:
@@ -505,14 +476,10 @@ def process_df_chunk(
                                 out_path,
                             )
                     except Exception:
-                        logger.exception(
-                            "尝试加锁时发生意外异常（忽略并继续写入）"
-                        )
+                        logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
                     try:
-                        out_df.to_csv(
-                            f, index=False, header=header, encoding="utf-8"
-                        )
+                        out_df.to_csv(f, index=False, header=header, encoding="utf-8")
                         f.flush()
                         try:
                             os.fsync(f.fileno())
@@ -589,9 +556,7 @@ def find_matching_files(directory: str, pattern: str) -> list:
     return sorted(matched_files)
 
 
-def read_data_with_config(
-    file_path: Path, config: BatchConfig
-) -> pd.DataFrame:
+def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
     """根据 `config` 读取整个数据表（非流式模式）。
 
     返回 pandas DataFrame（不做列名解析，使用 header=None）。
@@ -767,9 +732,9 @@ def process_single_file(
                         checked += 1
                         val = df.iloc[0, idx]
                         try:
-                            nv = pd.to_numeric(
-                                pd.Series([val]), errors="coerce"
-                            ).iloc[0]
+                            nv = pd.to_numeric(pd.Series([val]), errors="coerce").iloc[
+                                0
+                            ]
                         except Exception:
                             nv = None
                         if pd.isna(nv) and pd.notna(val):
@@ -780,9 +745,7 @@ def process_single_file(
                     logger.info("检测到可能的表头，已跳过首行")
                     df = df.iloc[1:].reset_index(drop=True)
         except Exception:
-            logger.debug(
-                "表头自动检测发生异常，继续按原始数据处理", exc_info=True
-            )
+            logger.debug("表头自动检测发生异常，继续按原始数据处理", exc_info=True)
 
     out_path = generate_output_path(file_path, output_dir, config)
     temp_fd, temp_name = tempfile.mkstemp(
@@ -916,11 +879,7 @@ def process_single_file(
                         e,
                     )
                 if ri < replace_attempts:
-                    time.sleep(
-                        replace_backoffs[
-                            min(ri - 1, len(replace_backoffs) - 1)
-                        ]
-                    )
+                    time.sleep(replace_backoffs[min(ri - 1, len(replace_backoffs) - 1)])
         if not replaced:
             # 若替换失败，抛出并由外层 except 捕获以进行清理和记录
             if replace_err is None:
@@ -952,9 +911,7 @@ def process_single_file(
         except Exception:
             pass
         try:
-            partial_flag.write_text(
-                f"error: {str(e)}\n{traceback.format_exc()}"
-            )
+            partial_flag.write_text(f"error: {str(e)}\n{traceback.format_exc()}")
         except Exception:
             pass
         logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
@@ -1036,9 +993,7 @@ def _worker_process(args):
                 project_data = _WORKER_PROJECT_DATA
             else:
                 # 仅在必要时加载一次并缓存到进程全局变量
-                project_data, calculator = load_project_calculator(
-                    project_config_path
-                )
+                project_data, calculator = load_project_calculator(project_config_path)
                 _WORKER_CALCULATOR = calculator
                 _WORKER_PROJECT_PATH = project_config_path
                 _WORKER_PROJECT_DATA = project_data
@@ -1050,9 +1005,7 @@ def _worker_process(args):
         cfg.passthrough_columns = config_dict.get("passthrough_columns", [])
         cfg.chunksize = config_dict.get("chunksize", None)
         cfg.name_template = config_dict.get("name_template", cfg.name_template)
-        cfg.timestamp_format = config_dict.get(
-            "timestamp_format", cfg.timestamp_format
-        )
+        cfg.timestamp_format = config_dict.get("timestamp_format", cfg.timestamp_format)
         cfg.overwrite = bool(config_dict.get("overwrite", cfg.overwrite))
         cfg.treat_non_numeric = config_dict.get(
             "treat_non_numeric", cfg.treat_non_numeric
@@ -1132,9 +1085,7 @@ def run_batch_processing(
         # 显示实际使用的 Target part 名称
         used_target = getattr(calculator, "target_frame", None)
         used_target_name = (
-            getattr(used_target, "part_name", None)
-            if used_target is not None
-            else None
+            getattr(used_target, "part_name", None) if used_target is not None else None
         )
         logger.info("  ✓ 配置加载成功: %s", used_target_name)
     except Exception as e:
@@ -1214,9 +1165,7 @@ def run_batch_processing(
     # 确保收集结果的容器始终存在，避免在空文件列表下引用未定义变量
     results = []
     for i, file_path in enumerate(files_to_process, 1):
-        logger.info(
-            "进度: [%d/%d] %s", i, len(files_to_process), file_path.name
-        )
+        logger.info("进度: [%d/%d] %s", i, len(files_to_process), file_path.name)
         # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
         try:
             from src.cli_helpers import resolve_file_format
@@ -1284,9 +1233,7 @@ def run_batch_processing(
         if show_progress:
             files_done = i
             files_left = len(files_to_process) - files_done
-            avg_per_file = (
-                datetime.now() - start_time
-            ).total_seconds() / files_done
+            avg_per_file = (datetime.now() - start_time).total_seconds() / files_done
             eta_seconds = int(avg_per_file * files_left)
             logger.info(
                 "已完成 %d/%d，累计耗时 %.1fs，本文件耗时 %.2fs，平均 %.2fs/文件，预计剩余 %ds",
@@ -1323,9 +1270,7 @@ def run_batch_processing(
     print("\n" + "=" * 70)
     print("批处理完成!")
     print(f"  成功: {success_count}/{len(files_to_process)}")
-    print(
-        f"  失败: {len(files_to_process) - success_count}/{len(files_to_process)}"
-    )
+    print(f"  失败: {len(files_to_process) - success_count}/{len(files_to_process)}")
     print("=" * 70)
 
     # 写出 JSON 汇总（若请求）
@@ -1364,12 +1309,8 @@ def run_batch_processing(
 
 
 @click.command(context_settings=dict(help_option_names=["-h", "--help"]))
-@click.option(
-    "-c", "--config", "config", required=True, help="配置文件路径 (JSON)"
-)
-@click.option(
-    "-i", "--input", "input_path", required=True, help="输入文件或目录路径"
-)
+@click.option("-c", "--config", "config", required=True, help="配置文件路径 (JSON)")
+@click.option("-i", "--input", "input_path", required=True, help="输入文件或目录路径")
 @click.option(
     "-p",
     "--pattern",
@@ -1389,9 +1330,7 @@ def run_batch_processing(
     is_flag=True,
     help="以非交互模式运行（必须提供 --format-file）",
 )
-@click.option(
-    "--log-file", "log_file", default=None, help="将日志写入指定文件"
-)
+@click.option("--log-file", "log_file", default=None, help="将日志写入指定文件")
 @click.option("--verbose", "verbose", is_flag=True, help="增加日志详细程度")
 @click.option(
     "--workers",
@@ -1589,12 +1528,8 @@ def main(**cli_options):
                     pat_use = pat
                 else:
                     if non_interactive:
-                        pat_use = (
-                            "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
-                        )
-                        logger.info(
-                            "非交互模式：使用默认文件匹配模式 '%s'", pat_use
-                        )
+                        pat_use = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
+                        logger.info("非交互模式：使用默认文件匹配模式 '%s'", pat_use)
                     else:
                         pat_use = (
                             input(
@@ -1747,9 +1682,7 @@ def main(**cli_options):
                 }
                 try:
                     with open(output_json, "w", encoding="utf-8") as fh:
-                        json.dump(
-                            summary_payload, fh, ensure_ascii=False, indent=2
-                        )
+                        json.dump(summary_payload, fh, ensure_ascii=False, indent=2)
                     logger.info("已将处理结果写入 %s", output_json)
                 except Exception:
                     logger.exception("写入 output_json 失败")
@@ -1766,9 +1699,7 @@ def main(**cli_options):
                     )
                 )
 
-            logger.info(
-                f"并行处理完成: 成功 {success_count}/{len(files_to_process)}"
-            )
+            logger.info(f"并行处理完成: 成功 {success_count}/{len(files_to_process)}")
             sys.exit(0 if success_count == len(files_to_process) else 1)
 
         else:

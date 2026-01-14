@@ -3,14 +3,9 @@ UI 工具模块 - 提供通用的 UI 组件创建函数
 """
 
 import logging
-from PySide6.QtWidgets import (
-    QLineEdit,
-    QDoubleSpinBox,
-    QLabel,
-    QWidget,
-    QHBoxLayout,
-    QSizePolicy,
-)
+
+from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit,
+                               QSizePolicy, QWidget)
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +29,7 @@ def create_input(default_value: str) -> QLineEdit:
     return inp
 
 
-def create_triple_spin(
-    a: float = 0.0, b: float = 0.0, c: float = 0.0
-) -> tuple:
+def create_triple_spin(a: float = 0.0, b: float = 0.0, c: float = 0.0) -> tuple:
     """创建一行三个紧凑型 QDoubleSpinBox
 
     参数：

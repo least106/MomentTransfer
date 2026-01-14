@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.cli_helpers import load_project_calculator, load_format_from_file
 from batch import process_single_file
+from src.cli_helpers import load_format_from_file, load_project_calculator
 
 
 def write_sample_csv(path: Path, rows=5):

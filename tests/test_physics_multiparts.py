@@ -2,9 +2,9 @@ import json
 
 import pytest
 
+from src import cli_helpers
 from src.data_loader import ProjectData
 from src.physics import AeroCalculator
-from src import cli_helpers
 
 
 def _make_frame_dict(name="P", origin=(0, 0, 0)):

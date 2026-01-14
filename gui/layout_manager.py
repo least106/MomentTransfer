@@ -3,7 +3,8 @@
 """
 
 import logging
-from PySide6.QtWidgets import QGridLayout, QSizePolicy, QApplication
+
+from PySide6.QtWidgets import QApplication, QGridLayout, QSizePolicy
 
 logger = logging.getLogger(__name__)
 

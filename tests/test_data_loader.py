@@ -2,16 +2,14 @@
 测试 data_loader 模块的功能，包括输入校验、边缘情况处理
 """
 
-import pytest
 import json
-import tempfile
 import os
-from src.data_loader import (
-    load_data,
-    CoordSystemDefinition,
-    TargetDefinition,
-    ProjectData,
-)
+import tempfile
+
+import pytest
+
+from src.data_loader import (CoordSystemDefinition, ProjectData,
+                             TargetDefinition, load_data)
 
 
 class TestCoordSystemDefinition:

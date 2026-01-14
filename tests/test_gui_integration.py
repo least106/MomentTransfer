@@ -3,8 +3,9 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
-from src.cli_helpers import load_project_calculator
+
 from gui import BatchProcessThread
+from src.cli_helpers import load_project_calculator
 
 
 def test_gui_background_thread_processing(tmp_path, qtbot=None):

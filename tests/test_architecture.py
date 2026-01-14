@@ -2,34 +2,23 @@
 配置系统、缓存系统和插件系统的单元测试
 """
 
-import pytest
-import numpy as np
-import tempfile
 import json
 import sys
+import tempfile
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
+import numpy as np
+import pytest
 
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config import (
-    SystemConfig,
-    get_config,
-    reset_config,
-)
-from src.cache import (
-    CalculationCache,
-    RotationMatrixCache,
-    TransformationCache,
-    CacheKey,
-)
-from src.plugin import (
-    PluginRegistry,
-    CoordSystemPlugin,
-    PluginMetadata,
-    get_plugin_registry,
-)
+from src.cache import (CacheKey, CalculationCache, RotationMatrixCache,
+                       TransformationCache)
+from src.config import SystemConfig, get_config, reset_config
+from src.plugin import (CoordSystemPlugin, PluginMetadata, PluginRegistry,
+                        get_plugin_registry)
 
 
 class TestConfigSystem:

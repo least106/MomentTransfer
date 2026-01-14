@@ -3,8 +3,9 @@
 """
 
 import logging
+
 import numpy as np
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QMessageBox
+from PySide6.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
 
 # Mpl3DCanvas 延迟导入以加快GUI启动速度
 

@@ -24,9 +24,7 @@ class CompatibilityManager:
             self.main_window.cmb_source_parts = (
                 self.main_window.source_panel.part_selector
             )
-            self.main_window.src_coord_table = (
-                self.main_window.source_panel.coord_table
-            )
+            self.main_window.src_coord_table = self.main_window.source_panel.coord_table
             self.main_window.btn_add_source_part = (
                 self.main_window.source_panel.btn_add_part
             )
@@ -41,9 +39,7 @@ class CompatibilityManager:
             self.main_window.cmb_target_parts = (
                 self.main_window.target_panel.part_selector
             )
-            self.main_window.tgt_coord_table = (
-                self.main_window.target_panel.coord_table
-            )
+            self.main_window.tgt_coord_table = self.main_window.target_panel.coord_table
             self.main_window.btn_add_target_part = (
                 self.main_window.target_panel.btn_add_part
             )
@@ -62,9 +58,7 @@ class CompatibilityManager:
             except Exception:
                 self.main_window.btn_load = None
             self.main_window.btn_save = self.main_window.config_panel.btn_save
-            self.main_window.btn_apply = (
-                self.main_window.config_panel.btn_apply
-            )
+            self.main_window.btn_apply = self.main_window.config_panel.btn_apply
 
             # 初始化当前 Part 名称
             self.main_window._current_source_part_name = "Global"

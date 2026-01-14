@@ -2,28 +2,16 @@
 对话框模块：包含列映射配置对话框和实验性功能对话框
 """
 
-import logging
 import json
+import logging
 from pathlib import Path
 
-from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QGroupBox,
-    QFormLayout,
-    QFileDialog,
-    QMessageBox,
-    QSpinBox,
-    QDialogButtonBox,
-    QCheckBox,
-    QListWidget,
-)
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
+                               QFileDialog, QFormLayout, QGroupBox,
+                               QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                               QMessageBox, QPushButton, QSpinBox, QVBoxLayout)
 
-from src.format_registry import list_mappings, register_mapping, delete_mapping
+from src.format_registry import delete_mapping, list_mappings, register_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +105,7 @@ class ColumnMappingDialog(QDialog):
         grp_pass.setLayout(layout_pass)
 
         # 标准按钮 OK/Cancel
-        btn_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btn_box.accepted.connect(self.accept)
         btn_box.rejected.connect(self.reject)
 
@@ -172,9 +158,7 @@ class ColumnMappingDialog(QDialog):
             "skip_rows": self.spin_skip_rows.value(),
             "columns": {
                 "alpha": (
-                    self.col_alpha.value()
-                    if self.col_alpha.value() >= 0
-                    else None
+                    self.col_alpha.value() if self.col_alpha.value() >= 0 else None
                 ),
                 "fx": self.col_fx.value(),
                 "fy": self.col_fy.value(),
@@ -219,16 +203,12 @@ class ColumnMappingDialog(QDialog):
             if "mz" in cols and cols.get("mz") is not None:
                 self.col_mz.setValue(int(cols.get("mz")))
         except (ValueError, TypeError) as e:
-            logger.warning(
-                "Invalid column indices in %r: %s", cols, e, exc_info=True
-            )
+            logger.warning("Invalid column indices in %r: %s", cols, e, exc_info=True)
 
         passthrough = cfg.get("passthrough") or cfg.get("Passthrough") or []
         try:
             if isinstance(passthrough, (list, tuple)):
-                self.txt_passthrough.setText(
-                    ",".join(str(int(x)) for x in passthrough)
-                )
+                self.txt_passthrough.setText(",".join(str(int(x)) for x in passthrough))
             elif isinstance(passthrough, str):
                 self.txt_passthrough.setText(passthrough)
         except (ValueError, TypeError) as e:
@@ -290,9 +270,7 @@ class ExperimentalDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # per-file 开关
-        self.chk_enable_sidecar = QCheckBox(
-            "启用 per-file 覆盖（sidecar/registry）"
-        )
+        self.chk_enable_sidecar = QCheckBox("启用 per-file 覆盖（sidecar/registry）")
         self.chk_enable_sidecar.setToolTip(
             "启用后批处理会尝试使用文件侧车或 registry 覆盖全局配置"
         )
@@ -302,9 +280,7 @@ class ExperimentalDialog(QDialog):
         reg_row = QHBoxLayout()
         reg_row.addWidget(QLabel("格式注册表 (.sqlite):"))
         self.inp_registry_db = QLineEdit()
-        self.inp_registry_db.setPlaceholderText(
-            "可选: registry 数据库 (.sqlite)"
-        )
+        self.inp_registry_db.setPlaceholderText("可选: registry 数据库 (.sqlite)")
         reg_row.addWidget(self.inp_registry_db)
         btn_browse = QPushButton("浏览")
         btn_browse.setMaximumWidth(90)
@@ -365,9 +341,7 @@ class ExperimentalDialog(QDialog):
     def _load_initial(self):
         s = self.initial_settings
         try:
-            self.chk_enable_sidecar.setChecked(
-                bool(s.get("enable_sidecar", False))
-            )
+            self.chk_enable_sidecar.setChecked(bool(s.get("enable_sidecar", False)))
             self.inp_registry_db.setText(s.get("registry_db", "") or "")
             for rp in s.get("recent_projects", [])[:10]:
                 self.lst_recent.addItem(rp)
@@ -419,9 +393,7 @@ class ExperimentalDialog(QDialog):
             QMessageBox.warning(self, "错误", "请先选择 registry 数据库文件")
             return
         if not pat or not fmt:
-            QMessageBox.warning(
-                self, "错误", "请填写 pattern 与 format 文件路径"
-            )
+            QMessageBox.warning(self, "错误", "请填写 pattern 与 format 文件路径")
             return
         try:
             register_mapping(dbp, pat, fmt)
@@ -431,9 +403,7 @@ class ExperimentalDialog(QDialog):
             QMessageBox.critical(self, "注册失败", str(e))
 
     def _on_registry_edit(self):
-        QMessageBox.information(
-            self, "提示", "请在主界面中编辑后再注册（简化实现）"
-        )
+        QMessageBox.information(self, "提示", "请在主界面中编辑后再注册（简化实现）")
 
     def _on_registry_remove(self):
         dbp = self.inp_registry_db.text().strip()
@@ -466,7 +436,6 @@ class ExperimentalDialog(QDialog):
             "enable_sidecar": bool(self.chk_enable_sidecar.isChecked()),
             "registry_db": self.inp_registry_db.text().strip(),
             "recent_projects": [
-                self.lst_recent.item(i).text()
-                for i in range(self.lst_recent.count())
+                self.lst_recent.item(i).text() for i in range(self.lst_recent.count())
             ],
         }

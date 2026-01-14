@@ -2,9 +2,9 @@ import csv
 import json
 from pathlib import Path
 
-from src.format_registry import init_db, register_mapping
 from batch import run_batch_processing
 from src.cli_helpers import BatchConfig
+from src.format_registry import init_db, register_mapping
 
 
 def write_sample_csv(path: Path, rows=8):

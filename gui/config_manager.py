@@ -6,10 +6,12 @@ import json
 import logging
 from pathlib import Path
 from typing import Optional
+
 from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+from gui.signal_bus import SignalBus
 from src.data_loader import ProjectData
 from src.models import ProjectConfigModel
-from gui.signal_bus import SignalBus
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,7 @@ class ConfigManager:
         # 统一使用 ProjectConfigModel
         self.project_config_model: Optional[ProjectConfigModel] = None
         try:
-            self.signal_bus = getattr(
-                gui_instance, "signal_bus", SignalBus.instance()
-            )
+            self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
         except Exception:
             self.signal_bus = SignalBus.instance()
 
@@ -98,18 +98,10 @@ class ConfigManager:
         """同步必要字段到面板输入（旧隐藏控件已移除）。"""
         prefix = "src" if side == "source" or side == "src" else "tgt"
         try:
-            getattr(self.gui, f"{prefix}_cref").setText(
-                str(payload.get("Cref", 1.0))
-            )
-            getattr(self.gui, f"{prefix}_bref").setText(
-                str(payload.get("Bref", 1.0))
-            )
-            getattr(self.gui, f"{prefix}_sref").setText(
-                str(payload.get("Sref", 10.0))
-            )
-            getattr(self.gui, f"{prefix}_q").setText(
-                str(payload.get("Q", 1000.0))
-            )
+            getattr(self.gui, f"{prefix}_cref").setText(str(payload.get("Cref", 1.0)))
+            getattr(self.gui, f"{prefix}_bref").setText(str(payload.get("Bref", 1.0)))
+            getattr(self.gui, f"{prefix}_sref").setText(str(payload.get("Sref", 10.0)))
+            getattr(self.gui, f"{prefix}_q").setText(str(payload.get("Q", 1000.0)))
         except Exception:
             pass
 
@@ -130,9 +122,7 @@ class ConfigManager:
             try:
                 self.gui._raw_project_dict = data
             except Exception:
-                logger.debug(
-                    "同步 _raw_project_dict 到 gui 失败", exc_info=True
-                )
+                logger.debug("同步 _raw_project_dict 到 gui 失败", exc_info=True)
 
             # 解析为 ProjectData
             project = ProjectData.from_dict(data)
@@ -159,9 +149,7 @@ class ConfigManager:
             try:
                 self.gui.target_panel.update_part_list(target_part_names)
             except Exception:
-                logger.debug(
-                    "target_panel.update_part_list 失败", exc_info=True
-                )
+                logger.debug("target_panel.update_part_list 失败", exc_info=True)
 
             if self.gui.cmb_target_parts.count() > 0:
                 self.gui.cmb_target_parts.setVisible(True)
@@ -192,9 +180,7 @@ class ConfigManager:
                 try:
                     self.gui.source_panel.update_part_list(source_part_names)
                 except Exception:
-                    logger.debug(
-                        "source_panel.update_part_list 失败", exc_info=True
-                    )
+                    logger.debug("source_panel.update_part_list 失败", exc_info=True)
 
                 if self.gui.cmb_source_parts.count() > 0:
                     self.gui.cmb_source_parts.setVisible(True)
@@ -209,14 +195,10 @@ class ConfigManager:
                     # 同步面板当前选择
                     try:
                         self.gui.source_panel.part_selector.blockSignals(True)
-                        self.gui.source_panel.part_selector.setCurrentText(
-                            firsts
-                        )
+                        self.gui.source_panel.part_selector.setCurrentText(firsts)
                     finally:
                         try:
-                            self.gui.source_panel.part_selector.blockSignals(
-                                False
-                            )
+                            self.gui.source_panel.part_selector.blockSignals(False)
                         except Exception:
                             pass
             except Exception:
@@ -241,9 +223,7 @@ class ConfigManager:
                 logger.debug("add_recent_project 失败", exc_info=True)
 
         except Exception as e:
-            QMessageBox.critical(
-                self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}"
-            )
+            QMessageBox.critical(self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}")
 
     def _populate_target_form(self, project: ProjectData):
         """填充 Target 坐标系表单"""
@@ -319,9 +299,7 @@ class ConfigManager:
                 model = ProjectConfigModel.from_dict(data)
                 setattr(self.gui, "project_model", model)
             except Exception:
-                logger.debug(
-                    "保存前 ProjectConfigModel 同步失败", exc_info=True
-                )
+                logger.debug("保存前 ProjectConfigModel 同步失败", exc_info=True)
 
             # 优先覆盖上次加载的文件
             try:
@@ -339,9 +317,7 @@ class ConfigManager:
                         f"已保存: {self._last_loaded_config_path}"
                     )
                     try:
-                        self.signal_bus.configSaved.emit(
-                            self._last_loaded_config_path
-                        )
+                        self.signal_bus.configSaved.emit(self._last_loaded_config_path)
                     except Exception:
                         logger.debug("发射 configSaved 失败", exc_info=True)
                     return
@@ -368,9 +344,7 @@ class ConfigManager:
                 logger.debug("发射 configSaved 失败", exc_info=True)
 
         except ValueError as e:
-            QMessageBox.warning(
-                self.gui, "输入错误", f"请检查数值输入:\n{str(e)}"
-            )
+            QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
         except Exception as e:
             QMessageBox.critical(self.gui, "保存失败", str(e))
 
@@ -396,9 +370,7 @@ class ConfigManager:
                 if model:
                     data = model.to_dict()
             except Exception:
-                logger.debug(
-                    "apply_config: 从 project_model 导出失败", exc_info=True
-                )
+                logger.debug("apply_config: 从 project_model 导出失败", exc_info=True)
 
             if data is None:
                 # 回退：仅当没有模型时，才用面板构造最小配置
@@ -465,19 +437,16 @@ class ConfigManager:
                 logger.debug("发射 configApplied 失败", exc_info=True)
 
         except ValueError as e:
-            QMessageBox.warning(
-                self.gui, "输入错误", f"请检查数值输入:\n{str(e)}"
-            )
+            QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
         except Exception as e:
-            QMessageBox.critical(
-                self.gui, "应用失败", f"配置应用失败:\n{str(e)}"
-            )
+            QMessageBox.critical(self.gui, "应用失败", f"配置应用失败:\n{str(e)}")
 
     # ===== 数据格式配置方法（从 main_window 迁移）=====
     def configure_data_format(self):
         """配置全局会话级别的数据格式"""
-        from gui.dialogs import ColumnMappingDialog
         from PySide6.QtWidgets import QDialog
+
+        from gui.dialogs import ColumnMappingDialog
 
         try:
             dlg = ColumnMappingDialog(self.gui)
@@ -492,32 +461,24 @@ class ConfigManager:
                         # 兼容具有属性的配置对象
                         cfg = {}
                         try:
-                            cfg["skip_rows"] = getattr(
-                                data_config, "skip_rows", None
+                            cfg["skip_rows"] = getattr(data_config, "skip_rows", None)
+                            cols = getattr(data_config, "columns", None) or getattr(
+                                data_config, "column_mappings", None
                             )
-                            cols = getattr(
-                                data_config, "columns", None
-                            ) or getattr(data_config, "column_mappings", None)
                             cfg["columns"] = cols or {}
                             cfg["passthrough"] = getattr(
                                 data_config, "passthrough", None
-                            ) or getattr(
-                                data_config, "passthrough_columns", []
-                            )
+                            ) or getattr(data_config, "passthrough_columns", [])
                             dlg.set_config(cfg)
                         except Exception:
                             pass
             except Exception:
-                logger.debug(
-                    "Failed to prefill ColumnMappingDialog", exc_info=True
-                )
+                logger.debug("Failed to prefill ColumnMappingDialog", exc_info=True)
 
             if dlg.exec() == QDialog.Accepted:
                 cfg = dlg.get_config()
                 self.gui.data_config = cfg
-                QMessageBox.information(
-                    self.gui, "已更新", "会话级全局数据格式已更新"
-                )
+                QMessageBox.information(self.gui, "已更新", "会话级全局数据格式已更新")
 
                 try:
                     self.update_config_preview()
@@ -565,9 +526,7 @@ class ConfigManager:
 
             try:
                 pt_display = (
-                    ",".join(str(int(x)) for x in (passth or []))
-                    if passth
-                    else "-"
+                    ",".join(str(int(x)) for x in (passth or [])) if passth else "-"
                 )
             except Exception:
                 pt_display = str(passth)

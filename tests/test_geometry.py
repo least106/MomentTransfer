@@ -2,15 +2,12 @@
 测试 geometry 模块的几何计算功能
 """
 
-import pytest
 import numpy as np
-from src.geometry import (
-    normalize,
-    construct_basis_matrix,
-    compute_rotation_matrix,
-    compute_moment_arm_global,
-    project_vector_to_frame,
-)
+import pytest
+
+from src.geometry import (compute_moment_arm_global, compute_rotation_matrix,
+                          construct_basis_matrix, normalize,
+                          project_vector_to_frame)
 
 
 class TestNormalize:

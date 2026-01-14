@@ -1,4 +1,5 @@
 """示例坐标系插件：基于字典的坐标系提供者。"""
+
 from typing import Dict, List, Optional
 
 from src.plugin import CoordSystemPlugin, PluginMetadata
@@ -7,7 +8,9 @@ from src.plugin import CoordSystemPlugin, PluginMetadata
 class DictCoordSystemPlugin(CoordSystemPlugin):
     """通过传入的映射提供命名坐标系的简单实现。"""
 
-    def __init__(self, mapping: Dict[str, Dict[str, List[float]]], meta: PluginMetadata):
+    def __init__(
+        self, mapping: Dict[str, Dict[str, List[float]]], meta: PluginMetadata
+    ):
         self._mapping = mapping
         self._meta = meta
 
@@ -42,13 +45,16 @@ def create_plugin() -> DictCoordSystemPlugin:
     )
 
     return DictCoordSystemPlugin(mapping, meta)
+
+
 """
 示例坐标系插件 - 演示如何创建自定义坐标系定义插件
 
 这个插件预定义了几个常见的坐标系供用户快速选择。
 """
 
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
 from src.plugin import CoordSystemPlugin, PluginMetadata
 
 

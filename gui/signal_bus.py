@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from PySide6.QtCore import QObject, Signal
 
 
@@ -14,9 +15,7 @@ class SignalBus(QObject):
     """
 
     # 配置相关
-    configLoaded = Signal(
-        object
-    )  # 载入新模型（ProjectConfigModel 或兼容对象）
+    configLoaded = Signal(object)  # 载入新模型（ProjectConfigModel 或兼容对象）
     configSaved = Signal(Path)  # 保存路径
     configApplied = Signal()  # 已应用配置
 
@@ -29,9 +28,7 @@ class SignalBus(QObject):
     partAddRequested = Signal(
         str, str
     )  # side: 'Source'|'Target'|'src'|'tgt', desired_name
-    partRemoveRequested = Signal(
-        str, str
-    )  # side: 'Source'|'Target'|'src'|'tgt', name
+    partRemoveRequested = Signal(str, str)  # side: 'Source'|'Target'|'src'|'tgt', name
 
     # 批处理相关
     batchStarted = Signal(list)

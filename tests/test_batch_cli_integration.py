@@ -1,7 +1,7 @@
 import json
 
-from src.cli_helpers import BatchConfig
 from batch import run_batch_processing
+from src.cli_helpers import BatchConfig
 
 
 def test_batch_non_interactive_output_json(tmp_path):

@@ -13,7 +13,6 @@
 import logging
 import re
 import sys
-
 # 确保脚本运行时能找到 src 包（在引入本地 src 包之前调整 sys.path）
 from pathlib import Path
 
@@ -21,10 +20,10 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from dataclasses import dataclass
 # 放置在 sys.path 调整之后但在其它代码之前的顶级导入
 from datetime import datetime  # noqa: E402
 from typing import Dict, List, Optional  # noqa: E402
-from dataclasses import dataclass
 
 import pandas as pd  # noqa: E402
 

@@ -25,7 +25,6 @@ import numpy as np
 from src import geometry
 from src.cache import get_rotation_cache, get_transformation_cache
 from src.config import get_config
-
 from src.data_loader import FrameConfiguration, ProjectData
 
 logger = logging.getLogger(__name__)

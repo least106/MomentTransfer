@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from batch import BatchConfig, process_single_file
 from src.data_loader import load_data
 from src.physics import AeroCalculator
-from batch import process_single_file, BatchConfig
 
 
 def write_sample_csv(path: Path, rows=10):
