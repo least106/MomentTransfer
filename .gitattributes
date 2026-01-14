@@ -1,0 +1,9 @@
+# 统一所有文本文件使用 LF，防止 Windows 上的 autocrlf 导致 CI/本地检查不一致
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.qss text eol=lf
