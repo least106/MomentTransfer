@@ -1,0 +1,15 @@
+[MASTER]
+# 基本配置，针对本项目的轻量级 pylint 配置
+ignore=tests
+jobs=1
+
+[FORMAT]
+max-line-length=88
+
+[MESSAGES CONTROL]
+# 关闭对缺少文档字符串的严格要求（测试/脚本风格不强制）
+disable=missing-module-docstring,missing-class-docstring,missing-function-docstring
+
+[REPORTS]
+output-format=text
+score=yes
