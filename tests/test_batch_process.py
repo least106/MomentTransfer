@@ -9,9 +9,10 @@ from src.physics import AeroCalculator
 
 
 def write_sample_csv(path: Path, rows=10):
-    # 构造列: fx,fy,fz,mx,my,mz (索引 0..5)
+    # 构造列: Fx,Fy,Fz,Mx,My,Mz 并在每 4 行插入一行非数值
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
+        writer.writerow(["Fx", "Fy", "Fz", "Mx", "My", "Mz"])
         for i in range(rows):
             if i % 4 == 0:
                 # 注入非数值
@@ -25,24 +26,12 @@ def test_process_single_file_chunksize_drop(tmp_path):
     write_sample_csv(csv_path, rows=12)
 
     project = load_data("data/input.json")
-    calc = AeroCalculator(project)
+    calc = AeroCalculator(project, target_part="TestModel")
     # Ensure calculator has cfg reference for coeff calculations
     calc.cfg = project
 
     cfg = BatchConfig()
     cfg.skip_rows = 0
-    # 对应写入的列顺序: fx,fy,fz,mx,my,mz -> 索引 0..5
-    cfg.column_mappings = {
-        "alpha": None,
-        "fx": 0,
-        "fy": 1,
-        "fz": 2,
-        "mx": 3,
-        "my": 4,
-        "mz": 5,
-    }
-    cfg.passthrough_columns = []
-    cfg.chunksize = 5
     cfg.treat_non_numeric = "drop"
 
     out_dir = tmp_path / "out"
@@ -53,5 +42,5 @@ def test_process_single_file_chunksize_drop(tmp_path):
     files = list(out_dir.glob("*.csv"))
     assert len(files) == 1
     df = pd.read_csv(files[0])
-    # 原始12行中每4行有1个非数值 -> 非数值行为 3 -> drop 后应剩余 9 行
+    # 原始数据共 12 行 + 表头，且每 4 行有 1 行非数值 -> 非数值 3 行，drop 后剩余 9 行
     assert len(df) == 9

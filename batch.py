@@ -33,9 +33,8 @@ except ImportError:
 from src.cli_helpers import (
     BatchConfig,
     configure_logging,
-    get_user_file_format,
-    load_format_from_file,
     load_project_calculator,
+    resolve_file_format,
 )
 from src.physics import AeroCalculator
 from src.special_format_parser import (
@@ -74,9 +73,6 @@ REPLACE_RETRY_BACKOFFS = WRITE_RETRY_BACKOFF_SECONDS
 
 # 默认记录非数值示例的行数（CLI 帮助文字中的默认值）
 DEFAULT_SAMPLE_ROWS = 5
-
-# 必需列键常量
-REQUIRED_KEYS = ["fx", "fy", "fz", "mx", "my", "mz"]
 
 
 def generate_output_path(
@@ -186,53 +182,76 @@ def generate_output_path(
 
 def process_df_chunk(
     chunk_df: pd.DataFrame,
-    fx_i: int,
-    fy_i: int,
-    fz_i: int,
-    mx_i: int,
-    my_i: int,
-    mz_i: int,
     calculator: AeroCalculator,
     cfg: BatchConfig,
     out_path: Path,
     first_chunk: bool,
     logger,
 ) -> tuple:
-    """模块级函数：处理单个数据块并将结果写入 out_path。
+    """处理数据块并写入 out_path，支持系数或有量纲输入表头。
 
     返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
     """
-    # 在使用位置索引前，先校验传入的列索引是否在当前 chunk 的列范围内
-    num_cols = chunk_df.shape[1]
-    index_specs = [
-        ("fx", fx_i),
-        ("fy", fy_i),
-        ("fz", fz_i),
-        ("mx", mx_i),
-        ("my", my_i),
-        ("mz", mz_i),
-    ]
-    invalid = [(name, idx) for name, idx in index_specs if idx < 0 or idx >= num_cols]
-    if invalid:
-        logger.error(
-            "文件 %s: 列索引超出范围（chunk 仅有 %d 列）：%s",
-            out_path.name,
-            num_cols,
-            ", ".join(f"{name}_i={idx}" for name, idx in invalid),
+    # 统一列名（忽略大小写和前后空格）
+    col_map = {str(c).strip().lower(): c for c in chunk_df.columns}
+
+    has_dimensional = all(k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"])
+    coeff_normal_key = "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
+    has_coeff = coeff_normal_key is not None and all(
+        k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"]
+    )
+
+    if not has_dimensional and not has_coeff:
+        raise ValueError(
+            "输入表缺少必要列，至少需要 Fx/Fy/Fz/Mx/My/Mz 或 Cx/Cy/Cz(CM)/CMx/CMy/CMz"
         )
-        raise IndexError(
-            f"Column index out of range for chunk_df with {num_cols} columns: "
-            + ", ".join(f"{name}_i={idx}" for name, idx in invalid)
+
+    alpha_col_name = col_map.get("alpha")
+
+    # 统一转换为浮点并检测非数值
+    if has_dimensional:
+        cols = [
+            col_map["fx"],
+            col_map["fy"],
+            col_map["fz"],
+            col_map["mx"],
+            col_map["my"],
+            col_map["mz"],
+        ]
+        numeric_df = chunk_df[cols].apply(pd.to_numeric, errors="coerce")
+        forces_df = numeric_df.iloc[:, :3]
+        moments_df = numeric_df.iloc[:, 3:]
+    else:
+        cols = [
+            col_map["cx"],
+            col_map["cy"],
+            col_map[coeff_normal_key],
+            col_map["cmx"],
+            col_map["cmy"],
+            col_map["cmz"],
+        ]
+        numeric_df = chunk_df[cols].apply(pd.to_numeric, errors="coerce")
+        coeff_force_df = numeric_df.iloc[:, :3]
+        coeff_moment_df = numeric_df.iloc[:, 3:]
+
+        try:
+            q = calculator.target_frame.q
+            s_ref = calculator.target_frame.s_ref
+            c_ref = calculator.target_frame.c_ref
+            b_ref = calculator.target_frame.b_ref
+        except Exception as e:  # pragma: no cover - 防御性日志
+            raise ValueError(f"无法从计算器获取参考值: {e}") from e
+
+        forces_df = coeff_force_df * (q * s_ref)
+        moments_df = pd.DataFrame(
+            {
+                "mx": coeff_moment_df.iloc[:, 0] * (q * s_ref * b_ref),
+                "my": coeff_moment_df.iloc[:, 1] * (q * s_ref * c_ref),
+                "mz": coeff_moment_df.iloc[:, 2] * (q * s_ref * b_ref),
+            }
         )
-    # 解析力/力矩列并检测非数值
-    # 一次性按位置提取所有 6 列，使用向量化操作而非逐列循环
-    selected_cols = chunk_df.iloc[:, [fx_i, fy_i, fz_i, mx_i, my_i, mz_i]].copy()
-    # 使用向量化的 apply 替换逐列 pd.to_numeric 循环（性能提升 2-3 倍）
-    selected_cols = selected_cols.apply(pd.to_numeric, errors="coerce")
-    forces_df = selected_cols.iloc[:, :3]
-    moments_df = selected_cols.iloc[:, 3:]
+
     mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
-    # 为避免后续 index 对齐问题，使用 numpy 布尔数组作为掩码
     mask_array = mask_non_numeric.to_numpy()
     n_non = int(mask_non_numeric.sum())
     dropped = 0
@@ -303,16 +322,12 @@ def process_df_chunk(
         "Cn": results["coeff_moment"][:, 2],
     }
 
-    # 添加 passthrough 列（向量化）
-    for col_idx in cfg.passthrough_columns:
-        if col_idx < len(data_df.columns):
-            out_data[f"Col_{col_idx}"] = data_df.iloc[:, col_idx].values
-
-    # 添加 alpha 列（如果配置）
-    if cfg.column_mappings.get("alpha") is not None:
-        aidx = cfg.column_mappings["alpha"]
-        if aidx < len(data_df.columns):
-            out_data["Alpha"] = data_df.iloc[:, aidx].values
+    # 添加 alpha 列（如果存在 Alpha 表头）
+    if alpha_col_name and alpha_col_name in chunk_df.columns:
+        alpha_series = chunk_df[alpha_col_name].reset_index(drop=True)
+        if cfg.treat_non_numeric == "drop" and n_non:
+            alpha_series = alpha_series.loc[data_df.index].reset_index(drop=True)
+        out_data["Alpha"] = alpha_series
 
     # 一次性从字典构建 DataFrame（远比逐列赋值高效）
     out_df = pd.DataFrame(out_data)
@@ -565,14 +580,14 @@ def find_matching_files(directory: str, pattern: str) -> list:
 def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
     """根据 `config` 读取整个数据表（非流式模式）。
 
-    返回 pandas DataFrame（不做列名解析，使用 header=None）。
+    返回 pandas DataFrame，读取首行为表头。
     """
     p = Path(file_path)
     ext = p.suffix.lower()
     if ext == ".csv":
-        return pd.read_csv(p, header=None, skiprows=config.skip_rows)
+        return pd.read_csv(p, header=0, skiprows=config.skip_rows)
     elif ext in {".xls", ".xlsx", ".xlsm", ".xlsb", ".odf", ".ods", ".odt"}:
-        return pd.read_excel(p, header=None, skiprows=config.skip_rows)
+        return pd.read_excel(p, header=0, skiprows=config.skip_rows)
     else:
         raise ValueError(
             f"不支持的文件类型: '{file_path}'. 仅支持 CSV (.csv) 和 Excel "
@@ -677,81 +692,14 @@ def process_single_file(
             )
             return False
 
-    # 安全解析 chunksize
-    if config.chunksize:
-        try:
-            config.chunksize = int(config.chunksize)
-        except (ValueError, TypeError):
-            config.chunksize = None
+    # 非流式：读取整表并可选行选择
+    df = read_data_with_config(file_path, config)
 
-    ext = Path(file_path).suffix.lower()
-    use_chunks = (ext == ".csv") and config.chunksize and config.chunksize > 0
-
-    # 若非流式，先读取整表以便列索引校验
-    df = None
-    if not use_chunks:
-        df = read_data_with_config(file_path, config)
-        num_cols = len(df.columns)
-        for key in REQUIRED_KEYS:
-            col_idx = config.column_mappings.get(key)
-            if col_idx is None:
-                raise ValueError(f"列映射缺失: '{key}' 未配置")
-            if not (0 <= col_idx < num_cols):
-                raise ValueError(
-                    f"列索引越界: column_mappings['{key}'] = {col_idx}, 但当前数据仅有 {num_cols} 列"
-                )
-
-    fx_i = config.column_mappings["fx"]
-    fy_i = config.column_mappings["fy"]
-    fz_i = config.column_mappings["fz"]
-    mx_i = config.column_mappings["mx"]
-    my_i = config.column_mappings["my"]
-    mz_i = config.column_mappings["mz"]
-
-    # 若非流式且提供了行选择，则在此处应用过滤
-    if not use_chunks and selected_rows is not None and len(selected_rows) > 0:
+    # 若提供了行选择，则应用过滤
+    if selected_rows is not None and len(selected_rows) > 0:
         selected_rows_sorted = sorted(int(x) for x in set(selected_rows))
         df = df.iloc[selected_rows_sorted].reset_index(drop=True)
         logger.debug(f"按行选择过滤: {len(selected_rows_sorted)} 行")
-
-    # 自动检测表头：若提供了行选择则跳过此步（保持索引与 GUI 预览一致）
-    if not use_chunks and (selected_rows is None or len(selected_rows) == 0):
-        try:
-            required_keys = ["fx", "fy", "fz", "mx", "my", "mz"]
-            mapped_cols = [
-                config.column_mappings.get(k)
-                for k in required_keys
-                if config.column_mappings.get(k) is not None
-            ]
-            mapped_cols = [
-                int(x)
-                for x in mapped_cols
-                if isinstance(x, (int, float))
-                or (isinstance(x, str) and str(x).isdigit())
-            ]
-
-            if mapped_cols and len(df) > 0:
-                non_numeric_count = 0
-                checked = 0
-                for idx in mapped_cols:
-                    if 0 <= idx < len(df.columns):
-                        checked += 1
-                        val = df.iloc[0, idx]
-                        try:
-                            nv = pd.to_numeric(pd.Series([val]), errors="coerce").iloc[
-                                0
-                            ]
-                        except Exception:
-                            nv = None
-                        if pd.isna(nv) and pd.notna(val):
-                            non_numeric_count += 1
-
-                # 若大多数（>=60%）映射列在首行为非数值，则认为首行为表头并跳过
-                if checked > 0 and non_numeric_count / checked >= 0.6:
-                    logger.info("检测到可能的表头，已跳过首行")
-                    df = df.iloc[1:].reset_index(drop=True)
-        except Exception:
-            logger.debug("表头自动检测发生异常，继续按原始数据处理", exc_info=True)
 
     out_path = generate_output_path(file_path, output_dir, config)
     temp_fd, temp_name = tempfile.mkstemp(
@@ -773,85 +721,17 @@ def process_single_file(
     total_non_numeric = 0
 
     try:
-        if use_chunks:
-            reader = pd.read_csv(
-                file_path,
-                header=None,
-                skiprows=config.skip_rows,
-                chunksize=int(config.chunksize),
-            )
-            try:
-                first = next(reader)
-            except StopIteration:
-                logger.warning(f"文件 {file_path} 为空，跳过处理")
-                if temp_out_path.exists():
-                    try:
-                        temp_out_path.unlink()
-                    except Exception:
-                        pass
-                return False
-
-            # 校验首块列数
-            num_cols = len(first.columns)
-            for key in REQUIRED_KEYS:
-                col_idx = config.column_mappings.get(key)
-                if col_idx is None or not (0 <= col_idx < num_cols):
-                    raise ValueError(f"列映射缺失或越界: {key} -> {col_idx}")
-
-            proc, dropped, non_num, first_chunk = process_df_chunk(
-                first,
-                fx_i,
-                fy_i,
-                fz_i,
-                mx_i,
-                my_i,
-                mz_i,
-                calculator_to_use,
-                config,
-                temp_out_path,
-                first_chunk,
-                logger,
-            )
-            total_processed += proc
-            total_dropped += dropped
-            total_non_numeric += non_num
-
-            for chunk in reader:
-                proc, dropped, non_num, first_chunk = process_df_chunk(
-                    chunk,
-                    fx_i,
-                    fy_i,
-                    fz_i,
-                    mx_i,
-                    my_i,
-                    mz_i,
-                    calculator_to_use,
-                    config,
-                    temp_out_path,
-                    first_chunk,
-                    logger,
-                )
-                total_processed += proc
-                total_dropped += dropped
-                total_non_numeric += non_num
-        else:
-            proc, dropped, non_num, first_chunk = process_df_chunk(
-                df,
-                fx_i,
-                fy_i,
-                fz_i,
-                mx_i,
-                my_i,
-                mz_i,
-                calculator_to_use,
-                config,
-                temp_out_path,
-                first_chunk,
-                logger,
-            )
-            total_processed += proc
-            total_dropped += dropped
-            total_non_numeric += non_num
+        proc, dropped, non_num, first_chunk = process_df_chunk(
+            df,
+            calculator_to_use,
+            config,
+            temp_out_path,
+            first_chunk,
+            logger,
+        )
+        total_processed += proc
+        total_dropped += dropped
+        total_non_numeric += non_num
 
         # 完成后使用 os.replace 做原子替换（跨平台），并提供重试/退避策略以应对并发场景
         replace_attempts = SHARED_RETRY_ATTEMPTS
@@ -928,7 +808,7 @@ def _worker_process(args):
     """在子进程中运行单个文件的处理（用于并行）。
 
     args_tuple: (file_path_str, config_dict, config_path, output_dir_str)
-    - config_dict: dict representation of BatchConfig (keys: skip_rows, column_mappings, passthrough_columns)
+    - config_dict: dict representation of BatchConfig (keys: skip_rows, name_template, timestamp_format, overwrite)
     - config_path: path to JSON config for AeroCalculator (project geometry)
     """
     try:
@@ -1007,9 +887,6 @@ def _worker_process(args):
         # 构造 BatchConfig
         cfg = BatchConfig()
         cfg.skip_rows = int(config_dict.get("skip_rows", 0))
-        cfg.column_mappings.update(config_dict.get("column_mappings", {}))
-        cfg.passthrough_columns = config_dict.get("passthrough_columns", [])
-        cfg.chunksize = config_dict.get("chunksize", None)
         cfg.name_template = config_dict.get("name_template", cfg.name_template)
         cfg.timestamp_format = config_dict.get("timestamp_format", cfg.timestamp_format)
         cfg.overwrite = bool(config_dict.get("overwrite", cfg.overwrite))
@@ -1089,11 +966,10 @@ def run_batch_processing(
         )
         return
 
-    # 2. 获取数据格式配置（交互或非交互）
+    # 2. 构造数据格式配置（固定表头语义）
     logger.info("[2/5] 配置数据格式")
-    # 若外部已提供 data_config（例如非交互模式），则使用之
     if data_config is None:
-        data_config = get_user_file_format()
+        data_config = BatchConfig()
 
     # 3. 确定输入文件列表
     logger.info("[3/5] 扫描输入文件")
@@ -1130,21 +1006,14 @@ def run_batch_processing(
     if dry_run:
         logger.info("Dry-run 模式：不写入文件，仅显示解析结果。")
         for fp in files_to_process:
-            try:
-                from src.cli_helpers import resolve_file_format
-
-                cfg_local = resolve_file_format(str(fp), data_config)
-            except Exception as e:
-                logger.warning("解析文件 %s 的格式失败：%s", fp, e)
-                cfg_local = data_config
+            cfg_local = resolve_file_format(str(fp), data_config)
             out_path = generate_output_path(
                 fp, output_dir, cfg_local, create_placeholder=False
             )
             logger.info(
-                "将处理: %s -> %s (format: %s)",
+                "将处理: %s -> %s",
                 fp,
                 out_path,
-                cfg_local.column_mappings,
             )
         return
 
@@ -1156,17 +1025,7 @@ def run_batch_processing(
     for i, file_path in enumerate(files_to_process, 1):
         logger.info("进度: [%d/%d] %s", i, len(files_to_process), file_path.name)
         # 使用全局配置处理每个文件
-        try:
-            from src.cli_helpers import resolve_file_format
-
-            cfg_local = resolve_file_format(str(file_path), data_config)
-        except Exception:
-            # 解析失败：记录并回退到全局配置
-            logger.warning("解析文件 %s 的格式失败，回退到全局配置", file_path)
-            if strict:
-                logger.error("strict 模式下解析失败，终止批处理")
-                return
-            cfg_local = data_config
+        cfg_local = resolve_file_format(str(file_path), data_config)
 
         # 获取该文件的 source/target part 映射（若提供）
         file_source = None
@@ -1301,19 +1160,6 @@ def run_batch_processing(
     default=None,
     help='文件匹配模式（目录模式下），支持分号分隔多模式，如 "*.csv;*.mtfmt"',
 )
-@click.option(
-    "-f",
-    "--format-file",
-    "format_file",
-    default=None,
-    help="数据格式 JSON 文件路径（包含 skip_rows, columns, passthrough）",
-)
-@click.option(
-    "--non-interactive",
-    "non_interactive",
-    is_flag=True,
-    help="以非交互模式运行（必须提供 --format-file）",
-)
 @click.option("--log-file", "log_file", default=None, help="将日志写入指定文件")
 @click.option("--verbose", "verbose", is_flag=True, help="增加日志详细程度")
 @click.option(
@@ -1322,13 +1168,6 @@ def run_batch_processing(
     type=int,
     default=1,
     help="并行工作进程数（默认为1，表示串行）",
-)
-@click.option(
-    "--chunksize",
-    "chunksize",
-    type=int,
-    default=None,
-    help="CSV 流式读取块大小（行数），若未设置则一次性读取整个文件",
 )
 @click.option(
     "--overwrite",
@@ -1411,12 +1250,9 @@ def main(**cli_options):
     config = cli_options.get("config")
     input_path = cli_options.get("input_path")
     pattern = cli_options.get("pattern")
-    format_file = cli_options.get("format_file")
-    non_interactive = cli_options.get("non_interactive")
     log_file = cli_options.get("log_file")
     verbose = cli_options.get("verbose")
     workers = cli_options.get("workers")
-    chunksize = cli_options.get("chunksize")
     overwrite = cli_options.get("overwrite")
     name_template = cli_options.get("name_template")
     timestamp_format = cli_options.get("timestamp_format")
@@ -1432,31 +1268,9 @@ def main(**cli_options):
     # 配置 logging（通过共享 helper）
     logger = configure_logging(log_file, verbose)
     # 读取数据格式配置
-    data_config = None
-    # 优先使用命令行提供的格式文件（无论是否为非交互模式）以避免不必要的交互
-    if format_file:
-        try:
-            data_config = load_format_from_file(format_file)
-            logger.info(f"使用格式文件: {format_file}")
-        except Exception as e:
-            logger.exception("读取格式文件失败")
-            _error_exit_json(f"读取格式文件失败: {e}", code=3)
+    data_config = BatchConfig()
 
-    if non_interactive and data_config is None:
-        # 非交互模式下必须提供格式文件
-        _error_exit_json(
-            "--non-interactive 模式下必须提供 --format-file",
-            code=2,
-            hint="传入 --format-file 以在非交互模式下设置批处理格式。",
-        )
-
-    if data_config is None:
-        # 交互式获取格式配置
-        data_config = get_user_file_format()
-
-    # 命令行参数覆盖格式文件中的设置（若提供）
-    if chunksize is not None:
-        data_config.chunksize = chunksize
+    # 命令行参数覆盖默认设置
     if overwrite:
         data_config.overwrite = True
     if name_template:
@@ -1469,10 +1283,7 @@ def main(**cli_options):
         data_config.sample_rows = sample_rows
 
     # 根据 pattern 参数或交互获取 pattern
-    if pattern:
-        pat = pattern
-    else:
-        pat = None
+    pat = pattern or "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
 
     # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
     try:
@@ -1486,19 +1297,7 @@ def main(**cli_options):
                 files_to_process = [input_path_obj]
                 output_dir = input_path_obj.parent
             elif input_path_obj.is_dir():
-                if pat:
-                    pat_use = pat
-                else:
-                    if non_interactive:
-                        pat_use = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
-                        logger.info("非交互模式：使用默认文件匹配模式 '%s'", pat_use)
-                    else:
-                        pat_use = (
-                            input(
-                                "文件名匹配模式 (如 *.csv;*.mtfmt，默认包含 csv/xlsx/mtfmt): "
-                            ).strip()
-                            or "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
-                        )
+                pat_use = pat
                 files = find_matching_files(str(input_path_obj), pat_use)
                 # 并行模式下不提供交互选择：自动处理所有匹配到的文件
                 # 选择 all
@@ -1511,9 +1310,6 @@ def main(**cli_options):
             # 准备并行任务参数（将 data_config 序列化为 dict）
             config_dict = {
                 "skip_rows": data_config.skip_rows,
-                "column_mappings": data_config.column_mappings,
-                "passthrough_columns": data_config.passthrough_columns,
-                "chunksize": data_config.chunksize,
                 "name_template": data_config.name_template,
                 "timestamp_format": data_config.timestamp_format,
                 "overwrite": data_config.overwrite,
@@ -1531,9 +1327,7 @@ def main(**cli_options):
                         "config_dict": config_dict,
                         "project_config_path": config,
                         "output_dir": str(output_dir),
-                        "registry_db": registry_db,
                         "strict": strict,
-                        "enable_sidecar": enable_sidecar,
                     }
                     fut = exe.submit(_worker_process, worker_args)
                     futures[fut] = fp

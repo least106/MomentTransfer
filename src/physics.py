@@ -70,18 +70,22 @@ class AeroCalculator:
         # 支持传入 FrameConfiguration 或完整的 ProjectData
         if isinstance(config, ProjectData):
             project: ProjectData = config
-            # 使用 ProjectData 时若未显式提供 target_part：
-            # - 若仅包含单个 Target part，则自动选取该 part；
-            # - 若包含多个 Target part，则默认选取第一个并记录警告。
+            # target_part 参数指定将 source 数据转换到哪个 target 坐标系
+            # - 配置仅有 1 个 target：可不指定，自动选择该 target
+            # - 配置有多个 target：必须明确指定（特殊文件/普通文件都需要）
+            #   * 特殊文件：每个 source part 块会指定对应的 target
+            #   * 普通文件：用户在 GUI/CLI 中为整个文件选择 target
             if target_part is None:
                 if len(project.target_parts) == 1:
                     target_part = next(iter(project.target_parts.keys()))
-                else:
-                    warnings.warn(
-                        "ProjectData 包含多个 Target part，未显式指定 target_part，使用第一个 Part。建议显式指定。",
-                        UserWarning,
+                elif len(project.target_parts) > 1:
+                    raise ValueError(
+                        f"配置包含 {len(project.target_parts)} 个 Target 坐标系，"
+                        f"必须通过 target_part 参数明确指定目标坐标系。"
+                        f"可用: {list(project.target_parts.keys())}"
                     )
-                    target_part = next(iter(project.target_parts.keys()))
+                else:
+                    raise ValueError("配置不包含任何 Target 坐标系定义")
             # 选择 source frame（可选）
             if source_part is not None:
                 source_frame = project.get_source_part(source_part, source_variant)

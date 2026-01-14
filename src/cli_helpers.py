@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Optional
 
 from src.data_loader import ProjectData, load_data, try_load_project_data
-from src.format_registry import get_format_for_file
 from src.physics import AeroCalculator
 
 # 模块级 logger，供文件中函数使用（配置由 `configure_logging` 管理）
@@ -20,140 +19,15 @@ logger = logging.getLogger("batch")
 
 
 class BatchConfig:  # pylint: disable=R0902,R0903
-    """批处理配置类（供 batch.py 使用，抽取以便复用）。"""
+    """批处理配置类（供 batch.py 使用，简化为固定表头语义）。"""
 
     def __init__(self):
         self.skip_rows = 0
-        self.column_mappings = {
-            "alpha": None,
-            "fx": None,
-            "fy": None,
-            "fz": None,
-            "mx": None,
-            "my": None,
-            "mz": None,
-        }
-        self.passthrough_columns = []
-        self.chunksize = None
         self.name_template = "{stem}_result_{timestamp}.csv"
         self.timestamp_format = "%Y%m%d_%H%M%S"
         self.overwrite = False
         self.treat_non_numeric = "zero"
         self.sample_rows = 5
-
-
-def load_format_from_file(path: str) -> BatchConfig:  # pylint: disable=R0912
-    """从 JSON 文件加载 BatchConfig（保留原有行为并提高错误说明）。"""
-    p = Path(path)
-    if not p.exists():
-        # 兼容测试或从不同工作目录启动时的相对路径解析
-        if not p.is_absolute():
-            repo_root = Path(__file__).resolve().parents[1]
-            alt = repo_root / p
-            if alt.exists():
-                p = alt
-            else:
-                raise FileNotFoundError(f"格式文件未找到: {path}")
-        else:
-            raise FileNotFoundError(f"格式文件未找到: {path}")
-    with open(p, "r", encoding="utf-8") as fh:
-        text = fh.read()
-    if not text or not text.strip():
-        raise ValueError(f"格式文件为空或仅包含空白: {path}")
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"格式文件不是有效的 JSON: {path} -> {e}") from e
-
-    cfg = BatchConfig()
-    cfg.skip_rows = int(data.get("skip_rows", 0))
-    cols = data.get("columns", {})
-    for k in cfg.column_mappings:
-        if k in cols:
-            v = cols[k]
-            cfg.column_mappings[k] = int(v) if v is not None else None
-    cfg.passthrough_columns = [int(x) for x in data.get("passthrough", [])]
-    if "chunksize" in data:
-        try:
-            cfg.chunksize = int(data.get("chunksize"))
-        except (TypeError, ValueError):
-            cfg.chunksize = None
-    if "name_template" in data:
-        cfg.name_template = str(data.get("name_template"))
-    if "timestamp_format" in data:
-        cfg.timestamp_format = str(data.get("timestamp_format"))
-    if "overwrite" in data:
-        cfg.overwrite = bool(data.get("overwrite"))
-    if "treat_non_numeric" in data:
-        cfg.treat_non_numeric = str(data.get("treat_non_numeric"))
-    if "sample_rows" in data:
-        try:
-            cfg.sample_rows = int(data.get("sample_rows"))
-        except (TypeError, ValueError):
-            cfg.sample_rows = 5
-    return cfg
-
-
-def get_user_file_format() -> BatchConfig:
-    """交互式获取用户数据格式配置，供命令行交互使用。
-
-    虽然这是交互函数，但放在此处可将所有与数据格式相关的逻辑集中。
-    """
-    logger.info("=== 数据格式配置 ===")
-    config = BatchConfig()
-
-    # 跳过行数
-    skip_input = input("需要跳过的表头行数 (默认0): ").strip()
-    if skip_input:
-        try:
-            config.skip_rows = int(skip_input)
-        except ValueError:
-            logger.warning("无效输入，使用默认值0")
-
-    logger.info("请指定数据列位置 (从0开始计数，留空表示该列不存在):")
-
-    # 可选的迎角列
-    alpha_col = input("  迎角 Alpha 列号: ").strip()
-    if alpha_col:
-        try:
-            config.column_mappings["alpha"] = int(alpha_col)
-        except ValueError:
-            pass
-
-    # 必需的力和力矩列
-    required_mappings = {
-        "fx": "轴向力 Fx",
-        "fy": "侧向力 Fy",
-        "fz": "法向力 Fz",
-        "mx": "滚转力矩 Mx",
-        "my": "俯仰力矩 My",
-        "mz": "偏航力矩 Mz",
-    }
-
-    for key, label in required_mappings.items():
-        while True:
-            col_input = input(f"  {label} 列号 (必需): ").strip()
-            if col_input:
-                try:
-                    config.column_mappings[key] = int(col_input)
-                    break
-                except ValueError:
-                    logger.error("    [错误] 请输入有效的列号")
-            else:
-                logger.error("    [错误] 此列为必需项")
-
-    # 需要保留的列
-    logger.info("需要原样输出的其他列 (用逗号分隔列号，如: 0,1,2):")
-    passthrough = input("  列号: ").strip()
-    if passthrough:
-        try:
-            config.passthrough_columns = [
-                int(x.strip()) for x in passthrough.split(",")
-            ]
-        except ValueError:
-            logger.warning("格式错误，将不保留额外列")
-
-    return config
 
 
 def resolve_file_format(
@@ -162,9 +36,6 @@ def resolve_file_format(
 ) -> BatchConfig:
     """为单个数据文件返回全局配置的深拷贝。
 
-    此函数不再支持 per-file 配置覆盖（sidecar/registry/目录级配置），
-    确保批处理过程中使用一致的全局配置。
-
     参数：
         file_path: 数据文件路径（用于日志记录）
         global_cfg: 全局批处理配置
@@ -172,7 +43,6 @@ def resolve_file_format(
     返回值：
         global_cfg 的深拷贝
     """
-    # 返回全局配置的深拷贝
     return deepcopy(global_cfg)
 
 
@@ -235,17 +105,21 @@ def load_project_calculator(
     # pylint: disable=too-many-arguments,too-many-locals
     try:
         project_data = load_data(config_path)
-        # 在包含多个 Target part 的情况下：
-        # - CLI 层（interactive）会要求用户显式指定；
-        # - 但在库/测试层面，为保持向后兼容，我们在此自动选取第一个 Part（并以日志形式提示）。
+        # target_part 指定将数据转换到哪个目标坐标系
+        # - 配置仅 1 个 target：自动选择
+        # - 配置多个 target：由调用方根据场景指定
+        #   * 批处理：每个文件会指定使用的 target（普通文件用户选择，特殊文件按 part 映射）
+        #   * CLI 单文件：通过 --target-part 参数指定
         if isinstance(project_data, ProjectData) and target_part is None:
             if len(project_data.target_parts) == 1:
                 target_part = next(iter(project_data.target_parts.keys()))
+                logger.debug("配置仅有一个 Target 坐标系，已自动选择: %s", target_part)
             else:
-                logger.warning(
-                    "配置包含多个 Target part，未指定 --target-part，已自动选择第一个 Part。建议在 CLI 中显式指定。"
+                logger.debug(
+                    "配置包含 %d 个 Target 坐标系，未指定 target_part，"
+                    "将在后续处理中根据文件类型确定",
+                    len(project_data.target_parts)
                 )
-                target_part = next(iter(project_data.target_parts.keys()))
 
         calculator = AeroCalculator(
             project_data,

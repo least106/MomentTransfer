@@ -5,19 +5,17 @@ from src.cli_helpers import BatchConfig
 
 
 def test_batch_non_interactive_output_json(tmp_path):
-    # 准备一个简单的 CSV 文件（无表头）
+    # 准备一个简单的 CSV 文件（包含表头）
     csv_file = tmp_path / "sample1.csv"
-    # 6 列：fx,fy,fz,mx,my,mz
     csv_file.write_text(
-        """1,2,3,0.1,0.2,0.3
+        """Fx,Fy,Fz,Mx,My,Mz
+1,2,3,0.1,0.2,0.3
 4,5,6,0.4,0.5,0.6
-"""
+""",
+        encoding="utf-8",
     )
 
-    # 配置 BatchConfig，映射前六列
     cfg = BatchConfig()
-    cfg.column_mappings.update({"fx": 0, "fy": 1, "fz": 2, "mx": 3, "my": 4, "mz": 5})
-    cfg.passthrough_columns = []
 
     out_json = tmp_path / "result.json"
 
@@ -31,6 +29,7 @@ def test_batch_non_interactive_output_json(tmp_path):
         show_progress=False,
         output_json=str(out_json),
         summary=True,
+        target_part="TestModel",  # 明确指定 target part
     )
 
     assert out_json.exists()

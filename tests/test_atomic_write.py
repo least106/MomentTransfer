@@ -4,12 +4,13 @@ from pathlib import Path
 import pandas as pd
 
 from batch import process_single_file
-from src.cli_helpers import load_format_from_file, load_project_calculator
+from src.cli_helpers import BatchConfig, load_project_calculator
 
 
 def write_sample_csv(path: Path, rows=5):
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
+        writer.writerow(["Fx", "Fy", "Fz", "Mx", "My", "Mz"])
         for i in range(rows):
             writer.writerow([100 + i, 0, -50 + i, 0, 10 + i, 0])
 
@@ -19,11 +20,14 @@ def test_process_single_file_creates_complete_flag(tmp_path):
     write_sample_csv(csv_path, rows=6)
 
     # load calculator from sample project config
-    project_data, calculator = load_project_calculator("data/input.json")
+    project_data, calculator = load_project_calculator(
+        "data/input.json", target_part="TestModel"
+    )
     # 新版 AeroCalculator 不再自动保留 project 引用，测试中显式设置以兼容 process_batch
     calculator.cfg = project_data
 
-    cfg = load_format_from_file("data/default.format.json")
+    # 创建最小化的数据格式配置（不依赖外部文件）
+    cfg = BatchConfig()
     # ensure output goes to tmp_path
     ok = process_single_file(csv_path, calculator, cfg, tmp_path)
     assert ok

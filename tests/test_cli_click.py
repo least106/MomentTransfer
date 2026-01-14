@@ -12,7 +12,7 @@ def test_cli_non_interactive(tmp_path):
         # attempt_load_project_data 可能返回 (ok, project, info) 或直接 ProjectData
         # 上层包装里通常返回 ProjectData，当为 tuple 时提取第二项
         project = project[1] if project[0] else project[1]
-    calc = AeroCalculator(project)
+    calc = AeroCalculator(project, target_part="TestModel")
     calc.cfg = project
 
     result = calc.process_frame([100.0, 0.0, 0.0], [0.0, 0.0, 0.0])
