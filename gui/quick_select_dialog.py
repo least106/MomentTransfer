@@ -5,19 +5,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QDialog,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QScrollArea,
-    QTextEdit,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QScrollArea, QTextEdit,
+                               QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+                               QWidget)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +70,8 @@ class QuickSelectDialog(QDialog):
         return files
 
     def _populate_items(self) -> None:
-        from src.special_format_parser import get_part_names, looks_like_special_format
+        from src.special_format_parser import (get_part_names,
+                                               looks_like_special_format)
 
         try:
             self.tree.blockSignals(True)

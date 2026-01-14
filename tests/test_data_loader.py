@@ -8,12 +8,8 @@ import tempfile
 
 import pytest
 
-from src.data_loader import (
-    CoordSystemDefinition,
-    ProjectData,
-    TargetDefinition,
-    load_data,
-)
+from src.data_loader import (CoordSystemDefinition, ProjectData,
+                             TargetDefinition, load_data)
 
 
 class TestCoordSystemDefinition:

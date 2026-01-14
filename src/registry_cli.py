@@ -9,7 +9,8 @@ import sys
 
 import click
 
-from src.format_registry import delete_mapping, init_db, list_mappings, register_mapping
+from src.format_registry import (delete_mapping, init_db, list_mappings,
+                                 register_mapping)
 
 
 @click.group()

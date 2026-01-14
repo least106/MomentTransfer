@@ -30,18 +30,12 @@ except ImportError:
     portalocker = None
 
 
-from src.cli_helpers import (
-    BatchConfig,
-    configure_logging,
-    get_user_file_format,
-    load_format_from_file,
-    load_project_calculator,
-)
+from src.cli_helpers import (BatchConfig, configure_logging,
+                             get_user_file_format, load_format_from_file,
+                             load_project_calculator)
 from src.physics import AeroCalculator
-from src.special_format_parser import (
-    looks_like_special_format,
-    process_special_format_file,
-)
+from src.special_format_parser import (looks_like_special_format,
+                                       process_special_format_file)
 
 
 def _error_exit_json(message: str, code: int = 2, hint: str = None):

@@ -6,24 +6,11 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QFont
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QCompleter,
-    QFormLayout,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QLineEdit,
-    QProgressBar,
-    QPushButton,
-    QSizePolicy,
-    QTabWidget,
-    QTextEdit,
-    QTreeWidget,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFormLayout,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+                               QProgressBar, QPushButton, QSizePolicy,
+                               QTabWidget, QTextEdit, QTreeWidget, QVBoxLayout,
+                               QWidget)
 
 logger = logging.getLogger(__name__)
 

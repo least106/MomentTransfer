@@ -4,7 +4,6 @@ MomentTransfer GUI 包
 """
 
 import importlib.util
-
 # 主窗口类在此导入（避免循环导入）
 import sys
 from pathlib import Path
@@ -12,20 +11,14 @@ from pathlib import Path
 from gui.batch_manager import BatchManager
 from gui.batch_thread import BatchProcessThread
 from gui.config_manager import ConfigManager
-
 # 导出主要组件类
 # Mpl3DCanvas 已改为延迟加载，在 visualization_manager 中按需导入
 from gui.dialogs import ColumnMappingDialog, ExperimentalDialog
 from gui.layout_manager import LayoutManager
 from gui.part_manager import PartManager
-
 # 导出管理器类
-from gui.ui_utils import (
-    create_input,
-    create_triple_spin,
-    create_vector_row,
-    get_numeric_value,
-)
+from gui.ui_utils import (create_input, create_triple_spin, create_vector_row,
+                          get_numeric_value)
 
 # 添加父目录到路径以便导入 gui.py
 _parent_dir = str(Path(__file__).parent.parent)

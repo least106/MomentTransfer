@@ -5,7 +5,8 @@
 import logging
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from .source_panel import SourcePanel
 from .target_panel import TargetPanel

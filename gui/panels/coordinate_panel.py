@@ -5,20 +5,10 @@
 import logging
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QComboBox,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
-    QWidget,
-)
+from PySide6.QtWidgets import (QComboBox, QFormLayout, QGroupBox, QHBoxLayout,
+                               QHeaderView, QLabel, QLineEdit, QPushButton,
+                               QSizePolicy, QTableWidget, QTableWidgetItem,
+                               QWidget)
 
 from src.models import CSModel as CSModelAlias
 from src.models import ReferenceValues as RefModel

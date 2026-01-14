@@ -10,16 +10,8 @@ from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (
-    QComboBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 logger = logging.getLogger(__name__)
 

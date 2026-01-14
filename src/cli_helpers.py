@@ -4,7 +4,6 @@
 """
 
 import json
-
 # pylint: disable=too-many-arguments,too-many-locals
 import logging
 from copy import deepcopy
