@@ -213,71 +213,76 @@ class PluginLoader:
         且该类应有 `create_plugin()` 工厂函数。
         """
         filepath = Path(filepath)
+        loaded_plugin: Optional[BasePlugin] = None
+
         if not filepath.exists():
             logger.error("插件文件不存在: %s", filepath)
             return None
 
-        try:
-            # 动态加载模块
-            spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
-            if spec is None or spec.loader is None:
-                logger.error("无法加载模块: %s", filepath)
-                return None
+        # 使用循环/分支结构统一退出点，减少函数内的 return 数量
+        while True:
+            try:
+                # 动态加载模块
+                spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
+                if spec is None or spec.loader is None:
+                    logger.error("无法加载模块: %s", filepath)
+                    break
 
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
 
-            # 查找 create_plugin 工厂函数并验证返回类型
-            if hasattr(module, "create_plugin") and callable(
-                getattr(module, "create_plugin")
-            ):
-                try:
-                    plugin = module.create_plugin()
-                except Exception as exc:
-                    logger.error(
-                        "插件工厂 create_plugin() 在 %s 中抛出异常: %s",
-                        filepath,
-                        exc,
-                        exc_info=True,
-                    )
-                    return None
+                # 查找 create_plugin 工厂函数并验证返回类型
+                if hasattr(module, "create_plugin") and callable(getattr(module, "create_plugin")):
+                    try:
+                        plugin = module.create_plugin()
+                    except (TypeError, ValueError, RuntimeError) as exc:
+                        logger.error(
+                            "插件工厂 create_plugin() 在 %s 中抛出异常: %s",
+                            filepath,
+                            exc,
+                            exc_info=True,
+                        )
+                        break
 
-                # 校验返回对象是 BasePlugin 的子类实例
-                if not isinstance(plugin, BasePlugin):
-                    logger.error(
-                        "插件工厂 %s.create_plugin() 返回的对象无效（需要 BasePlugin 子类），实际类型：%s",
-                        filepath,
-                        type(plugin),
-                    )
-                    return None
+                    # 校验返回对象是 BasePlugin 的子类实例
+                    if not isinstance(plugin, BasePlugin):
+                        logger.error(
+                            "插件工厂 %s.create_plugin() 返回的对象无效（需要 BasePlugin 子类），实际类型：%s",
+                            filepath,
+                            type(plugin),
+                        )
+                        break
 
-                # 注册并记录插件元数据（如果可用）
-                try:
-                    self.registry.register(plugin)
-                    name = getattr(plugin.metadata, "name", str(filepath))
-                    logger.info("成功加载插件: %s (%s)", filepath, name)
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.error(
-                        "注册插件 %s 时失败: %s",
-                        filepath,
-                        exc,
-                        exc_info=True,
-                    )
-                    return None
+                    # 注册并记录插件元数据（如果可用）
+                    try:
+                        self.registry.register(plugin)
+                        name = getattr(plugin.metadata, "name", str(filepath))
+                        logger.info("成功加载插件: %s (%s)", filepath, name)
+                    except (RuntimeError, ValueError, TypeError) as exc:
+                        logger.error(
+                            "注册插件 %s 时失败: %s",
+                            filepath,
+                            exc,
+                            exc_info=True,
+                        )
+                        break
 
-                return plugin
+                    loaded_plugin = plugin
+                    break
 
-            logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
-            return None
+                logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
+                break
 
-        except (OSError, ImportError, AttributeError, SyntaxError) as exc:
-            # 捕获常见的加载/语法错误并记录
-            logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
-            return None
-        except Exception as exc:  # pylint: disable=broad-except
-            # 插件代码可能在导入时抛出任意异常；记录并继续
-            logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
-            return None
+            except (OSError, ImportError, AttributeError, SyntaxError) as exc:
+                # 捕获常见的加载/语法错误并记录
+                logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
+                break
+            except (RuntimeError, TypeError, NameError, ValueError) as exc:
+                # 捕获插件导入/执行时常见运行时错误并记录
+                logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
+                break
+
+        return loaded_plugin
 
     def load_plugins_from_directory(self, directory: Path) -> List[BasePlugin]:
         """从目录加载所有插件"""
@@ -321,9 +326,9 @@ class PluginManager:
             for name in list(self._registry.list_plugins()):
                 try:
                     self._registry.unregister(name)
-                except Exception:  # pylint: disable=broad-except
-                    # 忽略注销时的插件错误
-                    pass
+                except (RuntimeError, TypeError, ValueError) as exc:
+                    # 忽略注销时的插件错误，但记录调试信息
+                    logger.debug("注销插件 %s 时发生异常: %s", name, exc, exc_info=True)
             self._registry = None
 
 
