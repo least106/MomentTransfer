@@ -67,22 +67,6 @@ class BatchProcessThread(QThread):
                     base.skip_rows = int(data_config.get("skip_rows", base.skip_rows))
                 except Exception:
                     pass
-                cols = data_config.get("columns") or {}
-                for k in base.column_mappings.keys():
-                    if k in cols and cols.get(k) is not None:
-                        try:
-                            base.column_mappings[k] = int(cols.get(k))
-                        except Exception:
-                            pass
-                try:
-                    base.passthrough_columns = [
-                        int(x)
-                        for x in data_config.get(
-                            "passthrough", base.passthrough_columns
-                        )
-                    ]
-                except Exception:
-                    pass
                 if "overwrite" in data_config:
                     try:
                         base.overwrite = bool(data_config.get("overwrite"))
@@ -202,37 +186,32 @@ class BatchProcessThread(QThread):
             raise
 
         if file_path.suffix.lower() == ".csv":
-            # 记录用于调试的配置信息和读取数据预览
+            # 按列名读取 CSV（要求有表头）
             try:
-                logger.debug("CSV 处理：使用 cfg_to_use=%s", cfg_to_use)
-                try:
-                    self.log_message.emit(f"使用文件配置: {cfg_to_use}")
-                except Exception:
-                    logger.debug("无法通过 signal 发送 cfg_to_use", exc_info=True)
-            except Exception:
-                pass
-
-            df = pd.read_csv(
-                file_path,
-                header=None,
-                skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
-            )
-            try:
-                logger.debug("已读取 CSV: %s 行, %s 列", df.shape[0], df.shape[1])
+                df = pd.read_csv(file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0)))
+                logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
                 try:
                     self.log_message.emit(
                         f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列"
                     )
                 except Exception:
                     logger.debug("无法通过 signal 发送 df.shape", exc_info=True)
-            except Exception:
-                pass
+            except Exception as e:
+                try:
+                    self.log_message.emit(f"CSV 读取失败: {file_path.name} -> {e}")
+                except Exception:
+                    pass
+                raise
         else:
-            df = pd.read_excel(
-                file_path,
-                header=None,
-                skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
-            )
+            # Excel 文件也按列名读取
+            try:
+                df = pd.read_excel(file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0)))
+            except Exception as e:
+                try:
+                    self.log_message.emit(f"Excel 读取失败: {file_path.name} -> {e}")
+                except Exception:
+                    pass
+                raise
 
         # 若用户在文件列表选择了“处理哪些数据行”，则按选择过滤。
         # 注意：此时不再执行“自动表头检测/丢弃首行”，以保证索引与 GUI 预览一致。
@@ -251,99 +230,74 @@ class BatchProcessThread(QThread):
                 pass
             raise
 
-        cols = getattr(cfg_to_use, "column_mappings", {}) or {}
+        col_map = {str(c).strip().lower(): c for c in df.columns}
 
-        # 自动检测并跳过可能的表头行：
-        # 如果在映射的关键力/力矩列中多数值在第一行无法解析为数值，判断第一行为表头并丢弃。
-        # 当存在“按行选择过滤”时，该逻辑已被禁用（索引需与 GUI 预览保持一致）。
+        has_dimensional = all(
+            k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"]
+        )
+        coeff_normal_key = "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
+        has_coeff = coeff_normal_key is not None and all(
+            k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"]
+        )
+
+        if not has_dimensional and not has_coeff:
+            raise ValueError(
+                "缺少必要列，需包含 Fx/Fy/Fz/Mx/My/Mz 或 Cx/Cy/Cz(CM)/CMx/CMy/CMz"
+            )
+
         try:
-            fp_str = str(Path(file_path))
-            if (self.table_row_selection_by_file or {}).get(fp_str) is not None:
-                raise RuntimeError(
-                    "skip header auto-detect due to explicit row selection"
-                )
-            required_keys = ["fx", "fy", "fz", "mx", "my", "mz"]
-            mapped = [cols.get(k) for k in required_keys if cols.get(k) is not None]
-            mapped = [
-                int(x)
-                for x in mapped
-                if isinstance(x, (int, float))
-                or (isinstance(x, str) and str(x).isdigit())
-            ]
-            try:
-                logger.debug("映射列索引: %s", mapped)
-                try:
-                    self.log_message.emit(f"映射列索引: {mapped}")
-                except Exception:
-                    pass
-            except Exception:
-                pass
-            if mapped:
-                non_numeric_count = 0
-                checked = 0
-                for idx in mapped:
-                    if 0 <= idx < len(df.columns):
-                        checked += 1
-                        val = df.iloc[0, idx]
-                        # 使用 pandas 尝试转换为数值判断
-                        try:
-                            nv = pd.to_numeric(pd.Series([val]), errors="coerce").iloc[
-                                0
-                            ]
-                        except Exception:
-                            nv = None
-                        if pd.isna(nv) and pd.notna(val):
-                            non_numeric_count += 1
-
-                # 若大多数（>=60%）映射列在首行为非数值，则认为首行为表头并跳过
-                if checked > 0 and non_numeric_count / checked >= 0.6:
-                    try:
-                        self.log_message.emit(
-                            f"检测到可能的表头，已跳过首行: {file_path.name}"
-                        )
-                    except Exception:
-                        logger.debug("无法发送跳过表头的日志消息", exc_info=True)
-                    df = df.iloc[1:].reset_index(drop=True)
-        except Exception:
-            logger.debug("表头自动检测发生异常，继续按原始数据处理", exc_info=True)
-
-        def _col_to_numeric(df_local, col_idx, name):
-            if col_idx is None:
-                raise ValueError(f"缺失必需的列映射: {name}")
-            if not (0 <= col_idx < len(df_local.columns)):
-                raise IndexError(f"列索引越界: {name} -> {col_idx}")
-            orig_col = df_local.iloc[:, col_idx]
-            ser = pd.to_numeric(orig_col, errors="coerce")
-            bad_mask = ser.isna() & orig_col.notna()
-            if bad_mask.any():
-                try:
-                    bad_indices = orig_col.index[bad_mask].tolist()
-                    sample_indices = bad_indices[:5]
-                    sample_values = [
-                        str(v) for v in orig_col[bad_mask].head(5).tolist()
+            if has_dimensional:
+                forces_df = df[
+                    [
+                        col_map["fx"],
+                        col_map["fy"],
+                        col_map["fz"],
                     ]
-                    self.log_message.emit(
-                        f"列 {name} 有 {bad_mask.sum()} 个值无法解析为数值，示例索引: {sample_indices}，示例值: {sample_values}"
-                    )
-                except (IndexError, AttributeError, ValueError) as ex:
-                    logger.debug("构建非数值示例时出错: %s", ex, exc_info=True)
-            return ser.values.astype(float)
+                ].apply(pd.to_numeric, errors="coerce")
+                moments_df = df[
+                    [
+                        col_map["mx"],
+                        col_map["my"],
+                        col_map["mz"],
+                    ]
+                ].apply(pd.to_numeric, errors="coerce")
+            else:
+                coeff_force_df = df[
+                    [
+                        col_map["cx"],
+                        col_map["cy"],
+                        col_map[coeff_normal_key],
+                    ]
+                ].apply(pd.to_numeric, errors="coerce")
+                coeff_moment_df = df[
+                    [
+                        col_map["cmx"],
+                        col_map["cmy"],
+                        col_map["cmz"],
+                    ]
+                ].apply(pd.to_numeric, errors="coerce")
 
-        try:
-            fx = _col_to_numeric(df, cols.get("fx"), "Fx")
-            fy = _col_to_numeric(df, cols.get("fy"), "Fy")
-            fz = _col_to_numeric(df, cols.get("fz"), "Fz")
-            mx = _col_to_numeric(df, cols.get("mx"), "Mx")
-            my = _col_to_numeric(df, cols.get("my"), "My")
-            mz = _col_to_numeric(df, cols.get("mz"), "Mz")
-            forces = np.vstack([fx, fy, fz]).T
-            moments = np.vstack([mx, my, mz]).T
-        except (ValueError, IndexError, TypeError, OSError) as e:
+                q = self.calculator.target_frame.q
+                s_ref = self.calculator.target_frame.s_ref
+                c_ref = self.calculator.target_frame.c_ref
+                b_ref = self.calculator.target_frame.b_ref
+
+                forces_df = coeff_force_df * (q * s_ref)
+                moments_df = pd.DataFrame(
+                    {
+                        "mx": coeff_moment_df.iloc[:, 0] * (q * s_ref * b_ref),
+                        "my": coeff_moment_df.iloc[:, 1] * (q * s_ref * c_ref),
+                        "mz": coeff_moment_df.iloc[:, 2] * (q * s_ref * b_ref),
+                    }
+                )
+        except Exception as e:
             try:
                 self.log_message.emit(f"数据列提取或转换失败: {e}")
             except Exception:
                 logger.debug("无法通过 signal 发送失败消息: %s", e, exc_info=True)
             raise
+
+        alpha_col_name = col_map.get("alpha")
 
         calc_to_use = self.calculator
         # 新语义：若提供了 project_data，则按“每文件选择的 source/target”创建计算器
@@ -397,41 +351,38 @@ class BatchProcessThread(QThread):
         if calc_to_use is None:
             raise ValueError("缺少计算器：请先加载配置并为文件选择 Source/Target")
 
-        results = calc_to_use.process_batch(forces, moments)
+        # 将输入转换为有量纲力和力矩
+        if has_dimensional:
+            forces_dimensional = forces_df.to_numpy(dtype=float)
+            moments_dimensional = moments_df.to_numpy(dtype=float)
+        else:
+            try:
+                q = calc_to_use.target_frame.q
+                s_ref = calc_to_use.target_frame.s_ref
+                c_ref = calc_to_use.target_frame.c_ref
+                b_ref = calc_to_use.target_frame.b_ref
+            except Exception as e:
+                raise ValueError(f"无法从计算器获取参考值: {e}")
+
+            forces_dimensional = forces_df.to_numpy(dtype=float)  # F = C * q * S
+            moments_dimensional = moments_df.to_numpy(dtype=float)
+
+        results = calc_to_use.process_batch(forces_dimensional, moments_dimensional)
         output_df = pd.DataFrame()
 
-        passthrough = []
-        try:
-            passthrough = list(getattr(cfg_to_use, "passthrough_columns", []) or [])
-        except Exception:
-            passthrough = []
+        # 如果原始数据有 Alpha 列，保留它
+        if alpha_col_name and alpha_col_name in df.columns:
+            output_df["Alpha"] = df[alpha_col_name]
 
-        for col_idx in passthrough:
-            try:
-                idx = int(col_idx)
-            except (ValueError, TypeError):
-                try:
-                    self.log_message.emit(f"透传列索引无效: {col_idx}")
-                except Exception:
-                    logger.debug("无法发送透传列无效消息: %s", col_idx, exc_info=True)
-                continue
-            if 0 <= idx < len(df.columns):
-                output_df[f"Col_{idx}"] = df.iloc[:, idx]
-            else:
-                try:
-                    self.log_message.emit(f"透传列索引越界: {idx}")
-                except Exception:
-                    logger.debug("无法发送透传列越界消息: %s", idx, exc_info=True)
-
-        if cols.get("alpha") is not None and cols.get("alpha") < len(df.columns):
-            output_df["Alpha"] = df.iloc[:, cols["alpha"]]
-
+        # 输出变换后的有量纲力和力矩
         output_df["Fx_new"] = results["force_transformed"][:, 0]
         output_df["Fy_new"] = results["force_transformed"][:, 1]
         output_df["Fz_new"] = results["force_transformed"][:, 2]
         output_df["Mx_new"] = results["moment_transformed"][:, 0]
         output_df["My_new"] = results["moment_transformed"][:, 1]
         output_df["Mz_new"] = results["moment_transformed"][:, 2]
+        
+        # 输出变换后的无量纲系数
         output_df["Cx"] = results["coeff_force"][:, 0]
         output_df["Cy"] = results["coeff_force"][:, 1]
         output_df["Cz"] = results["coeff_force"][:, 2]
@@ -453,14 +404,6 @@ class BatchProcessThread(QThread):
             total = len(self.file_list)
             success = 0
             elapsed_list = []
-
-            if self.registry_db:
-                try:
-                    self.log_message.emit(f"使用 format registry: {self.registry_db}")
-                except RuntimeError as re:
-                    logger.debug("Signal emit failed: %s", re, exc_info=True)
-                except Exception:
-                    logger.exception("Unexpected error when emitting registry message")
 
             for i, file_path in enumerate(self.file_list):
                 if self._stop_requested:

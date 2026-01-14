@@ -4,7 +4,7 @@ MomentTransfer GUI 主窗口模块
 
 重构说明：
 - Mpl3DCanvas -> gui/canvas.py
-- ColumnMappingDialog, ExperimentalDialog -> gui/dialogs.py
+- ExperimentalDialog -> gui/dialogs.py
 - BatchProcessThread -> gui/batch_thread.py
 - IntegratedAeroGUI -> 保留在此文件（待进一步拆分）
 """
@@ -552,13 +552,7 @@ class IntegratedAeroGUI(QMainWindow):
             getattr(self, "btn_save", None),
             getattr(self, "btn_apply", None),
             getattr(self, "btn_config_format", None),
-            getattr(self, "btn_registry_register", None),
-            getattr(self, "btn_registry_edit", None),
-            getattr(self, "btn_registry_remove", None),
             getattr(self, "btn_batch", None),
-            getattr(self, "inp_registry_db", None),
-            getattr(self, "inp_registry_pattern", None),
-            getattr(self, "inp_registry_format", None),
         ]
         for w in widgets:
             try:

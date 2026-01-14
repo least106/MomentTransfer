@@ -408,8 +408,7 @@ class PartManager:
                 except Exception:
                     pass
 
-            # 旧兼容性隐藏控件已删除，使用 Panel setter 统一更新
-
+            # 使用 Panel setter 统一更新坐标系信息
             try:
                 coord_dict = {
                     "Orig": [cs.origin[0], cs.origin[1], cs.origin[2]],

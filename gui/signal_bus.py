@@ -40,7 +40,7 @@ class SignalBus(QObject):
     # UI 控制
     controlsLocked = Signal(bool)
 
-    _instance: Optional[SignalBus]
+    _instance: Optional[SignalBus] = None
 
     @classmethod
     def instance(cls) -> "SignalBus":

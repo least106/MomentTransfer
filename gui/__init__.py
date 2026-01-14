@@ -15,7 +15,7 @@ from gui.config_manager import ConfigManager
 
 # 导出主要组件类
 # Mpl3DCanvas 已改为延迟加载，在 visualization_manager 中按需导入
-from gui.dialogs import ColumnMappingDialog, ExperimentalDialog
+from gui.dialogs import ExperimentalDialog
 from gui.layout_manager import LayoutManager
 from gui.part_manager import PartManager
 
@@ -38,7 +38,6 @@ if _parent_dir not in sys.path:
 __all__ = [
     # UI 组件
     # 'Mpl3DCanvas' - 已改为延迟加载，不在此导出
-    "ColumnMappingDialog",
     "ExperimentalDialog",
     "BatchProcessThread",
     # UI 工具函数

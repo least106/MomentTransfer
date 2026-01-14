@@ -1901,7 +1901,6 @@ class BatchManager:
                 files_to_process,
                 output_path,
                 data_config,
-                registry_db=getattr(self.gui, "_registry_db", None),
                 project_data=project_data,
                 timestamp_format=getattr(self.gui, "timestamp_format", "%Y%m%d_%H%M%S"),
                 special_part_mapping_by_file=getattr(
