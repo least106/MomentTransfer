@@ -41,6 +41,7 @@ def construct_basis_matrix(
     x: List[float],
     y: List[float],
     z: List[float],
+    *,
     orthogonality_threshold: float = ORTHOGONALITY_THRESHOLD,
     singularity_threshold: float = SINGULARITY_THRESHOLD,
     orthogonalize: bool = False,
