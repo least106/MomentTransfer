@@ -1,24 +1,23 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: b965c2a5026f8ba399283ba3e01898b012853c79
+  - repo: local
     hooks:
       - id: black
-        args: ["--line-length=88"]
-        language_version: python3
-
-  - repo: https://github.com/PyCQA/isort
-    rev: dbf82f2dd09ae41d9355bcd7ab69187a19e6bf2f
-    hooks:
+        name: black (local)
+        entry: python -m black --line-length=88
+        language: system
+        files: '\.py$'
       - id: isort
-
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: 1ac904bbe451ef0b5a437d1d3b331a244c1f272c
-    hooks:
+        name: isort (local)
+        entry: python -m isort
+        language: system
+        files: '\.py$'
       - id: ruff
-        args: ["--fix"]
-
-  - repo: https://github.com/pre-commit/mirrors-pylint
-    rev: a1b176a5ee919967cf01e87c0222bd64b94fe0de
-    hooks:
+        name: ruff (local)
+        entry: python -m ruff check --fix
+        language: system
+        files: '\.py$'
       - id: pylint
-        args: ["--rcfile=./.pylintrc", "src/"]
+        name: pylint (local)
+        entry: python -m pylint --rcfile=./.pylintrc src/
+        language: system
+        types: [python]
