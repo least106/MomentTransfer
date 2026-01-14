@@ -96,7 +96,7 @@ jobs:
       - name: Run black (check)
         run: |
           python -m black --version
-          python -m black --check src/ tests/ || (echo 'Run `python -m black src/ tests/` to format' && exit 1)
+          python -m black --check src/ tests/ gui/ gui_main.py batch.py || (echo 'Run `python -m black src/ tests/ gui/ gui_main.py batch.py` to format' && exit 1)
 
       - name: Run pylint (report + gate)
         run: |
