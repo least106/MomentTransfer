@@ -227,14 +227,45 @@ class PluginLoader:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
-            # 查找 create_plugin 工厂函数
-            if hasattr(module, "create_plugin"):
-                plugin = module.create_plugin()
-                self.registry.register(plugin)
-                logger.info("成功加载插件: %s", filepath)
+            # 查找 create_plugin 工厂函数并验证返回类型
+            if hasattr(module, "create_plugin") and callable(getattr(module, "create_plugin")):
+                try:
+                    plugin = module.create_plugin()
+                except Exception as exc:
+                    logger.error(
+                        "插件工厂 create_plugin() 在 %s 中抛出异常: %s",
+                        filepath,
+                        exc,
+                        exc_info=True,
+                    )
+                    return None
+
+                # 校验返回对象是 BasePlugin 的子类实例
+                if not isinstance(plugin, BasePlugin):
+                    logger.error(
+                        "插件工厂 %s.create_plugin() 返回的对象无效（需要 BasePlugin 子类），实际类型：%s",
+                        filepath,
+                        type(plugin),
+                    )
+                    return None
+
+                # 注册并记录插件元数据（如果可用）
+                try:
+                    self.registry.register(plugin)
+                    name = getattr(plugin.metadata, "name", str(filepath))
+                    logger.info("成功加载插件: %s (%s)", filepath, name)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error(
+                        "注册插件 %s 时失败: %s",
+                        filepath,
+                        exc,
+                        exc_info=True,
+                    )
+                    return None
+
                 return plugin
 
-            logger.error("插件 %s 不包含 create_plugin() 函数", filepath)
+            logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
             return None
 
         except (OSError, ImportError, AttributeError, SyntaxError) as exc:
