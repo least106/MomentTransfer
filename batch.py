@@ -1018,38 +1018,28 @@ def _worker_process(args):
         )
         cfg.sample_rows = config_dict.get("sample_rows", cfg.sample_rows)
 
-        # 若提供了 registry_db，则尝试按文件解析最终配置
-        if registry_db:
-            try:
-                from src.cli_helpers import resolve_file_format
+        # 使用全局配置处理每个文件（不再支持 per-file 覆盖）
+        try:
+            from src.cli_helpers import resolve_file_format
 
-                # 从传入的 args 中读取 enable_sidecar 标志（默认为 False）
-                enable_sidecar = bool(args.get("enable_sidecar", False))
-                cfg = resolve_file_format(
+            cfg = resolve_file_format(str(file_path), cfg)
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            if strict:
+                # 严格模式下：解析失败视为致命错误，交由上层统一处理
+                logger.warning(
+                    '处理文件"%s"时配置解析失败，错误：%s',
                     str(file_path),
-                    cfg,
-                    enable_sidecar=enable_sidecar,
-                    registry_db=registry_db,
+                    e,
                 )
-            except Exception as e:
-                logger = logging.getLogger(__name__)
-                if strict:
-                    # 严格模式下：解析失败视为致命错误，交由上层统一处理
-                    logger.warning(
-                        '使用registry_db"%s"解析"%s"的文件格式失败，错误：%s',
-                        registry_db,
-                        str(file_path),
-                        e,
-                    )
-                    raise
-                else:
-                    # 非严格模式：记录警告并回退到全局配置
-                    logger.warning(
-                        "Registry lookup failed for '%s' with registry_db '%s', falling back to global config: %s",
-                        str(file_path),
-                        registry_db,
-                        e,
-                    )
+                raise
+            else:
+                # 非严格模式：记录警告并回退到全局配置
+                logger.warning(
+                    "处理文件 '%s' 时配置解析失败，使用全局配置：%s",
+                    str(file_path),
+                    e,
+                )
 
         success = process_single_file(
             file_path, calculator, cfg, output_dir, project_data
@@ -1065,9 +1055,7 @@ def run_batch_processing(
     config_path: str,
     input_path: str,
     data_config: BatchConfig = None,
-    registry_db: str = None,
     strict: bool = False,
-    enable_sidecar: bool = False,
     dry_run: bool = False,
     show_progress: bool = False,
     output_json: str = None,
@@ -1145,12 +1133,7 @@ def run_batch_processing(
             try:
                 from src.cli_helpers import resolve_file_format
 
-                cfg_local = resolve_file_format(
-                    str(fp),
-                    data_config,
-                    enable_sidecar=enable_sidecar,
-                    registry_db=registry_db,
-                )
+                cfg_local = resolve_file_format(str(fp), data_config)
             except Exception as e:
                 logger.warning("解析文件 %s 的格式失败：%s", fp, e)
                 cfg_local = data_config
@@ -1172,16 +1155,11 @@ def run_batch_processing(
     results = []
     for i, file_path in enumerate(files_to_process, 1):
         logger.info("进度: [%d/%d] %s", i, len(files_to_process), file_path.name)
-        # 在串行模式下也优先通过 registry 或侧车/目录解析每个文件的最终配置
+        # 使用全局配置处理每个文件
         try:
             from src.cli_helpers import resolve_file_format
 
-            cfg_local = resolve_file_format(
-                str(file_path),
-                data_config,
-                enable_sidecar=bool(registry_db),
-                registry_db=registry_db,
-            )
+            cfg_local = resolve_file_format(str(file_path), data_config)
         except Exception:
             # 解析失败：记录并回退到全局配置
             logger.warning("解析文件 %s 的格式失败，回退到全局配置", file_path)
@@ -1398,24 +1376,10 @@ def run_batch_processing(
     help="目标 variant 索引（从0开始，默认0）",
 )
 @click.option(
-    "--enable-sidecar",
-    "enable_sidecar",
-    is_flag=True,
-    default=False,
-    help="启用 per-file 覆盖（file-sidecar / dir-default / registry），默认关闭",
-)
-@click.option(
-    "--registry-db",
-    "registry_db",
-    default=None,
-    help="(实验) SQLite registry 数据库路径（仅在启用 per-file 覆盖时使用）",
-    hidden=True,
-)
-@click.option(
     "--strict",
     "strict",
     is_flag=True,
-    help="registry/format 解析失败时终止（默认回退到全局配置）",
+    help="格式解析失败时终止（默认回退到全局配置）",
 )
 @click.option(
     "--dry-run",
@@ -1460,8 +1424,6 @@ def main(**cli_options):
     sample_rows = cli_options.get("sample_rows")
     target_part = cli_options.get("target_part")
     target_variant = cli_options.get("target_variant")
-    enable_sidecar = cli_options.get("enable_sidecar")
-    registry_db = cli_options.get("registry_db")
     strict = cli_options.get("strict")
     dry_run = cli_options.get("dry_run")
     show_progress = cli_options.get("show_progress")
@@ -1481,17 +1443,11 @@ def main(**cli_options):
             _error_exit_json(f"读取格式文件失败: {e}", code=3)
 
     if non_interactive and data_config is None:
-        # 非交互模式下要求提供全局格式文件或启用 per-file 覆盖策略（enable_sidecar）
-        if not enable_sidecar and not registry_db:
-            _error_exit_json(
-                "--non-interactive 模式下必须提供 --format-file 或启用 per-file 覆盖（--enable-sidecar）",
-                code=2,
-                hint="传入 --format-file 或 --enable-sidecar（可选同时传入 --registry-db）以在非交互模式下解析每个文件的格式。",
-            )
-        # 未提供全局格式文件：使用默认 BatchConfig 作为全局基准，具体文件的最终配置由 sidecar/dir-default/registry 覆盖（仅当 enable_sidecar=True 时）
-        data_config = BatchConfig()
-        logger.info(
-            "非交互模式且未提供 --format-file，使用默认 BatchConfig 并依赖 per-file 覆盖策略进行每文件解析（若已启用）"
+        # 非交互模式下必须提供格式文件
+        _error_exit_json(
+            "--non-interactive 模式下必须提供 --format-file",
+            code=2,
+            hint="传入 --format-file 以在非交互模式下设置批处理格式。",
         )
 
     if data_config is None:
@@ -1714,9 +1670,7 @@ def main(**cli_options):
                 config,
                 input_path,
                 data_config,
-                registry_db=registry_db,
                 strict=strict,
-                enable_sidecar=enable_sidecar,
                 dry_run=dry_run,
                 show_progress=show_progress,
                 output_json=output_json,

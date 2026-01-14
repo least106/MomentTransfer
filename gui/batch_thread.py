@@ -32,7 +32,6 @@ class BatchProcessThread(QThread):
         file_list,
         output_dir,
         data_config,
-        registry_db=None,
         project_data=None,
         timestamp_format: str = "%Y%m%d_%H%M%S",
         special_part_mapping_by_file: dict = None,
@@ -45,7 +44,6 @@ class BatchProcessThread(QThread):
         self.file_list = file_list
         self.output_dir = Path(output_dir)
         self.data_config = data_config
-        self.registry_db = registry_db
         self._stop_requested = False
         self.project_data = project_data
         self.timestamp_format = timestamp_format
@@ -95,7 +93,7 @@ class BatchProcessThread(QThread):
             self._global_batch_cfg = None
 
     def _resolve_cfg_for_file(self, file_path: Path):
-        """解析单文件最终的 BatchConfig（优先 sidecar/目录/registry）。"""
+        """为单个文件返回全局批处理配置。"""
         from src.cli_helpers import BatchConfig, resolve_file_format
 
         base = (
@@ -103,12 +101,7 @@ class BatchProcessThread(QThread):
             if self._global_batch_cfg is not None
             else BatchConfig()
         )
-        return resolve_file_format(
-            str(file_path),
-            base,
-            enable_sidecar=True,
-            registry_db=self.registry_db,
-        )
+        return resolve_file_format(str(file_path), base)
 
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""

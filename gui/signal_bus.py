@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -39,7 +40,7 @@ class SignalBus(QObject):
     # UI 控制
     controlsLocked = Signal(bool)
 
-    _instance: "SignalBus" | None = None
+    _instance: Optional[SignalBus]
 
     @classmethod
     def instance(cls) -> "SignalBus":

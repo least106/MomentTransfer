@@ -159,85 +159,21 @@ def get_user_file_format() -> BatchConfig:
 def resolve_file_format(
     file_path: str,
     global_cfg: BatchConfig,
-    *,
-    enable_sidecar: bool = False,
-    registry_db: str = None,
-    sidecar_suffixes=(".format.json", ".json"),
-    dir_default_name="format.json",
 ) -> BatchConfig:
-    """为单个数据文件解析并返回最终的 BatchConfig。
+    """为单个数据文件返回全局配置的深拷贝。
 
-    **重要变化**: 默认情况下（`enable_sidecar=False`）不会查询 file-sidecar、目录级 `format.json` 或 registry，
-    而是直接返回 `global_cfg` 的深拷贝（推荐用于生产）。当需要按文件覆盖配置以做示例或调试
-    时，可将 `enable_sidecar=True` 并提供相应的侧车/目录/registry 资源来启用原始行为。
+    此函数不再支持 per-file 配置覆盖（sidecar/registry/目录级配置），
+    确保批处理过程中使用一致的全局配置。
 
-    返回的是一个 `BatchConfig` 的深拷贝，基于 `global_cfg` ，并由本地配置覆盖相应字段（仅当
-    enable_sidecar=True 时才会执行覆盖逻辑）。
+    参数：
+        file_path: 数据文件路径（用于日志记录）
+        global_cfg: 全局批处理配置
+
+    返回值：
+        global_cfg 的深拷贝
     """
-    p = Path(file_path)
-    # 开始于全局配置的拷贝
-    cfg = deepcopy(global_cfg)
-
-    # 若未启用侧车/目录/registry 策略，则直接返回 global_cfg 的拷贝（生产默认行为）
-    if not enable_sidecar:
-        return cfg
-
-    # 以下为原有的侧车/目录/registry 查找逻辑（仅在 enable_sidecar=True 时执行）
-
-    # 0) 优先查询 registry（若提供）
-    if registry_db:
-        try:
-            reg_fmt = get_format_for_file(registry_db, file_path)
-            if reg_fmt:
-                local = load_format_from_file(str(reg_fmt))
-                _merge_batch_config(cfg, local)
-                return cfg
-        except (OSError, ValueError) as exc:
-            # registry 查询失败时不阻塞，降级到本地侧车/目录/全局策略，但记录具体原因便于排查
-            logger.warning(
-                "Registry lookup failed for file %r with registry_db %r: %s",
-                file_path,
-                registry_db,
-                exc,
-            )
-
-    # 1) 检查 file-sidecar
-    stem = p.stem
-    parent = p.parent
-    for suf in sidecar_suffixes:
-        candidate = parent / f"{stem}{suf}"
-        if candidate.exists():
-            local = load_format_from_file(str(candidate))
-            # 覆盖 cfg
-            _merge_batch_config(cfg, local)
-            return cfg
-
-    # 2) 检查目录级默认
-    dir_candidate = parent / dir_default_name
-    if dir_candidate.exists():
-        local = load_format_from_file(str(dir_candidate))
-        _merge_batch_config(cfg, local)
-        return cfg
-
-    # 3) 否则返回全局（已拷贝）
-    return cfg
-
-
-def _merge_batch_config(dst: BatchConfig, src: BatchConfig) -> None:
-    """把 src 的非空/非默认字段合并到 dst（就地修改 dst）。"""
-    # 简单策略：直接覆盖字段（列映射中以非 None 值覆盖）
-    dst.skip_rows = int(src.skip_rows)
-    for k, v in src.column_mappings.items():
-        if v is not None:
-            dst.column_mappings[k] = int(v)
-    if src.passthrough_columns:
-        dst.passthrough_columns = list(src.passthrough_columns)
-    dst.chunksize = src.chunksize
-    dst.name_template = src.name_template
-    dst.timestamp_format = src.timestamp_format
-    dst.overwrite = bool(src.overwrite)
-    dst.treat_non_numeric = src.treat_non_numeric
-    dst.sample_rows = int(src.sample_rows)
+    # 返回全局配置的深拷贝
+    return deepcopy(global_cfg)
 
 
 def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:

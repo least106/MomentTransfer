@@ -281,13 +281,6 @@ class ExperimentalDialog(QDialog):
     def _init_ui(self):
         layout = QVBoxLayout(self)
 
-        # per-file 开关
-        self.chk_enable_sidecar = QCheckBox("启用 per-file 覆盖（sidecar/registry）")
-        self.chk_enable_sidecar.setToolTip(
-            "启用后批处理会尝试使用文件侧车或 registry 覆盖全局配置"
-        )
-        layout.addWidget(self.chk_enable_sidecar)
-
         # registry DB 行
         reg_row = QHBoxLayout()
         reg_row.addWidget(QLabel("格式注册表 (.sqlite):"))
@@ -353,7 +346,6 @@ class ExperimentalDialog(QDialog):
     def _load_initial(self):
         s = self.initial_settings
         try:
-            self.chk_enable_sidecar.setChecked(bool(s.get("enable_sidecar", False)))
             self.inp_registry_db.setText(s.get("registry_db", "") or "")
             for rp in s.get("recent_projects", [])[:10]:
                 self.lst_recent.addItem(rp)
@@ -445,7 +437,6 @@ class ExperimentalDialog(QDialog):
 
     def get_settings(self) -> dict:
         return {
-            "enable_sidecar": bool(self.chk_enable_sidecar.isChecked()),
             "registry_db": self.inp_registry_db.text().strip(),
             "recent_projects": [
                 self.lst_recent.item(i).text() for i in range(self.lst_recent.count())

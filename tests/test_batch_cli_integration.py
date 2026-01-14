@@ -21,13 +21,11 @@ def test_batch_non_interactive_output_json(tmp_path):
 
     out_json = tmp_path / "result.json"
 
-    # 调用批处理，非交互模式：提供 data_config 与 registry_db（可为空文件路径）
-    registry_db = tmp_path / "reg.db"
+    # 调用批处理，非交互模式：提供 data_config
     run_batch_processing(
         config_path="data/input.json",
         input_path=str(tmp_path),
         data_config=cfg,
-        registry_db=str(registry_db),
         strict=False,
         dry_run=False,
         show_progress=False,

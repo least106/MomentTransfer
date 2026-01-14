@@ -1241,12 +1241,7 @@ class BatchManager:
                 # 构造BatchConfig用于格式解析
                 base_cfg = BatchConfig(skip_rows=0, columns={}, passthrough=[])
 
-                fmt_info = resolve_file_format(
-                    str(file_path),
-                    base_cfg,
-                    enable_sidecar=True,
-                    registry_db=getattr(self.gui, "_registry_db", None),
-                )
+                fmt_info = resolve_file_format(str(file_path), base_cfg)
 
                 # 缓存格式信息
                 if fmt_info:
@@ -2035,50 +2030,9 @@ class BatchManager:
 
         label: 'registry' | 'sidecar' | 'dir' | 'global' | 'unknown'
         path_or_None: 指向具体的 format 文件（Path）或 None
-        说明：当 per-file 覆盖未启用时（默认），直接返回 ('global', None)。
+        说明：总是返回全局配置（已禁用 per-file 覆盖）。
         """
-        try:
-            # 若 per-file 覆盖未显式启用，则统一视作全局（不检查 registry/sidecar）
-            try:
-                if hasattr(self.gui, "experimental_settings"):
-                    if not bool(
-                        self.gui.experimental_settings.get("enable_sidecar", False)
-                    ):
-                        return ("global", None)
-                else:
-                    if (
-                        hasattr(self.gui, "chk_enable_sidecar")
-                        and not self.gui.chk_enable_sidecar.isChecked()
-                    ):
-                        return ("global", None)
-            except Exception:
-                pass
-
-            # 1) registry 优先（若界面提供了 db 路径）
-            if hasattr(self.gui, "inp_registry_db"):
-                dbp = self.gui.inp_registry_db.text().strip()
-                if dbp:
-                    try:
-                        fmt = get_format_for_file(dbp, str(fp))
-                        if fmt:
-                            return ("registry", Path(fmt))
-                    except Exception:
-                        pass
-
-            # 2) file-sidecar
-            for suf in (".format.json", ".json"):
-                cand = fp.parent / f"{fp.stem}{suf}"
-                if cand.exists():
-                    return ("sidecar", cand)
-
-            # 3) 目录级默认
-            dir_cand = fp.parent / "format.json"
-            if dir_cand.exists():
-                return ("dir", dir_cand)
-
-            return ("global", None)
-        except Exception:
-            return ("unknown", None)
+        return ("global", None)
 
     def _format_label_from(self, src: str, src_path: Optional[Path]):
         """将源类型与路径格式化为显示文本、tooltip 与颜色。"""
