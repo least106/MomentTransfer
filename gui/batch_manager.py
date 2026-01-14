@@ -6,13 +6,21 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QCheckBox, QDialog, QFileDialog, QMessageBox,
-                               QTableWidget, QTableWidgetItem)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QFileDialog,
+    QMessageBox,
+    QTableWidget,
+    QTableWidgetItem,
+)
 
 from src.format_registry import get_format_for_file
-from src.special_format_parser import (get_part_names,
-                                       looks_like_special_format,
-                                       parse_special_format_file)
+from src.special_format_parser import (
+    get_part_names,
+    looks_like_special_format,
+    parse_special_format_file,
+)
 
 logger = logging.getLogger(__name__)
 

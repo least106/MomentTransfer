@@ -4,6 +4,7 @@
 """
 
 import json
+
 # pylint: disable=too-many-arguments,too-many-locals
 import logging
 from copy import deepcopy
@@ -98,7 +99,7 @@ def get_user_file_format() -> BatchConfig:
 
     虽然这是交互函数，但放在此处可将所有与数据格式相关的逻辑集中。
     """
-    print("\n=== 数据格式配置 ===")
+    logger.info("=== 数据格式配置 ===")
     config = BatchConfig()
 
     # 跳过行数
@@ -107,9 +108,9 @@ def get_user_file_format() -> BatchConfig:
         try:
             config.skip_rows = int(skip_input)
         except ValueError:
-            print("[警告] 无效输入，使用默认值0")
+            logger.warning("无效输入，使用默认值0")
 
-    print("\n请指定数据列位置 (从0开始计数，留空表示该列不存在):")
+    logger.info("请指定数据列位置 (从0开始计数，留空表示该列不存在):")
 
     # 可选的迎角列
     alpha_col = input("  迎角 Alpha 列号: ").strip()
@@ -137,12 +138,12 @@ def get_user_file_format() -> BatchConfig:
                     config.column_mappings[key] = int(col_input)
                     break
                 except ValueError:
-                    print("    [错误] 请输入有效的列号")
+                    logger.error("    [错误] 请输入有效的列号")
             else:
-                print("    [错误] 此列为必需项")
+                logger.error("    [错误] 此列为必需项")
 
     # 需要保留的列
-    print("\n需要原样输出的其他列 (用逗号分隔列号，如: 0,1,2):")
+    logger.info("需要原样输出的其他列 (用逗号分隔列号，如: 0,1,2):")
     passthrough = input("  列号: ").strip()
     if passthrough:
         try:
@@ -150,7 +151,7 @@ def get_user_file_format() -> BatchConfig:
                 int(x.strip()) for x in passthrough.split(",")
             ]
         except ValueError:
-            print("[警告] 格式错误，将不保留额外列")
+            logger.warning("格式错误，将不保留额外列")
 
     return config
 

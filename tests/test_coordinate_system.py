@@ -5,8 +5,13 @@
 import numpy as np
 import pytest
 
-from src.models.project_model import (CoordinateSystem, Part, PartVariant,
-                                      ProjectConfigModel, ReferenceValues)
+from src.models.project_model import (
+    CoordinateSystem,
+    Part,
+    PartVariant,
+    ProjectConfigModel,
+    ReferenceValues,
+)
 
 
 class TestCoordinateSystem:

@@ -14,11 +14,19 @@ import pytest
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.cache import (CacheKey, CalculationCache, RotationMatrixCache,
-                       TransformationCache)
+from src.cache import (
+    CacheKey,
+    CalculationCache,
+    RotationMatrixCache,
+    TransformationCache,
+)
 from src.config import SystemConfig, get_config, reset_config
-from src.plugin import (CoordSystemPlugin, PluginMetadata, PluginRegistry,
-                        get_plugin_registry)
+from src.plugin import (
+    CoordSystemPlugin,
+    PluginMetadata,
+    PluginRegistry,
+    get_plugin_registry,
+)
 
 
 class TestConfigSystem:

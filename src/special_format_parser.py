@@ -13,6 +13,7 @@
 import logging
 import re
 import sys
+
 # 确保脚本运行时能找到 src 包（在引入本地 src 包之前调整 sys.path）
 from pathlib import Path
 
@@ -21,6 +22,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from dataclasses import dataclass
+
 # 放置在 sys.path 调整之后但在其它代码之前的顶级导入
 from datetime import datetime  # noqa: E402
 from typing import Dict, List, Optional  # noqa: E402
@@ -733,18 +735,21 @@ if __name__ == "__main__":
 
     test_file = Path("data/data_tmp")
     if test_file.exists():
-        print(f"解析文件: {test_file}")
+        logger.info("解析文件: %s", test_file)
 
         # 获取 part 名称
         parts = get_part_names(test_file)
-        print(f"\n找到 {len(parts)} 个 part:")
+        logger.info("找到 %d 个 part:", len(parts))
         for part_item in parts:
-            print(f"  - {part_item}")
+            logger.info("  - %s", part_item)
 
         # 解析完整数据
         demo_data_dict = parse_special_format_file(test_file)
-        print("\n解析结果:")
+        logger.info("解析结果:")
         for demo_part_name, demo_df in demo_data_dict.items():
-            print(f"\n{demo_part_name}:")
-            print(demo_df.head())
-            print(f"  形状: {demo_df.shape}")
+            logger.info("%s:", demo_part_name)
+            try:
+                logger.info("\n%s", demo_df.head().to_string())
+            except Exception:
+                logger.info("(无法显示 DataFrame 预览)")
+            logger.info("  形状: %s", demo_df.shape)

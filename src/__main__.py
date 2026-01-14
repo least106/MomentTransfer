@@ -1,10 +1,11 @@
 """命令行帮助入口，用于在直接运行包时显示简要使用说明。"""
 
+import logging
+
 
 def print_help():
-    """打印简要的使用帮助信息到标准输出。"""
-    print(
-        """
+    """打印简要的使用帮助信息到日志（默认 INFO）。"""
+    help_text = """
 ================================================
                MomentTransform
 ================================================
@@ -23,8 +24,10 @@ def print_help():
 
 ------------------------------------------------
     """
-    )
+    logger = logging.getLogger(__name__)
+    logger.info("\n%s", help_text)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     print_help()

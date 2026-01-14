@@ -12,7 +12,6 @@ from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager
 from gui.part_manager import PartManager
-from gui.visualization_manager import VisualizationManager
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +100,6 @@ class InitializationManager:
             )
             self.main_window.part_manager = PartManager(self.main_window)
             self.main_window.batch_manager = BatchManager(self.main_window)
-            self.main_window.visualization_manager = VisualizationManager(
-                self.main_window
-            )
             self.main_window.layout_manager = LayoutManager(self.main_window)
 
             logger.info("所有管理器初始化成功")
