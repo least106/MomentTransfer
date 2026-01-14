@@ -232,7 +232,9 @@ class PluginLoader:
                 spec.loader.exec_module(module)
 
                 # 查找 create_plugin 工厂函数并验证返回类型
-                if hasattr(module, "create_plugin") and callable(getattr(module, "create_plugin")):
+                if hasattr(module, "create_plugin") and callable(
+                    getattr(module, "create_plugin")
+                ):
                     try:
                         plugin = module.create_plugin()
                     except (TypeError, ValueError, RuntimeError) as exc:
