@@ -85,28 +85,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+          # 安装 pre-commit 以便在 CI 中运行 pre-commit 钩子
+          pip install pre-commit -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+      - name: Run pre-commit hooks
+        run: |
+          # 先运行 pre-commit（会包含 black/isort/ruff/pylint）以统一开发者环境与 CI
+          pre-commit run --all-files || true
 
       - name: Run black (check)
         run: |
-          black --check src/ tests/ || (echo 'Run `black src/ tests/` to format' && exit 1)
+          python -m black --version
+          python -m black --check src/ tests/ || (echo 'Run `python -m black src/ tests/` to format' && exit 1)
 
-      - name: Run pylint
+      - name: Run pylint (report + gate)
         run: |
-          # 允许 pylint 返回非零以显示所有问题，但将退出非零以阻止合并
-          pylint src/ --exit-zero || true
-          # 汇总重要得分并在失败阈以下退出
-          SCORE=$(pylint src/ --score=y | tail -n1 | awk -F"/" '{print $1}' | awk '{print $NF}')
+          python -m pip show pylint || python -m pip install pylint -i https://pypi.tuna.tsinghua.edu.cn/simple
+          # 输出完整结果用于日志/排查
+          python -m pylint src/ --output-format=text > pylint_full.txt || true
+          cat pylint_full.txt
+          # 解析 score（示例输出行形如 "Your code has been rated at 9.98/10"）
+          SCORE=$(grep 'Your code has been rated at' pylint_full.txt | tail -n1 | awk -F'/' '{print $1}' | awk '{print $NF}')
           echo "Pylint score: $SCORE"
-            python - <<PY
-            import os, sys
-            # 从环境变量读取 SCORE，避免 heredoc 引号导致的变量未展开问题
-            raw = os.environ.get('SCORE')
-            try:
-              score = float(raw) if raw is not None else 0.0
-            except ValueError:
-              print('无法解析 Pylint 分数:', raw)
-              sys.exit(1)
-            if score < 7.0:
-              print('Pylint score below 7.0, failing CI')
-              sys.exit(1)
-            PY
+          # 用 awk 做数值比较（避免 heredoc/缩进问题）
+          echo "$SCORE" | awk '{ if ($1+0 < 7.0) { print "Pylint score below 7.0, failing CI"; exit 1 } }'
