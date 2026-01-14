@@ -159,19 +159,15 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
 
     # 多 token 或较长文本：按下一行是否为表头来判定
     contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
+    result = not contains_chinese
     if next_line:
         next_tokens = next_line.split()
         if _tokens_looks_like_header(next_tokens):
             # 下一行是表头：中文长描述保守为非 part，其他认为是 part
             if contains_chinese and len(line) >= 20:
                 return False
-            return True
-        else:
-            # 下一行不是表头：中文保守认为非 part，非中文宽松认为是 part
-            return not contains_chinese
-    else:
-        # 无下一行：中文保守（非 part），非中文宽松（视为 part）
-        return not contains_chinese
+            result = True
+    return result
 
 
 def _read_text_file_lines(
@@ -372,6 +368,7 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
 def _process_single_part(
     part_name,
     df,
+    *,
     file_path,
     project_data,
     output_dir,
@@ -571,6 +568,7 @@ def _make_handle_single_part(
     file_path: Path,
     project_data,
     output_dir: Path,
+    *,
     part_target_mapping: dict = None,
     part_row_selection: dict = None,
     timestamp_format: str = "%Y%m%d_%H%M%S",
@@ -585,13 +583,13 @@ def _make_handle_single_part(
         return _process_single_part(
             part_name,
             df,
-            file_path,
-            project_data,
-            output_dir,
-            part_target_mapping,
-            part_row_selection,
-            timestamp_format,
-            overwrite,
+            file_path=file_path,
+            project_data=project_data,
+            output_dir=output_dir,
+            part_target_mapping=part_target_mapping,
+            part_row_selection=part_row_selection,
+            timestamp_format=timestamp_format,
+            overwrite=overwrite,
         )
 
     return _handle

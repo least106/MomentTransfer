@@ -110,7 +110,12 @@ def test__process_single_part_writes_output(tmp_path, monkeypatch):
     monkeypatch.setattr(sfp, "AeroCalculator", DummyCalc)
 
     out_path, report = sfp._process_single_part(
-        part_name, df, file_path, project_data, output_dir, overwrite=True
+        part_name,
+        df,
+        file_path=file_path,
+        project_data=project_data,
+        output_dir=output_dir,
+        overwrite=True,
     )
 
     assert out_path is not None
