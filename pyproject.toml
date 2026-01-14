@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.scripts]
-momenttransfer-cli = "cli:main"
+momenttransfer-cli = "cli:cli"
 momenttransfer-gui = "gui_main:main"
 
 [project.urls]
