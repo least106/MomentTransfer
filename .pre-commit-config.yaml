@@ -18,7 +18,7 @@ repos:
         args: ["--fix"]
 
   - repo: https://github.com/pre-commit/mirrors-pylint
-    rev: v2.17.5
+    rev: v2.17.4
     hooks:
       - id: pylint
         args: ["--rcfile=./.pylintrc", "src/"]
