@@ -35,8 +35,8 @@ def list_cmd(db_path):
         click.echo(f"数据库错误: {e}")
         logging.exception("Registry list failed")
         sys.exit(2)
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        # 捕获意外错误并记录完整 traceback 以便排查
+    except (RuntimeError, ValueError, OSError) as e:
+        # 捕获常见运行时/值/IO 错误并记录完整 traceback 以便排查
         logging.exception("Unexpected error while listing registry mappings")
         click.echo(f"未知错误: {e}; 详情已记录到日志")
         sys.exit(3)
@@ -61,7 +61,7 @@ def register_cmd(db_path, pattern, format_path):
         click.echo(f"错误: {e}")
         logging.exception("Registry register failed")
         sys.exit(2)
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except (RuntimeError, ValueError, OSError) as e:
         logging.exception("Unexpected error while registering mapping")
         click.echo(f"未知错误: {e}; 详情已记录到日志")
         sys.exit(3)
@@ -80,7 +80,7 @@ def remove_cmd(db_path, mapping_id):
         click.echo(f"错误: {e}")
         logging.exception("Registry remove failed")
         sys.exit(2)
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except (RuntimeError, ValueError, OSError) as e:
         logging.exception("Unexpected error while removing mapping")
         click.echo(f"未知错误: {e}; 详情已记录到日志")
         sys.exit(3)

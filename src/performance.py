@@ -73,9 +73,9 @@ class PerformanceMonitor:
         if self.process:
             try:
                 memory_before_mb = self.process.memory_info().rss / 1024 / 1024
-            except Exception:  # pylint: disable=broad-except
-                # psutil 动态环境下可能抛出多种错误，记录为调试信息并忽略
-                logger.debug("无法读取进程内存信息，跳过memory_before", exc_info=True)
+            except (OSError, RuntimeError) as exc:
+                # psutil 在某些环境下可能抛出系统/运行时错误，记录为调试信息并忽略
+                logger.debug("无法读取进程内存信息，跳过memory_before: %s", exc, exc_info=True)
 
         metrics = PerformanceMetrics(
             metric_name=metric_name,
@@ -96,8 +96,8 @@ class PerformanceMonitor:
                     metrics.memory_after_mb - metrics.memory_before_mb
                 )
                 metrics.cpu_percent = self.process.cpu_percent(interval=0.01)
-            except Exception:  # pylint: disable=broad-except
-                logger.debug("读取进程性能信息失败，略过性能字段", exc_info=True)
+            except (OSError, RuntimeError) as exc:
+                logger.debug("读取进程性能信息失败，略过性能字段: %s", exc, exc_info=True)
 
         with self.lock:
             self.metrics[metrics.metric_name].append(metrics)
@@ -174,8 +174,8 @@ class PerformanceMonitor:
                 stats["memory_available_mb"] = (
                     psutil.virtual_memory().available / 1024 / 1024
                 )
-            except Exception:  # pylint: disable=broad-except
-                logger.debug("获取系统统计信息失败", exc_info=True)
+            except (OSError, RuntimeError) as exc:
+                logger.debug("获取系统统计信息失败: %s", exc, exc_info=True)
         return stats
 
     def clear_metrics(self, metric_name: Optional[str] = None) -> None:

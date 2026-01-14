@@ -186,10 +186,11 @@ class AeroCalculator:
                 result[:, zero_mask] = 0.0
             elif result.ndim == 1 and denom_arr.ndim == 1:
                 result[zero_mask] = 0.0
-        except Exception:  # pylint: disable=broad-except
+        except (ValueError, IndexError) as exc:
             # 若形状不匹配，回退为原始结果
             logger.debug(
-                "_safe_divide: 形状不匹配，无法按列屏蔽 zero_mask",
+                "_safe_divide: 形状不匹配，无法按列屏蔽 zero_mask: %s",
+                exc,
                 exc_info=True,
             )
 
@@ -214,8 +215,8 @@ class AeroCalculator:
                         self.basis_target,
                         getattr(cache_cfg, "precision_digits", None),
                     )
-                except Exception:  # pylint: disable=broad-except
-                    logger.debug("旋转矩阵缓存调用失败，回退到直接计算", exc_info=True)
+                except (KeyError, RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("旋转矩阵缓存调用失败，回退到直接计算: %s", exc, exc_info=True)
                     rotation_matrix = None
 
                 if rotation_matrix is None:
@@ -230,16 +231,16 @@ class AeroCalculator:
                             getattr(cache_cfg, "precision_digits", None),
                         )
                         logger.debug("旋转矩阵缓存未命中，已计算并缓存")
-                    except Exception:  # pylint: disable=broad-except
-                        logger.debug("旋转矩阵缓存写入失败，已忽略", exc_info=True)
+                    except (RuntimeError, AttributeError, TypeError) as exc:
+                        logger.debug("旋转矩阵缓存写入失败，已忽略: %s", exc, exc_info=True)
                 else:
                     logger.debug("旋转矩阵缓存命中")
             else:
                 rotation_matrix = geometry.compute_rotation_matrix(
                     self.basis_source, self.basis_target
                 )
-        except Exception:  # pylint: disable=broad-except
-            logger.debug("获取缓存配置失败或异常，直接计算旋转矩阵", exc_info=True)
+        except (AttributeError, TypeError) as exc:
+            logger.debug("获取缓存配置失败或异常，直接计算旋转矩阵: %s", exc, exc_info=True)
             rotation_matrix = geometry.compute_rotation_matrix(
                 self.basis_source, self.basis_target
             )
@@ -265,8 +266,8 @@ class AeroCalculator:
                         self.r_global,
                         getattr(cache_cfg, "precision_digits", None),
                     )
-                except Exception:  # pylint: disable=broad-except
-                    logger.debug("力臂转换缓存调用失败，回退到直接计算", exc_info=True)
+                except (KeyError, RuntimeError, AttributeError, TypeError) as exc:
+                    logger.debug("力臂转换缓存调用失败，回退到直接计算: %s", exc, exc_info=True)
                     r_t = None
 
                 if r_t is None:
@@ -281,15 +282,16 @@ class AeroCalculator:
                             getattr(cache_cfg, "precision_digits", None),
                         )
                         logger.debug("力臂转换缓存未命中，已计算并缓存")
-                    except Exception:  # pylint: disable=broad-except
-                        logger.debug("力臂转换写入失败，已忽略", exc_info=True)
+                    except (RuntimeError, AttributeError, TypeError) as exc:
+                        logger.debug("力臂转换写入失败，已忽略: %s", exc, exc_info=True)
                 else:
                     logger.debug("力臂转换缓存命中")
             else:
                 r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
-        except Exception:  # pylint: disable=broad-except
+        except (AttributeError, TypeError) as exc:
             logger.debug(
-                "获取/使用力臂转换缓存时发生异常，直接计算 r_target",
+                "获取/使用力臂转换缓存时发生异常，直接计算 r_target: %s",
+                exc,
                 exc_info=True,
             )
             r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
@@ -308,9 +310,10 @@ class AeroCalculator:
                 self.rotation_matrix = geometry.compute_rotation_matrix(
                     self.basis_source, self.basis_target
                 )
-        except Exception:  # pylint: disable=broad-except
+        except (TypeError, ValueError, AttributeError) as exc:
             logger.debug(
-                "校验 rotation_matrix 时发生异常，重新计算旋转矩阵",
+                "校验 rotation_matrix 时发生异常，重新计算旋转矩阵: %s",
+                exc,
                 exc_info=True,
             )
             self.rotation_matrix = geometry.compute_rotation_matrix(
@@ -328,8 +331,8 @@ class AeroCalculator:
                 )
             else:
                 self.r_target = r_arr
-        except Exception:  # pylint: disable=broad-except
-            logger.debug("校验 r_target 时发生异常，重新计算 r_target", exc_info=True)
+        except (TypeError, ValueError, AttributeError) as exc:
+            logger.debug("校验 r_target 时发生异常，重新计算 r_target: %s", exc, exc_info=True)
             self.r_target = geometry.project_vector_to_frame(
                 self.r_global, self.basis_target
             )
@@ -349,8 +352,8 @@ class AeroCalculator:
         """
         try:
             return np.dot(np.asarray(vectors, dtype=float), self.rotation_matrix.T)
-        except Exception:  # pylint: disable=broad-except
-            logger.debug("旋转向量时发生异常，尝试逐行计算", exc_info=True)
+        except (TypeError, ValueError) as exc:
+            logger.debug("旋转向量时发生异常，尝试逐行计算: %s", exc, exc_info=True)
             vecs = np.asarray(vectors, dtype=float)
             out = np.zeros_like(vecs)
             for i, v in enumerate(vecs):
@@ -369,8 +372,8 @@ class AeroCalculator:
         """
         try:
             return np.cross(self.r_target, np.asarray(F_rotated, dtype=float))
-        except Exception:  # pylint: disable=broad-except
-            logger.debug("计算移轴力矩时异常，回退为逐行计算", exc_info=True)
+        except (TypeError, ValueError) as exc:
+            logger.debug("计算移轴力矩时异常，回退为逐行计算: %s", exc, exc_info=True)
             fr = np.asarray(F_rotated, dtype=float)
             out = np.zeros_like(fr)
             for i, f in enumerate(fr):

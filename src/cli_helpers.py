@@ -257,7 +257,7 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
         batch_logger.removeHandler(h)
         try:
             h.close()
-        except Exception as e:  # pylint: disable=broad-except
+        except (OSError, RuntimeError) as e:
             # 仅记录调试信息，避免在关闭 handler 时抛出
             batch_logger.debug(
                 "关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True

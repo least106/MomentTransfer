@@ -330,7 +330,9 @@ class PluginManager:
                     self._registry.unregister(name)
                 except (RuntimeError, TypeError, ValueError) as exc:
                     # 忽略注销时的插件错误，但记录调试信息
-                    logger.debug("注销插件 %s 时发生异常: %s", name, exc, exc_info=True)
+                    logger.debug(
+                        "注销插件 %s 时发生异常: %s", name, exc, exc_info=True
+                    )
             self._registry = None
 
 

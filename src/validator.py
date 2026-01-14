@@ -134,7 +134,7 @@ class DataValidator:
 
         except ValidationError:
             raise
-        except Exception as e:
+        except OSError as e:
             raise ValidationError(f"路径验证失败: {e}") from e
 
     @staticmethod
@@ -180,7 +180,7 @@ class DataValidator:
 
         except ValidationError:
             raise
-        except Exception as e:
+        except OSError as e:
             raise ValidationError(f"CSV 安全检查失败: {e}") from e
 
     @staticmethod
@@ -221,7 +221,7 @@ class DataValidator:
 
         except ValidationError:
             raise
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             raise ValidationError(f"DataFrame 验证失败: {e}") from e
 
     @staticmethod
@@ -262,7 +262,7 @@ class DataValidator:
 
         except ValidationError:
             raise
-        except Exception as e:
+        except (TypeError, ValueError, IndexError) as e:
             raise ValidationError(f"列映射验证失败: {e}") from e
 
 

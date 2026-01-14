@@ -200,7 +200,7 @@ def _read_text_file_lines(
             if max_lines is None:
                 return fh.readlines()
             return [fh.readline() for _ in range(max_lines)]
-    except Exception as e:  # pylint: disable=broad-except
+    except OSError as e:
         # 最后抛出最初的 Unicode 错误或一般 IO 错误，保留原始异常上下文
         if last_exc:
             raise last_exc from e
@@ -274,10 +274,11 @@ def _finalize_part(
         for col in df.columns:
             try:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            except Exception:  # pylint: disable=broad-except
+            except (TypeError, ValueError) as exc:
                 logger.debug(
-                    "列 %s 转换为数值失败，保留原始值",
+                    "列 %s 转换为数值失败，保留原始值: %s",
                     col,
+                    exc,
                     exc_info=True,
                 )
         result[current_part] = df
@@ -392,11 +393,12 @@ def _process_single_part(
         if selected is not None:
             selected_idx = sorted({int(x) for x in selected})
             df = df.iloc[selected_idx]
-    except Exception:  # pylint: disable=broad-except
+    except (TypeError, ValueError, KeyError) as exc:
         # 容错：行选择的来源可能包含不可预期的值，回退到全量处理并记录异常上下文
         logger.debug(
-            "按行过滤失败，回退为全量处理 (part=%s)",
+            "按行过滤失败，回退为全量处理 (part=%s): %s",
             part_name,
+            exc,
             exc_info=True,
         )
 
@@ -421,8 +423,14 @@ def _process_single_part(
             explicit_mapping_used = True
         else:
             target_part = part_name
-    except Exception:  # pylint: disable=broad-except
+    except (TypeError, AttributeError) as exc:
         # 容错：映射结构异常时回退为同名 target
+        logger.debug(
+            "解析 part_target_mapping 时发生异常，回退为同名 target (part=%s): %s",
+            part_name,
+            exc,
+            exc_info=True,
+        )
         target_part = part_name
 
     # 校验 source/target part 是否存在
@@ -482,7 +490,7 @@ def _process_single_part(
         cmx = pd.to_numeric(df["CMx"], errors="coerce")
         cmy = pd.to_numeric(df["CMy"], errors="coerce")
         cmz = pd.to_numeric(df["CMz"], errors="coerce")
-    except Exception as e:  # pylint: disable=broad-except
+    except (KeyError, TypeError, ValueError) as e:
         # 容错：数值转换可能因列缺失或格式异常失败，记录并返回失败状态
         msg = f"part '{part_name}' 数值转换失败: {e}"
         logger.warning(msg)
@@ -511,8 +519,8 @@ def _process_single_part(
             project_data, source_part=source_part, target_part=target_part
         )
         results = calc.process_batch(forces, moments)
-    except Exception as e:  # pylint: disable=broad-except
-        # 容错：处理阶段捕获所有异常以避免批处理整体失败，记录详细上下文
+    except (ValueError, RuntimeError, TypeError) as e:
+        # 容错：处理阶段捕获常见运行时错误以避免批处理整体失败，记录详细上下文
         msg = f"part '{part_name}' 处理失败: {e}"
         logger.warning(msg, exc_info=True)
         return None, {
@@ -750,6 +758,6 @@ if __name__ == "__main__":
             logger.info("%s:", demo_part_name)
             try:
                 logger.info("\n%s", demo_df.head().to_string())
-            except Exception:
-                logger.info("(无法显示 DataFrame 预览)")
+            except (AttributeError, ValueError) as exc:
+                logger.info("(无法显示 DataFrame 预览: %s)", exc)
             logger.info("  形状: %s", demo_df.shape)
