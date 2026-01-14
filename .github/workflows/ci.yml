@@ -97,10 +97,16 @@ jobs:
           # 汇总重要得分并在失败阈以下退出
           SCORE=$(pylint src/ --score=y | tail -n1 | awk -F"/" '{print $1}' | awk '{print $NF}')
           echo "Pylint score: $SCORE"
-          python - <<'PY'
-          import sys
-          score=float('$SCORE')
-          if score<7.0:
+            python - <<PY
+            import os, sys
+            # 从环境变量读取 SCORE，避免 heredoc 引号导致的变量未展开问题
+            raw = os.environ.get('SCORE')
+            try:
+              score = float(raw) if raw is not None else 0.0
+            except ValueError:
+              print('无法解析 Pylint 分数:', raw)
+              sys.exit(1)
+            if score < 7.0:
               print('Pylint score below 7.0, failing CI')
               sys.exit(1)
-          PY
+            PY
