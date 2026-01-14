@@ -4,8 +4,14 @@ UI 工具模块 - 提供通用的 UI 组件创建函数
 
 import logging
 
-from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit,
-                               QSizePolicy, QWidget)
+from PySide6.QtWidgets import (
+    QDoubleSpinBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QSizePolicy,
+    QWidget,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -10,8 +10,10 @@ import numpy as np
 import pandas as pd
 from PySide6.QtCore import QThread, Signal
 
-from src.special_format_parser import (looks_like_special_format,
-                                       process_special_format_file)
+from src.special_format_parser import (
+    looks_like_special_format,
+    process_special_format_file,
+)
 
 logger = logging.getLogger(__name__)
 

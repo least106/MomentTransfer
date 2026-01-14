@@ -2,8 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from src.data_loader import (CoordSystemDefinition, FrameConfiguration,
-                             ProjectData, try_load_project_data)
+from src.data_loader import (
+    CoordSystemDefinition,
+    FrameConfiguration,
+    ProjectData,
+    try_load_project_data,
+)
 
 
 def valid_coord():

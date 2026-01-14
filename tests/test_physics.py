@@ -7,8 +7,7 @@
 import numpy as np
 import pytest
 
-from src.data_loader import (CoordSystemDefinition, FrameConfiguration,
-                             ProjectData)
+from src.data_loader import CoordSystemDefinition, FrameConfiguration, ProjectData
 from src.physics import AeroCalculator
 
 

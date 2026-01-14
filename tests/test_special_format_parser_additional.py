@@ -4,8 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from src import special_format_parser as sfp
-from src.data_loader import (CoordSystemDefinition, FrameConfiguration,
-                             ProjectData)
+from src.data_loader import CoordSystemDefinition, FrameConfiguration, ProjectData
 
 
 def write_file(path: Path, content: str):

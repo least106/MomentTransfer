@@ -17,8 +17,7 @@ import argparse
 from copy import deepcopy
 from pathlib import Path
 
-from src.cli_helpers import (BatchConfig, _merge_batch_config,
-                             load_format_from_file)
+from src.cli_helpers import BatchConfig, _merge_batch_config, load_format_from_file
 from src.format_registry import get_format_for_file
 
 

@@ -6,8 +6,15 @@ import logging
 from typing import Dict, List, Set
 
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit,
-                               QPushButton, QTableWidget, QWidget)
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTableWidget,
+    QWidget,
+)
 
 logger = logging.getLogger(__name__)
 

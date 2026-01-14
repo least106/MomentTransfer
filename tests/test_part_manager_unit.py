@@ -1,6 +1,11 @@
 from gui.part_manager import PartManager
-from src.models.project_model import (CoordinateSystem, Part, PartVariant,
-                                      ProjectConfigModel, ReferenceValues)
+from src.models.project_model import (
+    CoordinateSystem,
+    Part,
+    PartVariant,
+    ProjectConfigModel,
+    ReferenceValues,
+)
 
 
 class DummySelector:
