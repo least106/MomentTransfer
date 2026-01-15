@@ -14,8 +14,6 @@ from gui.batch_thread import BatchProcessThread
 from gui.config_manager import ConfigManager
 
 # 导出主要组件类
-# Mpl3DCanvas 已改为延迟加载，在 visualization_manager 中按需导入
-from gui.dialogs import ExperimentalDialog
 from gui.layout_manager import LayoutManager
 from gui.part_manager import PartManager
 

@@ -7,6 +7,17 @@ class DummyPanel:
 
         self._cs = CoordinateSystem()
         self._refs = ReferenceValues()
+        
+        # 添加必需的 part_name_input 和 part_selector 属性
+        class DummyLineEdit:
+            def __init__(self, t=""):
+                self._t = t
+            def text(self):
+                return self._t
+                
+        self.part_name_input = DummyLineEdit("")
+        self.part_selector = None  # 可选
+        self._current_part_name = None
 
     def get_coordinate_system_model(self):
         return self._cs
@@ -20,17 +31,7 @@ class DummyGUI:
         self.signal_bus = SignalBus.instance()
         self.source_panel = DummyPanel()
         self.target_panel = DummyPanel()
-
-        # minimal text fields
-        class Txt:
-            def __init__(self, t=""):
-                self._t = t
-
-            def text(self):
-                return self._t
-
-        self.src_part_name = Txt("")
-        self.tgt_part_name = Txt("")
+        # 不再需要单独的 src_part_name 和 tgt_part_name，已在 Panel 中
 
 
 def test_add_and_remove_source_part_emits_signals(monkeypatch):

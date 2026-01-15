@@ -27,7 +27,9 @@ class DummyLineEdit:
 class DummyPanel:
     def __init__(self, name="P"):
         self.part_selector = DummySelector(name)
+        self.part_name_input = DummyLineEdit(name)
         self._applied = None
+        self._current_part_name = None
 
     def get_coordinate_system_model(self):
         return CoordinateSystem()
@@ -46,8 +48,7 @@ class DummyGUI:
     def __init__(self):
         self.project_model = None
         self.source_panel = DummyPanel("P")
-        self.src_part_name = DummyLineEdit("P")
-        # minimal attributes used by PartManager
+        # 不再需要 src_part_name，直接使用 source_panel.part_name_input
 
 
 def test_save_current_source_part_creates_model_entry():
@@ -70,5 +71,4 @@ def test_on_source_part_changed_applies_payload():
     # source panel selector already returns 'P'
     pm = PartManager(gui)
     pm.on_source_part_changed()
-    assert gui.source_panel._applied is not None
-    assert gui._current_source_part_name == "P"
+    assert gui.source_panel._applied is not None    # 验证面板内部状态已更新    assert gui._current_source_part_name == "P"

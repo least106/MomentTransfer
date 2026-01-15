@@ -142,23 +142,23 @@ class ConfigManager:
             self._last_loaded_config_path = Path(fname)
 
             # 填充 Target 下拉列表（统一通过面板接口，避免重复添加）
-            self.gui.cmb_target_parts.clear()
+            self.gui.target_panel.part_selector.clear()
             target_part_names = list(project.target_parts.keys())
             for part in target_part_names:
-                self.gui.cmb_target_parts.addItem(part)
+                self.gui.target_panel.part_selector.addItem(part)
             try:
                 self.gui.target_panel.update_part_list(target_part_names)
             except Exception:
                 logger.debug("target_panel.update_part_list 失败", exc_info=True)
 
-            if self.gui.cmb_target_parts.count() > 0:
-                self.gui.cmb_target_parts.setVisible(True)
+            if self.gui.target_panel.part_selector.count() > 0:
+                self.gui.target_panel.part_selector.setVisible(True)
                 first = (
-                    self.gui.cmb_target_parts.currentText()
-                    or self.gui.cmb_target_parts.itemText(0)
+                    self.gui.target_panel.part_selector.currentText()
+                    or self.gui.target_panel.part_selector.itemText(0)
                 )
                 try:
-                    self.gui._current_target_part_name = first
+                    self.gui.target_panel._current_part_name = first
                 except Exception:
                     pass
                 # 同步面板当前选择
@@ -173,23 +173,23 @@ class ConfigManager:
 
             # 填充 Source 下拉列表（统一通过面板接口，避免重复添加）
             try:
-                self.gui.cmb_source_parts.clear()
+                self.gui.source_panel.part_selector.clear()
                 source_part_names = list(project.source_parts.keys())
                 for part in source_part_names:
-                    self.gui.cmb_source_parts.addItem(part)
+                    self.gui.source_panel.part_selector.addItem(part)
                 try:
                     self.gui.source_panel.update_part_list(source_part_names)
                 except Exception:
                     logger.debug("source_panel.update_part_list 失败", exc_info=True)
 
-                if self.gui.cmb_source_parts.count() > 0:
-                    self.gui.cmb_source_parts.setVisible(True)
+                if self.gui.source_panel.part_selector.count() > 0:
+                    self.gui.source_panel.part_selector.setVisible(True)
                     firsts = (
-                        self.gui.cmb_source_parts.currentText()
-                        or self.gui.cmb_source_parts.itemText(0)
+                        self.gui.source_panel.part_selector.currentText()
+                        or self.gui.source_panel.part_selector.itemText(0)
                     )
                     try:
-                        self.gui._current_source_part_name = firsts
+                        self.gui.source_panel._current_part_name = firsts
                     except Exception:
                         pass
                     # 同步面板当前选择
@@ -229,8 +229,8 @@ class ConfigManager:
         """填充 Target 坐标系表单"""
         try:
             sel_part = (
-                self.gui.cmb_target_parts.currentText()
-                or self.gui.cmb_target_parts.itemText(0)
+                self.gui.target_panel.part_selector.currentText()
+                or self.gui.target_panel.part_selector.itemText(0)
             )
             sel_variant = 0
             frame = project.get_target_part(sel_part, sel_variant)
@@ -249,12 +249,12 @@ class ConfigManager:
         """填充 Source 坐标系表单"""
         try:
             if (
-                self.gui.cmb_source_parts.count() > 0
-                and self.gui.cmb_source_parts.isVisible()
+                self.gui.source_panel.part_selector.count() > 0
+                and self.gui.source_panel.part_selector.isVisible()
             ):
                 s_part = (
-                    self.gui.cmb_source_parts.currentText()
-                    or self.gui.cmb_source_parts.itemText(0)
+                    self.gui.source_panel.part_selector.currentText()
+                    or self.gui.source_panel.part_selector.itemText(0)
                 )
                 s_variant = 0
                 sframe = project.get_source_part(s_part, s_variant)

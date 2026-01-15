@@ -17,7 +17,6 @@ from typing import Optional
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
 
-from gui.compatibility_manager import CompatibilityManager
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
 
@@ -57,7 +56,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.calculator = None
         self.signal_bus = SignalBus.instance()
         self.current_config = None
-        self.project_model: ProjectConfigModel | None = None
+        self.project_model: Optional[ProjectConfigModel] = None
         self.data_config = None
         self.visualization_window = None
 
@@ -80,13 +79,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.config_manager = None
         self.part_manager = None
         self.batch_manager = None
-        self.visualization_manager = None
         self.layout_manager = None
 
         # 新管理器
         self.initialization_manager = InitializationManager(self)
         self.event_manager = EventManager(self)
-        self.compatibility_manager = CompatibilityManager(self)
 
         # 执行初始化
         self.initialization_manager.setup_ui()
@@ -101,9 +98,16 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("启动时切换默认页面到日志页失败", exc_info=True)
 
-        # 设置兼容性
-        self.compatibility_manager.setup_legacy_aliases()
-        self.compatibility_manager.handle_legacy_signals()
+        # 直接连接 Part 选择器信号到 PartManager
+        try:
+            self.source_panel.partSelected.connect(
+                self.part_manager.on_source_part_changed
+            )
+            self.target_panel.partSelected.connect(
+                self.part_manager.on_target_part_changed
+            )
+        except Exception:
+            logger.debug("连接 Part 选择器信号失败", exc_info=True)
 
         # 连接信号
         try:
@@ -130,15 +134,6 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("set_config_panel_visible failed", exc_info=True)
 
     def _connect_signals(self):
-        """集中信号连接"""
-        try:
-            # 基本 UI 控制
-            self.signal_bus.controlsLocked.connect(self._set_controls_locked)
-        except Exception:
-            logger.debug("连接 controlsLocked 信号失败", exc_info=True)
-
-    # Part 变更封装方法（委托给 PartManager）
-    def _on_source_part_changed_wrapper(self):
         if self.part_manager:
             self.part_manager.on_source_part_changed()
 

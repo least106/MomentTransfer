@@ -168,15 +168,9 @@ class PartManager:
                 selector = None
 
             try:
-                current_name = getattr(
-                    self.gui,
-                    (
-                        "_current_source_part_name"
-                        if is_source
-                        else "_current_target_part_name"
-                    ),
-                    None,
-                )
+                # 从面板获取当前 part 名称
+                panel = self.gui.source_panel if is_source else self.gui.target_panel
+                current_name = getattr(panel, "_current_part_name", None)
                 if not current_name and selector:
                     current_name = selector.currentText()
             except Exception:
@@ -201,10 +195,13 @@ class PartManager:
 
             parts[new_name] = part_obj
 
+            # 更新面板内部状态（通过面板管理，无需在 main_window 存储）
             if is_source:
-                self.gui._current_source_part_name = new_name
+                if hasattr(self.gui, 'source_panel'):
+                    self.gui.source_panel._current_part_name = new_name
             else:
-                self.gui._current_target_part_name = new_name
+                if hasattr(self.gui, 'target_panel'):
+                    self.gui.target_panel._current_part_name = new_name
 
             if selector:
                 try:
@@ -229,7 +226,7 @@ class PartManager:
             base_name = (suggested_name or "").strip()
             if not base_name:
                 try:
-                    base_name = self.gui.src_part_name.text().strip()
+                    base_name = self.gui.source_panel.part_name_input.text().strip()
                 except Exception:
                     base_name = "NewSourcePart"
             existing = set(self.gui.project_model.source_parts.keys())
@@ -249,7 +246,8 @@ class PartManager:
             self.gui.project_model.source_parts[name] = PMPart(
                 part_name=name, variants=[variant]
             )
-            self.gui._current_source_part_name = name
+            if hasattr(self.gui, 'source_panel'):
+                self.gui.source_panel._current_part_name = name
 
             # 发射 SignalBus 事件
             try:
@@ -306,7 +304,7 @@ class PartManager:
             base_name = (suggested_name or "").strip()
             if not base_name:
                 try:
-                    base_name = self.gui.tgt_part_name.text().strip()
+                    base_name = self.gui.target_panel.part_name_input.text().strip()
                 except Exception:
                     base_name = "NewTargetPart"
 
@@ -326,7 +324,8 @@ class PartManager:
             self.gui.project_model.target_parts[name] = PMPart(
                 part_name=name, variants=[variant]
             )
-            self.gui._current_target_part_name = name
+            if hasattr(self.gui, 'target_panel'):
+                self.gui.target_panel._current_part_name = name
 
             # 发射 SignalBus 事件
             try:
@@ -380,7 +379,7 @@ class PartManager:
         """Source 变体索引变化事件：根据索引更新 UI。"""
         try:
             sel = (
-                getattr(self.gui, "_current_source_part_name", None)
+                getattr(self.gui.source_panel, "_current_part_name", None)
                 or getattr(
                     self.gui.source_panel.part_selector,
                     "currentText",
@@ -400,11 +399,11 @@ class PartManager:
                 return
 
             try:
-                self.gui.src_part_name.blockSignals(True)
-                self.gui.src_part_name.setText(part_name)
+                self.gui.source_panel.part_name_input.blockSignals(True)
+                self.gui.source_panel.part_name_input.setText(part_name)
             finally:
                 try:
-                    self.gui.src_part_name.blockSignals(False)
+                    self.gui.source_panel.part_name_input.blockSignals(False)
                 except Exception:
                     pass
 
@@ -427,7 +426,7 @@ class PartManager:
         """Target 变体索引变化事件：根据索引更新 UI。"""
         try:
             sel = (
-                getattr(self.gui, "_current_target_part_name", None)
+                getattr(self.gui.target_panel, "_current_part_name", None)
                 or getattr(
                     self.gui.target_panel.part_selector,
                     "currentText",
@@ -447,11 +446,11 @@ class PartManager:
                 return
 
             try:
-                self.gui.tgt_part_name.blockSignals(True)
-                self.gui.tgt_part_name.setText(part_name)
+                self.gui.target_panel.part_name_input.blockSignals(True)
+                self.gui.target_panel.part_name_input.setText(part_name)
             finally:
                 try:
-                    self.gui.tgt_part_name.blockSignals(False)
+                    self.gui.target_panel.part_name_input.blockSignals(False)
                 except Exception:
                     pass
 
@@ -514,8 +513,8 @@ class PartManager:
         """将当前 Source 表单保存到新模型（使用强类型接口）"""
         try:
             part_name = (
-                self.gui.src_part_name.text()
-                if hasattr(self.gui, "src_part_name")
+                self.gui.source_panel.part_name_input.text()
+                if hasattr(self.gui, "source_panel")
                 else "Global"
             )
             if hasattr(self.gui, "source_panel"):
@@ -548,8 +547,8 @@ class PartManager:
         """将当前 Target 表单保存到新模型（使用强类型接口）"""
         try:
             part_name = (
-                self.gui.tgt_part_name.text()
-                if hasattr(self.gui, "tgt_part_name")
+                self.gui.target_panel.part_name_input.text()
+                if hasattr(self.gui, "target_panel")
                 else "Target"
             )
             if hasattr(self.gui, "target_panel"):
@@ -594,7 +593,7 @@ class PartManager:
                 return
 
             # 保存当前 Part（如果需要）
-            old_name = getattr(self.gui, "_current_source_part_name", None)
+            old_name = getattr(self.gui.source_panel, "_current_part_name", None)
             logger.debug(f"旧的 Source Part: {old_name}")
             if old_name and old_name != part_name:
                 logger.debug(f"保存旧 Part: {old_name}")
@@ -633,7 +632,8 @@ class PartManager:
             else:
                 logger.warning(f"未找到 Part '{part_name}' 的变体")
 
-            self.gui._current_source_part_name = part_name
+            if hasattr(self.gui, 'source_panel'):
+                self.gui.source_panel._current_part_name = part_name
             logger.debug("=== on_source_part_changed 完成 ===")
 
         except Exception as e:
@@ -654,7 +654,7 @@ class PartManager:
                 return
 
             # 保存当前 Part（如果需要）
-            old_name = getattr(self.gui, "_current_target_part_name", None)
+            old_name = getattr(self.gui.target_panel, "_current_part_name", None)
             logger.debug(f"旧的 Target Part: {old_name}")
             if old_name and old_name != part_name:
                 logger.debug(f"保存旧 Part: {old_name}")
@@ -693,7 +693,8 @@ class PartManager:
             else:
                 logger.warning(f"未找到 Part '{part_name}' 的变体")
 
-            self.gui._current_target_part_name = part_name
+            if hasattr(self.gui, 'target_panel'):
+                self.gui.target_panel._current_part_name = part_name
             logger.debug("=== on_target_part_changed 完成 ===")
 
         except Exception as e:
