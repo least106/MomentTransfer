@@ -184,8 +184,12 @@ class BatchManager:
     def _ensure_special_row_selection_storage(
         self, file_path: Path, part_names: list
     ) -> dict:
-        """确保行选择缓存存在，并为未初始化的 part 默认全选。"""
+        """委托给 `FileSelectionManager.ensure_special_row_selection_storage`。"""
         try:
+            fsm = getattr(self.gui, "file_selection_manager", None)
+            if fsm is not None:
+                return fsm.ensure_special_row_selection_storage(file_path, part_names)
+            # 兼容回退：直接操作主窗口上的属性
             if not hasattr(self.gui, "special_part_row_selection_by_file"):
                 self.gui.special_part_row_selection_by_file = {}
             by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
 
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
+from gui.managers import FileSelectionManager, ModelManager, UIStateManager
 
 # 从模块化包导入组件
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
@@ -52,28 +53,34 @@ class IntegratedAeroGUI(QMainWindow):
         # 初始化标志
         self._is_initializing = True
 
-        # 核心数据
-        self.calculator = None
+        # 核心数据（移到 ModelManager）
         self.signal_bus = SignalBus.instance()
-        self.current_config = None
-        self.project_model: Optional[ProjectConfigModel] = None
         self.data_config = None
         self.visualization_window = None
 
-        # 特殊格式：每个文件的 source->target part 映射（用于 GUI 文件列表内联编辑）
-        self.special_part_mapping_by_file = {}
+        # 管理器化的状态：文件选择、模型、UI 状态
+        self.file_selection_manager = FileSelectionManager(self)
+        # 将快捷属性保留以保持向后兼容（主窗口原有代码仍可访问这些名称）
+        self.special_part_mapping_by_file = (
+            self.file_selection_manager.special_part_mapping_by_file
+        )
+        self.special_part_row_selection_by_file = (
+            self.file_selection_manager.special_part_row_selection_by_file
+        )
+        self.file_part_selection_by_file = (
+            self.file_selection_manager.file_part_selection_by_file
+        )
+        self.table_row_selection_by_file = (
+            self.file_selection_manager.table_row_selection_by_file
+        )
 
-        # 特殊格式：每个文件、每个 source part 的“选中数据行索引集合”
-        # {str(file_path): {source_part: set([row_index, ...])}}
-        self.special_part_row_selection_by_file = {}
+        self.model_manager = ModelManager(self)
+        # 兼容旧属性
+        self.calculator = self.model_manager.calculator
+        self.current_config = self.model_manager.current_config
+        self.project_model: Optional[ProjectConfigModel] = self.model_manager.project_model
 
-        # 常规文件（CSV/Excel 等）：每个文件选择的 source/target part
-        # {str(file_path): {"source": str, "target": str}}
-        self.file_part_selection_by_file = {}
-
-        # 常规文件（CSV/Excel 等）：每个文件的“选中数据行索引集合”
-        # {str(file_path): set([row_index, ...])}；None 表示默认全选
-        self.table_row_selection_by_file = {}
+        self.ui_state_manager = UIStateManager(self)
 
         # 管理器占位（将由 InitializationManager 初始化）
         self.config_manager = None
@@ -117,19 +124,9 @@ class IntegratedAeroGUI(QMainWindow):
 
     def set_config_panel_visible(self, visible: bool) -> None:
         """按流程显示/隐藏配置编辑器，减少初始化干扰。"""
+        # 将具体实现委托给 UIStateManager，主窗口保留向后兼容行为
         try:
-            panel = getattr(self, "config_panel", None)
-            splitter = getattr(self, "main_splitter", None)
-            if panel is None or splitter is None:
-                return
-            panel.setVisible(bool(visible))
-            try:
-                if visible:
-                    splitter.setSizes([380, 420])
-                else:
-                    splitter.setSizes([0, 1])
-            except Exception:
-                pass
+            self.ui_state_manager.set_config_panel_visible(visible)
         except Exception:
             logger.debug("set_config_panel_visible failed", exc_info=True)
 
@@ -542,35 +539,39 @@ class IntegratedAeroGUI(QMainWindow):
 
         locked=True 时禁用；locked=False 时恢复。此方法尽量保持幂等并静默忽略缺失控件。
         """
-        widgets = [
-            getattr(self, "btn_load", None),
-            getattr(self, "btn_save", None),
-            getattr(self, "btn_apply", None),
-            getattr(self, "btn_config_format", None),
-            getattr(self, "btn_batch", None),
-        ]
-        for w in widgets:
-            try:
-                if w is not None:
-                    w.setEnabled(not locked)
-            except Exception:
-                pass
-
-        # 取消按钮在锁定时仍应保持可见/可用以提供取消能力
+        # 将控制锁定逻辑委托给 UIStateManager，保留现有实现可被替换
         try:
-            if hasattr(self, "btn_cancel"):
-                # 当 locked=True 时显示取消按钮并保持启用；当 locked=False 时隐藏
-                if locked:
-                    self.btn_cancel.setVisible(True)
-                    self.btn_cancel.setEnabled(True)
-                else:
-                    self.btn_cancel.setVisible(False)
-                    self.btn_cancel.setEnabled(False)
+            self.ui_state_manager.set_controls_locked(locked)
         except Exception:
-            logger.debug(
-                "Failed to set btn_cancel visibility/state in _set_controls_locked",
-                exc_info=True,
-            )
+            # 若 manager 未实现 set_controls_locked，则回退到旧实现
+            widgets = [
+                getattr(self, "btn_load", None),
+                getattr(self, "btn_save", None),
+                getattr(self, "btn_apply", None),
+                getattr(self, "btn_config_format", None),
+                getattr(self, "btn_batch", None),
+            ]
+            for w in widgets:
+                try:
+                    if w is not None:
+                        w.setEnabled(not locked)
+                except Exception:
+                    pass
+
+            # 取消按钮在锁定时仍应保持可见/可用以提供取消能力
+            try:
+                if hasattr(self, "btn_cancel"):
+                    if locked:
+                        self.btn_cancel.setVisible(True)
+                        self.btn_cancel.setEnabled(True)
+                    else:
+                        self.btn_cancel.setVisible(False)
+                        self.btn_cancel.setEnabled(False)
+            except Exception:
+                logger.debug(
+                    "Failed to set btn_cancel visibility/state in _set_controls_locked",
+                    exc_info=True,
+                )
 
 
 def _initialize_exception_hook():
