@@ -674,15 +674,75 @@ class UIStateManager:
         self.parent = parent
 
     def set_config_panel_visible(self, visible: bool) -> None:
-        # 默认行为：委托给主窗口现有的实现（主窗口可能会覆盖此方法）
+        # 直接实现显示/隐藏配置编辑器的行为，避免递归委托到主窗口同名方法。
         try:
-            getattr(self.parent, "set_config_panel_visible", lambda v: None)(visible)
+            panel = getattr(self.parent, "config_panel", None)
+            splitter = getattr(self.parent, "main_splitter", None)
+            if panel is None or splitter is None:
+                # 无法访问面板或 splitter，则尝试调用主窗口的底层实现（若存在）
+                func = getattr(self.parent, "_set_config_panel_visible", None)
+                if callable(func):
+                    try:
+                        func(visible)
+                    except Exception:
+                        pass
+                return
+
+            panel.setVisible(bool(visible))
+            try:
+                # 调整 splitter 大小：显示时分配更多给配置面板，隐藏时将其收缩
+                if visible:
+                    # 给配置面板一个合理的初始高度比例（1:3）
+                    splitter.setSizes([1, 3])
+                else:
+                    splitter.setSizes([0, 1])
+            except Exception:
+                # 忽略 splitter 调整失败
+                pass
+
+            # 尝试强制刷新主窗口布局以确保可见性更新
+            try:
+                if hasattr(self.parent, "_force_layout_refresh"):
+                    self.parent._force_layout_refresh()
+            except Exception:
+                pass
         except Exception:
-            # 保持静默以避免在初始化期间抛出
-            pass
+            # 静默失败以免在初始化阶段中断流程
+            return
 
     def set_controls_locked(self, locked: bool) -> None:
+        # 直接实现控件锁定/解锁行为，避免再次委托到父对象导致递归。
         try:
-            getattr(self.parent, "_set_controls_locked", lambda l: None)(locked)
+            widgets = [
+                getattr(self.parent, "btn_load", None),
+                getattr(self.parent, "btn_save", None),
+                getattr(self.parent, "btn_apply", None),
+                getattr(self.parent, "btn_config_format", None),
+                getattr(self.parent, "btn_batch", None),
+            ]
+            for w in widgets:
+                try:
+                    if w is not None:
+                        w.setEnabled(not bool(locked))
+                except Exception:
+                    pass
+
+            # 取消按钮在锁定时应保持可见/可用
+            try:
+                if hasattr(self.parent, "btn_cancel"):
+                    if locked:
+                        self.parent.btn_cancel.setVisible(True)
+                        self.parent.btn_cancel.setEnabled(True)
+                    else:
+                        self.parent.btn_cancel.setVisible(False)
+                        self.parent.btn_cancel.setEnabled(False)
+            except Exception:
+                pass
         except Exception:
-            pass
+            # 回退到父对象的实现（如果存在且非递归）
+            try:
+                func = getattr(self.parent, "_set_controls_locked", None)
+                if callable(func):
+                    func(locked)
+            except Exception:
+                pass

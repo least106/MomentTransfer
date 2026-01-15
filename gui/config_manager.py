@@ -41,7 +41,8 @@ class ConfigManager:
             try:
                 config_panel.loadRequested.connect(self.load_config)
                 config_panel.saveRequested.connect(self.save_config)
-                config_panel.applyRequested.connect(self.apply_config)
+                # 已移除：config_panel 不再发出 applyRequested（应用配置）信号，
+                # 配置的“应用”语义已变更为直接保存/更新模型并由批处理按需创建计算器。
                 logger.debug("ConfigManager 已连接 ConfigPanel 请求信号")
             except Exception as e:
                 logger.warning(f"ConfigManager 连接 ConfigPanel 信号失败: {e}")

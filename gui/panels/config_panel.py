@@ -18,7 +18,8 @@ class ConfigPanel(QWidget):
 
     loadRequested = Signal()
     saveRequested = Signal()
-    applyRequested = Signal()
+    # 已移除：applyRequested 信号与“应用配置”按钮，
+    # 因为配置现在直接保存为 ProjectConfigModel 并在需要时由批处理按文件创建计算器。
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -62,18 +63,7 @@ class ConfigPanel(QWidget):
             pass
         self.btn_save.clicked.connect(self.saveRequested.emit)
 
-        self.btn_apply = QPushButton("应用配置", btn_widget)
-        self.btn_apply.setFixedHeight(40)
-        try:
-            self.btn_apply.setObjectName("primaryButton")
-            self.btn_apply.setShortcut("Ctrl+R")
-            self.btn_apply.setToolTip("应用当前配置并初始化计算器 (Ctrl+Enter)")
-        except Exception:
-            pass
-        self.btn_apply.clicked.connect(self.applyRequested.emit)
-
         btn_layout.addWidget(self.btn_save)
-        btn_layout.addWidget(self.btn_apply)
         btn_layout.addStretch()
 
         # 横向布局
