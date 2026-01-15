@@ -12,6 +12,7 @@ import json
 import logging
 import sys
 from contextlib import contextmanager
+import contextvars
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -43,31 +44,39 @@ class StructuredLogFormatter(logging.Formatter):
 
 
 class LogContext:
-    """日志上下文 - 追踪相关请求/操作"""
+    """日志上下文 - 追踪相关请求/操作（线程/协程安全）。
 
-    _context = None
+    使用 `contextvars.ContextVar` 存储当前上下文，避免在多线程或异步环境中混淆全局状态。
+    """
+
+    # 使用 ContextVar 保持线程/协程局部的上下文状态
+    _ctx_var: contextvars.ContextVar = contextvars.ContextVar("log_context", default=None)
 
     def __init__(self, context_id: str, operation: str = "", **metadata):
         """初始化上下文"""
         self.context_id = context_id
         self.operation = operation
         self.metadata = metadata
-        self.parent_context = None
+        self._token = None
 
     def __enter__(self):
-        """进入上下文"""
-        self.parent_context = LogContext._context
-        LogContext._context = self
+        """进入上下文，保存 token 以便退出时恢复上级上下文。"""
+        self._token = LogContext._ctx_var.set(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """退出上下文"""
-        LogContext._context = self.parent_context
+        """退出上下文，使用 token 恢复先前的上下文。"""
+        if self._token is not None:
+            try:
+                LogContext._ctx_var.reset(self._token)
+            except Exception:
+                # 保持兼容性：若 reset 失败，确保不抛出异常
+                LogContext._ctx_var.set(None)
 
     @classmethod
     def get_current(cls) -> Optional["LogContext"]:
-        """获取当前上下文"""
-        return cls._context
+        """获取当前上下文（若无则返回 None）。"""
+        return cls._ctx_var.get(None)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""

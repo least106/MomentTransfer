@@ -18,7 +18,7 @@
 import logging
 import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -59,6 +59,8 @@ class AeroCalculator:
         source_variant: int = 0,
         target_part: Optional[str] = None,
         target_variant: int = 0,
+        cache_provider: Optional[Any] = None,
+        cache_cfg: Optional[Any] = None,
     ):
         """
         初始化 AeroCalculator。
@@ -116,9 +118,14 @@ class AeroCalculator:
             tgt.x_axis, tgt.y_axis, tgt.z_axis
         )
 
-        # 从配置获取缓存设置（若存在）
-        cfg = get_config()
-        cache_cfg = getattr(cfg, "cache", None) if cfg else None
+        # 支持依赖注入的缓存提供者（便于测试与替换）
+        self._cache_provider = cache_provider
+
+        # 从参数优先获取 cache_cfg，否则从全局配置读取（向后兼容）
+        if cache_cfg is None:
+            cfg = get_config()
+            cache_cfg = getattr(cfg, "cache", None) if cfg else None
+
         # 从私有方法初始化旋转矩阵（含缓存回退逻辑）
         self.rotation_matrix = self._init_rotation_matrix(cache_cfg)
 
@@ -210,9 +217,14 @@ class AeroCalculator:
                 and getattr(cache_cfg, "enabled", False)
                 and "rotation" in getattr(cache_cfg, "cache_types", [])
             ):
-                rotation_cache = get_rotation_cache(
-                    getattr(cache_cfg, "max_entries", None)
-                )
+                if self._cache_provider is not None:
+                    rotation_cache = self._cache_provider.get_rotation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
+                else:
+                    rotation_cache = get_rotation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
                 try:
                     rotation_matrix = rotation_cache.get_rotation_matrix(
                         self.basis_source,
@@ -261,9 +273,14 @@ class AeroCalculator:
                 and getattr(cache_cfg, "enabled", False)
                 and "transformation" in getattr(cache_cfg, "cache_types", [])
             ):
-                transformation_cache = get_transformation_cache(
-                    getattr(cache_cfg, "max_entries", None)
-                )
+                if self._cache_provider is not None:
+                    transformation_cache = self._cache_provider.get_transformation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
+                else:
+                    transformation_cache = get_transformation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
                 try:
                     r_t = transformation_cache.get_transformation(
                         self.basis_target,
