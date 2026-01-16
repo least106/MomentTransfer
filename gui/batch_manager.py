@@ -178,6 +178,20 @@ class BatchManager:
         except Exception:
             return None
 
+    def _get_fsm(self):
+        """获取 FileSelectionManager，缺失时记录警告。"""
+        fsm = getattr(self.gui, "file_selection_manager", None)
+        if fsm is None:
+            logger.warning("FileSelectionManager 缺失，相关选择状态无法同步")
+        return fsm
+
+    def _get_mm(self):
+        """获取 ModelManager，缺失时记录警告。"""
+        mm = getattr(self.gui, "model_manager", None)
+        if mm is None:
+            logger.warning("ModelManager 缺失，无法获取配置/模型状态")
+        return mm
+
     def _ensure_special_row_selection_storage(
         self, file_path: Path, part_names: list
     ) -> dict:
@@ -667,11 +681,10 @@ class BatchManager:
 
         def _on_toggle(row_idx: int, checked: bool, *, fp_local=fp_str):
             try:
-                if not hasattr(self.gui, "table_row_selection_by_file"):
-                    self.gui.table_row_selection_by_file = {}
-                by_file_local = (
-                    getattr(self.gui, "table_row_selection_by_file", {}) or {}
-                )
+                fsm_local = self._get_fsm()
+                if fsm_local is None:
+                    return
+                by_file_local = fsm_local.table_row_selection_by_file or {}
                 sel_local = by_file_local.get(fp_local)
                 if sel_local is None:
                     sel_local = set()
@@ -680,7 +693,7 @@ class BatchManager:
                     sel_local.add(int(row_idx))
                 else:
                     sel_local.discard(int(row_idx))
-                self.gui.table_row_selection_by_file = by_file_local
+                fsm_local.table_row_selection_by_file = by_file_local
             except Exception:
                 logger.debug("table toggle failed", exc_info=True)
 
@@ -780,11 +793,10 @@ class BatchManager:
             sp_local=str(source_part),
         ):
             try:
-                if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                    self.gui.special_part_row_selection_by_file = {}
-                by_file_local = (
-                    getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
-                )
+                fsm_local = self._get_fsm()
+                if fsm_local is None:
+                    return
+                by_file_local = fsm_local.special_part_row_selection_by_file or {}
                 by_part_local = by_file_local.setdefault(fp_local, {})
                 sel_local = by_part_local.get(sp_local)
                 if sel_local is None:
@@ -794,7 +806,7 @@ class BatchManager:
                     sel_local.add(int(row_idx))
                 else:
                     sel_local.discard(int(row_idx))
-                self.gui.special_part_row_selection_by_file = by_file_local
+                fsm_local.special_part_row_selection_by_file = by_file_local
             except Exception:
                 logger.debug("special table toggle failed", exc_info=True)
 
@@ -844,11 +856,10 @@ class BatchManager:
                 if not fp_str or not source or row_idx is None:
                     return
 
-                if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                    self.gui.special_part_row_selection_by_file = {}
-                by_file = (
-                    getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
-                )
+                fsm_local = self._get_fsm()
+                if fsm_local is None:
+                    return
+                by_file = fsm_local.special_part_row_selection_by_file or {}
                 by_part = by_file.setdefault(fp_str, {})
                 sel = by_part.get(source)
                 if sel is None:
@@ -866,7 +877,7 @@ class BatchManager:
                 else:
                     sel.discard(idx_int)
 
-                self.gui.special_part_row_selection_by_file = by_file
+                fsm_local.special_part_row_selection_by_file = by_file
                 return
 
             if kind == "table_data_row":
@@ -874,9 +885,10 @@ class BatchManager:
                 row_idx = meta.get("row")
                 if not fp_str or row_idx is None:
                     return
-                if not hasattr(self.gui, "table_row_selection_by_file"):
-                    self.gui.table_row_selection_by_file = {}
-                by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                fsm_local = self._get_fsm()
+                if fsm_local is None:
+                    return
+                by_file = fsm_local.table_row_selection_by_file or {}
                 sel = by_file.get(fp_str)
                 if sel is None:
                     sel = set()
@@ -892,7 +904,7 @@ class BatchManager:
                     sel.add(idx_int)
                 else:
                     sel.discard(idx_int)
-                self.gui.table_row_selection_by_file = by_file
+                fsm_local.table_row_selection_by_file = by_file
                 return
         except Exception:
             logger.debug("处理数据行勾选变化失败", exc_info=True)
@@ -1162,31 +1174,32 @@ class BatchManager:
                     # 特殊格式约定：part_name 视为 source part；target 通过映射或同名 target 兜底
                     mapping = None
                     try:
-                        mapping = (
-                            getattr(self.gui, "special_part_mapping_by_file", {}) or {}
-                        ).get(str(file_path))
+                        fsm_local = self._get_fsm()
+                        if fsm_local is not None:
+                            mapping = (
+                                fsm_local.special_part_mapping_by_file or {}
+                            ).get(str(file_path))
                     except Exception:
                         mapping = None
 
                     # 读取可用的 source/target parts
                     source_parts = {}
                     target_parts = {}
+                    mm_local = self._get_mm()
                     try:
-                        model = getattr(self.gui, "project_model", None)
-                        if model is not None:
-                            source_parts = getattr(model, "source_parts", {}) or {}
-                            target_parts = getattr(model, "target_parts", {}) or {}
-                    except Exception:
-                        pass
-                    try:
-                        cfg = getattr(self.gui, "current_config", None)
-                        if cfg is not None:
-                            source_parts = source_parts or (
-                                getattr(cfg, "source_parts", {}) or {}
-                            )
-                            target_parts = target_parts or (
-                                getattr(cfg, "target_parts", {}) or {}
-                            )
+                        if mm_local is not None:
+                            model = getattr(mm_local, "project_model", None)
+                            if model is not None:
+                                source_parts = getattr(model, "source_parts", {}) or {}
+                                target_parts = getattr(model, "target_parts", {}) or {}
+                            cfg = getattr(mm_local, "current_config", None)
+                            if cfg is not None:
+                                source_parts = source_parts or (
+                                    getattr(cfg, "source_parts", {}) or {}
+                                )
+                                target_parts = target_parts or (
+                                    getattr(cfg, "target_parts", {}) or {}
+                                )
                     except Exception:
                         pass
 
@@ -1245,13 +1258,20 @@ class BatchManager:
                 return "❌ 未知格式"
 
             # 常规格式：若已加载配置，则要求为该文件选择 source/target（除非唯一可推断）
-            project_data = getattr(self.gui, "current_config", None)
+            mm_local = self._get_mm()
+            project_data = getattr(mm_local, "current_config", None) if mm_local else None
             if project_data is None:
                 return "✓ 格式正常(待配置)"
 
-            sel = (getattr(self.gui, "file_part_selection_by_file", {}) or {}).get(
-                str(file_path)
-            ) or {}
+            fsm_local = self._get_fsm()
+            sel = {}
+            try:
+                if fsm_local is not None:
+                    sel = (fsm_local.file_part_selection_by_file or {}).get(
+                        str(file_path)
+                    ) or {}
+            except Exception:
+                sel = {}
             source_sel = (sel.get("source") or "").strip()
             target_sel = (sel.get("target") or "").strip()
 
@@ -1325,16 +1345,19 @@ class BatchManager:
     def _get_target_part_names(self) -> list:
         """获取当前可选 Target part 名称列表。"""
         names = []
+        mm_local = self._get_mm()
         try:
-            model = getattr(self.gui, "project_model", None)
-            if model is not None:
-                names = list((getattr(model, "target_parts", {}) or {}).keys())
+            if mm_local is not None:
+                model = getattr(mm_local, "project_model", None)
+                if model is not None:
+                    names = list((getattr(model, "target_parts", {}) or {}).keys())
         except Exception:
             names = []
         if not names:
             try:
-                cfg = getattr(self.gui, "current_config", None)
-                names = list((getattr(cfg, "target_parts", {}) or {}).keys())
+                if mm_local is not None:
+                    cfg = getattr(mm_local, "current_config", None)
+                    names = list((getattr(cfg, "target_parts", {}) or {}).keys())
             except Exception:
                 names = []
         return sorted([str(x) for x in names])
@@ -1342,16 +1365,19 @@ class BatchManager:
     def _get_source_part_names(self) -> list:
         """获取当前可选 Source part 名称列表。"""
         names = []
+        mm_local = self._get_mm()
         try:
-            model = getattr(self.gui, "project_model", None)
-            if model is not None:
-                names = list((getattr(model, "source_parts", {}) or {}).keys())
+            if mm_local is not None:
+                model = getattr(mm_local, "project_model", None)
+                if model is not None:
+                    names = list((getattr(model, "source_parts", {}) or {}).keys())
         except Exception:
             names = []
         if not names:
             try:
-                cfg = getattr(self.gui, "current_config", None)
-                names = list((getattr(cfg, "source_parts", {}) or {}).keys())
+                if mm_local is not None:
+                    cfg = getattr(mm_local, "current_config", None)
+                    names = list((getattr(cfg, "source_parts", {}) or {}).keys())
             except Exception:
                 names = []
         return sorted([str(x) for x in names])
@@ -1397,11 +1423,12 @@ class BatchManager:
     def _ensure_file_part_selection_storage(self, file_path: Path) -> dict:
         """确保常规文件的 source/target 选择缓存存在。"""
         try:
-            if not hasattr(self.gui, "file_part_selection_by_file"):
-                self.gui.file_part_selection_by_file = {}
-            by_file = getattr(self.gui, "file_part_selection_by_file", {}) or {}
+            fsm_local = self._get_fsm()
+            if fsm_local is None:
+                return {"source": "", "target": ""}
+            by_file = fsm_local.file_part_selection_by_file or {}
             by_file.setdefault(str(file_path), {"source": "", "target": ""})
-            self.gui.file_part_selection_by_file = by_file
+            fsm_local.file_part_selection_by_file = by_file
             return by_file[str(file_path)]
         except Exception:
             return {"source": "", "target": ""}
@@ -1473,10 +1500,13 @@ class BatchManager:
 
             def _on_src_changed(text: str, *, fp_str=str(file_path)):
                 try:
-                    d = (
-                        getattr(self.gui, "file_part_selection_by_file", {}) or {}
-                    ).setdefault(fp_str, {"source": "", "target": ""})
+                    fsm_local = self._get_fsm()
+                    if fsm_local is None:
+                        return
+                    by_file_local = fsm_local.file_part_selection_by_file or {}
+                    d = by_file_local.setdefault(fp_str, {"source": "", "target": ""})
                     d["source"] = (text or "").strip()
+                    fsm_local.file_part_selection_by_file = by_file_local
                     try:
                         node = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
                         if node is not None:
@@ -1520,10 +1550,13 @@ class BatchManager:
 
             def _on_tgt_changed(text: str, *, fp_str=str(file_path)):
                 try:
-                    d = (
-                        getattr(self.gui, "file_part_selection_by_file", {}) or {}
-                    ).setdefault(fp_str, {"source": "", "target": ""})
+                    fsm_local = self._get_fsm()
+                    if fsm_local is None:
+                        return
+                    by_file_local = fsm_local.file_part_selection_by_file or {}
+                    d = by_file_local.setdefault(fp_str, {"source": "", "target": ""})
                     d["target"] = (text or "").strip()
+                    fsm_local.file_part_selection_by_file = by_file_local
                     try:
                         node = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
                         if node is not None:
@@ -1629,10 +1662,10 @@ class BatchManager:
         from PySide6.QtWidgets import QComboBox, QTreeWidgetItem
 
         try:
-            mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", None)
-            if mapping_by_file is None:
-                self.gui.special_part_mapping_by_file = {}
-                mapping_by_file = self.gui.special_part_mapping_by_file
+            fsm_local = self._get_fsm()
+            if fsm_local is None:
+                return
+            mapping_by_file = fsm_local.special_part_mapping_by_file or {}
 
             mapping_by_file.setdefault(str(file_path), {})
             mapping = mapping_by_file[str(file_path)]
@@ -1647,7 +1680,7 @@ class BatchManager:
                         file_path, part_names, target_names, mapping
                     ):
                         mapping_by_file[str(file_path)] = mapping
-                        self.gui.special_part_mapping_by_file = mapping_by_file
+                        fsm_local.special_part_mapping_by_file = mapping_by_file
             except Exception:
                 logger.debug("自动补全映射失败", exc_info=True)
 
@@ -1709,9 +1742,12 @@ class BatchManager:
                     text: str, *, fp_str=str(file_path), sp=str(source_part)
                 ):
                     try:
-                        m = (
-                            getattr(self.gui, "special_part_mapping_by_file", {}) or {}
-                        ).setdefault(fp_str, {})
+                        fsm_inner = self._get_fsm()
+                        if fsm_inner is None:
+                            return
+                        m = (fsm_inner.special_part_mapping_by_file or {}).setdefault(
+                            fp_str, {}
+                        )
                         val = (text or "").strip()
                         if not val or val == "（未选择）":
                             m.pop(sp, None)
@@ -1728,6 +1764,9 @@ class BatchManager:
                                 )
                         except Exception:
                             pass
+                        fsm_inner.special_part_mapping_by_file = (
+                            fsm_inner.special_part_mapping_by_file or {}
+                        )
                     except Exception:
                         logger.debug(
                             "special mapping changed handler failed",
@@ -1807,7 +1846,8 @@ class BatchManager:
         try:
             # 新语义：不再依赖“全局 calculator / 应用配置”。
             # 批处理只需要当前配置(ProjectData)存在，并且每个文件已在列表中选择 source/target（或可唯一推断）。
-            project_data = getattr(self.gui, "current_config", None)
+            mm_local = self._get_mm()
+            project_data = getattr(mm_local, "current_config", None) if mm_local else None
             if project_data is None:
                 QMessageBox.warning(self.gui, "提示", "请先加载配置（JSON）")
                 return
@@ -1890,24 +1930,26 @@ class BatchManager:
 
             from gui.batch_thread import BatchProcessThread
 
+            fsm_local = self._get_fsm()
+
             self.batch_thread = BatchProcessThread(
-                getattr(self.gui, "calculator", None),
+                getattr(mm_local, "calculator", None) if mm_local else None,
                 files_to_process,
                 output_path,
                 data_config,
                 project_data=project_data,
                 timestamp_format=getattr(self.gui, "timestamp_format", "%Y%m%d_%H%M%S"),
-                special_part_mapping_by_file=getattr(
-                    self.gui, "special_part_mapping_by_file", {}
+                special_part_mapping_by_file=(
+                    fsm_local.special_part_mapping_by_file if fsm_local else {}
                 ),
-                special_row_selection_by_file=getattr(
-                    self.gui, "special_part_row_selection_by_file", {}
+                special_row_selection_by_file=(
+                    fsm_local.special_part_row_selection_by_file if fsm_local else {}
                 ),
-                file_part_selection_by_file=getattr(
-                    self.gui, "file_part_selection_by_file", {}
+                file_part_selection_by_file=(
+                    fsm_local.file_part_selection_by_file if fsm_local else {}
                 ),
-                table_row_selection_by_file=getattr(
-                    self.gui, "table_row_selection_by_file", {}
+                table_row_selection_by_file=(
+                    fsm_local.table_row_selection_by_file if fsm_local else {}
                 ),
             )
 
@@ -2272,9 +2314,10 @@ class BatchManager:
 
         table = self._table_preview_tables.get(fp_str)
 
-        if not hasattr(self.gui, "table_row_selection_by_file"):
-            self.gui.table_row_selection_by_file = {}
-        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+        fsm_local = self._get_fsm()
+        if fsm_local is None:
+            return
+        by_file = fsm_local.table_row_selection_by_file or {}
         sel = by_file.get(fp_str)
         if sel is None:
             sel = set()
@@ -2306,7 +2349,7 @@ class BatchManager:
                 by_file[fp_str] = selected
             finally:
                 self._is_updating_tree = False
-            self.gui.table_row_selection_by_file = by_file
+            fsm_local.table_row_selection_by_file = by_file
             return
 
         # 回退：无表格时使用树节点
@@ -2375,7 +2418,7 @@ class BatchManager:
         finally:
             self._is_updating_tree = False
 
-        self.gui.table_row_selection_by_file = by_file
+        fsm_local.table_row_selection_by_file = by_file
 
     def _set_special_part_rows_checked(
         self, part_item, file_path_str: str, source_part: str, *, mode: str
@@ -2387,9 +2430,10 @@ class BatchManager:
         fp_str = str(file_path_str)
         table = self._special_preview_tables.get((fp_str, str(source_part)))
 
-        if not hasattr(self.gui, "special_part_row_selection_by_file"):
-            self.gui.special_part_row_selection_by_file = {}
-        by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+        fsm_local = self._get_fsm()
+        if fsm_local is None:
+            return
+        by_file = fsm_local.special_part_row_selection_by_file or {}
         by_part = by_file.setdefault(fp_str, {})
 
         # 有表格则直接操作表格复选框
@@ -2418,7 +2462,7 @@ class BatchManager:
                 by_part[str(source_part)] = selected
             finally:
                 self._is_updating_tree = False
-            self.gui.special_part_row_selection_by_file = by_file
+            fsm_local.special_part_row_selection_by_file = by_file
             return
 
         # 回退：无表格时使用树节点
@@ -2474,7 +2518,7 @@ class BatchManager:
         finally:
             self._is_updating_tree = False
 
-        self.gui.special_part_row_selection_by_file = by_file
+        fsm_local.special_part_row_selection_by_file = by_file
 
     # 文件选择方法（从 main_window 迁移）
     def select_all_files(self):
