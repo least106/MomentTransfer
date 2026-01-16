@@ -2148,6 +2148,14 @@ class BatchManager:
     def scan_and_populate_files(self, chosen_path: Path):
         return self._scan_and_populate_files(chosen_path)
 
+    def determine_format_source(self, fp: Path) -> Tuple[str, Optional[Path]]:
+        """公共接口：返回文件格式来源与路径。"""
+        return self._determine_format_source(fp)
+
+    def format_label_from(self, src: str, src_path: Optional[Path]):
+        """公共接口：将格式来源信息转换为标签文本与颜色。"""
+        return self._format_label_from(src, src_path)
+
     def refresh_format_labels(self):
         return self._refresh_format_labels()
 
