@@ -186,17 +186,8 @@ class BatchManager:
             fsm = getattr(self.gui, "file_selection_manager", None)
             if fsm is not None:
                 return fsm.ensure_special_row_selection_storage(file_path, part_names)
-            # 兼容回退：直接操作主窗口上的属性（保持旧行为）
-            if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                self.gui.special_part_row_selection_by_file = {}
-            by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
-            by_file.setdefault(str(file_path), {})
-            self.gui.special_part_row_selection_by_file = by_file
-
-            by_part = by_file[str(file_path)]
-            for pn in part_names:
-                by_part.setdefault(str(pn), None)
-            return by_part
+            logger.warning("FileSelectionManager 缺失，无法维护特殊格式行选择缓存")
+            return {}
         except Exception:
             return {}
 
@@ -605,21 +596,16 @@ class BatchManager:
         """确保常规表格的行选择缓存存在（默认全选）。"""
         try:
             fsm = getattr(self.gui, "file_selection_manager", None)
-            if fsm is not None:
-                by_file = fsm.table_row_selection_by_file or {}
-            else:
-                if not hasattr(self.gui, "table_row_selection_by_file"):
-                    self.gui.table_row_selection_by_file = {}
-                by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+            if fsm is None:
+                logger.warning("FileSelectionManager 缺失，无法维护表格行选择缓存")
+                return set()
+            by_file = fsm.table_row_selection_by_file or {}
             fp_str = str(file_path)
             sel = by_file.get(fp_str)
             if sel is None:
                 by_file[fp_str] = set(range(int(row_count)))
                 sel = by_file[fp_str]
-            if fsm is not None:
-                fsm.table_row_selection_by_file = by_file
-            else:
-                self.gui.table_row_selection_by_file = by_file
+            fsm.table_row_selection_by_file = by_file
             return sel
         except Exception:
             return None
@@ -734,11 +720,10 @@ class BatchManager:
         fp_str = str(file_path)
         try:
             fsm = getattr(self.gui, "file_selection_manager", None)
-            by_file = {}
-            if fsm is not None:
-                by_file = fsm.special_part_row_selection_by_file or {}
-            else:
-                by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+            if fsm is None:
+                logger.warning("FileSelectionManager 缺失，无法同步特殊格式行选择缓存")
+                return
+            by_file = fsm.special_part_row_selection_by_file or {}
             by_part = by_file.setdefault(fp_str, {})
             sel = by_part.get(source_part)
         except Exception:
@@ -750,14 +735,7 @@ class BatchManager:
             try:
                 sel = set(range(len(df)))
                 by_part[source_part] = sel
-                if fsm is not None:
-                    fsm.special_part_row_selection_by_file = by_file
-                else:
-                    if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                        self.gui.special_part_row_selection_by_file = {}
-                    self.gui.special_part_row_selection_by_file.setdefault(fp_str, {})[
-                        source_part
-                    ] = sel
+                fsm.special_part_row_selection_by_file = by_file
             except Exception:
                 sel = set()
 

@@ -263,30 +263,24 @@ class QuickSelectDialog(QDialog):
     def apply_changes(self) -> None:
         if not self._entry_widgets:
             return
+        fsm = getattr(self.gui, "file_selection_manager", None)
+        if fsm is None:
+            logger.warning("FileSelectionManager 缺失，无法同步行选择状态")
+            return
         try:
             for entry in self._entry_widgets:
                 rows = self._parse_rows(entry["input"].text())
+                fp_str, part = entry["key"]
+                fp = Path(fp_str)
+
                 if not rows:
                     # 空输入：视为“取消跳过”，恢复为全选
-                    fp_str, part = entry["key"]
-                    fp = Path(fp_str)
-                    fsm = getattr(self.gui, "file_selection_manager", None)
                     if part is None:
-                        max_need = 0
-                        df = self.batch._get_table_df_preview(
-                            fp, max_rows=200
-                        )
+                        df = self.batch._get_table_df_preview(fp, max_rows=200)
                         row_count = len(df) if df is not None else 0
-                        by_file = {}
-                        if fsm and hasattr(fsm, "table_row_selection_by_file"):
-                            by_file = fsm.table_row_selection_by_file or {}
-                        else:
-                            by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = fsm.table_row_selection_by_file or {}
                         by_file[str(fp)] = set(range(row_count))
-                        if fsm is not None:
-                            fsm.table_row_selection_by_file = by_file
-                        else:
-                            self.gui.table_row_selection_by_file = by_file
+                        fsm.table_row_selection_by_file = by_file
                         table = (self.batch._table_preview_tables or {}).get(str(fp))
                         if table is not None:
                             try:
@@ -298,20 +292,10 @@ class QuickSelectDialog(QDialog):
                         data = self.batch._get_special_data_dict(fp)
                         df = (data or {}).get(str(part))
                         row_count = len(df) if df is not None else 0
-                        by_file = {}
-                        if fsm and hasattr(fsm, "special_part_row_selection_by_file"):
-                            by_file = fsm.special_part_row_selection_by_file or {}
-                        else:
-                            by_file = (
-                                getattr(self.gui, "special_part_row_selection_by_file", {})
-                                or {}
-                            )
+                        by_file = fsm.special_part_row_selection_by_file or {}
                         by_part = by_file.setdefault(str(fp), {})
                         by_part[str(part)] = set(range(row_count))
-                        if fsm is not None:
-                            fsm.special_part_row_selection_by_file = by_file
-                        else:
-                            self.gui.special_part_row_selection_by_file = by_file
+                        fsm.special_part_row_selection_by_file = by_file
                         table = (self.batch._special_preview_tables or {}).get(
                             (str(fp), str(part))
                         )
@@ -322,51 +306,29 @@ class QuickSelectDialog(QDialog):
                             except Exception:
                                 pass
                     continue
-                fp_str, part = entry["key"]
-                fp = Path(fp_str)
-                fsm = getattr(self.gui, "file_selection_manager", None)
+
                 if part is None:
-                    # 普通表格
+                    # 普通表格：移除指定行（视为跳过）
                     max_need = max(rows) + 1
                     df = self.batch._get_table_df_preview(
                         fp, max_rows=max(max_need, 200)
                     )
                     row_count = len(df) if df is not None else max_need
-                    sel = (
-                        self.batch._ensure_table_row_selection_storage(fp, row_count)
-                        or set()
-                    )
-                    by_file = {}
-                    if fsm and hasattr(fsm, "table_row_selection_by_file"):
-                        by_file = fsm.table_row_selection_by_file or {}
-                    else:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
-                    cur = by_file.get(str(fp))
-                    if cur is None:
-                        cur = set()
-                        by_file[str(fp)] = cur
+                    by_file = fsm.table_row_selection_by_file or {}
+                    cur = by_file.get(str(fp)) or set(range(row_count))
+                    by_file[str(fp)] = cur
                     for r in rows:
                         cur.discard(int(r))
-                    if fsm is not None:
-                        fsm.table_row_selection_by_file = by_file
-                    else:
-                        self.gui.table_row_selection_by_file = by_file
+                    fsm.table_row_selection_by_file = by_file
                     table = (self.batch._table_preview_tables or {}).get(str(fp))
                     if table is not None and hasattr(table, "uncheck_rows_if_visible"):
                         table.uncheck_rows_if_visible(rows)
                 else:
-                    # 特殊格式
+                    # 特殊格式：移除指定行（视为跳过）
                     data = self.batch._get_special_data_dict(fp)
                     df = (data or {}).get(str(part))
                     row_count = len(df) if df is not None else (max(rows) + 1)
-                    by_file = {}
-                    if fsm and hasattr(fsm, "special_part_row_selection_by_file"):
-                        by_file = fsm.special_part_row_selection_by_file or {}
-                    else:
-                        by_file = (
-                            getattr(self.gui, "special_part_row_selection_by_file", {})
-                            or {}
-                        )
+                    by_file = fsm.special_part_row_selection_by_file or {}
                     by_part = by_file.setdefault(str(fp), {})
                     sel = by_part.get(str(part))
                     if sel is None:
@@ -374,20 +336,18 @@ class QuickSelectDialog(QDialog):
                         by_part[str(part)] = sel
                     for r in rows:
                         sel.discard(int(r))
-                    if fsm is not None:
-                        fsm.special_part_row_selection_by_file = by_file
-                    else:
-                        self.gui.special_part_row_selection_by_file = by_file
+                    fsm.special_part_row_selection_by_file = by_file
                     table = (self.batch._special_preview_tables or {}).get(
                         (str(fp), str(part))
                     )
                     if table is not None and hasattr(table, "uncheck_rows_if_visible"):
                         table.uncheck_rows_if_visible(rows)
-                # 保存对话框的状态以便下次打开恢复
-                try:
-                    self._save_state_to_gui()
-                except Exception:
-                    logger.debug("保存快速选择状态失败", exc_info=True)
+
+            # 保存对话框的状态以便下次打开恢复
+            try:
+                self._save_state_to_gui()
+            except Exception:
+                logger.debug("保存快速选择状态失败", exc_info=True)
         except Exception:
             logger.debug("快速选择应用失败", exc_info=True)
 
@@ -446,6 +406,10 @@ class QuickSelectDialog(QDialog):
     def _restore_state_from_gui(self) -> None:
         try:
             state = getattr(self.gui, "_quick_select_state", {}) or {}
+            fsm = getattr(self.gui, "file_selection_manager", None)
+            if fsm is None:
+                logger.warning("FileSelectionManager 缺失，无法恢复快速选择状态")
+                return
             # 第一阶段：根据 state 或 table selection 标记 tree 项
             for i in range(self.tree.topLevelItemCount()):
                 it = self.tree.topLevelItem(i)
@@ -466,7 +430,7 @@ class QuickSelectDialog(QDialog):
                 # 否则尝试从 gui 的表格选中集合同步
                 try:
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = fsm.table_row_selection_by_file or {}
                         sel = by_file.get(str(fp_str))
                         if sel is not None:
                             it.setCheckState(0, Qt.Checked)
@@ -483,7 +447,7 @@ class QuickSelectDialog(QDialog):
                             else:
                                 state[str(key)] = {"checked": True, "rows_text": ""}
                     else:
-                        by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                        by_file = fsm.special_part_row_selection_by_file or {}
                         by_part = by_file.get(str(fp_str), {}) if by_file else None
                         sel = None
                         if by_part:
@@ -523,6 +487,10 @@ class QuickSelectDialog(QDialog):
 
     def _sync_items_with_table_selection(self) -> None:
         try:
+            fsm = getattr(self.gui, "file_selection_manager", None)
+            if fsm is None:
+                logger.warning("FileSelectionManager 缺失，无法同步快速选择勾选状态")
+                return
             # 如果 GUI 上已有表格/特殊格式的选中信息，则将对应项设置为已勾选
             for i in range(self.tree.topLevelItemCount()):
                 it = self.tree.topLevelItem(i)
@@ -534,11 +502,11 @@ class QuickSelectDialog(QDialog):
                 fp_str, part = key
                 try:
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = fsm.table_row_selection_by_file or {}
                         if str(fp_str) in by_file:
                             it.setCheckState(0, Qt.Checked)
                     else:
-                        by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                        by_file = fsm.special_part_row_selection_by_file or {}
                         if str(fp_str) in by_file and str(part) in (by_file.get(str(fp_str)) or {}):
                             it.setCheckState(0, Qt.Checked)
                 except Exception:
