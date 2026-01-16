@@ -7,7 +7,6 @@ import logging
 from PySide6.QtWidgets import QMessageBox
 
 from gui.signal_bus import SignalBus
-from src.models import ProjectConfigModel
 from src.models.project_model import Part as PMPart
 from src.models.project_model import PartVariant as PMVariant
 
@@ -36,17 +35,13 @@ class PartManager:
     def _ensure_project_model(self) -> bool:
         """确保 gui 持有 ProjectConfigModel，必要时创建空模型。"""
         try:
-            if self.model_manager and hasattr(self.model_manager, "_ensure_project_model"):
-                return bool(self.model_manager._ensure_project_model())
+            mm = self.model_manager or getattr(self.gui, "model_manager", None)
+            if mm and hasattr(mm, "_ensure_project_model"):
+                return bool(mm._ensure_project_model())
+            logger.warning("ModelManager 缺失，无法保证项目模型存在")
         except Exception:
             logger.debug("委托 _ensure_project_model 失败", exc_info=True)
-        if getattr(self.gui, "project_model", None) is None:
-            try:
-                self.gui.project_model = ProjectConfigModel()
-            except Exception:
-                logger.debug("创建 ProjectConfigModel 失败", exc_info=True)
-                return False
-        return True
+        return False
 
     def _unique_name(self, base: str, existing: set) -> str:
         try:
@@ -70,18 +65,20 @@ class PartManager:
         except Exception:
             logger.debug("delegated _get_variants failed", exc_info=True)
         variants = []
-        if self._ensure_project_model():
-            parts = (
-                self.gui.project_model.source_parts
-                if is_source
-                else self.gui.project_model.target_parts
-            )
-            part = parts.get(part_name)
-            if part:
-                variants = part.variants
+        mm = self.model_manager or getattr(self.gui, "model_manager", None)
+        if mm and hasattr(mm, "project_model"):
+            if self._ensure_project_model():
+                parts = (
+                    mm.project_model.source_parts
+                    if is_source
+                    else mm.project_model.target_parts
+                )
+                part = parts.get(part_name)
+                if part:
+                    variants = part.variants
 
-        if not variants:
-            cfg = getattr(self.gui, "current_config", None)
+        if not variants and mm:
+            cfg = getattr(mm, "current_config", None)
             if cfg:
                 parts = cfg.source_parts if is_source else cfg.target_parts
                 part = parts.get(part_name)
@@ -160,22 +157,22 @@ class PartManager:
 
     def _rename_part(self, new_name: str, is_source: bool):
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(self.gui.model_manager, "_rename_part"):
-                return self.gui.model_manager._rename_part(new_name, is_source)
+            mm = self.model_manager or getattr(self.gui, "model_manager", None)
+            if mm and hasattr(mm, "_rename_part"):
+                return mm._rename_part(new_name, is_source)
         except Exception:
             logger.debug("delegated _rename_part failed", exc_info=True)
         # 回退到本地实现（与旧行为一致）
         try:
-            if not self._ensure_project_model():
+            mm = self.model_manager or getattr(self.gui, "model_manager", None)
+            if mm is None or not self._ensure_project_model():
                 return
             new_name = (new_name or "").strip()
             if not new_name:
                 return
 
             parts = (
-                self.gui.project_model.source_parts
-                if is_source
-                else self.gui.project_model.target_parts
+                mm.project_model.source_parts if is_source else mm.project_model.target_parts
             )
             selector = None
             try:
