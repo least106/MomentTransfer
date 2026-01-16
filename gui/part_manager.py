@@ -20,6 +20,7 @@ class PartManager:
     def __init__(self, gui_instance):
         """初始化 Part 管理器"""
         self.gui = gui_instance
+        self.model_manager = getattr(gui_instance, "model_manager", None)
         try:
             self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
         except Exception:
@@ -34,6 +35,11 @@ class PartManager:
     # ===== 辅助方法 =====
     def _ensure_project_model(self) -> bool:
         """确保 gui 持有 ProjectConfigModel，必要时创建空模型。"""
+        try:
+            if self.model_manager and hasattr(self.model_manager, "_ensure_project_model"):
+                return bool(self.model_manager._ensure_project_model())
+        except Exception:
+            logger.debug("委托 _ensure_project_model 失败", exc_info=True)
         if getattr(self.gui, "project_model", None) is None:
             try:
                 self.gui.project_model = ProjectConfigModel()
@@ -42,11 +48,10 @@ class PartManager:
                 return False
         return True
 
-    @staticmethod
-    def _unique_name(base: str, existing: set) -> str:
+    def _unique_name(self, base: str, existing: set) -> str:
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(self.gui.model_manager, "_unique_name"):
-                return self.gui.model_manager._unique_name(base, existing)
+            if self.model_manager and hasattr(self.model_manager, "_unique_name"):
+                return self.model_manager._unique_name(base, existing)
         except Exception:
             logger.debug("delegated _unique_name failed", exc_info=True)
         name = base or "Part"
