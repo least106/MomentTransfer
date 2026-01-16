@@ -37,10 +37,8 @@ from src.cli_helpers import (
     resolve_file_format,
 )
 from src.physics import AeroCalculator
-from src.special_format_parser import (
-    looks_like_special_format,
-    process_special_format_file,
-)
+from src.special_format_detector import looks_like_special_format
+from src.special_format_processor import process_special_format_file
 
 
 def _error_exit_json(message: str, code: int = 2, hint: str = None):

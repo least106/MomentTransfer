@@ -51,7 +51,7 @@ def test_process_special_format_file_success(tmp_path: Path, monkeypatch):
     project_data = SimpleProjectData(sources={"PARTX": [1]}, targets={"PARTX": [1]})
 
     # replace AeroCalculator with fake
-    monkeypatch.setattr(sfp, "AeroCalculator", FakeCalc)
+    monkeypatch.setattr("src.special_format_processor.AeroCalculator", FakeCalc)
 
     outputs, report = sfp.process_special_format_file(
         p, project_data, outdir, return_report=True, overwrite=True
@@ -96,7 +96,7 @@ def test_process_special_format_file_processing_failure(tmp_path: Path, monkeypa
     outdir = tmp_path / "out4"
 
     project_data = SimpleProjectData(sources={"FAILP": [1]}, targets={"FAILP": [1]})
-    monkeypatch.setattr(sfp, "AeroCalculator", FakeCalcRaise)
+    monkeypatch.setattr("src.special_format_processor.AeroCalculator", FakeCalcRaise)
 
     outputs, report = sfp.process_special_format_file(
         p, project_data, outdir, return_report=True

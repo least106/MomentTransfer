@@ -10,11 +10,11 @@
 """
 
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from src import special_format_parser as sfp
+from src.special_format_processor import _process_single_part
 
 
 def test_is_part_name_line_short_single_token():
@@ -96,6 +96,8 @@ def test__process_single_part_writes_output(tmp_path, monkeypatch):
             pass
 
         def process_batch(self, forces, moments):
+            import numpy as np
+
             n = forces.shape[0]
             zero3 = np.zeros((n, 3))
             return {
@@ -105,9 +107,9 @@ def test__process_single_part_writes_output(tmp_path, monkeypatch):
                 "coeff_moment": zero3,
             }
 
-    monkeypatch.setattr(sfp, "AeroCalculator", DummyCalc)
+    monkeypatch.setattr("src.special_format_processor.AeroCalculator", DummyCalc)
 
-    out_path, report = sfp._process_single_part(
+    out_path, report = _process_single_part(
         part_name,
         df,
         file_path=file_path,
