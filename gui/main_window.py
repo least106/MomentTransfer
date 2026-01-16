@@ -75,10 +75,8 @@ class IntegratedAeroGUI(QMainWindow):
         )
 
         self.model_manager = ModelManager(self)
-        # 兼容旧属性
-        self.calculator = self.model_manager.calculator
-        self.current_config = self.model_manager.current_config
-        self.project_model: Optional[ProjectConfigModel] = self.model_manager.project_model
+        # 兼容旧属性通过属性委托提供，避免与管理器状态脱节
+        # （移除直接赋值，改为在类中定义 @property 进行转发）
 
         self.ui_state_manager = UIStateManager(self)
 
@@ -393,77 +391,23 @@ class IntegratedAeroGUI(QMainWindow):
         return super().closeEvent(event)
 
     def _force_layout_refresh(self):
-        """
-        尝试强制刷新布局：激活布局并做一个极小的像素级尺寸微调以触发布局重算。
-
-        说明：
-        由于 Qt（包括 PySide6/PyQt5）在某些复杂嵌套布局下，调用 layout().activate() 或 processEvents() 可能无法立即刷新所有控件的实际显示，
-        尤其是涉及 QSplitter/QScrollArea/QTabWidget 等嵌套时。此处采用“窗口宽度+2像素再还原”的 hack，
-        能强制 Qt 的底层布局引擎重新计算和应用所有控件的尺寸与位置。
-        该方法在 Windows/Linux/Mac 下 Qt 5/6 均有效，但未来 Qt 版本可能修复此类刷新 bug 时可移除。
-        若主窗口被设置为不可调整大小，则此 hack 可能无效。
-        """
+        """委托给 LayoutManager.force_layout_refresh()"""
         try:
-            cw = self.centralWidget()
-            if cw and cw.layout():
-                cw.layout().activate()
-            try:
-                from PySide6.QtWidgets import QApplication
-
-                QApplication.processEvents()
-            except Exception:
-                logger.debug(
-                    "QApplication.processEvents failed in _force_layout_refresh",
-                    exc_info=True,
-                )
-
-            # --- Qt 布局刷新 hack ---
-            # 微调窗口宽度 (+2 然后恢复) 以触发底层布局引擎重新布局。
-            w = self.width()
-            h = self.height()
-            # 如果主窗口是可调整大小的，做一次非常小的尺寸变动并回滚
-            self.resize(w + 2, h)
-            QTimer.singleShot(20, lambda: self.resize(w, h))
+            if hasattr(self, "layout_manager") and self.layout_manager:
+                self.layout_manager.force_layout_refresh()
         except Exception:
-            logger.debug("_force_layout_refresh failed", exc_info=True)
+            logger.debug("_force_layout_refresh delegated call failed", exc_info=True)
 
     def _refresh_layouts(self):
-        """激活并刷新主要布局与 splitter，以保证子控件正确伸缩。"""
+        """委托给 LayoutManager 刷新布局与按钮布局"""
         try:
-            cw = self.centralWidget()
-            if cw and cw.layout():
-                cw.layout().activate()
-            # 激活左右 splitter 的布局
-            try:
-                # 触发按钮布局更新和一次强制刷新
-                self.update_button_layout()
-            except Exception:
-                logger.debug(
-                    "update_button_layout failed in _refresh_layouts",
-                    exc_info=True,
-                )
-            try:
-                from PySide6.QtWidgets import QApplication
-
-                QApplication.processEvents()
-            except Exception:
-                logger.debug(
-                    "QApplication.processEvents failed in _refresh_layouts",
-                    exc_info=True,
-                )
-            # 轻微调整 splitter 大小以促使 Qt 重新布局（仅在必要时）
-            try:
-                s = self.findChild(QSplitter)
-                if s:
-                    sizes = s.sizes()
-                    s.setSizes(sizes)
-            except Exception:
-                logger.debug(
-                    "Splitter resize refresh failed in _refresh_layouts",
-                    exc_info=True,
-                )
+            if hasattr(self, "layout_manager") and self.layout_manager:
+                try:
+                    self.layout_manager.refresh_layouts()
+                finally:
+                    self.layout_manager.update_button_layout()
         except Exception:
-            logger.debug("_refresh_layouts failed", exc_info=True)
+            logger.debug("_refresh_layouts delegated call failed", exc_info=True)
 
     # ----- 辅助方法：配置预览已委托给 ConfigManager -----
 
@@ -573,6 +517,73 @@ class IntegratedAeroGUI(QMainWindow):
                     exc_info=True,
                 )
 
+
+    # ----------------- 兼容旧属性：通过属性委托到各管理器 -----------------
+    @property
+    def calculator(self):
+        """兼容属性：转发到 ModelManager.calculator"""
+        return getattr(self.model_manager, "calculator", None)
+
+    @calculator.setter
+    def calculator(self, value):
+        if hasattr(self, "model_manager") and self.model_manager is not None:
+            self.model_manager.calculator = value
+
+    @property
+    def current_config(self):
+        """兼容属性：转发到 ModelManager.current_config"""
+        return getattr(self.model_manager, "current_config", None)
+
+    @current_config.setter
+    def current_config(self, value):
+        if hasattr(self, "model_manager") and self.model_manager is not None:
+            self.model_manager.current_config = value
+
+    @property
+    def project_model(self) -> Optional[ProjectConfigModel]:
+        """兼容属性：转发到 ModelManager.project_model"""
+        return getattr(self.model_manager, "project_model", None)
+
+    @project_model.setter
+    def project_model(self, value: Optional[ProjectConfigModel]):
+        if hasattr(self, "model_manager") and self.model_manager is not None:
+            self.model_manager.project_model = value
+
+    @property
+    def special_part_mapping_by_file(self):
+        return getattr(self.file_selection_manager, "special_part_mapping_by_file", {})
+
+    @special_part_mapping_by_file.setter
+    def special_part_mapping_by_file(self, value):
+        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
+            self.file_selection_manager.special_part_mapping_by_file = value
+
+    @property
+    def special_part_row_selection_by_file(self):
+        return getattr(self.file_selection_manager, "special_part_row_selection_by_file", {})
+
+    @special_part_row_selection_by_file.setter
+    def special_part_row_selection_by_file(self, value):
+        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
+            self.file_selection_manager.special_part_row_selection_by_file = value
+
+    @property
+    def file_part_selection_by_file(self):
+        return getattr(self.file_selection_manager, "file_part_selection_by_file", {})
+
+    @file_part_selection_by_file.setter
+    def file_part_selection_by_file(self, value):
+        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
+            self.file_selection_manager.file_part_selection_by_file = value
+
+    @property
+    def table_row_selection_by_file(self):
+        return getattr(self.file_selection_manager, "table_row_selection_by_file", {})
+
+    @table_row_selection_by_file.setter
+    def table_row_selection_by_file(self, value):
+        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
+            self.file_selection_manager.table_row_selection_by_file = value
 
 def _initialize_exception_hook():
     """设置初始化期间的异常钩子，用于在初始化期间阻止异常弹窗"""

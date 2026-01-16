@@ -177,11 +177,13 @@ class InitializationManager:
             # 合并为一次定时调用，减少启动时的多次视觉刷新
             def _do_initial_updates():
                 try:
-                    self.main_window.update_button_layout()
+                    if hasattr(self.main_window, "layout_manager") and self.main_window.layout_manager:
+                        self.main_window.layout_manager.update_button_layout()
                 except Exception:
                     pass
                 try:
-                    self.main_window._force_layout_refresh()
+                    if hasattr(self.main_window, "layout_manager") and self.main_window.layout_manager:
+                        self.main_window.layout_manager.force_layout_refresh()
                 except Exception:
                     pass
 

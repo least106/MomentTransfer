@@ -4,7 +4,8 @@
 
 import logging
 
-from PySide6.QtWidgets import QApplication, QGridLayout, QSizePolicy
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QGridLayout, QSizePolicy, QSplitter
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +197,41 @@ class LayoutManager:
 
         except Exception as e:
             logger.debug(f"刷新布局失败: {e}")
+
+    def force_layout_refresh(self):
+        """强制刷新布局：激活布局并做一次轻微窗口尺寸抖动，促使 Qt 重新计算布局。
+
+        说明：与旧版主窗口的 `_force_layout_refresh` 行为一致，合并到布局管理器内，
+        便于集中维护布局相关逻辑。
+        """
+        try:
+            cw = self.gui.centralWidget()
+            if cw and cw.layout():
+                cw.layout().activate()
+            try:
+                QApplication.processEvents()
+            except Exception:
+                logger.debug(
+                    "QApplication.processEvents failed in force_layout_refresh",
+                    exc_info=True,
+                )
+
+            # 尺寸轻微抖动（+2px 再还原）以触发布局刷新
+            w = self.gui.width()
+            h = self.gui.height()
+            self.gui.resize(w + 2, h)
+            QTimer.singleShot(20, lambda: self.gui.resize(w, h))
+
+            # 轻触 splitter：重置已有尺寸以促使子布局更新（若存在）
+            try:
+                s = self.gui.findChild(QSplitter)
+                if s:
+                    sizes = s.sizes()
+                    s.setSizes(sizes)
+            except Exception:
+                logger.debug(
+                    "Splitter resize refresh failed in force_layout_refresh",
+                    exc_info=True,
+                )
+        except Exception:
+            logger.debug("force_layout_refresh failed", exc_info=True)
