@@ -78,31 +78,7 @@ class IntegratedAeroGUI(QMainWindow):
         self.initialization_manager.setup_ui()
         self.initialization_manager.setup_managers()
         self.initialization_manager.setup_logging()
-
-        # 启动时默认展示处理日志页面，避免分散用户注意力
-        try:
-            bp = getattr(self, "batch_panel", None)
-            if bp is not None:
-                bp.switch_to_log_tab()
-        except Exception:
-            logger.debug("启动时切换默认页面到日志页失败", exc_info=True)
-
-        # 直接连接 Part 选择器信号到 PartManager
-        try:
-            self.source_panel.partSelected.connect(
-                self.part_manager.on_source_part_changed
-            )
-            self.target_panel.partSelected.connect(
-                self.part_manager.on_target_part_changed
-            )
-        except Exception:
-            logger.debug("连接 Part 选择器信号失败", exc_info=True)
-
-        # 连接信号
-        try:
-            self._connect_signals()
-        except Exception:
-            logger.debug("_connect_signals 初始化失败（占位）", exc_info=True)
+        self.initialization_manager.bind_post_ui_signals()
 
     def set_config_panel_visible(self, visible: bool) -> None:
         """按流程显示/隐藏配置编辑器，减少初始化干扰。"""
@@ -111,14 +87,6 @@ class IntegratedAeroGUI(QMainWindow):
             self.ui_state_manager.set_config_panel_visible(visible)
         except Exception:
             logger.debug("set_config_panel_visible failed", exc_info=True)
-
-    def _connect_signals(self):
-        if self.part_manager:
-            self.part_manager.on_source_part_changed()
-
-    def _on_target_part_changed_wrapper(self):
-        if self.part_manager:
-            self.part_manager.on_target_part_changed()
 
     def create_config_panel(self):
         """创建配置编辑器面板（由 InitializationManager 调用）"""
@@ -273,14 +241,14 @@ class IntegratedAeroGUI(QMainWindow):
     def _determine_format_source(self, fp: Path):
         """判断单个文件的格式来源（委托给 BatchManager）。"""
         try:
-            return self.batch_manager._determine_format_source(fp)
+            return self.batch_manager.determine_format_source(fp)
         except Exception:
             return ("unknown", None)
 
     def _format_label_from(self, src: str, src_path: Optional[Path]):
         """格式来源标签格式化（委托给 BatchManager）。"""
         try:
-            return self.batch_manager._format_label_from(src, src_path)
+            return self.batch_manager.format_label_from(src, src_path)
         except Exception:
             return ("unknown", "", "#dc3545")
 
@@ -467,39 +435,11 @@ class IntegratedAeroGUI(QMainWindow):
 
         locked=True 时禁用；locked=False 时恢复。此方法尽量保持幂等并静默忽略缺失控件。
         """
-        # 将控制锁定逻辑委托给 UIStateManager，保留现有实现可被替换
         try:
-            self.ui_state_manager.set_controls_locked(locked)
+            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                self.ui_state_manager.set_controls_locked(locked)
         except Exception:
-            # 若 manager 未实现 set_controls_locked，则回退到旧实现
-            widgets = [
-                getattr(self, "btn_load", None),
-                getattr(self, "btn_save", None),
-                getattr(self, "btn_apply", None),
-                getattr(self, "btn_config_format", None),
-                getattr(self, "btn_batch", None),
-            ]
-            for w in widgets:
-                try:
-                    if w is not None:
-                        w.setEnabled(not locked)
-                except Exception:
-                    pass
-
-            # 取消按钮在锁定时仍应保持可见/可用以提供取消能力
-            try:
-                if hasattr(self, "btn_cancel"):
-                    if locked:
-                        self.btn_cancel.setVisible(True)
-                        self.btn_cancel.setEnabled(True)
-                    else:
-                        self.btn_cancel.setVisible(False)
-                        self.btn_cancel.setEnabled(False)
-            except Exception:
-                logger.debug(
-                    "Failed to set btn_cancel visibility/state in _set_controls_locked",
-                    exc_info=True,
-                )
+            logger.debug("_set_controls_locked delegation failed", exc_info=True)
 
 
 def _initialize_exception_hook():

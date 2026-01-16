@@ -160,6 +160,34 @@ class InitializationManager:
         except Exception as e:
             logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
 
+    def bind_post_ui_signals(self):
+        """绑定主窗口的后置 UI 信号与默认可视状态。"""
+        try:
+            bp = getattr(self.main_window, "batch_panel", None)
+            if bp is not None:
+                bp.switch_to_log_tab()
+        except Exception:
+            logger.debug("启动时切换默认页面到日志页失败", exc_info=True)
+
+        try:
+            pm = getattr(self.main_window, "part_manager", None)
+            sp = getattr(self.main_window, "source_panel", None)
+            tp = getattr(self.main_window, "target_panel", None)
+
+            if sp is not None and pm is not None:
+                sp.partSelected.connect(pm.on_source_part_changed)
+            if tp is not None and pm is not None:
+                tp.partSelected.connect(pm.on_target_part_changed)
+        except Exception:
+            logger.debug("连接 Part 选择器信号失败", exc_info=True)
+
+        try:
+            pm = getattr(self.main_window, "part_manager", None)
+            if pm is not None:
+                pm.on_source_part_changed()
+        except Exception:
+            logger.debug("初始 Part 状态更新失败", exc_info=True)
+
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
 
