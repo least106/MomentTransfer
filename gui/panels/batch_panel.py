@@ -101,7 +101,7 @@ class BatchPanel(QWidget):
             pass
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
-        self.btn_browse_input = QPushButton("浏览")
+        self.btn_browse_input = QPushButton("浏览文件")
         try:
             self.btn_browse_input.setObjectName("smallButton")
             self.btn_browse_input.setToolTip("选择输入文件或目录")
@@ -113,6 +113,11 @@ class BatchPanel(QWidget):
             h = max(self.inp_batch_input.sizeHint().height(), 26)
             self.inp_batch_input.setFixedHeight(h)
             self.btn_browse_input.setFixedHeight(h)
+            # 增大“浏览”按钮的最小宽度，避免显示过窄显得不协调
+            try:
+                self.btn_browse_input.setMinimumWidth(80)
+            except Exception:
+                pass
         except Exception:
             pass
 
