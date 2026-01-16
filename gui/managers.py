@@ -14,6 +14,24 @@ class FileSelectionManager:
     属性保留旧名称以保证向后兼容（主窗口可直接读取这些属性）。
     """
 
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+        if name in {
+            "special_part_mapping_by_file",
+            "special_part_row_selection_by_file",
+            "file_part_selection_by_file",
+            "table_row_selection_by_file",
+        }:
+            try:
+                parent = super().__getattribute__("parent")
+            except Exception:
+                parent = None
+            if parent is not None and name != "parent":
+                try:
+                    setattr(parent, name, value)
+                except Exception:
+                    pass
+
     def __init__(self, parent: QWidget):
         self.parent = parent
         # 特殊格式映射：{str(file): {source_part: target_part}}
@@ -25,21 +43,31 @@ class FileSelectionManager:
         # 常规文件的行选择：{str(file): set(row_idx)} or None
         self.table_row_selection_by_file: Dict[str, Optional[set]] = {}
 
+        # 向后兼容：将状态引用同步到主窗口属性
+        try:
+            self.parent.special_part_mapping_by_file = self.special_part_mapping_by_file
+            self.parent.special_part_row_selection_by_file = self.special_part_row_selection_by_file
+            self.parent.file_part_selection_by_file = self.file_part_selection_by_file
+            self.parent.table_row_selection_by_file = self.table_row_selection_by_file
+        except Exception:
+            pass
+
     def ensure_special_row_selection_storage(self, file_path: Path, part_names: list) -> dict:
         """确保行选择缓存存在，并为未初始化的 part 默认全选。
 
         返回 by_part dict（可被调用方修改）。
         """
         try:
-            if not hasattr(self.parent, "special_part_row_selection_by_file"):
-                self.parent.special_part_row_selection_by_file = {}
-            by_file = getattr(self.parent, "special_part_row_selection_by_file", {}) or {}
+            by_file = self.special_part_row_selection_by_file or {}
             by_file.setdefault(str(file_path), {})
-            self.parent.special_part_row_selection_by_file = by_file
-
             by_part = by_file[str(file_path)]
             for pn in part_names:
                 by_part.setdefault(str(pn), None)
+            self.special_part_row_selection_by_file = by_file
+            try:
+                self.parent.special_part_row_selection_by_file = by_file
+            except Exception:
+                pass
             return by_part
         except Exception:
             return {}
