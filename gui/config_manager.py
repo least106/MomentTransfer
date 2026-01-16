@@ -126,18 +126,17 @@ class ConfigManager:
                 logger.debug("同步 _raw_project_dict 到 gui 失败", exc_info=True)
 
             # 解析为 ProjectData 与 ProjectConfigModel
+            mm = getattr(self.gui, "model_manager", None)
+            if mm is None:
+                logger.warning("ModelManager 缺失，无法加载配置")
+                return
+
             project = ProjectData.from_dict(data)
-            if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                self.gui.model_manager.current_config = project
-            else:
-                self.gui.current_config = project
+            mm.current_config = project
 
             try:
                 model = ProjectConfigModel.from_dict(data)
-                if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                    self.gui.model_manager.project_model = model
-                else:
-                    setattr(self.gui, "project_model", model)
+                mm.project_model = model
                 try:
                     self.signal_bus.configLoaded.emit(model)
                 except Exception:
@@ -303,11 +302,12 @@ class ConfigManager:
 
             # 同步新模型
             try:
-                model = ProjectConfigModel.from_dict(data)
-                if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                    self.gui.model_manager.project_model = model
+                mm = getattr(self.gui, "model_manager", None)
+                if mm is None:
+                    logger.warning("ModelManager 缺失，无法同步 ProjectConfigModel")
                 else:
-                    setattr(self.gui, "project_model", model)
+                    model = ProjectConfigModel.from_dict(data)
+                    mm.project_model = model
             except Exception:
                 logger.debug("保存前 ProjectConfigModel 同步失败", exc_info=True)
 
@@ -376,11 +376,8 @@ class ConfigManager:
             # 以完整 ProjectConfigModel 生成 ProjectData
             data = None
             try:
-                model = None
-                if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                    model = self.gui.model_manager.project_model
-                else:
-                    model = getattr(self.gui, "project_model", None)
+                mm = getattr(self.gui, "model_manager", None)
+                model = mm.project_model if mm else None
                 if model:
                     data = model.to_dict()
             except Exception:
@@ -403,30 +400,29 @@ class ConfigManager:
                     "Target": {"Parts": [tgt_part]},
                 }
                 try:
-                    model_built = ProjectConfigModel.from_dict(data)
-                    if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                        self.gui.model_manager.project_model = model_built
+                    mm = getattr(self.gui, "model_manager", None)
+                    if mm is None:
+                        logger.warning("ModelManager 缺失，无法同步回退模型")
                     else:
-                        setattr(self.gui, "project_model", model_built)
+                        model_built = ProjectConfigModel.from_dict(data)
+                        mm.project_model = model_built
                 except Exception:
                     logger.debug(
                         "apply_config: 回退构造 ProjectConfigModel 失败",
                         exc_info=True,
                     )
 
-            if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                self.gui.model_manager.current_config = ProjectData.from_dict(data)
-            else:
-                self.gui.current_config = ProjectData.from_dict(data)
+            mm = getattr(self.gui, "model_manager", None)
+            if mm is None:
+                logger.warning("ModelManager 缺失，无法应用配置")
+                return
+            mm.current_config = ProjectData.from_dict(data)
 
             # 不再创建“全局 calculator”，避免批处理对所有文件套用同一组 source/target。
             # 现在的语义是：用户在文件列表为每个文件（或每个 source part）选择 target，
             # 批处理线程会按文件动态创建 AeroCalculator。
             try:
-                if hasattr(self.gui, "model_manager") and self.gui.model_manager:
-                    self.gui.model_manager.calculator = None
-                else:
-                    self.gui.calculator = None
+                mm.calculator = None
             except Exception:
                 pass
 
