@@ -60,23 +60,7 @@ class IntegratedAeroGUI(QMainWindow):
 
         # 管理器化的状态：文件选择、模型、UI 状态
         self.file_selection_manager = FileSelectionManager(self)
-        # 将快捷属性保留以保持向后兼容（主窗口原有代码仍可访问这些名称）
-        self.special_part_mapping_by_file = (
-            self.file_selection_manager.special_part_mapping_by_file
-        )
-        self.special_part_row_selection_by_file = (
-            self.file_selection_manager.special_part_row_selection_by_file
-        )
-        self.file_part_selection_by_file = (
-            self.file_selection_manager.file_part_selection_by_file
-        )
-        self.table_row_selection_by_file = (
-            self.file_selection_manager.table_row_selection_by_file
-        )
-
         self.model_manager = ModelManager(self)
-        # 兼容旧属性通过属性委托提供，避免与管理器状态脱节
-        # （移除直接赋值，改为在类中定义 @property 进行转发）
 
         self.ui_state_manager = UIStateManager(self)
 
@@ -517,73 +501,6 @@ class IntegratedAeroGUI(QMainWindow):
                     exc_info=True,
                 )
 
-
-    # ----------------- 兼容旧属性：通过属性委托到各管理器 -----------------
-    @property
-    def calculator(self):
-        """兼容属性：转发到 ModelManager.calculator"""
-        return getattr(self.model_manager, "calculator", None)
-
-    @calculator.setter
-    def calculator(self, value):
-        if hasattr(self, "model_manager") and self.model_manager is not None:
-            self.model_manager.calculator = value
-
-    @property
-    def current_config(self):
-        """兼容属性：转发到 ModelManager.current_config"""
-        return getattr(self.model_manager, "current_config", None)
-
-    @current_config.setter
-    def current_config(self, value):
-        if hasattr(self, "model_manager") and self.model_manager is not None:
-            self.model_manager.current_config = value
-
-    @property
-    def project_model(self) -> Optional[ProjectConfigModel]:
-        """兼容属性：转发到 ModelManager.project_model"""
-        return getattr(self.model_manager, "project_model", None)
-
-    @project_model.setter
-    def project_model(self, value: Optional[ProjectConfigModel]):
-        if hasattr(self, "model_manager") and self.model_manager is not None:
-            self.model_manager.project_model = value
-
-    @property
-    def special_part_mapping_by_file(self):
-        return getattr(self.file_selection_manager, "special_part_mapping_by_file", {})
-
-    @special_part_mapping_by_file.setter
-    def special_part_mapping_by_file(self, value):
-        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
-            self.file_selection_manager.special_part_mapping_by_file = value
-
-    @property
-    def special_part_row_selection_by_file(self):
-        return getattr(self.file_selection_manager, "special_part_row_selection_by_file", {})
-
-    @special_part_row_selection_by_file.setter
-    def special_part_row_selection_by_file(self, value):
-        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
-            self.file_selection_manager.special_part_row_selection_by_file = value
-
-    @property
-    def file_part_selection_by_file(self):
-        return getattr(self.file_selection_manager, "file_part_selection_by_file", {})
-
-    @file_part_selection_by_file.setter
-    def file_part_selection_by_file(self, value):
-        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
-            self.file_selection_manager.file_part_selection_by_file = value
-
-    @property
-    def table_row_selection_by_file(self):
-        return getattr(self.file_selection_manager, "table_row_selection_by_file", {})
-
-    @table_row_selection_by_file.setter
-    def table_row_selection_by_file(self, value):
-        if hasattr(self, "file_selection_manager") and self.file_selection_manager is not None:
-            self.file_selection_manager.table_row_selection_by_file = value
 
 def _initialize_exception_hook():
     """设置初始化期间的异常钩子，用于在初始化期间阻止异常弹窗"""
