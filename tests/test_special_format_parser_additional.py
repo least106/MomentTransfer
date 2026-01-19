@@ -27,7 +27,7 @@ def make_frame_for_part(name="P", q=100.0, s=10.0):
 
 
 def test_is_line_helpers():
-    assert sfp.is_metadata_line("")
+    assert not sfp.is_metadata_line("")
     assert sfp.is_metadata_line("说明: 这是注释")
     assert sfp.is_data_line("1.0 2.0 3.0")
     assert not sfp.is_data_line("Alpha CL CD")
@@ -177,7 +177,7 @@ def test_process_special_format_file_missing_columns_skips(tmp_path):
 
 
 def test_is_metadata_summary_and_data_line():
-    assert sfp.is_metadata_line("")
+    assert not sfp.is_metadata_line("")
     assert sfp.is_metadata_line("计算坐标系:X向后、Y向右")
     assert not sfp.is_metadata_line("BODY")
 

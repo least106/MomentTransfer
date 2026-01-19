@@ -15,13 +15,14 @@ SUPPORTED_EXTS = {".mtfmt", ".mtdata", ".txt", ".dat"}
 
 
 def _read_text_file_lines(
-    file_path: Path, *, max_lines: Optional[int] = None, encodings=None
+    file_path: Path, *, max_lines: Optional[int] = None, encodings: Optional[List[str]] = None
 ) -> List[str]:
     """尝试以多种编码读取文本文件，返回行列表。
 
     - 默认先尝试 `utf-8`，若失败依次尝试 `gbk` 和 `latin-1`。
     - max_lines: 若指定则只返回前若干行（用于探测）。
     """
+    # 类型声明：encodings 可选且为字符串列表
     if encodings is None:
         encodings = ["utf-8", "gbk", "latin-1"]
 
@@ -31,20 +32,29 @@ def _read_text_file_lines(
             with open(file_path, "r", encoding=enc, errors="strict") as fh:
                 if max_lines is None:
                     return fh.readlines()
-                lines = [fh.readline() for _ in range(max_lines)]
-                return lines
+                # 读取全部并截取前若干行以避免产生空字符串占位
+                return fh.readlines()[:max_lines]
         except UnicodeDecodeError as e:
             last_exc = e
             logger.debug("尝试以编码 %s 读取文件失败，切换下一编码", enc)
             continue
+        except FileNotFoundError:
+            raise
+        except OSError as e:
+            # 对于其他 I/O 错误，记录并重新抛出
+            logger.debug("读取文件时遇到 I/O 错误: %s", e)
+            raise
+
+    # 最后保险回退：使用 latin-1 并允许替换不可解码字节
     try:
         with open(file_path, "r", encoding="latin-1", errors="replace") as fh:
             if max_lines is None:
                 return fh.readlines()
-            return [fh.readline() for _ in range(max_lines)]
-    except OSError as e:
+            return fh.readlines()[:max_lines]
+    except OSError:
+        # 若此前有解码错误，优先抛出该错误以便上层判断编码问题
         if last_exc:
-            raise last_exc from e
+            raise last_exc
         raise
 
 
@@ -64,8 +74,9 @@ def _tokens_looks_like_header(tokens: List[str]) -> bool:
 def is_metadata_line(line: str) -> bool:
     """判断是否为元数据行（非数据内容的描述行）"""
     line = line.strip()
+    # 空行不视为元数据，以避免解析器误跳过可能紧随其后的数据行
     if not line:
-        return True
+        return False
 
     if "：" in line or (":" in line and not line[0].isdigit()):
         return True
@@ -130,21 +141,30 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
 
     tokens = line.split()
 
-    if len(tokens) == 1 and len(line) < 20:
-        return True
-
+    # 若自身像表头则不是 part 名
     if _tokens_looks_like_header(tokens):
         return False
 
-    contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
-    result = not contains_chinese
+    # 若下一行明显是表头，则当前行很可能是 part 名
     if next_line:
         next_tokens = next_line.split()
         if _tokens_looks_like_header(next_tokens):
+            # 若为较长的中文描述，则即便下一行是表头也不视为 part
+            contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
             if contains_chinese and len(line) >= 20:
                 return False
-            result = True
-    return result
+            return True
+
+    # 短文本（<20 字符）通常可视为 part 名；较长中文视为描述
+    if len(line) < 20:
+        return True
+
+    contains_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
+    if contains_chinese:
+        return False
+
+    # 对于非中文且较长的多 token 文本，默认不视为 part 名
+    return False
 
 
 def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> bool:
@@ -176,8 +196,6 @@ def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> 
 __all__ = [
     "RECOMMENDED_EXT",
     "SUPPORTED_EXTS",
-    "_read_text_file_lines",
-    "_tokens_looks_like_header",
     "is_metadata_line",
     "is_summary_line",
     "is_data_line",

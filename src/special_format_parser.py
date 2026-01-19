@@ -120,65 +120,66 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     # pylint: disable=R0915  # 待重构：逐步拆分此函数以移除此项
     lines = _read_text_file_lines(file_path)
 
-    result = {}
-    current_part = None
-    current_header = None
-    current_data = []
+    # 将解析循环拆分为子函数以降低单函数复杂度
+    def _extract_parts_from_lines(lines: List[str]) -> Dict[str, List]:
+        """从文本行中提取每个 part 的表头和原始数据行。
 
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
+        返回字典: part_name -> (header_tokens, list_of_rows)
+        """
+        parts = {}
+        current_part = None
+        current_header = None
+        current_data = []
 
-        # 跳过空行
-        if not line:
-            i += 1
-            continue
-
-        # 跳过元数据行
-        if is_metadata_line(line):
-            i += 1
-            continue
-
-        # 检查是否为 part 名称
-        next_line = lines[i + 1].strip() if i + 1 < len(lines) else None
-        if is_part_name_line(line, next_line):
-            # 保存上一个 part 的数据
-            _finalize_part(current_part, current_header, current_data, result)
-
-            # 开始新的 part
-            current_part = line
-            current_header = None
-            current_data = []
-            i += 1
-            continue
-
-        # 检查是否为表头行（包含 Alpha, CL 等关键词）
-        if current_part and not current_header:
-            tokens = line.split()
-            if _tokens_looks_like_header(tokens):
-                current_header = tokens
-                i += 1
+        for idx, raw in enumerate(lines):
+            line = raw.strip()
+            if not line or is_metadata_line(line):
                 continue
 
-        # 检查是否为数据行
-        if current_part and current_header and is_data_line(line):
-            tokens = line.split()
-            # 列数不匹配时按原先策略直接舍弃该行（不输出 DEBUG 日志以避免污染处理日志）
-            if len(tokens) == len(current_header):
-                current_data.append(tokens)
-            i += 1
-            continue
+            next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else None
+            if is_part_name_line(line, next_line):
+                # 切换 part
+                if current_part:
+                    parts[current_part] = (current_header, current_data)
+                current_part = line.strip()
+                current_header = None
+                current_data = []
+                continue
 
-        # 检查是否为汇总行（跳过）
-        if is_summary_line(line):
-            i += 1
-            continue
+            if current_part and current_header is None:
+                tokens = line.split()
+                if _tokens_looks_like_header(tokens):
+                    current_header = tokens
+                    continue
 
-        # 其他情况：跳过
-        i += 1
+            if current_part and current_header and is_data_line(line):
+                tokens = line.split()
+                if len(tokens) == len(current_header):
+                    current_data.append([t.strip() for t in tokens])
+                else:
+                    logger.debug(
+                        "跳过数据行（列数不匹配）：file=%s part=%s expected=%d got=%d line=%r",
+                        file_path,
+                        current_part,
+                        len(current_header),
+                        len(tokens),
+                        line,
+                    )
+                continue
 
-    # 保存最后一个 part 的数据
-    _finalize_part(current_part, current_header, current_data, result)
+            if is_summary_line(line):
+                continue
+
+        # 结束时保存最后一个 part
+        if current_part:
+            parts[current_part] = (current_header, current_data)
+
+        return parts
+
+    extracted = _extract_parts_from_lines(lines)
+    result: Dict[str, pd.DataFrame] = {}
+    for part_name, (hdr, rows) in extracted.items():
+        _finalize_part(part_name, hdr, rows, result)
 
     return result
 
@@ -232,7 +233,7 @@ def get_part_names(file_path: Path) -> List[str]:
 
         next_line = lines[i + 1].strip() if i + 1 < len(lines) else None
         if is_part_name_line(line, next_line):
-            part_names.append(line)
+            part_names.append(line.strip())
 
         i += 1
 
