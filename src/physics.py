@@ -42,6 +42,21 @@ class AeroResult:
     coeff_moment: List[float]
 
 
+@dataclass
+class AeroInitOptions:
+    """可选的初始化参数集合，用于简化 `AeroCalculator` 的构造调用。
+
+    使用时可一次性传入多个可选项，调用者仍可通过关键字参数覆盖其中的值。
+    """
+
+    source_part: Optional[str] = None
+    source_variant: int = 0
+    target_part: Optional[str] = None
+    target_variant: int = 0
+    cache_provider: Optional[Any] = None
+    cache_cfg: Optional[Any] = None
+
+
 class AeroCalculator:
     """核心的 Aero 计算器：在不同坐标系间变换力/力矩并计算无量纲系数。
 
@@ -55,12 +70,14 @@ class AeroCalculator:
         self,
         config: Union[ProjectData, FrameConfiguration],
         *,
+        # 保持向后兼容的关键字参数，同时支持通过 `init_options` 批量传入
         source_part: Optional[str] = None,
         source_variant: int = 0,
         target_part: Optional[str] = None,
         target_variant: int = 0,
         cache_provider: Optional[Any] = None,
         cache_cfg: Optional[Any] = None,
+        init_options: Optional[Any] = None,
     ):
         """
         初始化 AeroCalculator。
@@ -88,6 +105,31 @@ class AeroCalculator:
                     )
                 else:
                     raise ValueError("配置不包含任何 Target 坐标系定义")
+            # 若调用方通过 init_options 传入了选项，则优先使用其中的值（兼容旧参数行为）
+            if init_options is not None:
+                try:
+                    source_part = (
+                        getattr(init_options, "source_part")
+                        if getattr(init_options, "source_part", None)
+                        is not None
+                        else source_part
+                    )
+                    source_variant = (
+                        getattr(init_options, "source_variant", source_variant)
+                    )
+                    target_part = (
+                        getattr(init_options, "target_part")
+                        if getattr(init_options, "target_part", None)
+                        is not None
+                        else target_part
+                    )
+                    target_variant = getattr(init_options, "target_variant", target_variant)
+                    cache_provider = getattr(init_options, "cache_provider", cache_provider)
+                    cache_cfg = getattr(init_options, "cache_cfg", cache_cfg)
+                except Exception:
+                    # 不应阻塞初始化，继续使用已解析的关键字参数
+                    logger.debug("init_options 解析失败，使用显式参数或默认值", exc_info=True)
+
             # 选择 source frame（可选）
             if source_part is not None:
                 source_frame = project.get_source_part(source_part, source_variant)
