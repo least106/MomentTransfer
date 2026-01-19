@@ -59,7 +59,12 @@ class EventManager:
             if batch_thread is not None and batch_thread.isRunning():
                 try:
                     batch_thread.request_stop()
-                    batch_thread.wait(1000)
+                    # wait 1s 最多等待；若用户在此期间按下 Ctrl+C，会触发 KeyboardInterrupt
+                    try:
+                        batch_thread.wait(1000)
+                    except KeyboardInterrupt:
+                        # 在控制台中按 Ctrl+C 时优雅中断等待，继续清理并关闭
+                        logger.info("收到中断信号(Ctrl+C)，正在强制停止批处理线程")
                 except Exception:
                     logger.debug("批处理线程停止失败", exc_info=True)
 

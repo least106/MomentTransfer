@@ -506,7 +506,16 @@ def main():
         logger.debug("自动主题加载失败（忽略）", exc_info=True)
     window = IntegratedAeroGUI()
     window.show()
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    except KeyboardInterrupt:
+        # 在控制台运行 GUI 时，按 Ctrl+C 时优雅退出
+        logger.info("收到中断信号(Ctrl+C)，正在退出应用")
+        try:
+            app.quit()
+        except Exception:
+            pass
+        sys.exit(0)
 
 
 if __name__ == "__main__":

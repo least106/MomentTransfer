@@ -1893,7 +1893,7 @@ class BatchManager:
             existing_files = set(str(f) for f in output_path.glob("*") if f.is_file())
             self.gui._batch_output_dir = output_path
             self.gui._batch_existing_files = existing_files
-            # 全局数据格式配置已废弃：线程内部将按文件解析格式（sidecar/目录/registry）。
+            # 全局数据格式配置已废弃：线程内部将按文件解析格式（sidecar/目录）。
             data_config = None
 
             from gui.batch_thread import BatchProcessThread
