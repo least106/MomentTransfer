@@ -5,7 +5,8 @@
 """
 
 import warnings
-from typing import List
+from dataclasses import dataclass
+from typing import List, Optional
 
 import numpy as np
 
@@ -14,6 +15,19 @@ ORTHOGONALITY_THRESHOLD = 0.05  # 允许基向量之间一定误差
 SINGULARITY_THRESHOLD = 1e-6  # 判断基矩阵是否接近奇异的阈值
 # 用于判断零向量或在投影时分母接近零的阈值（与奇异性阈值分开，便于微调）
 ZERO_VECTOR_THRESHOLD = 1e-10
+
+
+@dataclass
+class BasisMatrixConfig:
+    """封装 `construct_basis_matrix` 可配置项，便于调用处传参。
+
+    保持与历史关键字参数的语义兼容：如果同时传入旧的关键字参数，旧参数优先。
+    """
+
+    orthogonality_threshold: float = ORTHOGONALITY_THRESHOLD
+    singularity_threshold: float = SINGULARITY_THRESHOLD
+    orthogonalize: bool = False
+    strict: bool = False
 
 
 # 基础向量工具
@@ -42,10 +56,12 @@ def construct_basis_matrix(
     y: List[float],
     z: List[float],
     *,
-    orthogonality_threshold: float = ORTHOGONALITY_THRESHOLD,
-    singularity_threshold: float = SINGULARITY_THRESHOLD,
-    orthogonalize: bool = False,
-    strict: bool = False,
+    config: Optional[BasisMatrixConfig] = None,
+    # 兼容旧调用：保留关键字参数（若同时传入则优先使用这些参数）
+    orthogonality_threshold: Optional[float] = None,
+    singularity_threshold: Optional[float] = None,
+    orthogonalize: Optional[bool] = None,
+    strict: Optional[bool] = None,
 ) -> np.ndarray:
     """
     构建基向量矩阵 (3x3)。
@@ -65,6 +81,25 @@ def construct_basis_matrix(
     """
     # 该函数参数与局部变量较多，后续建议重构以降低复杂度
     # pylint: disable=too-many-arguments,too-many-locals
+    # 解析配置优先级：显式关键字参数 > config 对象 > 模块默认常量
+    if config is None:
+        config = BasisMatrixConfig()
+
+    # 若用户传入了旧的单独关键字参数，则覆盖 config 中对应值
+    ortho_thr = (
+        orthogonality_threshold
+        if orthogonality_threshold is not None
+        else config.orthogonality_threshold
+    )
+    sing_thr = (
+        singularity_threshold
+        if singularity_threshold is not None
+        else config.singularity_threshold
+    )
+    orthogonalize_flag = (
+        orthogonalize if orthogonalize is not None else config.orthogonalize
+    )
+    strict_flag = strict if strict is not None else config.strict
     vx = normalize(to_numpy_vec(x))
     vy = normalize(to_numpy_vec(y))
     vz = normalize(to_numpy_vec(z))
@@ -76,9 +111,7 @@ def construct_basis_matrix(
     zx_dot = abs(np.dot(vz, vx))
 
     non_orthogonal = (
-        xy_dot > orthogonality_threshold
-        or yz_dot > orthogonality_threshold
-        or zx_dot > orthogonality_threshold
+        xy_dot > ortho_thr or yz_dot > ortho_thr or zx_dot > ortho_thr
     )
 
     if non_orthogonal:
@@ -86,7 +119,7 @@ def construct_basis_matrix(
             f"基向量可能不正交：X·Y={xy_dot:.6f}, Y·Z={yz_dot:.6f}, Z·X={zx_dot:.6f}。"
             "请检查输入或启用正交化（orthogonalize=True）。"
         )
-        if orthogonalize:
+        if orthogonalize_flag:
             # 使用 Gram–Schmidt 进行正交化并归一化
             def proj(u, v):
                 denom = np.dot(u, u)
@@ -121,7 +154,7 @@ def construct_basis_matrix(
 
     # 进一步检查基矩阵的线性相关性（行列式接近零表示基向量线性相关 -> 奇异矩阵）
     det = np.linalg.det(basis)
-    if abs(det) < singularity_threshold:
+    if abs(det) < sing_thr:
         raise ValueError(
             f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。"
         )
