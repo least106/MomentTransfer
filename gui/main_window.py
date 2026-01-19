@@ -209,9 +209,6 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
 
-    def update_config_preview(self):
-        # 兼容保留：全局格式摘要已移除
-        return
 
     def browse_batch_input(self):
         """选择输入文件或目录 - 委托给 BatchManager"""
@@ -237,27 +234,6 @@ class IntegratedAeroGUI(QMainWindow):
             self.batch_manager.on_pattern_changed()
         except Exception:
             logger.debug("_on_pattern_changed delegated call failed", exc_info=True)
-
-    def _determine_format_source(self, fp: Path):
-        """判断单个文件的格式来源（委托给 BatchManager）。"""
-        try:
-            return self.batch_manager.determine_format_source(fp)
-        except Exception:
-            return ("unknown", None)
-
-    def _format_label_from(self, src: str, src_path: Optional[Path]):
-        """格式来源标签格式化（委托给 BatchManager）。"""
-        try:
-            return self.batch_manager.format_label_from(src, src_path)
-        except Exception:
-            return ("unknown", "", "#dc3545")
-
-    def _refresh_format_labels(self):
-        """刷新文件列表的来源标签（委托给 BatchManager）。"""
-        try:
-            self.batch_manager.refresh_format_labels()
-        except Exception:
-            logger.debug("_refresh_format_labels delegated call failed", exc_info=True)
 
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""
