@@ -49,12 +49,10 @@ python batch.py -c data/input.json -i tmp\output -p "*.csv" --enable-sidecar --c
 - **-c, --config**: 必需，项目配置 JSON（例如 `data/input.json`），包含源/目标坐标系定义。
 - **-i, --input**: 必需，输入文件或目录路径。
 - **-p, --pattern**: 目录模式匹配（例如 `"*.csv"`）。
-- **-f, --format-file**: 指定数据格式 JSON（包含 `skip_rows`, `columns`, `passthrough`），在非交互模式下通常必需。
  - **-f, --format-file**: 指定数据格式 JSON（包含 `skip_rows`, `columns`, `passthrough`），在非交互模式下通常必需。
- - **--enable-sidecar**: 启用 per-file 侧车查找（默认关闭），与 `--registry-db` 可配合使用从 registry 查找每个文件对应的格式。
- - **--registry-db**: 实验性选项，指定 registry 数据库文件路径，用于在 registry 中查找文件格式定义。
+ - **--enable-sidecar**: 启用 per-file 侧车查找（默认关闭）。
  - **--continue-on-error**: 在遇到单个文件处理错误时继续处理剩余文件（错误会被记录）。
-- **--non-interactive**: 非交互模式（不弹出询问），通常需配合 `--format-file` 或 `--registry-db`。
+ - **--non-interactive**: 非交互模式（不弹出询问），通常需配合 `--format-file`。
 - **--workers**: 并行进程数，默认为 1（串行）。
 - **--chunksize**: 流式读取时的行块大小（节省内存）。
 - **--overwrite**: 若输出已存在则覆盖（默认会自动改名避免冲突）。
@@ -81,7 +79,7 @@ python batch.py -c data/input.json -i tmp\output -p "*.csv" --enable-sidecar --c
 注意：当不传 `--format-file` 且未指定 `--enable-sidecar` 时，批处理会尝试根据文件扩展名与简单规则自动推断格式（对复杂或非标准文件建议显式提供 `--format-file` 或启用侧车）。
 
 **常见问题与调试**
-- 如果在非交互模式下运行失败，确认是否提供了 `--format-file` 或 `--registry-db`。
+ - 如果在非交互模式下运行失败，确认是否提供了 `--format-file`。
 - 当遇到大量文件时建议使用 `--workers` 并配合 `--chunksize` 来降低内存峰值。
 - 若输出文件名冲突，默认行为为自动生成带后缀的候选名；使用 `--overwrite` 可直接覆盖旧文件（谨慎）。
 

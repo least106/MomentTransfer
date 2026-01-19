@@ -58,8 +58,7 @@ python cli.py calculate --config data/input.json --input-file data/sample.csv --
 
 ⚠️ 注意：生产默认行为现在**不启用** per-file 侧车（file-sidecar / directory per-file format / registry lookup）。
 - `resolve_file_format` 新增参数 `enable_sidecar: bool = False`，默认返回传入的 `global_cfg` 的拷贝而不做本地查找。
-
-- 新增命令行选项 `--enable-sidecar`（默认关闭）以显式启用 per-file 覆盖；`--registry-db` 仍保留但作为实验性隐藏选项，仅在需要时与 `--enable-sidecar` 一起使用。
-  - 在需要逐文件覆盖格式或从 registry 查找格式时，可以加上 `--enable-sidecar`。
-  - `--registry-db` 为实验性选项，配合 `--enable-sidecar` 使用时会在 registry 中查找 per-file 格式定义。
-- 如果你想为每个 CSV 启用侧车或 registry 覆盖（仅作为示例或调试），请参考示例脚本：`examples/per_file_config_demo.py`，其中包含完整的查找逻辑和说明。
+ 
+ - 新增命令行选项 `--enable-sidecar`（默认关闭）以显式启用 per-file 覆盖。旧的 `--registry-db` 功能已废弃并移除。
+ - 在需要逐文件覆盖格式时，可以加上 `--enable-sidecar`。
+ - 如果你想为每个 CSV 启用侧车覆盖（仅作为示例或调试），请参考示例脚本：`examples/per_file_config_demo.py`，其中包含教学用途的查找逻辑与说明（注意：示例中的 registry 查找为历史示例，实际运行时会被忽略）。

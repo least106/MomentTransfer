@@ -9,7 +9,7 @@
   并使用统一的 global config。
 
 用法示例:
-    python examples/per_file_config_demo.py /path/to/data_dir --registry registry.db
+    python examples/per_file_config_demo.py /path/to/data_dir
 
 """
 
@@ -18,14 +18,12 @@ from copy import deepcopy
 from pathlib import Path
 
 from src.cli_helpers import BatchConfig, _merge_batch_config, load_format_from_file
-from src.format_registry import get_format_for_file
 
 
 def resolve_file_format_demo(
     file_path: str,
     global_cfg: BatchConfig,
     *,
-    registry_db: str = None,
     sidecar_suffixes=(".format.json", ".json"),
     dir_default_name="format.json",
 ) -> BatchConfig:
@@ -33,16 +31,7 @@ def resolve_file_format_demo(
     p = Path(file_path)
     cfg = deepcopy(global_cfg)
 
-    # 0) registry
-    if registry_db:
-        try:
-            reg_fmt = get_format_for_file(registry_db, file_path)
-            if reg_fmt:
-                local = load_format_from_file(str(reg_fmt))
-                _merge_batch_config(cfg, local)
-                return cfg
-        except Exception as e:
-            print(f"Registry lookup failed: {e}")
+    # 说明：示例保留侧车与目录查找逻辑用于教学，registry 功能已废弃并移除。
 
     # 1) file-sidecar
     stem = p.stem
@@ -69,7 +58,7 @@ def resolve_file_format_demo(
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("data_dir", help="包含 CSV 的目录")
-    p.add_argument("--registry", help="可选 registry 数据库路径 (.sqlite)")
+    # `--registry` 已废弃并移除；示例仅用于教学侧车/目录查找逻辑
     args = p.parse_args()
 
     base_cfg = BatchConfig()
