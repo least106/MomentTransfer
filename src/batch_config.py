@@ -19,5 +19,13 @@ def resolve_file_format(
     file_path: str,
     global_cfg: BatchConfig,
 ) -> BatchConfig:
-    """为单个数据文件返回全局配置的深拷贝（未来可扩展为 per-file 覆盖解析）。"""
+    """为单个数据文件返回全局配置的深拷贝（保留以前模块的行为）。
+
+    参数：
+        file_path: 数据文件路径（用于日志或未来的 sidecar 查找）
+        global_cfg: 全局批处理配置
+
+    返回值：
+        global_cfg 的深拷贝
+    """
     return deepcopy(global_cfg)
