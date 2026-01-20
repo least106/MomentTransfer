@@ -22,10 +22,12 @@ get_config = _root_mod.get_config
 set_config = _root_mod.set_config
 load_config_from_file = _root_mod.load_config_from_file
 reset_config = _root_mod.reset_config
+SystemConfig = _root_mod.SystemConfig
 
 __all__ = [
     "get_config",
     "set_config",
     "load_config_from_file",
     "reset_config",
+    "SystemConfig",
 ]
