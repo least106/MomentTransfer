@@ -1,7 +1,7 @@
-from pathlib import Path
-
 import io
 import os
+from pathlib import Path
+
 import pytest
 
 from src import special_format_detector as sfd

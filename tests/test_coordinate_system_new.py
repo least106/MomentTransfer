@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.models.coordinate_system import _vec3, CoordinateSystem
+from src.models.coordinate_system import CoordinateSystem, _vec3
 
 
 def test_vec3_valid_and_invalid():

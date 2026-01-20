@@ -1,7 +1,7 @@
 import numpy as np
 
-from src.models.part import Part, Variant
 from src.models.coordinate_system import CoordinateSystem
+from src.models.part import Part, Variant
 
 
 def make_cs():
