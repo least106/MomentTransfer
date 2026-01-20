@@ -4,7 +4,6 @@
 """
 
 import logging
-from typing import Any
 
 # 直接从拆分后的模块导入符号并重导出
 from src.batch_config import BatchConfig, resolve_file_format

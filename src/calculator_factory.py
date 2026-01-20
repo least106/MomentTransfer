@@ -3,7 +3,6 @@
 
 import json
 import logging
-from typing import Optional
 
 from src.data_loader import ProjectData, load_data, try_load_project_data
 from src.physics import AeroCalculator
