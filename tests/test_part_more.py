@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from src.models.coordinate_system import CoordinateSystem
 from src.models.part import Part, Variant

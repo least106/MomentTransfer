@@ -12,10 +12,8 @@ MomentTransfer GUI 主窗口模块
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
@@ -30,7 +28,6 @@ from gui.panels import ConfigPanel, OperationPanel
 
 # 导入管理器和工具
 from gui.signal_bus import SignalBus
-from src.models import ProjectConfigModel
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +164,7 @@ class IntegratedAeroGUI(QMainWindow):
             # 如果管理器未初始化，记录警告
             logger.warning("ConfigManager 未初始化，无法加载配置")
         except Exception as e:
-            logger.error(f"加载配置失败: {e}")
+            logger.error("加载配置失败: %s", e)
 
     def save_config(self):
         """保存配置到JSON - 委托给 ConfigManager"""
@@ -177,7 +174,7 @@ class IntegratedAeroGUI(QMainWindow):
             # 如果管理器未初始化，记录警告
             logger.warning("ConfigManager 未初始化，无法保存配置")
         except Exception as e:
-            logger.error(f"保存配置失败: {e}")
+            logger.error("保存配置失败: %s", e)
 
     def apply_config(self):
         """应用当前配置到计算器 - 委托给 ConfigManager"""
@@ -193,7 +190,7 @@ class IntegratedAeroGUI(QMainWindow):
             # 如果管理器未初始化，记录警告
             logger.warning("配置Manager 未初始化，无法应用配置")
         except Exception as e:
-            logger.error(f"应用配置失败: {e}")
+            logger.error("应用配置失败: %s", e)
 
     # 配置格式方法委托给 ConfigManager
     def configure_data_format(self):
@@ -216,7 +213,7 @@ class IntegratedAeroGUI(QMainWindow):
         except AttributeError:
             logger.warning("BatchManager 未初始化")
         except Exception as e:
-            logger.error(f"浏览批处理输入失败: {e}")
+            logger.error("浏览批处理输入失败: %s", e)
 
     def _scan_and_populate_files(self, chosen_path):
         """扫描所选路径并刷新文件列表（委托给 BatchManager）。"""
@@ -241,7 +238,7 @@ class IntegratedAeroGUI(QMainWindow):
         except AttributeError:
             logger.warning("BatchManager 未初始化")
         except Exception as e:
-            logger.error(f"运行批处理失败: {e}")
+            logger.error("运行批处理失败: %s", e)
 
     def on_batch_finished(self, message):
         """批处理完成 - 委托给 BatchManager"""
@@ -250,7 +247,7 @@ class IntegratedAeroGUI(QMainWindow):
         except AttributeError:
             logger.warning("BatchManager 未初始化")
         except Exception as e:
-            logger.error(f"处理批处理完成事件失败: {e}")
+            logger.error("处理批处理完成事件失败: %s", e)
 
     def on_batch_error(self, error_msg):
         """批处理出错 - 委托给 BatchManager"""
@@ -259,7 +256,7 @@ class IntegratedAeroGUI(QMainWindow):
         except AttributeError:
             logger.warning("BatchManager 未初始化")
         except Exception as e:
-            logger.error(f"处理批处理错误事件失败: {e}")
+            logger.error("处理批处理错误事件失败: %s", e)
             try:
                 if hasattr(self, "btn_cancel"):
                     self.btn_cancel.setVisible(False)
@@ -296,7 +293,7 @@ class IntegratedAeroGUI(QMainWindow):
         except AttributeError:
             logger.warning("LayoutManager 未初始化")
         except Exception as e:
-            logger.error(f"更新按钮布局失败: {e}")
+            logger.error("更新按钮布局失败: %s", e)
 
     # 事件处理方法委托给 EventManager
     def resizeEvent(self, event):
@@ -345,7 +342,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.part_manager.add_source_part()
         except Exception as e:
-            logger.error(f"添加 Source Part 失败: {e}")
+            logger.error("添加 Source Part 失败: %s", e)
 
     def _remove_source_part(self):
         """删除当前 Source Part - 委托给 PartManager，移除旧 fallback。"""
@@ -354,7 +351,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.part_manager.remove_source_part()
         except Exception as e:
-            logger.error(f"删除 Source Part 失败: {e}")
+            logger.error("删除 Source Part 失败: %s", e)
 
     def _add_target_part(self):
         """添加 Target Part - 委托给 PartManager，移除旧 fallback。"""
@@ -363,7 +360,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.part_manager.add_target_part()
         except Exception as e:
-            logger.error(f"添加 Target Part 失败: {e}")
+            logger.error("添加 Target Part 失败: %s", e)
 
     def _remove_target_part(self):
         """删除当前 Target Part - 委托给 PartManager，移除旧 fallback。"""
@@ -372,7 +369,7 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.part_manager.remove_target_part()
         except Exception as e:
-            logger.error(f"删除 Target Part 失败: {e}")
+            logger.error("删除 Target Part 失败: %s", e)
 
     def _on_src_partname_changed(self, new_text: str):
         """Part Name 文本框变化 - 委托给 PartManager"""
@@ -403,7 +400,7 @@ class IntegratedAeroGUI(QMainWindow):
             logging_manager = LoggingManager(self)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
+            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。

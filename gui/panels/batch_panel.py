@@ -4,7 +4,7 @@
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, QEvent
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -504,7 +504,9 @@ class BatchPanel(QWidget):
                         fw = None
 
                     if fw is self.inp_filter_column:
-                        comp = getattr(self.inp_filter_column, "completer", lambda: None)()
+                        comp = getattr(
+                            self.inp_filter_column, "completer", lambda: None
+                        )()
                         try:
                             popup = comp.popup() if comp is not None else None
                         except Exception:
@@ -512,7 +514,10 @@ class BatchPanel(QWidget):
 
                         # 若未显示，先显示候选
                         try:
-                            if popup is None or not getattr(popup, "isVisible", lambda: False)():
+                            if (
+                                popup is None
+                                or not getattr(popup, "isVisible", lambda: False)()
+                            ):
                                 if comp is not None:
                                     comp.complete()
                                 logger.debug(

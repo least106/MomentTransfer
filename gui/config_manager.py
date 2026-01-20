@@ -45,7 +45,7 @@ class ConfigManager:
                 # 配置的“应用”语义已变更为直接保存/更新模型并由批处理按需创建计算器。
                 logger.debug("ConfigManager 已连接 ConfigPanel 请求信号")
             except Exception as e:
-                logger.warning(f"ConfigManager 连接 ConfigPanel 信号失败: {e}")
+                logger.warning("ConfigManager 连接 ConfigPanel 信号失败: %s", e)
 
     def _frame_to_payload(self, frame):
         """将 ProjectData 帧转换为面板可用的 payload。"""
@@ -259,7 +259,7 @@ class ConfigManager:
             # 同步到面板已完成，无需同步隐藏控件
 
         except Exception as e:
-            logger.debug(f"填充 Target 表单失败: {e}", exc_info=True)
+            logger.debug("填充 Target 表单失败: %s", e, exc_info=True)
 
     def _populate_source_form(self, project: ProjectData):
         """填充 Source 坐标系表单"""
@@ -285,7 +285,7 @@ class ConfigManager:
             # 同步到面板已完成，无需同步隐藏控件
 
         except Exception as e:
-            logger.debug(f"填充 Source 表单失败: {e}", exc_info=True)
+            logger.debug("填充 Source 表单失败: %s", e, exc_info=True)
 
     def save_config(self):
         """保存配置到 JSON 文件"""
@@ -431,11 +431,15 @@ class ConfigManager:
             try:
                 self.gui.current_config = mm.current_config
             except Exception:
-                logger.debug("apply_config: 同步 current_config 到 gui 失败", exc_info=True)
+                logger.debug(
+                    "apply_config: 同步 current_config 到 gui 失败", exc_info=True
+                )
             try:
                 self.gui.project_model = mm.project_model
             except Exception:
-                logger.debug("apply_config: 同步 project_model 到 gui 失败", exc_info=True)
+                logger.debug(
+                    "apply_config: 同步 project_model 到 gui 失败", exc_info=True
+                )
 
             # 不再创建“全局 calculator”，避免批处理对所有文件套用同一组 source/target。
             # 现在的语义是：用户在文件列表为每个文件（或每个 source part）选择 target，

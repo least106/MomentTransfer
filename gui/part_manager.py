@@ -4,11 +4,7 @@ Part 管理模块 - 处理 Part 的添加、删除和切换
 
 import logging
 
-from PySide6.QtWidgets import QMessageBox
-
 from gui.signal_bus import SignalBus
-from src.models.project_model import Part as PMPart
-from src.models.project_model import PartVariant as PMVariant
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +317,7 @@ class PartManager:
             self._rename_part(new_text, is_source=True)
 
         except Exception as e:
-            logger.debug(f"Source PartName 变化处理失败: {e}")
+            logger.debug("Source PartName 变化处理失败: %s", e)
 
     def on_target_part_name_changed(self, new_text: str):
         """Target PartName 文本框变化"""
@@ -329,7 +325,7 @@ class PartManager:
             self._rename_part(new_text, is_source=False)
 
         except Exception as e:
-            logger.debug(f"Target PartName 变化处理失败: {e}")
+            logger.debug("Target PartName 变化处理失败: %s", e)
 
     # ===== 总线请求处理 =====
     def _on_part_add_requested(self, side: str, name: str):

@@ -1,4 +1,17 @@
 [MASTER]
+ignore=venv
+
+[MESSAGES CONTROL]
+# PySide6 在静态分析中常报 no-name-in-module，项目中大量 GUI 文件依赖运行时绑定，先忽略这类误报
+; 先禁用部分在 GUI-heavy 项目中常见的噪音项，后续可逐步恢复并逐个修复
+disable=E0611,W1203,W0611,W0613,W0612,W0718
+
+[FORMAT]
+max-line-length=88
+
+[REPORTS]
+output-format=text
+[MASTER]
 # 基本配置，针对本项目的轻量级 pylint 配置
 ignore=tests
 jobs=1

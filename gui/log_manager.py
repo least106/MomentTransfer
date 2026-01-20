@@ -92,4 +92,4 @@ class LoggingManager:
 
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
+            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)

@@ -80,4 +80,4 @@ class EventManager:
 
             logger.info("主窗口已关闭")
         except Exception as e:
-            logger.error(f"closeEvent 处理失败: {e}", exc_info=True)
+            logger.error("closeEvent 处理失败: %s", e, exc_info=True)

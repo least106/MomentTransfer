@@ -6,6 +6,7 @@
 import hashlib
 import threading
 from functools import lru_cache
+from itertools import islice
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +28,8 @@ class FileCache:
         self._content_cache: Dict[str, str] = {}  # 文件内容缓存
         self._metadata_cache: Dict[str, Dict[str, Any]] = {}  # 元数据缓存
         self._lock = threading.Lock()
+        # 每个 cache_key 的细粒度锁，避免多个线程同时读取并缓存同一文件
+        self._key_locks: Dict[str, threading.Lock] = {}
 
     def _get_file_key(self, file_path: Path) -> str:
         """
@@ -63,46 +66,51 @@ class FileCache:
         if not file_path.exists():
             return None
 
-        result: Optional[str] = None
-
-        # 检查文件大小是否超过限制
-        try:
-            file_size = file_path.stat().st_size
-            if file_size > self.max_file_size:
-                # 超过大小限制，直接读取不缓存
-                try:
-                    with open(file_path, "r", encoding=encoding, errors="ignore") as f:
-                        result = f.read()
-                except (OSError, UnicodeDecodeError):
-                    result = None
-        except OSError:
-            result = None
-
-        # 生成缓存键
+        # 生成缓存键并先行检查缓存（快速路径）
         cache_key = self._get_file_key(file_path)
-
-        # 检查缓存（优先）
         with self._lock:
             cached = self._content_cache.get(cache_key)
+            if cached is not None:
+                return cached
 
-        if cached is not None:
-            result = cached
-        else:
-            # 如果之前未因为超大文件读取过内容，则尝试正常读取并缓存
-            if result is None:
+            # 获取或创建细粒度锁，保证只有一个线程去读取并写入缓存
+            key_lock = self._key_locks.get(cache_key)
+            if key_lock is None:
+                key_lock = threading.Lock()
+                self._key_locks[cache_key] = key_lock
+
+        # 在 key_lock 下执行实际 I/O（双重检查以防竞争）
+        with key_lock:
+            with self._lock:
+                cached = self._content_cache.get(cache_key)
+                if cached is not None:
+                    return cached
+
+            # 检查文件大小以决定是否缓存
+            try:
+                file_size = file_path.stat().st_size
+            except OSError:
+                return None
+
+            # 超大文件：直接读取并不缓存
+            if file_size > self.max_file_size:
                 try:
                     with open(file_path, "r", encoding=encoding, errors="ignore") as f:
-                        content = f.read()
-
-                    # 存入缓存
-                    with self._lock:
-                        self._content_cache[cache_key] = content
-
-                    result = content
+                        return f.read()
                 except (OSError, UnicodeDecodeError):
-                    result = None
+                    return None
 
-        return result
+            # 普通文件：读取并缓存
+            try:
+                with open(file_path, "r", encoding=encoding, errors="ignore") as f:
+                    content = f.read()
+
+                with self._lock:
+                    self._content_cache[cache_key] = content
+
+                return content
+            except (OSError, UnicodeDecodeError):
+                return None
 
     def get_file_header(
         self, file_path: Path, num_lines: int = 10, encoding: str = "utf-8-sig"
@@ -129,17 +137,17 @@ class FileCache:
             if cache_key in self._metadata_cache:
                 return self._metadata_cache[cache_key].get("header")
 
-        # 读取文件头部
+        # 读取文件头部（短文件也返回已有行，不把 StopIteration 视为错误）
         try:
             with open(file_path, "r", encoding=encoding, errors="ignore") as f:
-                lines = [next(f) for _ in range(num_lines) if f]
+                lines = list(islice(f, num_lines))
 
             # 存入缓存
             with self._lock:
                 self._metadata_cache[cache_key] = {"header": lines}
 
             return lines
-        except (OSError, StopIteration, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError):
             return None
 
     def set_metadata(self, file_path: Path, key: str, value: Any) -> None:
@@ -182,6 +190,7 @@ class FileCache:
         with self._lock:
             self._content_cache.clear()
             self._metadata_cache.clear()
+            self._key_locks.clear()
 
     def clear_file(self, file_path: Path) -> None:
         """
@@ -200,6 +209,8 @@ class FileCache:
             ]
             for k in keys_to_remove:
                 self._metadata_cache.pop(k, None)
+            # 清除对应的细粒度锁（如存在）
+            self._key_locks.pop(cache_key, None)
 
     def get_cache_stats(self) -> Dict[str, int]:
         """

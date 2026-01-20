@@ -18,7 +18,7 @@ class FakeCalc:
         self.target_part = target_part
 
     def process_batch(self, forces, moments):
-        _n = forces.shape[0]
+        forces.shape[0]
         ft = forces + 1.0
         mt = moments + 1.0
         cf = np.zeros_like(forces)

@@ -16,7 +16,6 @@ def test_construct_basis_zero_vector_raises():
 def test_construct_basis_non_orthogonal_warns_and_strict_raises():
     x = [1.0, 0.0, 0.0]
     # y 与 x 完全相同，非正交
-    _y = [1.0, 0.0, 0.0]
     z = [0.0, 0.0, 1.0]
 
     # 使用稍微非正交但不退化的 y 向量以触发 warning 而不致奇异

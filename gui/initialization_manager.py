@@ -84,7 +84,7 @@ class InitializationManager:
 
             logger.info("UI 组件初始化成功")
         except Exception as e:
-            logger.error(f"UI 初始化失败: {e}", exc_info=True)
+            logger.error("UI 初始化失败: %s", e, exc_info=True)
             raise
 
     def setup_managers(self):
@@ -149,7 +149,7 @@ class InitializationManager:
             except Exception:
                 logger.debug("绑定 inp_batch_input 编辑完成信号失败", exc_info=True)
         except Exception as e:
-            logger.error(f"管理器初始化失败: {e}", exc_info=True)
+            logger.error("管理器初始化失败: %s", e, exc_info=True)
             # 继续运行，即使管理器初始化失败
 
     def setup_logging(self):
@@ -158,7 +158,7 @@ class InitializationManager:
             logging_manager = LoggingManager(self.main_window)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug(f"GUI logging setup failed (non-fatal): {e}", exc_info=True)
+            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)
 
     def bind_post_ui_signals(self):
         """绑定主窗口的后置 UI 信号与默认可视状态。"""

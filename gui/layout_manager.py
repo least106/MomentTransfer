@@ -159,7 +159,7 @@ class LayoutManager:
             self.refresh_layouts()
 
         except Exception as e:
-            logger.debug(f"处理 resize 事件失败: {e}")
+            logger.debug("处理 resize 事件失败: %s", e)
 
     def on_show_event(self, event):
         """窗口显示事件 - 初始化布局"""
@@ -168,7 +168,7 @@ class LayoutManager:
             self.refresh_layouts()
 
         except Exception as e:
-            logger.debug(f"处理 show 事件失败: {e}")
+            logger.debug("处理 show 事件失败: %s", e)
 
     def refresh_layouts(self):
         """刷新所有布局 - 强制重新计算和绘制"""
@@ -196,7 +196,7 @@ class LayoutManager:
                         pass
 
         except Exception as e:
-            logger.debug(f"刷新布局失败: {e}")
+            logger.debug("刷新布局失败: %s", e)
 
     def force_layout_refresh(self):
         """强制刷新布局：激活布局并做一次轻微窗口尺寸抖动，促使 Qt 重新计算布局。

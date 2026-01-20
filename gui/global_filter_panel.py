@@ -102,7 +102,7 @@ class FilterCondition:
                 except ValueError:
                     return False
         except Exception as e:
-            logger.debug(f"筛选条件匹配失败: {e}")
+            logger.debug("筛选条件匹配失败: %s", e)
             return False
 
         return True
@@ -213,7 +213,7 @@ class GlobalFilterPanel(QWidget):
                     self.conditions.pop(idx)
                 self.filtersChanged.emit()
         except Exception as e:
-            logger.debug(f"移除条件失败: {e}")
+            logger.debug("移除条件失败: %s", e)
 
     def _on_clear_filters(self):
         """清除所有筛选条件"""
@@ -239,7 +239,7 @@ class GlobalFilterPanel(QWidget):
                 if isinstance(widget, FilterConditionWidget):
                     widget.set_available_columns(self._columns)
         except Exception as e:
-            logger.debug(f"更新筛选列失败: {e}")
+            logger.debug("更新筛选列失败: %s", e)
 
     def get_conditions(self) -> List[FilterCondition]:
         """获取当前所有条件（从UI更新）"""

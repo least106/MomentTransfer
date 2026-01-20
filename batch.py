@@ -300,7 +300,7 @@ def process_df_chunk(
         moments = moments_df.fillna(0.0).to_numpy(dtype=float)
         data_df = chunk_df.reset_index(drop=True)
 
-    logger.info(f"  执行坐标变换... 行数={len(forces)}")
+    logger.info("  执行坐标变换... 行数=%d", len(forces))
     results = calculator.process_batch(forces, moments)
 
     # 使用向量化方式构建输出 DataFrame，避免逐列赋值
@@ -656,7 +656,7 @@ def process_single_file(
                 f"为文件 {file_path.name} 创建独立计算器: source={actual_source}, target={actual_target}"
             )
         except Exception as e:
-            logger.error(f"为文件 {file_path.name} 创建计算器失败: {e}")
+            logger.error("为文件 %s 创建计算器失败: %s", file_path.name, e)
             raise
 
     # 特殊格式路径：直接用专用解析器处理并按 part 输出
@@ -697,7 +697,7 @@ def process_single_file(
     if selected_rows is not None and len(selected_rows) > 0:
         selected_rows_sorted = sorted(int(x) for x in set(selected_rows))
         df = df.iloc[selected_rows_sorted].reset_index(drop=True)
-        logger.debug(f"按行选择过滤: {len(selected_rows_sorted)} 行")
+        logger.debug("按行选择过滤: %d 行", len(selected_rows_sorted))
 
     out_path = generate_output_path(file_path, output_dir, config)
     temp_fd, temp_name = tempfile.mkstemp(
@@ -785,7 +785,7 @@ def process_single_file(
         logger.info(
             f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行"
         )
-        logger.info(f"结果文件: {out_path}")
+        logger.info("结果文件: %s", out_path)
         return True
 
     except Exception as e:
@@ -798,7 +798,7 @@ def process_single_file(
             partial_flag.write_text(f"error: {str(e)}\n{traceback.format_exc()}")
         except Exception:
             pass
-        logger.error(f"  ✗ 处理失败: {str(e)}", exc_info=True)
+        logger.error("  ✗ 处理失败: %s", str(e), exc_info=True)
         return False
 
 
@@ -1295,7 +1295,7 @@ def main(**cli_options):
     # 并行处理支持：若 workers>1，则使用 ProcessPoolExecutor
     try:
         if workers > 1:
-            logger.info(f"并行处理模式: workers={workers}")
+            logger.info("并行处理模式: workers=%d", workers)
             # 构造文件列表
             input_path_obj = Path(input_path)
             files_to_process = []
@@ -1469,7 +1469,7 @@ def main(**cli_options):
                     )
                 )
 
-            logger.info(f"并行处理完成: 成功 {success_count}/{len(files_to_process)}")
+            logger.info("并行处理完成: 成功 %d/%d", success_count, len(files_to_process))
             sys.exit(0 if success_count == len(files_to_process) else 1)
 
         else:

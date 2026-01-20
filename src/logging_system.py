@@ -109,25 +109,25 @@ class StructuredLogger:
 
         return context_data
 
-    def info(self, message: str, **kwargs):
-        """记录信息级别日志"""
+    def info(self, message: str, *args, **kwargs):
+        """记录信息级别日志（支持懒格式化参数）"""
         extra = self._add_context(kwargs)
-        self.logger.info(message, extra=extra)
+        self.logger.info(message, *args, extra=extra)
 
-    def warning(self, message: str, **kwargs):
-        """记录警告级别日志"""
+    def warning(self, message: str, *args, **kwargs):
+        """记录警告级别日志（支持懒格式化参数）"""
         extra = self._add_context(kwargs)
-        self.logger.warning(message, extra=extra)
+        self.logger.warning(message, *args, extra=extra)
 
-    def error(self, message: str, **kwargs):
-        """记录错误级别日志"""
+    def error(self, message: str, *args, **kwargs):
+        """记录错误级别日志（支持懒格式化参数）"""
         extra = self._add_context(kwargs)
-        self.logger.error(message, extra=extra)
+        self.logger.error(message, *args, extra=extra)
 
-    def debug(self, message: str, **kwargs):
-        """记录调试级别日志"""
+    def debug(self, message: str, *args, **kwargs):
+        """记录调试级别日志（支持懒格式化参数）"""
         extra = self._add_context(kwargs)
-        self.logger.debug(message, extra=extra)
+        self.logger.debug(message, *args, extra=extra)
 
     def log_operation(self, operation: str, success: bool, **details):
         """记录操作结果"""
@@ -201,13 +201,14 @@ def log_operation_context(operation: str, context_id: str, **metadata):
     """上下文管理器 - 追踪操作执行"""
     with LogContext(context_id, operation, **metadata) as ctx:
         logger = LoggerFactory.get_logger(__name__)
-        logger.info(f"开始操作: {operation}", context=ctx.to_dict())
+        logger.info("开始操作: %s", operation, context=ctx.to_dict())
         try:
             yield logger
-            logger.info(f"完成操作: {operation}", context=ctx.to_dict())
+            logger.info("完成操作: %s", operation, context=ctx.to_dict())
         except Exception as e:
             logger.error(
-                f"操作失败: {operation}",
+                "操作失败: %s",
+                operation,
                 exception=str(e),
                 context=ctx.to_dict(),
             )

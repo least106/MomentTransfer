@@ -1,5 +1,4 @@
 import hashlib
-from pathlib import Path
 
 from src.file_cache import FileCache, get_file_cache, get_file_hash
 

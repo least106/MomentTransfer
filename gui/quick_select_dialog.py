@@ -470,13 +470,44 @@ class QuickSelectDialog(QDialog):
                 if key is None:
                     continue
                 fp_str, part = key
-                # 优先使用显式保存的状态
+                # 优先使用显式保存的状态，但如果 GUI 上存在实时的行选中集合
+                # 则以 GUI 的实时选择为准（避免主界面变更后快速选择仍使用过时的保存状态）
                 cur = state.get(str(key))
-                if cur is not None:
+                # 检查 GUI 上是否有实时的选中信息
+                try:
+                    live_checked = None
+                    if part is None:
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
+                        sel = by_file.get(str(fp_str))
+                        if sel is not None:
+                            live_checked = True
+                    else:
+                        by_file = (
+                            getattr(self.gui, "special_part_row_selection_by_file", {})
+                            or {}
+                        )
+                        by_part = by_file.get(str(fp_str), {}) if by_file else None
+                        sel = None
+                        if by_part:
+                            sel = by_part.get(str(part))
+                        if sel is not None:
+                            live_checked = True
+                except Exception:
+                    live_checked = None
+
+                if cur is not None and live_checked is None:
+                    # 没有实时信息时使用保存的状态
                     if cur.get("checked"):
                         it.setCheckState(0, Qt.Checked)
                     else:
                         it.setCheckState(0, Qt.Unchecked)
+                    continue
+                # 如果存在实时信息（由主界面或其他操作更新），优先使用实时信息
+                if live_checked:
+                    it.setCheckState(0, Qt.Checked)
+                    # 不 continue，让后续逻辑用实时选择构建 rows_text
                     continue
                 # 否则尝试从 gui 的表格选中集合同步
                 try:

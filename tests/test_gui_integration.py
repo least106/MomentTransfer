@@ -10,7 +10,7 @@ from src.cli_helpers import load_project_calculator
 
 def test_gui_background_thread_processing(tmp_path, qtbot=None):
     # 创建 QApplication（若测试运行环境中尚未创建）
-    _app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
 
     # 使用项目自带的配置加载计算器
     project_data, calculator = load_project_calculator(

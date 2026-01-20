@@ -176,9 +176,9 @@ class CoordinateSystemPanel(QGroupBox):
                         side, self.get_part_name()
                     )
                 )
-                logger.debug(f"{side} 面板按钮已连接到 SignalBus")
+                logger.debug("%s 面板按钮已连接到 SignalBus", side)
         except Exception as e:
-            logger.warning(f"连接面板按钮到请求信号失败: {e}", exc_info=True)
+            logger.warning("连接面板按钮到请求信号失败: %s", e, exc_info=True)
 
     def _create_input(self, default_text: str) -> QLineEdit:
         """创建紧凑型输入框"""
@@ -317,11 +317,11 @@ class CoordinateSystemPanel(QGroupBox):
     def apply_variant_payload(self, payload: dict):
         """将 Variant 字典数据填充到面板。"""
         if not payload:
-            logger.debug(f"{self.prefix} apply_variant_payload: payload 为空")
+            logger.debug("%s apply_variant_payload: payload 为空", self.prefix)
             return
 
         part_name = payload.get("PartName") or "Part"
-        logger.debug(f"{self.prefix} apply_variant_payload: PartName={part_name}")
+        logger.debug("%s apply_variant_payload: PartName=%s", self.prefix, part_name)
         try:
             self.part_name_input.blockSignals(True)
             self.part_name_input.setText(str(part_name))
@@ -342,7 +342,7 @@ class CoordinateSystemPanel(QGroupBox):
             "Z": cs.get("Z", [0.0, 0.0, 1.0]),
             "MomentCenter": mc if mc is not None else [0.0, 0.0, 0.0],
         }
-        logger.debug(f"{self.prefix} apply_variant_payload: coord_data={coord_data}")
+        logger.debug("%s apply_variant_payload: coord_data=%s", self.prefix, coord_data)
         self.set_coord_data(coord_data)
 
         cref = payload.get("Cref", payload.get("C_ref", 1.0))
@@ -427,9 +427,9 @@ class CoordinateSystemPanel(QGroupBox):
                 self.part_selector.blockSignals(True)
                 self.part_selector.addItem(part_name)
                 self.part_selector.blockSignals(False)
-                logger.debug(f"{self.prefix} Part选择器已添加项目: {part_name}")
+                logger.debug("%s Part选择器已添加项目: %s", self.prefix, part_name)
         except Exception as e:
-            logger.warning(f"Part添加事件处理失败: {e}", exc_info=True)
+            logger.warning("Part添加事件处理失败: %s", e, exc_info=True)
 
     def _on_part_removed(self, side: str, part_name: str):
         """SignalBus 事件：Part 被移除时更新选择器列表"""
@@ -448,6 +448,6 @@ class CoordinateSystemPanel(QGroupBox):
                 self.part_selector.blockSignals(True)
                 self.part_selector.removeItem(idx)
                 self.part_selector.blockSignals(False)
-                logger.debug(f"{self.prefix} Part选择器已移除项目: {part_name}")
+                logger.debug("%s Part选择器已移除项目: %s", self.prefix, part_name)
         except Exception as e:
-            logger.warning(f"Part移除事件处理失败: {e}", exc_info=True)
+            logger.warning("Part移除事件处理失败: %s", e, exc_info=True)

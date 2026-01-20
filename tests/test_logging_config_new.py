@@ -9,7 +9,7 @@ def test_configure_logging_stream(capsys):
     assert log.propagate is False
     assert any(isinstance(h, logging.StreamHandler) for h in log.handlers)
     # 再次调用不会重复添加 handlers
-    n_handlers = len(log.handlers)
+    len(log.handlers)
     log2 = configure_logging(None, True)
     assert len(log2.handlers) == 1
 
