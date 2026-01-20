@@ -1092,66 +1092,10 @@ class BatchManager:
             dir_items = {}
 
             for fp in files:
-                # 计算相对路径
                 try:
-                    rel_path = fp.relative_to(base_path)
-                except ValueError:
-                    # 如果文件不在base_path下，直接显示完整路径
-                    rel_path = fp
-
-                # 构建父目录节点
-                parts = rel_path.parts[:-1]  # 不包括文件名
-                parent_item = None
-                current_path = Path()
-
-                for part in parts:
-                    current_path = current_path / part
-                    if current_path not in dir_items:
-                        # 创建目录节点
-                        dir_item = QTreeWidgetItem([str(part), ""])
-                        dir_item.setData(0, Qt.UserRole, None)  # 目录节点不存储路径
-
-                        if parent_item is None:
-                            self.gui.file_tree.addTopLevelItem(dir_item)
-                        else:
-                            parent_item.addChild(dir_item)
-
-                        dir_items[current_path] = dir_item
-                        parent_item = dir_item
-                    else:
-                        parent_item = dir_items[current_path]
-
-                # 创建文件节点
-                file_item = QTreeWidgetItem([rel_path.name, ""])
-                file_item.setCheckState(0, Qt.Checked)  # 默认选中
-                file_item.setData(0, Qt.UserRole, str(fp))  # 存储完整路径
-
-                # 单文件模式下：仅禁用复选框，防止用户取消选中，但不灰显整行
-                try:
-                    if p.is_file():
-                        # 确保复选框保持选中
-                        file_item.setCheckState(0, Qt.Checked)
-                        # 移除用户交互修改复选框的标志，但保留项可见和可选中
-                        flags = file_item.flags()
-                        file_item.setFlags(flags & ~Qt.ItemIsUserCheckable)
-                        # 添加提示说明
-                        try:
-                            file_item.setToolTip(0, "单文件模式，无法修改选择状态")
-                        except Exception:
-                            pass
+                    self._add_file_tree_entry(base_path, dir_items, fp, p.is_file())
                 except Exception:
-                    pass
-
-                # 验证配置：检查target name是否存在
-                status_text = self._validate_file_config(fp)
-                file_item.setText(1, status_text)
-
-                if parent_item is None:
-                    self.gui.file_tree.addTopLevelItem(file_item)
-                else:
-                    parent_item.addChild(file_item)
-
-                self.gui._file_tree_items[str(fp)] = file_item
+                    logger.debug("添加文件树项失败（外层）", exc_info=True)
 
             # 展开所有节点
             self.gui.file_tree.expandAll()
@@ -1434,6 +1378,62 @@ class BatchManager:
                 pass
         except Exception:
             logger.debug("设置控件启用/样式失败", exc_info=True)
+
+    def _add_file_tree_entry(
+        self, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
+    ) -> None:
+        """将单个文件添加到文件树，包含目录节点构建与状态校验。"""
+        try:
+            try:
+                rel_path = fp.relative_to(base_path)
+            except ValueError:
+                rel_path = fp
+
+            parts = rel_path.parts[:-1]
+            parent_item = None
+            current_path = Path()
+
+            for part in parts:
+                current_path = current_path / part
+                if current_path not in dir_items:
+                    dir_item = QTreeWidgetItem([str(part), ""])
+                    dir_item.setData(0, Qt.UserRole, None)
+                    if parent_item is None:
+                        self.gui.file_tree.addTopLevelItem(dir_item)
+                    else:
+                        parent_item.addChild(dir_item)
+                    dir_items[current_path] = dir_item
+                    parent_item = dir_item
+                else:
+                    parent_item = dir_items[current_path]
+
+            file_item = QTreeWidgetItem([rel_path.name, ""])
+            file_item.setCheckState(0, Qt.Checked)
+            file_item.setData(0, Qt.UserRole, str(fp))
+
+            if single_file_mode:
+                try:
+                    file_item.setCheckState(0, Qt.Checked)
+                    flags = file_item.flags()
+                    file_item.setFlags(flags & ~Qt.ItemIsUserCheckable)
+                    try:
+                        file_item.setToolTip(0, "单文件模式，无法修改选择状态")
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+            status_text = self._validate_file_config(fp)
+            file_item.setText(1, status_text)
+
+            if parent_item is None:
+                self.gui.file_tree.addTopLevelItem(file_item)
+            else:
+                parent_item.addChild(file_item)
+
+            self.gui._file_tree_items[str(fp)] = file_item
+        except Exception:
+            logger.debug("添加文件树项失败", exc_info=True)
 
     def _ensure_file_part_selection_storage(self, file_path: Path) -> dict:
         """确保常规文件的 source/target 选择缓存存在。"""
