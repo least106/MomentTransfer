@@ -209,7 +209,6 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             pass
 
-
     def browse_batch_input(self):
         """选择输入文件或目录 - 委托给 BatchManager"""
         try:

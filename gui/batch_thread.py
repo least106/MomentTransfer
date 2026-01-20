@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import QThread, Signal
+import os
+import uuid
 
 from src.special_format_parser import (
     looks_like_special_format,
@@ -118,7 +120,6 @@ class BatchProcessThread(QThread):
             except Exception:
                 row_selection = None
 
-            outputs, report = process_special_format_file(
             # 在调用可能耗时的特殊格式解析前检查停止请求
             if self._stop_requested:
                 raise RuntimeError("处理已被请求停止")
@@ -198,7 +199,9 @@ class BatchProcessThread(QThread):
         if file_path.suffix.lower() == ".csv":
             # 按列名读取 CSV（要求有表头）
             try:
-                df = pd.read_csv(file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0)))
+                df = pd.read_csv(
+                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
+                )
                 logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
                 try:
                     self.log_message.emit(
@@ -215,7 +218,9 @@ class BatchProcessThread(QThread):
         else:
             # Excel 文件也按列名读取
             try:
-                df = pd.read_excel(file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0)))
+                df = pd.read_excel(
+                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
+                )
             except Exception as e:
                 try:
                     self.log_message.emit(f"Excel 读取失败: {file_path.name} -> {e}")
@@ -249,7 +254,9 @@ class BatchProcessThread(QThread):
         has_dimensional = all(
             k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"]
         )
-        coeff_normal_key = "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
+        coeff_normal_key = (
+            "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
+        )
         has_coeff = coeff_normal_key is not None and all(
             k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"]
         )
@@ -399,7 +406,7 @@ class BatchProcessThread(QThread):
         output_df["Mx_new"] = results["moment_transformed"][:, 0]
         output_df["My_new"] = results["moment_transformed"][:, 1]
         output_df["Mz_new"] = results["moment_transformed"][:, 2]
-        
+
         # 输出变换后的无量纲系数
         output_df["Cx"] = results["coeff_force"][:, 0]
         output_df["Cy"] = results["coeff_force"][:, 1]
@@ -411,7 +418,9 @@ class BatchProcessThread(QThread):
         # 生成更高分辨率且具唯一性的文件名，减少同名冲突
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         unique = uuid.uuid4().hex[:8]
-        output_file = self.output_dir / f"{file_path.stem}_result_{timestamp}_{unique}.csv"
+        output_file = (
+            self.output_dir / f"{file_path.stem}_result_{timestamp}_{unique}.csv"
+        )
 
         # 确保输出目录存在
         try:
@@ -451,7 +460,9 @@ class BatchProcessThread(QThread):
                         try:
                             fn()
                         except Exception:
-                            logger.debug("调用计算器取消接口 %s 失败", name, exc_info=True)
+                            logger.debug(
+                                "调用计算器取消接口 %s 失败", name, exc_info=True
+                            )
         except Exception:
             logger.debug("请求停止时尝试取消计算器失败", exc_info=True)
 

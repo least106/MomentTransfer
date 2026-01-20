@@ -278,7 +278,9 @@ class QuickSelectDialog(QDialog):
                     if part is None:
                         df = self.batch._get_table_df_preview(fp, max_rows=200)
                         row_count = len(df) if df is not None else 0
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
                         by_file[str(fp)] = set(range(row_count))
                         try:
                             self.gui.table_row_selection_by_file = by_file
@@ -295,7 +297,10 @@ class QuickSelectDialog(QDialog):
                         data = self.batch._get_special_data_dict(fp)
                         df = (data or {}).get(str(part))
                         row_count = len(df) if df is not None else 0
-                        by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "special_part_row_selection_by_file", {})
+                            or {}
+                        )
                         by_part = by_file.setdefault(str(fp), {})
                         by_part[str(part)] = set(range(row_count))
                         try:
@@ -337,7 +342,10 @@ class QuickSelectDialog(QDialog):
                     data = self.batch._get_special_data_dict(fp)
                     df = (data or {}).get(str(part))
                     row_count = len(df) if df is not None else (max(rows) + 1)
-                    by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                    by_file = (
+                        getattr(self.gui, "special_part_row_selection_by_file", {})
+                        or {}
+                    )
                     by_part = by_file.setdefault(str(fp), {})
                     sel = by_part.get(str(part))
                     if sel is None:
@@ -442,24 +450,34 @@ class QuickSelectDialog(QDialog):
                 # 否则尝试从 gui 的表格选中集合同步
                 try:
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
                         sel = by_file.get(str(fp_str))
                         if sel is not None:
                             it.setCheckState(0, Qt.Checked)
                             # 计算跳过行文本（全量减去选中）
-                            df = self.batch._get_table_df_preview(Path(fp_str), max_rows=200)
+                            df = self.batch._get_table_df_preview(
+                                Path(fp_str), max_rows=200
+                            )
                             row_count = len(df) if df is not None else 0
                             skipped = []
                             for r in range(row_count):
                                 if r not in sel:
-                                    skipped.append(str(r+1))
+                                    skipped.append(str(r + 1))
                             # 保存到临时 state（在 entries构建后恢复到输入框）
                             if skipped:
-                                state[str(key)] = {"checked": True, "rows_text": ",".join(skipped)}
+                                state[str(key)] = {
+                                    "checked": True,
+                                    "rows_text": ",".join(skipped),
+                                }
                             else:
                                 state[str(key)] = {"checked": True, "rows_text": ""}
                     else:
-                        by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "special_part_row_selection_by_file", {})
+                            or {}
+                        )
                         by_part = by_file.get(str(fp_str), {}) if by_file else None
                         sel = None
                         if by_part:
@@ -472,9 +490,12 @@ class QuickSelectDialog(QDialog):
                             skipped = []
                             for r in range(row_count):
                                 if r not in sel:
-                                    skipped.append(str(r+1))
+                                    skipped.append(str(r + 1))
                             if skipped:
-                                state[str(key)] = {"checked": True, "rows_text": ",".join(skipped)}
+                                state[str(key)] = {
+                                    "checked": True,
+                                    "rows_text": ",".join(skipped),
+                                }
                             else:
                                 state[str(key)] = {"checked": True, "rows_text": ""}
                 except Exception:
@@ -514,12 +535,19 @@ class QuickSelectDialog(QDialog):
                 fp_str, part = key
                 try:
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
                         if str(fp_str) in by_file:
                             it.setCheckState(0, Qt.Checked)
                     else:
-                        by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
-                        if str(fp_str) in by_file and str(part) in (by_file.get(str(fp_str)) or {}):
+                        by_file = (
+                            getattr(self.gui, "special_part_row_selection_by_file", {})
+                            or {}
+                        )
+                        if str(fp_str) in by_file and str(part) in (
+                            by_file.get(str(fp_str)) or {}
+                        ):
                             it.setCheckState(0, Qt.Checked)
                 except Exception:
                     pass

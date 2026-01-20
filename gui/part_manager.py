@@ -60,7 +60,9 @@ class PartManager:
     def _get_variants(self, part_name: str, is_source: bool):
         """优先从 ProjectConfigModel 读取变体，缺失时回退到 legacy ProjectData。"""
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(self.gui.model_manager, "_get_variants"):
+            if hasattr(self.gui, "model_manager") and hasattr(
+                self.gui.model_manager, "_get_variants"
+            ):
                 return self.gui.model_manager._get_variants(part_name, is_source)
         except Exception:
             logger.debug("delegated _get_variants failed", exc_info=True)
@@ -98,7 +100,9 @@ class PartManager:
         - legacy：src.data_loader.FrameConfiguration
         """
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(self.gui.model_manager, "_read_variant_fields"):
+            if hasattr(self.gui, "model_manager") and hasattr(
+                self.gui.model_manager, "_read_variant_fields"
+            ):
                 return self.gui.model_manager._read_variant_fields(variant)
         except Exception:
             logger.debug("delegated _read_variant_fields failed", exc_info=True)
@@ -172,7 +176,9 @@ class PartManager:
                 return
 
             parts = (
-                mm.project_model.source_parts if is_source else mm.project_model.target_parts
+                mm.project_model.source_parts
+                if is_source
+                else mm.project_model.target_parts
             )
             selector = None
             try:
@@ -212,10 +218,10 @@ class PartManager:
             parts[new_name] = part_obj
 
             if is_source:
-                if hasattr(self.gui, 'source_panel'):
+                if hasattr(self.gui, "source_panel"):
                     self.gui.source_panel._current_part_name = new_name
             else:
-                if hasattr(self.gui, 'target_panel'):
+                if hasattr(self.gui, "target_panel"):
                     self.gui.target_panel._current_part_name = new_name
 
             if selector:
@@ -376,7 +382,9 @@ class PartManager:
     def on_source_part_changed(self):
         """Source Part 选择变化时的处理"""
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(self.gui.model_manager, "on_source_part_changed"):
+            if hasattr(self.gui, "model_manager") and hasattr(
+                self.gui.model_manager, "on_source_part_changed"
+            ):
                 return self.gui.model_manager.on_source_part_changed()
             from gui.managers import ModelManager
 
@@ -388,7 +396,9 @@ class PartManager:
     def on_target_part_changed(self):
         """Target Part 选择变化时的处理"""
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(self.gui.model_manager, "on_target_part_changed"):
+            if hasattr(self.gui, "model_manager") and hasattr(
+                self.gui.model_manager, "on_target_part_changed"
+            ):
                 return self.gui.model_manager.on_target_part_changed()
             from gui.managers import ModelManager
 

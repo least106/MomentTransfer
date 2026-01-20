@@ -2037,6 +2037,7 @@ class BatchManager:
 
     def scan_and_populate_files(self, chosen_path: Path):
         return self._scan_and_populate_files(chosen_path)
+
     # refresh_format_labels 已移除
 
     def _get_active_special_part_context(self):

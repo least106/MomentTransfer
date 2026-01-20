@@ -2,6 +2,7 @@
 
 设计原则：最小侵入、向后兼容。当前实现提供轻量包装，未来可逐步迁移逻辑。
 """
+
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -25,7 +26,9 @@ class FileSelectionManager:
         # 常规文件的行选择：{str(file): set(row_idx)} or None
         self.table_row_selection_by_file: Dict[str, Optional[set]] = {}
 
-    def ensure_special_row_selection_storage(self, file_path: Path, part_names: list) -> dict:
+    def ensure_special_row_selection_storage(
+        self, file_path: Path, part_names: list
+    ) -> dict:
         """确保行选择缓存存在，并为未初始化的 part 默认全选。
 
         返回 by_part dict（可被调用方修改）。
@@ -102,8 +105,12 @@ class ModelManager:
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
-                pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
-                self.parent.project_model.source_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
+                pm_variant = PMVariant(
+                    part_name=part_name, coord_system=cs_model, refs=refs_model
+                )
+                self.parent.project_model.source_parts[part_name] = PMPart(
+                    part_name=part_name, variants=[pm_variant]
+                )
                 self.project_model = self.parent.project_model
         except Exception:
             pass
@@ -124,8 +131,12 @@ class ModelManager:
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
-                pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
-                self.parent.project_model.target_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
+                pm_variant = PMVariant(
+                    part_name=part_name, coord_system=cs_model, refs=refs_model
+                )
+                self.parent.project_model.target_parts[part_name] = PMPart(
+                    part_name=part_name, variants=[pm_variant]
+                )
                 self.project_model = self.parent.project_model
         except Exception:
             pass
@@ -250,7 +261,9 @@ class ModelManager:
                 selector = None
 
             try:
-                panel = self.parent.source_panel if is_source else self.parent.target_panel
+                panel = (
+                    self.parent.source_panel if is_source else self.parent.target_panel
+                )
                 current_name = getattr(panel, "_current_part_name", None)
                 if not current_name and selector:
                     current_name = selector.currentText()
@@ -277,10 +290,10 @@ class ModelManager:
             parts[new_name] = part_obj
 
             if is_source:
-                if hasattr(self.parent, 'source_panel'):
+                if hasattr(self.parent, "source_panel"):
                     self.parent.source_panel._current_part_name = new_name
             else:
-                if hasattr(self.parent, 'target_panel'):
+                if hasattr(self.parent, "target_panel"):
                     self.parent.target_panel._current_part_name = new_name
 
             if selector:
@@ -324,8 +337,10 @@ class ModelManager:
             from src.models.project_model import PartVariant as PMVariant
 
             variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
-            self.parent.project_model.source_parts[name] = PMPart(part_name=name, variants=[variant])
-            if hasattr(self.parent, 'source_panel'):
+            self.parent.project_model.source_parts[name] = PMPart(
+                part_name=name, variants=[variant]
+            )
+            if hasattr(self.parent, "source_panel"):
                 self.parent.source_panel._current_part_name = name
 
             try:
@@ -335,7 +350,9 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(self.parent, "成功", f'Source Part "{name}" 已添加')
+                QMessageBox.information(
+                    self.parent, "成功", f'Source Part "{name}" 已添加'
+                )
             except Exception:
                 pass
         except Exception as e:
@@ -378,7 +395,9 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(self.parent, "成功", f'Source Part "{name}" 已删除')
+                QMessageBox.information(
+                    self.parent, "成功", f'Source Part "{name}" 已删除'
+                )
             except Exception:
                 pass
         except Exception as e:
@@ -412,12 +431,16 @@ class ModelManager:
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
-                variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
+                variant = PMVariant(
+                    part_name=name, coord_system=cs_model, refs=refs_model
+                )
             except Exception:
                 logger.debug("读取 Target 面板强类型数据失败", exc_info=True)
                 raise
-            self.parent.project_model.target_parts[name] = PMPart(part_name=name, variants=[variant])
-            if hasattr(self.parent, 'target_panel'):
+            self.parent.project_model.target_parts[name] = PMPart(
+                part_name=name, variants=[variant]
+            )
+            if hasattr(self.parent, "target_panel"):
                 self.parent.target_panel._current_part_name = name
             try:
                 self.parent.signal_bus.partAdded.emit("Target", name)
@@ -426,7 +449,9 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(self.parent, "成功", f'Target Part "{name}" 已添加')
+                QMessageBox.information(
+                    self.parent, "成功", f'Target Part "{name}" 已添加'
+                )
             except Exception:
                 pass
         except Exception as e:
@@ -472,7 +497,9 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(self.parent, "成功", f'Target Part "{name}" 已删除')
+                QMessageBox.information(
+                    self.parent, "成功", f'Target Part "{name}" 已删除'
+                )
             except Exception:
                 pass
         except Exception as e:
@@ -501,7 +528,9 @@ class ModelManager:
             if idx < 0 or idx >= len(variants):
                 idx = 0
             frame = variants[idx]
-            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
+            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = (
+                self._read_variant_fields(frame)
+            )
             if cs is None:
                 return
             try:
@@ -543,7 +572,9 @@ class ModelManager:
             if idx < 0 or idx >= len(variants):
                 idx = 0
             frame = variants[idx]
-            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
+            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = (
+                self._read_variant_fields(frame)
+            )
             if cs is None:
                 return
             try:
@@ -589,8 +620,12 @@ class ModelManager:
             logger.debug(f"找到 {len(variants) if variants else 0} 个变体")
             if variants:
                 variant = variants[0]
-                _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
-                logger.debug(f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}")
+                _, cs, mc, cref_val, bref_val, sref_val, q_val = (
+                    self._read_variant_fields(variant)
+                )
+                logger.debug(
+                    f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}"
+                )
                 payload = {
                     "PartName": part_name,
                     "CoordSystem": {
@@ -610,7 +645,7 @@ class ModelManager:
                 logger.debug("payload 已应用")
             else:
                 logger.warning(f"未找到 Part '{part_name}' 的变体")
-            if hasattr(self.parent, 'source_panel'):
+            if hasattr(self.parent, "source_panel"):
                 self.parent.source_panel._current_part_name = part_name
             logger.debug("=== on_source_part_changed 完成 ===")
         except Exception as e:
@@ -637,8 +672,12 @@ class ModelManager:
             logger.debug(f"找到 {len(variants) if variants else 0} 个变体")
             if variants:
                 variant = variants[0]
-                _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
-                logger.debug(f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}")
+                _, cs, mc, cref_val, bref_val, sref_val, q_val = (
+                    self._read_variant_fields(variant)
+                )
+                logger.debug(
+                    f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}"
+                )
                 payload = {
                     "PartName": part_name,
                     "CoordSystem": {
@@ -658,7 +697,7 @@ class ModelManager:
                 logger.debug("payload 已应用")
             else:
                 logger.warning(f"未找到 Part '{part_name}' 的变体")
-            if hasattr(self.parent, 'target_panel'):
+            if hasattr(self.parent, "target_panel"):
                 self.parent.target_panel._current_part_name = part_name
             logger.debug("=== on_target_part_changed 完成 ===")
         except Exception as e:
