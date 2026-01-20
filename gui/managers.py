@@ -2,8 +2,8 @@
 
 设计原则：最小侵入、向后兼容。当前实现提供轻量包装，未来可逐步迁移逻辑。
 """
-from typing import Dict, Optional
 from pathlib import Path
+from typing import Dict, Optional
 
 from PySide6.QtWidgets import QWidget
 
@@ -99,7 +99,8 @@ class ModelManager:
                 # 使用面板提供的强类型模型接口
                 cs_model = self.parent.source_panel.get_coordinate_system_model()
                 refs_model = self.parent.source_panel.get_reference_values_model()
-                from src.models.project_model import Part as PMPart, PartVariant as PMVariant
+                from src.models.project_model import Part as PMPart
+                from src.models.project_model import PartVariant as PMVariant
 
                 pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
                 self.parent.project_model.source_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
@@ -120,7 +121,8 @@ class ModelManager:
             if hasattr(self.parent, "target_panel"):
                 cs_model = self.parent.target_panel.get_coordinate_system_model()
                 refs_model = self.parent.target_panel.get_reference_values_model()
-                from src.models.project_model import Part as PMPart, PartVariant as PMVariant
+                from src.models.project_model import Part as PMPart
+                from src.models.project_model import PartVariant as PMVariant
 
                 pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
                 self.parent.project_model.target_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
@@ -318,7 +320,8 @@ class ModelManager:
                 refs_model = None
             if cs_model is None or refs_model is None:
                 raise ValueError("无法从 Source 面板读取强类型数据")
-            from src.models.project_model import Part as PMPart, PartVariant as PMVariant
+            from src.models.project_model import Part as PMPart
+            from src.models.project_model import PartVariant as PMVariant
 
             variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
             self.parent.project_model.source_parts[name] = PMPart(part_name=name, variants=[variant])
@@ -406,7 +409,8 @@ class ModelManager:
             try:
                 cs_model = self.parent.target_panel.get_coordinate_system_model()
                 refs_model = self.parent.target_panel.get_reference_values_model()
-                from src.models.project_model import Part as PMPart, PartVariant as PMVariant
+                from src.models.project_model import Part as PMPart
+                from src.models.project_model import PartVariant as PMVariant
 
                 variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
             except Exception:

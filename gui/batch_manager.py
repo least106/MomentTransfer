@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
 )
+
 # 已移除未使用的 get_format_for_file 导入
 from src.special_format_detector import looks_like_special_format
 from src.special_format_parser import get_part_names, parse_special_format_file

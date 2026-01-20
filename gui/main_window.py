@@ -19,11 +19,11 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QSplitter
 
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
-from gui.managers import FileSelectionManager, ModelManager, UIStateManager
 
 # 从模块化包导入组件
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
 from gui.log_manager import LoggingManager
+from gui.managers import FileSelectionManager, ModelManager, UIStateManager
 
 # 导入面板组件
 from gui.panels import ConfigPanel, OperationPanel

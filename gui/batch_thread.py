@@ -89,6 +89,8 @@ class BatchProcessThread(QThread):
 
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""
+        if self._stop_requested:
+            raise RuntimeError("处理已被请求停止")
         # 特殊格式分支：解析多 part 并按 target part 输出
         if self.project_data is not None and looks_like_special_format(file_path):
             overwrite_flag = False
@@ -115,6 +117,11 @@ class BatchProcessThread(QThread):
                 )
             except Exception:
                 row_selection = None
+
+            outputs, report = process_special_format_file(
+            # 在调用可能耗时的特殊格式解析前检查停止请求
+            if self._stop_requested:
+                raise RuntimeError("处理已被请求停止")
 
             outputs, report = process_special_format_file(
                 Path(file_path),
@@ -175,6 +182,9 @@ class BatchProcessThread(QThread):
                 return outputs
 
         try:
+            if self._stop_requested:
+                raise RuntimeError("处理已被请求停止")
+
             cfg_to_use = self._resolve_cfg_for_file(Path(file_path))
         except Exception as e:
             try:
@@ -212,6 +222,10 @@ class BatchProcessThread(QThread):
                 except Exception:
                     pass
                 raise
+
+        # 读取后检查是否需要停止
+        if self._stop_requested:
+            raise RuntimeError("处理已被请求停止")
 
         # 若用户在文件列表选择了“处理哪些数据行”，则按选择过滤。
         # 注意：此时不再执行“自动表头检测/丢弃首行”，以保证索引与 GUI 预览一致。
@@ -367,6 +381,10 @@ class BatchProcessThread(QThread):
             forces_dimensional = forces_df.to_numpy(dtype=float)  # F = C * q * S
             moments_dimensional = moments_df.to_numpy(dtype=float)
 
+        # 在调用可能耗时的批量计算前检查停止请求
+        if self._stop_requested:
+            raise RuntimeError("处理已被请求停止")
+
         results = calc_to_use.process_batch(forces_dimensional, moments_dimensional)
         output_df = pd.DataFrame()
 
@@ -390,9 +408,33 @@ class BatchProcessThread(QThread):
         output_df["Cm"] = results["coeff_moment"][:, 1]
         output_df["Cn"] = results["coeff_moment"][:, 2]
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = self.output_dir / f"{file_path.stem}_result_{timestamp}.csv"
-        output_df.to_csv(output_file, index=False)
+        # 生成更高分辨率且具唯一性的文件名，减少同名冲突
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        unique = uuid.uuid4().hex[:8]
+        output_file = self.output_dir / f"{file_path.stem}_result_{timestamp}_{unique}.csv"
+
+        # 确保输出目录存在
+        try:
+            os.makedirs(self.output_dir, exist_ok=True)
+        except Exception:
+            pass
+
+        # 使用临时文件写入并通过原子替换完成最终写入（跨进程/线程更安全）
+        tmp_name = f".{output_file.name}.{uuid.uuid4().hex}.tmp"
+        tmp_path = output_file.parent / tmp_name
+        try:
+            # 若系统临时文件生成失败，直接 fallback 到常规写入
+            output_df.to_csv(tmp_path, index=False)
+            os.replace(tmp_path, output_file)
+        except Exception:
+            # 清理临时文件（若存在）并降级为直接写入
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            output_df.to_csv(output_file, index=False)
+
         return output_file
 
     def request_stop(self):
