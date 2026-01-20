@@ -989,7 +989,6 @@ def run_batch_processing(
         files_to_process = files
         output_dir = input_path
     else:
-        print(f"  [错误] 无效的输入路径: {input_path}")
         logger.error("  [错误] 无效的输入路径: %s", input_path)
 
     # 4. 验证
@@ -1096,23 +1095,33 @@ def run_batch_processing(
                     "avg_sec": round(avg_per_file or 0.0, 3),
                     "eta_sec": eta_seconds,
                 }
+                # 进度 JSON 写入 stdout 以便外部监控程序解析
                 print(json.dumps(prog, ensure_ascii=False))
                 sys.stdout.flush()
             except Exception:
                 try:
-                    print(
-                        f"[{files_done}/{len(files_to_process)}] {file_path.name} success={ok} elapsed={elapsed:.2f}s eta={eta_seconds}s"
+                    logger.info(
+                        "[%d/%d] %s success=%s elapsed=%.2fs eta=%ds",
+                        files_done,
+                        len(files_to_process),
+                        file_path.name,
+                        ok,
+                        elapsed,
+                        eta_seconds,
                     )
-                    sys.stdout.flush()
                 except Exception:
                     pass
 
     # 总结
-    print("\n" + "=" * 70)
-    print("批处理完成!")
-    print(f"  成功: {success_count}/{len(files_to_process)}")
-    print(f"  失败: {len(files_to_process) - success_count}/{len(files_to_process)}")
-    print("=" * 70)
+    logger.info("%s", "\n" + "=" * 70)
+    logger.info("批处理完成!")
+    logger.info("  成功: %d/%d", success_count, len(files_to_process))
+    logger.info(
+        "  失败: %d/%d",
+        len(files_to_process) - success_count,
+        len(files_to_process),
+    )
+    logger.info("%s", "=" * 70)
 
     # 写出 JSON 汇总（若请求）
     if output_json:
@@ -1398,12 +1407,17 @@ def main(**cli_options):
                                 print(json.dumps(prog, ensure_ascii=False))
                                 sys.stdout.flush()
                             except Exception:
-                                # 回退到简单文本输出
+                                # 回退到日志输出
                                 try:
-                                    print(
-                                        f"[{completed}/{total}] {file_str} success={ok} elapsed={elapsed:.2f}s eta={eta}s"
+                                    logger.info(
+                                        "[%d/%d] %s success=%s elapsed=%.2fs eta=%ds",
+                                        completed,
+                                        total,
+                                        file_str,
+                                        ok,
+                                        elapsed,
+                                        eta,
                                     )
-                                    sys.stdout.flush()
                                 except Exception:
                                     pass
                         else:
@@ -1421,6 +1435,7 @@ def main(**cli_options):
                                     )
                                     sys.stdout.flush()
                                 except Exception:
+                                    # 忽略无法写 stdout 的情况
                                     pass
 
                     except Exception:
@@ -1442,6 +1457,7 @@ def main(**cli_options):
                     logger.exception("写入 output_json 失败")
 
             if summary:
+                # summary 以 JSON 输出到 stdout 以便脚本化处理
                 print(
                     json.dumps(
                         {
