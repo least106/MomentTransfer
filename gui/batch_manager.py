@@ -1,11 +1,13 @@
 """批处理管理模块 - 处理批处理相关功能"""
 
 import fnmatch
+import math
 import logging
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -13,6 +15,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QComboBox,
+    QApplication,
 )
 
 # 已移除未使用的 get_format_for_file 导入
@@ -243,7 +249,7 @@ class BatchManager:
                     return ""
                 # pandas 可能返回 numpy 标量
                 fv = float(v)
-                if fv != fv:  # NaN
+                if math.isnan(fv):  # NaN
                     return ""
                 return f"{fv:.6g}"
             except Exception:
@@ -351,7 +357,7 @@ class BatchManager:
         - 否则回退为灰显不匹配行。
         """
         try:
-            from PySide6.QtGui import QColor
+            
 
             # 如果没有筛选条件，恢复所有行
             if not self._quick_filter_column or not self._quick_filter_value:
@@ -460,7 +466,7 @@ class BatchManager:
         - 否则回退为灰显不匹配行。
         """
         try:
-            from PySide6.QtGui import QColor
+            
 
             # 如果没有筛选条件，恢复所有行
             if not self._quick_filter_column or not self._quick_filter_value:
@@ -650,7 +656,7 @@ class BatchManager:
 
     def _populate_table_data_rows(self, file_item, file_path: Path, df) -> None:
         """为常规表格文件创建数据行预览表格（带勾选列）。"""
-        from PySide6.QtWidgets import QTreeWidgetItem
+        
 
         if df is None:
             return
@@ -737,7 +743,7 @@ class BatchManager:
         self, part_item, file_path: Path, source_part: str, df
     ) -> None:
         """为某个 part 节点创建数据行预览表格（带勾选列）。"""
-        from PySide6.QtWidgets import QTreeWidgetItem
+        
 
         fp_str = str(file_path)
         try:
@@ -932,7 +938,7 @@ class BatchManager:
             )
 
             # 允许切换目录模式
-            from PySide6.QtWidgets import QCheckBox
+            
 
             chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
             chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
@@ -979,8 +985,7 @@ class BatchManager:
 
     def _scan_and_populate_files(self, chosen_path: Path):
         """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。"""
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QTreeWidgetItem
+        
 
         try:
             p = Path(chosen_path)
@@ -993,26 +998,20 @@ class BatchManager:
                     hasattr(self.gui, "inp_pattern")
                     and self.gui.inp_pattern is not None
                 ):
-                    self.gui.inp_pattern.setEnabled(not is_file)
                     try:
-                        if is_file:
-                            # 仅调整文字颜色为灰，避免强制设置背景色导致在暗色主题下成为白底
-                            self.gui.inp_pattern.setStyleSheet("color: gray;")
-                        else:
-                            self.gui.inp_pattern.setStyleSheet("")
+                        self._set_control_enabled_with_style(
+                            self.gui.inp_pattern, not is_file
+                        )
                     except Exception:
                         pass
                 if (
                     hasattr(self.gui, "cmb_pattern_preset")
                     and self.gui.cmb_pattern_preset is not None
                 ):
-                    self.gui.cmb_pattern_preset.setEnabled(not is_file)
                     try:
-                        if is_file:
-                            # 仅调整文字颜色为灰，避免强制设置背景色导致在暗色主题下成为白底
-                            self.gui.cmb_pattern_preset.setStyleSheet("color: gray;")
-                        else:
-                            self.gui.cmb_pattern_preset.setStyleSheet("")
+                        self._set_control_enabled_with_style(
+                            self.gui.cmb_pattern_preset, not is_file
+                        )
                     except Exception:
                         pass
             except Exception:
@@ -1418,6 +1417,24 @@ class BatchManager:
             logger.debug("推测 part 失败", exc_info=True)
         return None
 
+    def _set_control_enabled_with_style(self, widget, enabled: bool) -> None:
+        """设置控件启用状态并在单文件模式下通过文字颜色灰显提示（安全包装）。"""
+        try:
+            if widget is None:
+                return
+            try:
+                widget.setEnabled(enabled)
+            except Exception:
+                # 个别自定义控件可能不支持 setEnabled
+                pass
+            try:
+                # 仅修改文字颜色，避免破坏暗色主题背景
+                widget.setStyleSheet("" if enabled else "color: gray;")
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("设置控件启用/样式失败", exc_info=True)
+
     def _ensure_file_part_selection_storage(self, file_path: Path) -> dict:
         """确保常规文件的 source/target 选择缓存存在。"""
         try:
@@ -1432,7 +1449,7 @@ class BatchManager:
 
     def _ensure_regular_file_selector_rows(self, file_item, file_path: Path) -> None:
         """为常规文件创建 source/target 选择行（树内联下拉）。"""
-        from PySide6.QtWidgets import QComboBox, QTreeWidgetItem
+        
 
         try:
             sel = self._ensure_file_part_selection_storage(file_path)
@@ -1650,7 +1667,7 @@ class BatchManager:
 
     def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
         """在文件节点下创建/刷新子节点：每个 source part 一行，右侧为 target 下拉。"""
-        from PySide6.QtWidgets import QComboBox, QTreeWidgetItem
+        
 
         try:
             mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", None)
@@ -1857,8 +1874,7 @@ class BatchManager:
                 if hasattr(self.gui, "file_tree") and hasattr(
                     self.gui, "_file_tree_items"
                 ):
-                    from PySide6.QtCore import Qt
-                    from PySide6.QtWidgets import QTreeWidgetItemIterator
+                    
 
                     iterator = QTreeWidgetItemIterator(self.gui.file_tree)
                     while iterator.value():
@@ -2071,7 +2087,7 @@ class BatchManager:
                 item = selected[0] if selected else None
             # 无论当前项情况如何，都尝试通过焦点反推一次（修复表格聚焦但树项未切换时无法识别的问题）
             try:
-                from PySide6.QtWidgets import QApplication
+                
 
                 fw = (
                     QApplication.instance().focusWidget()
@@ -2134,7 +2150,7 @@ class BatchManager:
                 item = selected[0] if selected else None
             # 始终尝试通过焦点反推上下文，避免当前树项干扰
             try:
-                from PySide6.QtWidgets import QApplication
+                
 
                 fw = (
                     QApplication.instance().focusWidget()
@@ -2195,7 +2211,7 @@ class BatchManager:
     def _iter_checked_file_items(self):
         """遍历当前文件树中被勾选的文件项（仅文件项）。"""
         try:
-            from PySide6.QtWidgets import QTreeWidgetItemIterator
+            
 
             if not hasattr(self.gui, "file_tree") or self.gui.file_tree is None:
                 return
@@ -2459,7 +2475,7 @@ class BatchManager:
 
     def invert_file_selection(self):
         """反选：文件模式下反选文件；数据模式下反选当前 part 数据行。"""
-        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        
 
         if not hasattr(self.gui, "file_tree"):
             return
@@ -2499,7 +2515,7 @@ class BatchManager:
 
     def _set_all_file_items_checked(self, check_state):
         """设置所有文件项的选中状态（仅文件，不包括目录节点）"""
-        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        
 
         if not hasattr(self.gui, "file_tree"):
             return
