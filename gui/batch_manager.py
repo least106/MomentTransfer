@@ -357,8 +357,6 @@ class BatchManager:
         - 否则回退为灰显不匹配行。
         """
         try:
-            
-
             # 如果没有筛选条件，恢复所有行
             if not self._quick_filter_column or not self._quick_filter_value:
                 for r in range(table.rowCount()):
@@ -466,8 +464,6 @@ class BatchManager:
         - 否则回退为灰显不匹配行。
         """
         try:
-            
-
             # 如果没有筛选条件，恢复所有行
             if not self._quick_filter_column or not self._quick_filter_value:
                 for r in range(table.rowCount()):
@@ -657,7 +653,6 @@ class BatchManager:
     def _populate_table_data_rows(self, file_item, file_path: Path, df) -> None:
         """为常规表格文件创建数据行预览表格（带勾选列）。"""
         
-
         if df is None:
             return
 
@@ -744,7 +739,6 @@ class BatchManager:
     ) -> None:
         """为某个 part 节点创建数据行预览表格（带勾选列）。"""
         
-
         fp_str = str(file_path)
         try:
             by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
@@ -934,12 +928,12 @@ class BatchManager:
             dlg.setOption(QFileDialog.DontUseNativeDialog, True)
             dlg.setFileMode(QFileDialog.ExistingFile)
             dlg.setNameFilter(
-                "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls);;MomentTransfer (*.mtfmt *.mtdata)"
+                "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat);;"
+                "CSV Files (*.csv);;Excel Files (*.xlsx *.xls);;"
+                "MomentTransfer (*.mtfmt *.mtdata)"
             )
 
             # 允许切换目录模式
-            
-
             chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
             chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
             try:
@@ -986,7 +980,6 @@ class BatchManager:
     def _scan_and_populate_files(self, chosen_path: Path):
         """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。"""
         
-
         try:
             p = Path(chosen_path)
             # 根据所选路径类型启用/禁用匹配模式控件：
@@ -1457,7 +1450,6 @@ class BatchManager:
     def _ensure_regular_file_selector_rows(self, file_item, file_path: Path) -> None:
         """为常规文件创建 source/target 选择行（树内联下拉）。"""
         
-
         try:
             sel = self._ensure_file_part_selection_storage(file_path)
             source_names = self._get_source_part_names()
@@ -1701,7 +1693,11 @@ class BatchManager:
             child.setData(
                 0,
                 int(Qt.UserRole) + 1,
-                {"kind": "special_part", "file": str(file_path), "source": str(source_part)},
+                {
+                    "kind": "special_part",
+                    "file": str(file_path),
+                    "source": str(source_part),
+                },
             )
             file_item.addChild(child)
 
@@ -1742,7 +1738,9 @@ class BatchManager:
                     try:
                         file_node = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
                         if file_node is not None:
-                            file_node.setText(1, self._validate_file_config(Path(fp_str)))
+                            file_node.setText(
+                                1, self._validate_file_config(Path(fp_str))
+                            )
                     except Exception:
                         pass
                 except Exception:
@@ -1755,7 +1753,9 @@ class BatchManager:
             try:
                 df = (data_dict or {}).get(str(source_part))
                 if df is not None:
-                    self._populate_special_data_rows(child, file_path, str(source_part), df)
+                    self._populate_special_data_rows(
+                        child, file_path, str(source_part), df
+                    )
             except Exception:
                 logger.debug("填充数据行预览失败", exc_info=True)
         except Exception:
@@ -1764,7 +1764,6 @@ class BatchManager:
     def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
         """在文件节点下创建/刷新子节点：每个 source part 一行，右侧为 target 下拉。"""
         
-
         try:
             mapping = self._get_or_init_special_mapping(file_path)
             mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", {}) or {}
@@ -2119,8 +2118,6 @@ class BatchManager:
                 item = selected[0] if selected else None
             # 无论当前项情况如何，都尝试通过焦点反推一次（修复表格聚焦但树项未切换时无法识别的问题）
             try:
-                
-
                 fw = (
                     QApplication.instance().focusWidget()
                     if QApplication.instance()
@@ -2182,8 +2179,6 @@ class BatchManager:
                 item = selected[0] if selected else None
             # 始终尝试通过焦点反推上下文，避免当前树项干扰
             try:
-                
-
                 fw = (
                     QApplication.instance().focusWidget()
                     if QApplication.instance()
@@ -2244,7 +2239,6 @@ class BatchManager:
         """遍历当前文件树中被勾选的文件项（仅文件项）。"""
         try:
             
-
             if not hasattr(self.gui, "file_tree") or self.gui.file_tree is None:
                 return
             it = QTreeWidgetItemIterator(self.gui.file_tree)
@@ -2508,7 +2502,6 @@ class BatchManager:
     def invert_file_selection(self):
         """反选：文件模式下反选文件；数据模式下反选当前 part 数据行。"""
         
-
         if not hasattr(self.gui, "file_tree"):
             return
 
@@ -2548,7 +2541,6 @@ class BatchManager:
     def _set_all_file_items_checked(self, check_state):
         """设置所有文件项的选中状态（仅文件，不包括目录节点）"""
         
-
         if not hasattr(self.gui, "file_tree"):
             return
 
