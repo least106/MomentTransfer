@@ -229,9 +229,18 @@ class QuickSelectDialog(QDialog):
                 n = int(s)
                 if n > 0:
                     rows.append(n - 1)  # 转为 0 基
-            except Exception:
+            except ValueError:
+                # 非整数输入忽略；避免捕获过宽异常
                 pass
         return sorted(set(rows))
+
+    def _format_row_values(self, row_series) -> List[str]:
+        """格式化单行的前若干列为字符串列表，失败返回空列表。"""
+        try:
+            return ["" if v is None else str(v) for v in list(row_series.values)[:6]]
+        except Exception:
+            logger.debug("格式化行值失败", exc_info=True)
+            return []
 
     def _update_entry_preview(self, entry: dict) -> None:
         rows = self._parse_rows(entry["input"].text())
@@ -258,14 +267,7 @@ class QuickSelectDialog(QDialog):
                 out = [f"文件: {fp.name}"]
                 for r in rows:
                     if 0 <= r < len(df):
-                        vals = []
-                        try:
-                            vals = [
-                                "" if v is None else str(v)
-                                for v in list(df.iloc[r].values)[:6]
-                            ]
-                        except Exception:
-                            pass
+                        vals = self._format_row_values(df.iloc[r])
                         out.append(f"第{r+1}条数据: " + " | ".join(vals))
                 return out
             else:
@@ -276,14 +278,7 @@ class QuickSelectDialog(QDialog):
                 out = [f"文件: {fp.name}  part: {part}"]
                 for r in rows:
                     if 0 <= r < len(df):
-                        vals = []
-                        try:
-                            vals = [
-                                "" if v is None else str(v)
-                                for v in list(df.iloc[r].values)[:6]
-                            ]
-                        except Exception:
-                            pass
+                        vals = self._format_row_values(df.iloc[r])
                         out.append(f"第{r+1}条数据: " + " | ".join(vals))
                 return out
         except Exception:

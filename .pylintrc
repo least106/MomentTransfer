@@ -1,27 +1,23 @@
 [MASTER]
-ignore=venv
-
-[MESSAGES CONTROL]
-# PySide6 在静态分析中常报 no-name-in-module，项目中大量 GUI 文件依赖运行时绑定，先忽略这类误报
-; 先禁用部分在 GUI-heavy 项目中常见的噪音项，后续可逐步恢复并逐个修复
-disable=E0611,W1203,W0611,W0613,W0612,W0718
-
-[FORMAT]
-max-line-length=88
-
-[REPORTS]
-output-format=text
-[MASTER]
-# 基本配置，针对本项目的轻量级 pylint 配置
-ignore=tests
+ignore=venv,tests
 jobs=1
 
+[MESSAGES CONTROL]
+# 项目中 GUI 框架（PySide6）会导致 pylint 对运行时绑定的符号产生大量误报，
+# 保守地禁用这些在 GUI-heavy 项目中常见的噪音项；同时保留缺失 docstring 的禁用。
+disable=
+	E0611,
+	W1203,
+	W0611,
+	W0613,
+	W0612,
+	W0718,
+	missing-module-docstring,
+	missing-class-docstring,
+	missing-function-docstring
+
 [FORMAT]
 max-line-length=88
-
-[MESSAGES CONTROL]
-# 关闭对缺少文档字符串的严格要求（测试/脚本风格不强制）
-disable=missing-module-docstring,missing-class-docstring,missing-function-docstring
 
 [REPORTS]
 output-format=text

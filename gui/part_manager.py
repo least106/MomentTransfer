@@ -3,8 +3,16 @@ Part 管理模块 - 处理 Part 的添加、删除和切换
 """
 
 import logging
+from typing import Optional
 
 from gui.signal_bus import SignalBus
+
+# 尝试提前导入 ModelManager，避免函数内多次局部导入带来的 pylint 噪音；
+# 若因循环导入失败则保留为 None，函数内按需回退本地导入。
+try:
+    from gui.managers import ModelManager
+except Exception:
+    ModelManager = None
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +51,7 @@ class PartManager:
         try:
             if self.model_manager and hasattr(self.model_manager, "_unique_name"):
                 return self.model_manager._unique_name(base, existing)
-        except Exception:
+        except (AttributeError, TypeError):
             logger.debug("delegated _unique_name failed", exc_info=True)
         name = base or "Part"
         if name not in existing:
@@ -102,58 +110,50 @@ class PartManager:
                 return self.gui.model_manager._read_variant_fields(variant)
         except Exception:
             logger.debug("delegated _read_variant_fields failed", exc_info=True)
-        try:
-            if variant is None:
-                return None, None, None, 0.0, 0.0, 0.0, 0.0
-
-            cs = getattr(variant, "coord_system", None)
-            part_name = getattr(variant, "part_name", "") or ""
-
-            mc = None
-            if cs is not None and getattr(cs, "moment_center", None) is not None:
-                mc = list(getattr(cs, "moment_center"))
-            if mc is None:
-                mc = getattr(variant, "moment_center", None)
-                if mc is not None:
-                    mc = list(mc)
-            if not mc:
-                mc = [0.0, 0.0, 0.0]
-
-            refs = getattr(variant, "refs", None)
-            cref_val = getattr(refs, "cref", None) if refs else None
-            bref_val = getattr(refs, "bref", None) if refs else None
-            sref_val = getattr(refs, "sref", None) if refs else None
-            q_val = getattr(refs, "q", None) if refs else None
-
-            if cref_val is None:
-                cref_val = getattr(variant, "c_ref", 0.0)
-            if bref_val is None:
-                bref_val = getattr(variant, "b_ref", 0.0)
-            if sref_val is None:
-                sref_val = getattr(variant, "s_ref", 0.0)
-            if q_val is None:
-                q_val = getattr(variant, "q", 0.0)
-
-            try:
-                cref_val = float(cref_val)
-            except Exception:
-                cref_val = 0.0
-            try:
-                bref_val = float(bref_val)
-            except Exception:
-                bref_val = 0.0
-            try:
-                sref_val = float(sref_val)
-            except Exception:
-                sref_val = 0.0
-            try:
-                q_val = float(q_val)
-            except Exception:
-                q_val = 0.0
-            return part_name, cs, mc, cref_val, bref_val, sref_val, q_val
-        except Exception:
-            logger.debug("读取变体字段失败", exc_info=True)
+        if variant is None:
             return None, None, None, 0.0, 0.0, 0.0, 0.0
+
+        cs = getattr(variant, "coord_system", None)
+        part_name = getattr(variant, "part_name", "") or ""
+
+        mc = None
+        if cs is not None and getattr(cs, "moment_center", None) is not None:
+            mc = list(getattr(cs, "moment_center"))
+        if mc is None:
+            mc = getattr(variant, "moment_center", None)
+            if mc is not None:
+                mc = list(mc)
+        if not mc:
+            mc = [0.0, 0.0, 0.0]
+
+        refs = getattr(variant, "refs", None)
+        cref_val = getattr(refs, "cref", None) if refs else None
+        bref_val = getattr(refs, "bref", None) if refs else None
+        sref_val = getattr(refs, "sref", None) if refs else None
+        q_val = getattr(refs, "q", None) if refs else None
+
+        if cref_val is None:
+            cref_val = getattr(variant, "c_ref", 0.0)
+        if bref_val is None:
+            bref_val = getattr(variant, "b_ref", 0.0)
+        if sref_val is None:
+            sref_val = getattr(variant, "s_ref", 0.0)
+        if q_val is None:
+            q_val = getattr(variant, "q", 0.0)
+
+        cref_val = self._safe_float(cref_val)
+        bref_val = self._safe_float(bref_val)
+        sref_val = self._safe_float(sref_val)
+        q_val = self._safe_float(q_val)
+
+        return part_name, cs, mc, cref_val, bref_val, sref_val, q_val
+
+    def _safe_float(self, value: Optional[object]) -> float:
+        """将任意值安全转换为 float，失败时返回 0.0。"""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     def _rename_part(self, new_name: str, is_source: bool):
         try:
