@@ -1672,19 +1672,102 @@ class BatchManager:
             logger.debug("自动补全映射失败", exc_info=True)
         return changed
 
-    def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
-        """在文件节点下创建/刷新子节点：每个 source part 一行，右侧为 target 下拉。"""
-        
-
+    def _get_or_init_special_mapping(self, file_path: Path) -> dict:
+        """返回文件对应的 special mapping 字典（必要时初始化容器）。"""
         try:
             mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", None)
             if mapping_by_file is None:
                 self.gui.special_part_mapping_by_file = {}
                 mapping_by_file = self.gui.special_part_mapping_by_file
-
             mapping_by_file.setdefault(str(file_path), {})
             mapping = mapping_by_file[str(file_path)]
+            return mapping
+        except Exception:
+            logger.debug("获取或初始化 special mapping 失败", exc_info=True)
+            return {}
 
+    def _create_special_part_node(
+        self,
+        file_item,
+        file_path: Path,
+        source_part,
+        target_names: list,
+        mapping: dict,
+        data_dict: dict,
+    ) -> None:
+        """创建单个 source part 子节点及其 Target 下拉与数据预览。"""
+        try:
+            child = QTreeWidgetItem([str(source_part), ""])
+            child.setData(
+                0,
+                int(Qt.UserRole) + 1,
+                {"kind": "special_part", "file": str(file_path), "source": str(source_part)},
+            )
+            file_item.addChild(child)
+
+            combo = QComboBox(self.gui.file_tree)
+            combo.setEditable(False)
+            combo.setMinimumWidth(160)
+            combo.addItem("（未选择）", "")
+            for tn in target_names:
+                combo.addItem(tn, tn)
+
+            if not target_names:
+                combo.setEnabled(False)
+                combo.setToolTip("请先加载配置或创建 Target Part")
+            else:
+                combo.setEnabled(True)
+                combo.setToolTip("选择该 Source part 对应的 Target part")
+
+            current = (mapping or {}).get(source_part) or ""
+            try:
+                combo.blockSignals(True)
+                if current and current in target_names:
+                    combo.setCurrentText(current)
+                else:
+                    combo.setCurrentIndex(0)
+            finally:
+                combo.blockSignals(False)
+
+            def _on_changed(text: str, *, fp_str=str(file_path), sp=str(source_part)):
+                try:
+                    m = (
+                        getattr(self.gui, "special_part_mapping_by_file", {}) or {}
+                    ).setdefault(fp_str, {})
+                    val = (text or "").strip()
+                    if not val or val == "（未选择）":
+                        m.pop(sp, None)
+                    else:
+                        m[sp] = val
+                    try:
+                        file_node = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
+                        if file_node is not None:
+                            file_node.setText(1, self._validate_file_config(Path(fp_str)))
+                    except Exception:
+                        pass
+                except Exception:
+                    logger.debug("special mapping changed handler failed", exc_info=True)
+
+            combo.currentTextChanged.connect(_on_changed)
+            self.gui.file_tree.setItemWidget(child, 1, combo)
+            self._special_part_combo[(str(file_path), str(source_part))] = combo
+
+            try:
+                df = (data_dict or {}).get(str(source_part))
+                if df is not None:
+                    self._populate_special_data_rows(child, file_path, str(source_part), df)
+            except Exception:
+                logger.debug("填充数据行预览失败", exc_info=True)
+        except Exception:
+            logger.debug("创建 special part 节点失败（内部）", exc_info=True)
+
+    def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
+        """在文件节点下创建/刷新子节点：每个 source part 一行，右侧为 target 下拉。"""
+        
+
+        try:
+            mapping = self._get_or_init_special_mapping(file_path)
+            mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", {}) or {}
             part_names = get_part_names(file_path)
             target_names = self._get_target_part_names()
 
@@ -1714,89 +1797,17 @@ class BatchManager:
                     pass
 
             for source_part in part_names:
-                child = QTreeWidgetItem([str(source_part), ""])
-                # 子节点不应被当作“文件项”，因此 Qt.UserRole 保持为空
-                child.setData(
-                    0,
-                    int(Qt.UserRole) + 1,
-                    {
-                        "kind": "special_part",
-                        "file": str(file_path),
-                        "source": str(source_part),
-                    },
-                )
-                file_item.addChild(child)
-
-                combo = QComboBox(self.gui.file_tree)
-                combo.setEditable(False)
-                combo.setMinimumWidth(160)
-                combo.addItem("（未选择）", "")
-                for tn in target_names:
-                    combo.addItem(tn, tn)
-
-                # 若尚无任何 Target part，则禁用，提示用户先加载/创建
-                if not target_names:
-                    combo.setEnabled(False)
-                    combo.setToolTip("请先加载配置或创建 Target Part")
-                else:
-                    combo.setEnabled(True)
-                    combo.setToolTip("选择该 Source part 对应的 Target part")
-
-                # 恢复已选值
-                current = (mapping or {}).get(source_part) or ""
                 try:
-                    combo.blockSignals(True)
-                    if current and current in target_names:
-                        combo.setCurrentText(current)
-                    else:
-                        combo.setCurrentIndex(0)
-                finally:
-                    combo.blockSignals(False)
-
-                def _on_changed(
-                    text: str, *, fp_str=str(file_path), sp=str(source_part)
-                ):
-                    try:
-                        m = (
-                            getattr(self.gui, "special_part_mapping_by_file", {}) or {}
-                        ).setdefault(fp_str, {})
-                        val = (text or "").strip()
-                        if not val or val == "（未选择）":
-                            m.pop(sp, None)
-                        else:
-                            m[sp] = val
-                        # 更新该文件的状态列
-                        try:
-                            file_node = getattr(self.gui, "_file_tree_items", {}).get(
-                                fp_str
-                            )
-                            if file_node is not None:
-                                file_node.setText(
-                                    1, self._validate_file_config(Path(fp_str))
-                                )
-                        except Exception:
-                            pass
-                    except Exception:
-                        logger.debug(
-                            "special mapping changed handler failed",
-                            exc_info=True,
-                        )
-
-                combo.currentTextChanged.connect(_on_changed)
-
-                # 将下拉框嵌到“状态”列，达到“文件列表里直接编辑映射”的效果
-                self.gui.file_tree.setItemWidget(child, 1, combo)
-                self._special_part_combo[(str(file_path), str(source_part))] = combo
-
-                # 在 part 节点下创建数据行预览（用户可展开查看并勾选）
-                try:
-                    df = (data_dict or {}).get(str(source_part))
-                    if df is not None:
-                        self._populate_special_data_rows(
-                            child, file_path, str(source_part), df
-                        )
+                    self._create_special_part_node(
+                        file_item,
+                        file_path,
+                        source_part,
+                        target_names,
+                        mapping,
+                        data_dict,
+                    )
                 except Exception:
-                    logger.debug("填充数据行预览失败", exc_info=True)
+                    logger.debug("创建 special part 节点失败", exc_info=True)
 
             try:
                 file_item.setExpanded(True)
