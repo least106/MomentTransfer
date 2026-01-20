@@ -4,9 +4,10 @@
 
 import logging
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal, QStringListModel
 from PySide6.QtGui import QDoubleValidator, QFont
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QCompleter,
@@ -90,8 +91,6 @@ class BatchPanel(QWidget):
 
         # 安装全局事件过滤器以拦截 Tab 导致的焦点切换（针对 inp_filter_column）
         try:
-            from PySide6.QtWidgets import QApplication
-
             app = QApplication.instance()
             if app is not None:
                 try:
@@ -99,7 +98,7 @@ class BatchPanel(QWidget):
                 except Exception:
                     logger.debug("安装全局事件过滤器失败", exc_info=True)
         except Exception:
-            logger.debug("无法导入 QApplication 安装事件过滤器", exc_info=True)
+            logger.debug("安装全局事件过滤器时发生错误", exc_info=True)
 
         # 初始化阶段：按流程先隐藏非必要控件
         try:
@@ -479,8 +478,6 @@ class BatchPanel(QWidget):
     def update_filter_columns(self, columns: list) -> None:
         """更新快速筛选的列自动补全列表"""
         try:
-            from PySide6.QtCore import QStringListModel
-
             model = QStringListModel([str(col) for col in columns])
             self._filter_completer.setModel(model)
         except Exception:
@@ -497,9 +494,8 @@ class BatchPanel(QWidget):
                 key = event.key()
                 if key in (Qt.Key_Tab, Qt.Key_Backtab):
                     try:
-                        from PySide6.QtWidgets import QApplication
-
-                        fw = QApplication.instance().focusWidget()
+                        app = QApplication.instance()
+                        fw = app.focusWidget() if app is not None else None
                     except Exception:
                         fw = None
 
