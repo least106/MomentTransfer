@@ -2,6 +2,7 @@
 
 负责判断文件是否为特殊格式，以及识别文件中的元数据/表头/数据/part 名行。
 """
+
 import logging
 import re
 from pathlib import Path
@@ -15,7 +16,10 @@ SUPPORTED_EXTS = {".mtfmt", ".mtdata", ".txt", ".dat"}
 
 
 def _read_text_file_lines(
-    file_path: Path, *, max_lines: Optional[int] = None, encodings: Optional[List[str]] = None
+    file_path: Path,
+    *,
+    max_lines: Optional[int] = None,
+    encodings: Optional[List[str]] = None,
 ) -> List[str]:
     """尝试以多种编码读取文本文件，返回行列表。
 

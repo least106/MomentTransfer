@@ -229,8 +229,7 @@ class PluginLoader:
                 # 先在独立子进程中快速验证插件文件的导入与 create_plugin() 是否会在短时间内完成，
                 # 以避免无限循环或长时间阻塞主进程。
                 try:
-                    validator = (
-                        """
+                    validator = """
 import importlib.util, json, sys, traceback
 p = r'%s'
 spec = importlib.util.spec_from_file_location('plugin_validation', p)
@@ -255,7 +254,9 @@ if hasattr(module, 'create_plugin') and callable(getattr(module, 'create_plugin'
 else:
     print('NO_FACTORY')
     sys.exit(4)
-""" % str(filepath)
+""" % str(
+                        filepath
+                    )
 
                     proc = subprocess.run(
                         [sys.executable, "-c", validator],
@@ -387,9 +388,7 @@ class PluginManager:
                     self._registry.unregister(name)
                 except (RuntimeError, TypeError, ValueError) as exc:
                     # 忽略注销时的插件错误，但记录调试信息
-                    logger.debug(
-                        "注销插件 %s 时发生异常: %s", name, exc, exc_info=True
-                    )
+                    logger.debug("注销插件 %s 时发生异常: %s", name, exc, exc_info=True)
             self._registry = None
 
 

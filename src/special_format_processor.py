@@ -2,6 +2,7 @@
 
 负责将解析后的特殊格式数据按 part 调用 AeroCalculator 计算并输出结果。
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime

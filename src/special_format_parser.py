@@ -40,6 +40,7 @@ from src.special_format_detector import (  # noqa: E402
 logger = logging.getLogger(__name__)
 # 在调整 sys.path 后才导入本地模块，允许导入位置非顶层的检查
 
+
 def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
     """为给定列名列表返回一个从原始列名到标准列名的映射。
 
@@ -79,6 +80,7 @@ def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
                 mapping[col] = col
 
     return mapping
+
 
 def _finalize_part(
     current_part, current_header, current_data, result: Dict[str, pd.DataFrame]
