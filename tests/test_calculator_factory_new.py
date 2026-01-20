@@ -44,7 +44,9 @@ def test_load_project_calculator_errors(monkeypatch):
 def test_attempt_load_project_data(monkeypatch):
     info = {"message": "no", "suggestion": "try"}
     # 返回失败且 strict=False
-    monkeypatch.setattr(cf, "try_load_project_data", lambda p, strict=True: (False, None, info))
+    monkeypatch.setattr(
+        cf, "try_load_project_data", lambda p, strict=True: (False, None, info)
+    )
     res = cf.attempt_load_project_data("x", strict=False)
     assert isinstance(res, tuple) and res[0] is None and res[1] == info
 

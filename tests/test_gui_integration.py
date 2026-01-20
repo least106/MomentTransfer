@@ -31,9 +31,7 @@ def test_gui_background_thread_processing(tmp_path, qtbot=None):
 
     data_config = {"skip_rows": 0}
 
-    thread = BatchProcessThread(
-        calculator, [csv_file], tmp_path, data_config
-    )
+    thread = BatchProcessThread(calculator, [csv_file], tmp_path, data_config)
     thread.start()
     # 等待线程结束（最长 5 秒）
     finished = thread.wait(5000)

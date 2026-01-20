@@ -7,14 +7,15 @@ class DummyPanel:
 
         self._cs = CoordinateSystem()
         self._refs = ReferenceValues()
-        
+
         # 添加必需的 part_name_input 和 part_selector 属性
         class DummyLineEdit:
             def __init__(self, t=""):
                 self._t = t
+
             def text(self):
                 return self._t
-                
+
         self.part_name_input = DummyLineEdit("")
         self.part_selector = None  # 可选
         self._current_part_name = None

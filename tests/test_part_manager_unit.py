@@ -71,4 +71,6 @@ def test_on_source_part_changed_applies_payload():
     # source panel selector already returns 'P'
     pm = PartManager(gui)
     pm.on_source_part_changed()
-    assert gui.source_panel._applied is not None    # 验证面板内部状态已更新    assert gui._current_source_part_name == "P"
+    assert (
+        gui.source_panel._applied is not None
+    )  # 验证面板内部状态已更新    assert gui._current_source_part_name == "P"

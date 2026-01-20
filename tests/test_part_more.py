@@ -16,7 +16,7 @@ def test_variant_to_dict_numeric_casts():
 
 
 def test_variant_from_dict_missing_momentcenter_uses_coord():
-    data = {"PartName": "P", "CoordSystem": {"Orig": [0,0,0]}}
+    data = {"PartName": "P", "CoordSystem": {"Orig": [0, 0, 0]}}
     v = Variant.from_dict(data)
     # 当未指定 MomentCenter，应使用 coord_system 的默认值
     assert isinstance(v.moment_center, np.ndarray)

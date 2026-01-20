@@ -5,13 +5,15 @@ from src.models.part import Part, Variant
 
 
 def make_cs():
-    return CoordinateSystem.from_dict({
-        "Orig": [0, 0, 0],
-        "X": [1, 0, 0],
-        "Y": [0, 1, 0],
-        "Z": [0, 0, 1],
-        "MomentCenter": [0.5, 0.5, 0.5],
-    })
+    return CoordinateSystem.from_dict(
+        {
+            "Orig": [0, 0, 0],
+            "X": [1, 0, 0],
+            "Y": [0, 1, 0],
+            "Z": [0, 0, 1],
+            "MomentCenter": [0.5, 0.5, 0.5],
+        }
+    )
 
 
 def test_variant_from_dict_alternate_field_names():

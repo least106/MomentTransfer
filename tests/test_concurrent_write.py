@@ -69,9 +69,7 @@ def test_concurrent_appends_to_same_file(tmp_path):
     first_df = pd.read_csv(input_csv, header=0)
     logger = logging.getLogger("test")
     # 主进程写入 header（first_chunk=True）
-    b.process_df_chunk(
-        first_df, calculator, cfg, out_file, True, logger
-    )
+    b.process_df_chunk(first_df, calculator, cfg, out_file, True, logger)
 
     # 并发提交多个写入任务（模拟 4 个并发进程）
     workers = 4
