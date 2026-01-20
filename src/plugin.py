@@ -8,7 +8,11 @@
 """
 
 import importlib.util
+import json
 import logging
+import subprocess
+import sys
+import traceback
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -222,6 +226,59 @@ class PluginLoader:
         # 使用循环/分支结构统一退出点，减少函数内的 return 数量
         while True:
             try:
+                # 先在独立子进程中快速验证插件文件的导入与 create_plugin() 是否会在短时间内完成，
+                # 以避免无限循环或长时间阻塞主进程。
+                try:
+                    validator = (
+                        """
+import importlib.util, json, sys, traceback
+p = r'%s'
+spec = importlib.util.spec_from_file_location('plugin_validation', p)
+if spec is None or spec.loader is None:
+    sys.exit(2)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+if hasattr(module, 'create_plugin') and callable(getattr(module, 'create_plugin')):
+    try:
+        plugin = module.create_plugin()
+        meta = getattr(plugin, 'metadata', None)
+        if meta is not None:
+            d = {"name": getattr(meta, 'name', ''), "version": getattr(meta, 'version', ''), "plugin_type": getattr(meta, 'plugin_type', '')}
+            print(json.dumps(d))
+            sys.exit(0)
+        else:
+            print(json.dumps({"name": "", "version": "", "plugin_type": ""}))
+            sys.exit(0)
+    except Exception:
+        traceback.print_exc()
+        sys.exit(3)
+else:
+    print('NO_FACTORY')
+    sys.exit(4)
+""" % str(filepath)
+
+                    proc = subprocess.run(
+                        [sys.executable, "-c", validator],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+
+                    if proc.returncode != 0:
+                        logger.error(
+                            "插件文件 %s 在子进程验证失败: returncode=%s, stderr=%s",
+                            filepath,
+                            proc.returncode,
+                            proc.stderr.strip(),
+                        )
+                        break
+                except subprocess.TimeoutExpired:
+                    logger.error("插件文件 %s 验证超时（>%ss），已跳过", filepath, 5)
+                    break
+                except Exception:
+                    logger.exception("在验证插件 %s 时发生内部错误", filepath)
+                    break
+
                 # 动态加载模块
                 spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
                 if spec is None or spec.loader is None:

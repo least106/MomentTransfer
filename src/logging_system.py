@@ -8,11 +8,11 @@
 4. 上下文信息追踪
 """
 
+import contextvars
 import json
 import logging
 import sys
 from contextlib import contextmanager
-import contextvars
 from datetime import datetime
 from typing import Any, Dict, Optional
 
