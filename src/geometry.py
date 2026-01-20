@@ -143,7 +143,7 @@ def construct_basis_matrix(
 
             basis = np.array([u1, u2, u3])
         else:
-            if strict:
+            if strict_flag:
                 raise ValueError(msg)
             warnings.warn(msg, UserWarning)
             basis = np.array([vx, vy, vz])
