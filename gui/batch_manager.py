@@ -178,6 +178,19 @@ class BatchManager:
         except Exception:
             return None
 
+    def _get_table_item(self, table, r: int, c: int):
+        """兼容性访问表格项：支持 QTableWidget 或 PagedTableWidget（内部 QTableWidget）。"""
+        try:
+            # 直接支持的接口
+            if hasattr(table, "item"):
+                return table.item(r, c)
+            # PagedTableWidget 使用 .table 作为内部 QTableWidget
+            if hasattr(table, "table") and hasattr(table.table, "item"):
+                return table.table.item(r, c)
+        except Exception:
+            return None
+        return None
+
     def _ensure_special_row_selection_storage(
         self, file_path: Path, part_names: list
     ) -> dict:
@@ -344,7 +357,7 @@ class BatchManager:
             if not self._quick_filter_column or not self._quick_filter_value:
                 for r in range(table.rowCount()):
                     for c in range(1, table.columnCount()):  # 跳过勾选列
-                        item = table.item(r, c)
+                        item = self._get_table_item(table, r, c)
                         if item:
                             item.setBackground(QColor(255, 255, 255))
                             item.setForeground(QColor(0, 0, 0))
@@ -388,7 +401,7 @@ class BatchManager:
                     )
 
                     for c in range(1, table.columnCount()):  # 跳过勾选列
-                        item = table.item(r, c)
+                        item = self._get_table_item(table, r, c)
                         if item:
                             if matches:
                                 item.setBackground(QColor(255, 255, 255))
@@ -453,7 +466,7 @@ class BatchManager:
             if not self._quick_filter_column or not self._quick_filter_value:
                 for r in range(table.rowCount()):
                     for c in range(1, table.columnCount()):
-                        item = table.item(r, c)
+                        item = self._get_table_item(table, r, c)
                         if item:
                             item.setBackground(QColor(255, 255, 255))
                             item.setForeground(QColor(0, 0, 0))
@@ -493,7 +506,7 @@ class BatchManager:
                     )
 
                     for c in range(1, table.columnCount()):
-                        item = table.item(r, c)
+                        item = self._get_table_item(table, r, c)
                         if item:
                             if matches:
                                 item.setBackground(QColor(255, 255, 255))
@@ -983,9 +996,8 @@ class BatchManager:
                     self.gui.inp_pattern.setEnabled(not is_file)
                     try:
                         if is_file:
-                            self.gui.inp_pattern.setStyleSheet(
-                                "color: gray; background-color: #f0f0f0"
-                            )
+                            # 仅调整文字颜色为灰，避免强制设置背景色导致在暗色主题下成为白底
+                            self.gui.inp_pattern.setStyleSheet("color: gray;")
                         else:
                             self.gui.inp_pattern.setStyleSheet("")
                     except Exception:
@@ -997,9 +1009,8 @@ class BatchManager:
                     self.gui.cmb_pattern_preset.setEnabled(not is_file)
                     try:
                         if is_file:
-                            self.gui.cmb_pattern_preset.setStyleSheet(
-                                "color: gray; background-color: #f0f0f0"
-                            )
+                            # 仅调整文字颜色为灰，避免强制设置背景色导致在暗色主题下成为白底
+                            self.gui.cmb_pattern_preset.setStyleSheet("color: gray;")
                         else:
                             self.gui.cmb_pattern_preset.setStyleSheet("")
                     except Exception:
@@ -1241,8 +1252,12 @@ class BatchManager:
             if cached_format:
                 fmt_info = cached_format
             else:
-                # 构造BatchConfig用于格式解析
-                base_cfg = BatchConfig(skip_rows=0, columns={}, passthrough=[])
+                # 构造 BatchConfig 用于格式解析（显式设置属性，避免在构造时传入关键字参数）
+                base_cfg = BatchConfig()
+                # 兼容旧逻辑：显式设置需要的字段
+                base_cfg.skip_rows = 0
+                base_cfg.columns = {}
+                base_cfg.passthrough = []
 
                 fmt_info = resolve_file_format(str(file_path), base_cfg)
 

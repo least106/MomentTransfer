@@ -4,7 +4,7 @@
 
 import logging
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QDoubleValidator, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -26,6 +26,9 @@ from PySide6.QtWidgets import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# 本地 FilterLineEdit 实现已移除：事件由 BatchPanel 的全局 eventFilter 处理（运行时已确认生效）
 
 
 class BatchPanel(QWidget):
@@ -84,6 +87,19 @@ class BatchPanel(QWidget):
 
         # 兼容字段：存储文件节点
         self._file_tree_items = {}
+
+        # 安装全局事件过滤器以拦截 Tab 导致的焦点切换（针对 inp_filter_column）
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                try:
+                    app.installEventFilter(self)
+                except Exception:
+                    logger.debug("安装全局事件过滤器失败", exc_info=True)
+        except Exception:
+            logger.debug("无法导入 QApplication 安装事件过滤器", exc_info=True)
 
         # 初始化阶段：按流程先隐藏非必要控件
         try:
@@ -318,7 +334,19 @@ class BatchPanel(QWidget):
         self.inp_filter_column.setToolTip("输入列名（支持自动补全）")
         self._filter_completer = QCompleter()
         self._filter_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        # 使用未过滤弹出模式，便于显示全部候选并使用 Tab 在候选间切换
+        try:
+            self._filter_completer.setCompletionMode(
+                QCompleter.UnfilteredPopupCompletion
+            )
+        except Exception:
+            pass
         self.inp_filter_column.setCompleter(self._filter_completer)
+        # 避免 Tab 导致控件失去焦点，使 FilterLineEdit 能拦截 Tab 用于切换补全项
+        try:
+            self.inp_filter_column.setTabChangesFocus(False)
+        except Exception:
+            pass
         btn_row.addWidget(self.inp_filter_column)
 
         # 运算符选择
@@ -457,6 +485,72 @@ class BatchPanel(QWidget):
             self._filter_completer.setModel(model)
         except Exception:
             logger.debug("更新筛选列补全列表失败", exc_info=True)
+
+    # eventFilter 安装：使用全局 eventFilter 处理 Tab 行为（运行时已确认生效）
+    def eventFilter(self, obj, event):
+        """全局事件过滤：拦截 Tab / Shift+Tab，当焦点在 `inp_filter_column` 时处理补全弹窗。
+
+        采用全局过滤可以在 Windows/Qt 平台上可靠拦截导致的焦点切换。
+        """
+        try:
+            if event.type() == QEvent.KeyPress:
+                key = event.key()
+                if key in (Qt.Key_Tab, Qt.Key_Backtab):
+                    try:
+                        from PySide6.QtWidgets import QApplication
+
+                        fw = QApplication.instance().focusWidget()
+                    except Exception:
+                        fw = None
+
+                    if fw is self.inp_filter_column:
+                        comp = getattr(self.inp_filter_column, "completer", lambda: None)()
+                        try:
+                            popup = comp.popup() if comp is not None else None
+                        except Exception:
+                            popup = None
+
+                        # 若未显示，先显示候选
+                        try:
+                            if popup is None or not getattr(popup, "isVisible", lambda: False)():
+                                if comp is not None:
+                                    comp.complete()
+                                logger.debug(
+                                    "BatchPanel.eventFilter: invoked completer.complete() (global filter)"
+                                )
+                                return True
+
+                            # 已显示：在 popup 中循环选择（Tab 向前，Shift+Tab 向后）
+                            model = popup.model()
+                            if model is None:
+                                return True
+                            row_count = model.rowCount()
+                            cur = popup.currentIndex()
+                            cur_row = cur.row() if cur.isValid() else -1
+                            if key == Qt.Key_Tab:
+                                next_row = (cur_row + 1) % max(1, row_count)
+                            else:
+                                next_row = (cur_row - 1) % max(1, row_count)
+                            try:
+                                new_idx = model.index(next_row, 0)
+                                popup.setCurrentIndex(new_idx)
+                                logger.debug(
+                                    "BatchPanel.eventFilter: cycled popup to row %s/%s (global filter)",
+                                    next_row,
+                                    row_count,
+                                )
+                                return True
+                            except Exception:
+                                logger.debug(
+                                    "BatchPanel.eventFilter: failed to set popup index",
+                                    exc_info=True,
+                                )
+                                return True
+                        except Exception:
+                            return True
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
 
     def _create_tab_widget(self) -> QTabWidget:
         """创建Tab容器"""
