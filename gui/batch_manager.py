@@ -1880,56 +1880,11 @@ class BatchManager:
                 QMessageBox.warning(self.gui, "错误", "输入路径不存在")
                 return
 
-            files_to_process = []
-            output_dir = getattr(self.gui, "output_dir", None)
-
-            if input_path.is_file():
-                files_to_process = [input_path]
-                if output_dir is None:
-                    output_dir = input_path.parent
-            elif input_path.is_dir():
-                # 使用树形文件列表收集选中的文件
-                if hasattr(self.gui, "file_tree") and hasattr(
-                    self.gui, "_file_tree_items"
-                ):
-                    
-
-                    iterator = QTreeWidgetItemIterator(self.gui.file_tree)
-                    while iterator.value():
-                        item = iterator.value()
-                        # 只处理文件项（有UserRole数据的）
-                        file_path_str = item.data(0, Qt.UserRole)
-                        if file_path_str and item.checkState(0) == Qt.Checked:
-                            files_to_process.append(Path(file_path_str))
-                        iterator += 1
-
-                    if output_dir is None:
-                        output_dir = input_path
-                else:
-                    # Fallback：直接扫描目录
-                    pattern = getattr(self.gui, "inp_pattern", None)
-                    pattern_text = pattern.text().strip() if pattern else "*.csv"
-                    patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
-                    if not patterns:
-                        patterns = ["*.csv"]
-                    for file_path in input_path.rglob("*"):
-                        if not file_path.is_file():
-                            continue
-                        if any(
-                            fnmatch.fnmatch(file_path.name, pat) for pat in patterns
-                        ):
-                            files_to_process.append(file_path)
-                    if output_dir is None:
-                        output_dir = input_path
-                if not files_to_process:
-                    QMessageBox.warning(
-                        self.gui,
-                        "提示",
-                        f"未找到匹配 '{getattr(self.gui, 'inp_pattern', None).text() if hasattr(self.gui, 'inp_pattern') else '*.csv'}' 的文件或未选择任何文件",
-                    )
-                    return
-            else:
-                QMessageBox.warning(self.gui, "错误", "输入路径无效")
+            files_to_process, output_dir, error_msg = self._collect_files_to_process(
+                input_path
+            )
+            if error_msg:
+                QMessageBox.warning(self.gui, "提示", error_msg)
                 return
 
             # 输出目录
@@ -2021,6 +1976,65 @@ class BatchManager:
         from datetime import datetime
 
         return datetime.now().strftime("%H:%M:%S")
+
+    def _collect_files_to_process(self, input_path: Path):
+        """根据输入路径和 GUI 当前选择收集要处理的文件列表。
+
+        Returns (files_list, output_dir_or_none, error_message_or_none).
+        """
+        try:
+            files_to_process = []
+            output_dir = getattr(self.gui, "output_dir", None)
+
+            if input_path.is_file():
+                files_to_process = [input_path]
+                if output_dir is None:
+                    output_dir = input_path.parent
+                return files_to_process, output_dir, None
+
+            if input_path.is_dir():
+                # 优先使用 GUI 的树形选择
+                if hasattr(self.gui, "file_tree") and hasattr(
+                    self.gui, "_file_tree_items"
+                ):
+                    iterator = QTreeWidgetItemIterator(self.gui.file_tree)
+                    while iterator.value():
+                        item = iterator.value()
+                        file_path_str = item.data(0, Qt.UserRole)
+                        if file_path_str and item.checkState(0) == Qt.Checked:
+                            files_to_process.append(Path(file_path_str))
+                        iterator += 1
+
+                    if output_dir is None:
+                        output_dir = input_path
+                else:
+                    # 回退：直接根据模式扫描目录
+                    pattern = getattr(self.gui, "inp_pattern", None)
+                    pattern_text = pattern.text().strip() if pattern else "*.csv"
+                    patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
+                    if not patterns:
+                        patterns = ["*.csv"]
+                    for file_path in input_path.rglob("*"):
+                        if not file_path.is_file():
+                            continue
+                        if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
+                            files_to_process.append(file_path)
+                    if output_dir is None:
+                        output_dir = input_path
+
+                if not files_to_process:
+                    pattern_display = (
+                        getattr(self.gui, "inp_pattern", None).text()
+                        if hasattr(self.gui, "inp_pattern")
+                        else "*.csv"
+                    )
+                    return [], None, f"未找到匹配 '{pattern_display}' 的文件或未选择任何文件"
+                return files_to_process, output_dir, None
+
+            return [], None, "输入路径无效"
+        except Exception:
+            logger.debug("收集待处理文件失败", exc_info=True)
+            return [], None, "收集待处理文件时发生错误"
 
     def _on_batch_log(self, message: str):
         """批处理日志回调"""
