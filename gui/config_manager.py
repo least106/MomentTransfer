@@ -133,10 +133,20 @@ class ConfigManager:
 
             project = ProjectData.from_dict(data)
             mm.current_config = project
+            # 同步到 gui 顶层属性，确保其他模块（如 BatchManager）能通过
+            # `self.gui.current_config` 或 `self.gui.project_model` 访问到最新数据。
+            try:
+                self.gui.current_config = project
+            except Exception:
+                logger.debug("同步 current_config 到 gui 失败", exc_info=True)
 
             try:
                 model = ProjectConfigModel.from_dict(data)
                 mm.project_model = model
+                try:
+                    self.gui.project_model = model
+                except Exception:
+                    logger.debug("同步 project_model 到 gui 失败", exc_info=True)
                 try:
                     self.signal_bus.configLoaded.emit(model)
                 except Exception:
@@ -417,6 +427,15 @@ class ConfigManager:
                 logger.warning("ModelManager 缺失，无法应用配置")
                 return
             mm.current_config = ProjectData.from_dict(data)
+            # 确保顶层 gui 对象也保有最新 ProjectData，便于其它模块直接读取
+            try:
+                self.gui.current_config = mm.current_config
+            except Exception:
+                logger.debug("apply_config: 同步 current_config 到 gui 失败", exc_info=True)
+            try:
+                self.gui.project_model = mm.project_model
+            except Exception:
+                logger.debug("apply_config: 同步 project_model 到 gui 失败", exc_info=True)
 
             # 不再创建“全局 calculator”，避免批处理对所有文件套用同一组 source/target。
             # 现在的语义是：用户在文件列表为每个文件（或每个 source part）选择 target，
