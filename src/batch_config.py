@@ -17,7 +17,7 @@ class BatchConfig:  # pylint: disable=R0902,R0903
 
 
 def resolve_file_format(
-    file_path: str,
+    _file_path: str,
     global_cfg: BatchConfig,
 ) -> BatchConfig:
     """为单个数据文件返回全局配置的深拷贝（保留以前模块的行为）。
