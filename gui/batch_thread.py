@@ -3,14 +3,14 @@
 """
 
 import logging
+import os
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import QThread, Signal
-import os
-import uuid
 
 from src.special_format_parser import (
     looks_like_special_format,
