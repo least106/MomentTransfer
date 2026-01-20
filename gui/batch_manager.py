@@ -1119,68 +1119,9 @@ class BatchManager:
         try:
             # 特殊格式：提前检查 part 是否存在于当前配置
             try:
-                if looks_like_special_format(file_path):
-                    part_names = get_part_names(file_path)
-
-                    # 特殊格式约定：part_name 视为 source part；target 通过映射或同名 target 兜底
-                    mapping = None
-                    try:
-                        mapping = (
-                            getattr(self.gui, "special_part_mapping_by_file", {}) or {}
-                        ).get(str(file_path))
-                    except Exception:
-                        mapping = None
-
-                    # 读取可用的 source/target parts
-                    source_parts = {}
-                    target_parts = {}
-                    try:
-                        model = getattr(self.gui, "project_model", None)
-                        if model is not None:
-                            source_parts = getattr(model, "source_parts", {}) or {}
-                            target_parts = getattr(model, "target_parts", {}) or {}
-                    except Exception:
-                        pass
-                    try:
-                        cfg = getattr(self.gui, "current_config", None)
-                        if cfg is not None:
-                            source_parts = source_parts or (
-                                getattr(cfg, "source_parts", {}) or {}
-                            )
-                            target_parts = target_parts or (
-                                getattr(cfg, "target_parts", {}) or {}
-                            )
-                    except Exception:
-                        pass
-
-                    # 若尚未加载/创建任何配置（source/target 都为空），不要给出“缺失”提示
-                    if not source_parts and not target_parts:
-                        return "✓ 特殊格式(待配置)"
-
-                    missing_source = [pn for pn in part_names if pn not in source_parts]
-                    if missing_source:
-                        return f"⚠ Source缺失: {', '.join(missing_source)}"
-
-                    mapping = mapping or {}
-                    unmapped = []
-                    missing_target = []
-                    for pn in part_names:
-                        tp = (mapping.get(pn) or "").strip()
-                        if not tp:
-                            # 未显式映射：仅允许同名 target
-                            if pn in target_parts:
-                                tp = pn
-                            else:
-                                unmapped.append(pn)
-                                continue
-                        if tp not in target_parts:
-                            missing_target.append(f"{pn}->{tp}")
-
-                    if unmapped:
-                        return f"⚠ 未映射: {', '.join(unmapped)}"
-                    if missing_target:
-                        return f"⚠ Target缺失: {', '.join(missing_target)}"
-                    return "✓ 特殊格式(可处理)"
+                special_status = self._validate_special_format(file_path)
+                if special_status is not None:
+                    return special_status
             except Exception:
                 logger.debug("特殊格式预检查失败", exc_info=True)
 
@@ -1250,6 +1191,72 @@ class BatchManager:
         except Exception as e:
             logger.debug(f"验证文件配置失败: {e}")
             return "❓ 未验证"
+
+    def _validate_special_format(self, file_path: Path) -> Optional[str]:
+        """对特殊格式文件进行预检，返回状态文本或 None 表示非特殊格式。"""
+        try:
+            if not looks_like_special_format(file_path):
+                return None
+            part_names = get_part_names(file_path)
+
+            mapping = None
+            try:
+                mapping = (
+                    getattr(self.gui, "special_part_mapping_by_file", {}) or {}
+                ).get(str(file_path))
+            except Exception:
+                mapping = None
+
+            source_parts = {}
+            target_parts = {}
+            try:
+                model = getattr(self.gui, "project_model", None)
+                if model is not None:
+                    source_parts = getattr(model, "source_parts", {}) or {}
+                    target_parts = getattr(model, "target_parts", {}) or {}
+            except Exception:
+                pass
+            try:
+                cfg = getattr(self.gui, "current_config", None)
+                if cfg is not None:
+                    source_parts = source_parts or (
+                        getattr(cfg, "source_parts", {}) or {}
+                    )
+                    target_parts = target_parts or (
+                        getattr(cfg, "target_parts", {}) or {}
+                    )
+            except Exception:
+                pass
+
+            if not source_parts and not target_parts:
+                return "✓ 特殊格式(待配置)"
+
+            missing_source = [pn for pn in part_names if pn not in source_parts]
+            if missing_source:
+                return f"⚠ Source缺失: {', '.join(missing_source)}"
+
+            mapping = mapping or {}
+            unmapped = []
+            missing_target = []
+            for pn in part_names:
+                tp = (mapping.get(pn) or "").strip()
+                if not tp:
+                    if pn in target_parts:
+                        tp = pn
+                    else:
+                        unmapped.append(pn)
+                        continue
+                if tp not in target_parts:
+                    missing_target.append(f"{pn}->{tp}")
+
+            if unmapped:
+                return f"⚠ 未映射: {', '.join(unmapped)}"
+            if missing_target:
+                return f"⚠ Target缺失: {', '.join(missing_target)}"
+            return "✓ 特殊格式(可处理)"
+        except Exception:
+            logger.debug("特殊格式校验失败", exc_info=True)
+            return None
 
     def _on_file_tree_item_clicked(self, item, _column: int):
         """点击文件项后：更新步骤提示，并在文件树内展示 source->target 映射。
