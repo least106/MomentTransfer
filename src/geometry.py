@@ -110,9 +110,7 @@ def construct_basis_matrix(
     yz_dot = abs(np.dot(vy, vz))
     zx_dot = abs(np.dot(vz, vx))
 
-    non_orthogonal = (
-        xy_dot > ortho_thr or yz_dot > ortho_thr or zx_dot > ortho_thr
-    )
+    non_orthogonal = xy_dot > ortho_thr or yz_dot > ortho_thr or zx_dot > ortho_thr
 
     if non_orthogonal:
         msg = (

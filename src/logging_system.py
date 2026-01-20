@@ -50,7 +50,9 @@ class LogContext:
     """
 
     # 使用 ContextVar 保持线程/协程局部的上下文状态
-    _ctx_var: contextvars.ContextVar = contextvars.ContextVar("log_context", default=None)
+    _ctx_var: contextvars.ContextVar = contextvars.ContextVar(
+        "log_context", default=None
+    )
 
     def __init__(self, context_id: str, operation: str = "", **metadata):
         """初始化上下文"""

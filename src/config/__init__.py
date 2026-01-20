@@ -24,8 +24,8 @@ load_config_from_file = _root_mod.load_config_from_file
 reset_config = _root_mod.reset_config
 
 __all__ = [
-	"get_config",
-	"set_config",
-	"load_config_from_file",
-	"reset_config",
+    "get_config",
+    "set_config",
+    "load_config_from_file",
+    "reset_config",
 ]

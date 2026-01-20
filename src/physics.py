@@ -110,25 +110,29 @@ class AeroCalculator:
                 try:
                     source_part = (
                         getattr(init_options, "source_part")
-                        if getattr(init_options, "source_part", None)
-                        is not None
+                        if getattr(init_options, "source_part", None) is not None
                         else source_part
                     )
-                    source_variant = (
-                        getattr(init_options, "source_variant", source_variant)
+                    source_variant = getattr(
+                        init_options, "source_variant", source_variant
                     )
                     target_part = (
                         getattr(init_options, "target_part")
-                        if getattr(init_options, "target_part", None)
-                        is not None
+                        if getattr(init_options, "target_part", None) is not None
                         else target_part
                     )
-                    target_variant = getattr(init_options, "target_variant", target_variant)
-                    cache_provider = getattr(init_options, "cache_provider", cache_provider)
+                    target_variant = getattr(
+                        init_options, "target_variant", target_variant
+                    )
+                    cache_provider = getattr(
+                        init_options, "cache_provider", cache_provider
+                    )
                     cache_cfg = getattr(init_options, "cache_cfg", cache_cfg)
                 except Exception:
                     # 不应阻塞初始化，继续使用已解析的关键字参数
-                    logger.debug("init_options 解析失败，使用显式参数或默认值", exc_info=True)
+                    logger.debug(
+                        "init_options 解析失败，使用显式参数或默认值", exc_info=True
+                    )
 
             # 选择 source frame（可选）
             if source_part is not None:
@@ -274,7 +278,9 @@ class AeroCalculator:
                         getattr(cache_cfg, "precision_digits", None),
                     )
                 except (KeyError, RuntimeError, AttributeError, TypeError) as exc:
-                    logger.debug("旋转矩阵缓存调用失败，回退到直接计算: %s", exc, exc_info=True)
+                    logger.debug(
+                        "旋转矩阵缓存调用失败，回退到直接计算: %s", exc, exc_info=True
+                    )
                     rotation_matrix = None
 
                 if rotation_matrix is None:
@@ -290,7 +296,9 @@ class AeroCalculator:
                         )
                         logger.debug("旋转矩阵缓存未命中，已计算并缓存")
                     except (RuntimeError, AttributeError, TypeError) as exc:
-                        logger.debug("旋转矩阵缓存写入失败，已忽略: %s", exc, exc_info=True)
+                        logger.debug(
+                            "旋转矩阵缓存写入失败，已忽略: %s", exc, exc_info=True
+                        )
                 else:
                     logger.debug("旋转矩阵缓存命中")
             else:
@@ -298,7 +306,9 @@ class AeroCalculator:
                     self.basis_source, self.basis_target
                 )
         except (AttributeError, TypeError) as exc:
-            logger.debug("获取缓存配置失败或异常，直接计算旋转矩阵: %s", exc, exc_info=True)
+            logger.debug(
+                "获取缓存配置失败或异常，直接计算旋转矩阵: %s", exc, exc_info=True
+            )
             rotation_matrix = geometry.compute_rotation_matrix(
                 self.basis_source, self.basis_target
             )
@@ -316,8 +326,10 @@ class AeroCalculator:
                 and "transformation" in getattr(cache_cfg, "cache_types", [])
             ):
                 if self._cache_provider is not None:
-                    transformation_cache = self._cache_provider.get_transformation_cache(
-                        getattr(cache_cfg, "max_entries", None)
+                    transformation_cache = (
+                        self._cache_provider.get_transformation_cache(
+                            getattr(cache_cfg, "max_entries", None)
+                        )
                     )
                 else:
                     transformation_cache = get_transformation_cache(
@@ -330,7 +342,9 @@ class AeroCalculator:
                         getattr(cache_cfg, "precision_digits", None),
                     )
                 except (KeyError, RuntimeError, AttributeError, TypeError) as exc:
-                    logger.debug("力臂转换缓存调用失败，回退到直接计算: %s", exc, exc_info=True)
+                    logger.debug(
+                        "力臂转换缓存调用失败，回退到直接计算: %s", exc, exc_info=True
+                    )
                     r_t = None
 
                 if r_t is None:
@@ -395,7 +409,9 @@ class AeroCalculator:
             else:
                 self.r_target = r_arr
         except (TypeError, ValueError, AttributeError) as exc:
-            logger.debug("校验 r_target 时发生异常，重新计算 r_target: %s", exc, exc_info=True)
+            logger.debug(
+                "校验 r_target 时发生异常，重新计算 r_target: %s", exc, exc_info=True
+            )
             self.r_target = geometry.project_vector_to_frame(
                 self.r_global, self.basis_target
             )
