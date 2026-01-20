@@ -50,8 +50,24 @@ class QuickSelectDialog(QDialog):
         self.info_widget = QWidget(self.info_area)
         self.info_layout = QVBoxLayout(self.info_widget)
         self.info_layout.setContentsMargins(4, 4, 4, 4)
-        self.info_layout.setSpacing(8)
+        # 减小条目间距，使多个 entry 显示更紧凑
+        self.info_layout.setSpacing(6)
         self.info_area.setWidget(self.info_widget)
+        # 调整滚动策略并替换角部控件，避免出现样式相关的“奇怪小角块”
+        try:
+            self.info_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.info_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            # 使用一个空的 QWidget 作为角部控件，覆盖可能的样式残留
+            self.info_area.setCornerWidget(QWidget())
+        except Exception:
+            logger.debug("设置滚动区域角部控件失败", exc_info=True)
+        # 确保 info_widget 为不透明背景，避免与上方控件或样式叠加导致的残影
+        try:
+            bg = self.palette().color(self.backgroundRole()).name()
+            self.info_widget.setStyleSheet(f"background-color: {bg};")
+            self.info_widget.setAutoFillBackground(True)
+        except Exception:
+            logger.debug("设置 info_widget 背景失败", exc_info=True)
         lay.addWidget(self.info_area, 2)
 
         btn_row = QHBoxLayout()
@@ -129,6 +145,16 @@ class QuickSelectDialog(QDialog):
                 w.deleteLater()
         self._entry_widgets.clear()
 
+    def _show_empty_placeholder(self) -> None:
+        """在 info area 显示空状态提示，避免出现残留的杂项控件。"""
+        try:
+            lbl = QLabel("未选择任何项")
+            lbl.setStyleSheet("color: #888888; font-style: italic; padding:8px;")
+            self.info_layout.addWidget(lbl)
+            self.info_layout.addStretch(1)
+        except Exception:
+            pass
+
     def _rebuild_entries(self) -> None:
         self._clear_entries()
         selected_items = []
@@ -137,6 +163,8 @@ class QuickSelectDialog(QDialog):
             if it and it.checkState(0) == Qt.Checked:
                 selected_items.append(it)
         if not selected_items:
+            # 若无选中项，显示占位提示以避免出现残留控件或奇怪的小块
+            self._show_empty_placeholder()
             return
 
         for it in selected_items:
@@ -147,7 +175,8 @@ class QuickSelectDialog(QDialog):
     def _add_entry(self, fp_str: str, part: Optional[str]) -> None:
         container = QWidget(self.info_widget)
         v = QVBoxLayout(container)
-        v.setContentsMargins(6, 6, 6, 6)
+        # 减小每个 entry 的内边距与间距
+        v.setContentsMargins(4, 4, 4, 4)
         v.setSpacing(4)
 
         title = f"文件: {Path(fp_str).name}" + (f"  part: {part}" if part else "")
@@ -162,8 +191,10 @@ class QuickSelectDialog(QDialog):
         v.addLayout(row)
 
         preview = QTextEdit()
+        # 使用 objectName 以便通过 QSS 在暗/亮主题下一致地设定样式
+        preview.setObjectName("quickSelectPreview")
         preview.setReadOnly(True)
-        preview.setMinimumHeight(80)
+        preview.setMinimumHeight(64)
         v.addWidget(preview)
 
         entry = {"key": (fp_str, part), "input": inp, "preview": preview}
