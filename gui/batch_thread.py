@@ -440,6 +440,20 @@ class BatchProcessThread(QThread):
     def request_stop(self):
         """请求停止后台线程的处理"""
         self._stop_requested = True
+        # 如果外部提供了可取消的计算器接口，尝试调用它以尽快中断正在进行的计算
+        try:
+            calc = getattr(self, "calculator", None)
+            if calc is not None:
+                # 常见取消方法名：cancel, request_stop, stop, shutdown
+                for name in ("cancel", "request_stop", "stop", "shutdown"):
+                    fn = getattr(calc, name, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            logger.debug("调用计算器取消接口 %s 失败", name, exc_info=True)
+        except Exception:
+            logger.debug("请求停止时尝试取消计算器失败", exc_info=True)
 
     def run(self):
         try:
@@ -581,4 +595,17 @@ class BatchProcessThread(QThread):
 
         except Exception as e:
             logger.exception("BatchProcessThread.run 出现未处理异常")
-            self.error.emit(str(e))
+            try:
+                self.error.emit(str(e))
+            except Exception:
+                logger.debug("Cannot emit error signal", exc_info=True)
+        finally:
+            # 最终清理：若线程被请求停止但未发送 finished 信号，尝试发送一个通用消息
+            try:
+                if self._stop_requested:
+                    try:
+                        self.log_message.emit("批处理线程已停止（请求中止）")
+                    except Exception:
+                        logger.debug("无法发出停止日志消息", exc_info=True)
+            except Exception:
+                pass
