@@ -5,6 +5,9 @@ Part 管理模块 - 处理 Part 的添加、删除和切换
 import logging
 from typing import Optional
 
+# 引入 QMessageBox 以便测试对其进行 monkeypatch，且供模块内部使用
+from PySide6.QtWidgets import QMessageBox
+
 from gui.signal_bus import SignalBus
 
 # 尝试提前导入 ModelManager，避免函数内多次局部导入带来的 pylint 噪音；
