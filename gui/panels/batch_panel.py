@@ -4,7 +4,7 @@
 
 import logging
 
-from PySide6.QtCore import QEvent, Qt, Signal, QStringListModel
+from PySide6.QtCore import QEvent, QStringListModel, Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QFont
 from PySide6.QtWidgets import (
     QApplication,

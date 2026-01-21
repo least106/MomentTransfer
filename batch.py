@@ -1469,7 +1469,9 @@ def main(**cli_options):
                     )
                 )
 
-            logger.info("并行处理完成: 成功 %d/%d", success_count, len(files_to_process))
+            logger.info(
+                "并行处理完成: 成功 %d/%d", success_count, len(files_to_process)
+            )
             sys.exit(0 if success_count == len(files_to_process) else 1)
 
         else:

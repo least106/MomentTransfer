@@ -6,8 +6,8 @@
 # pylint: disable=too-many-arguments,line-too-long
 
 import fnmatch
-import math
 import logging
+import math
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +17,9 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QMessageBox,
@@ -25,73 +27,125 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
-    QComboBox,
-    QApplication,
 )
+
+from gui.batch_manager_batch import (
+    attach_batch_thread_signals as _attach_batch_thread_signals_impl,
+)
+from gui.batch_manager_batch import create_batch_thread as _create_batch_thread_impl
+from gui.batch_manager_batch import (
+    delete_new_output_files as _delete_new_output_files_impl,
+)
+from gui.batch_manager_batch import prepare_gui_for_batch as _prepare_gui_for_batch_impl
+from gui.batch_manager_batch import request_cancel_batch as _request_cancel_batch_impl
+from gui.batch_manager_batch import (
+    restore_gui_after_batch as _restore_gui_after_batch_impl,
+)
+from gui.batch_manager_batch import run_batch_processing as _run_batch_processing_impl
+from gui.batch_manager_batch import undo_batch_processing as _undo_batch_processing_impl
+from gui.batch_manager_files import _add_file_tree_entry as _add_file_tree_entry_impl
+from gui.batch_manager_files import (
+    _auto_fill_special_mappings as _auto_fill_special_mappings_impl,
+)
+from gui.batch_manager_files import (
+    _collect_files_for_scan as _collect_files_for_scan_impl,
+)
+from gui.batch_manager_files import (
+    _collect_files_to_process as _collect_files_to_process_impl,
+)
+from gui.batch_manager_files import (
+    _create_part_mapping_combo as _create_part_mapping_combo_impl,
+)
+from gui.batch_manager_files import (
+    _create_special_part_node as _create_special_part_node_impl,
+)
+from gui.batch_manager_files import (
+    _ensure_file_part_selection_storage as _ensure_file_part_selection_storage_impl,
+)
+from gui.batch_manager_files import (
+    _ensure_regular_file_selector_rows as _ensure_regular_file_selector_rows_impl,
+)
+from gui.batch_manager_files import (
+    _get_or_init_special_mapping as _get_or_init_special_mapping_impl,
+)
+from gui.batch_manager_files import _infer_target_part as _infer_target_part_impl
+from gui.batch_manager_files import (
+    _make_part_change_handler as _make_part_change_handler_impl,
+)
+from gui.batch_manager_files import (
+    _populate_file_tree_from_files as _populate_file_tree_from_files_impl,
+)
+from gui.batch_manager_files import (
+    _remove_old_selector_children as _remove_old_selector_children_impl,
+)
+from gui.batch_manager_files import (
+    _safe_add_file_tree_entry as _safe_add_file_tree_entry_impl,
+)
+from gui.batch_manager_files import (
+    _safe_set_combo_selection as _safe_set_combo_selection_impl,
+)
+from gui.batch_manager_files import (
+    _scan_dir_for_patterns as _scan_dir_for_patterns_impl,
+)
+
+# 委托到 preview 子模块以避免在函数体内延迟导入
+from gui.batch_manager_preview import (
+    _apply_preview_filters as _apply_preview_filters_impl,
+)
+from gui.batch_manager_preview import (
+    _apply_quick_filter_special_iter as _apply_quick_filter_special_iter_impl,
+)
+from gui.batch_manager_preview import (
+    _apply_quick_filter_to_special_table as _apply_quick_filter_to_special_table_impl,
+)
+from gui.batch_manager_preview import (
+    _apply_quick_filter_to_table as _apply_quick_filter_to_table_impl,
+)
+from gui.batch_manager_preview import (
+    _build_row_preview_text as _build_row_preview_text_impl,
+)
+from gui.batch_manager_preview import (
+    _build_table_row_preview_text as _build_table_row_preview_text_impl,
+)
+from gui.batch_manager_preview import _clear_preview_group as _clear_preview_group_impl
+from gui.batch_manager_preview import (
+    _create_preview_table as _create_preview_table_impl,
+)
+from gui.batch_manager_preview import _embed_preview_table as _embed_preview_table_impl
+from gui.batch_manager_preview import (
+    _ensure_table_row_selection_storage as _ensure_table_row_selection_storage_impl,
+)
+from gui.batch_manager_preview import (
+    _format_preview_value as _format_preview_value_impl,
+)
+from gui.batch_manager_preview import (
+    _get_table_df_preview as _get_table_df_preview_impl,
+)
+from gui.batch_manager_preview import (
+    _make_preview_toggle_callback as _make_preview_toggle_callback_impl,
+)
+from gui.batch_manager_preview import (
+    _populate_special_data_rows as _populate_special_data_rows_impl,
+)
+from gui.batch_manager_preview import (
+    _populate_table_data_rows as _populate_table_data_rows_impl,
+)
+from gui.batch_manager_ui import connect_quick_filter as _connect_quick_filter_impl
+from gui.batch_manager_ui import (
+    connect_signal_bus_events as _connect_signal_bus_events_impl,
+)
+from gui.batch_manager_ui import (
+    safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
+)
+from gui.batch_thread import BatchProcessThread
+from gui.paged_table import PagedTableWidget
+from gui.quick_select_dialog import QuickSelectDialog
+from src.cli_helpers import BatchConfig, resolve_file_format
+from src.file_cache import get_file_cache
 
 # 项目内模块（本地导入）
 from src.special_format_detector import looks_like_special_format
 from src.special_format_parser import get_part_names, parse_special_format_file
-from gui.quick_select_dialog import QuickSelectDialog
-from gui.paged_table import PagedTableWidget
-from gui.batch_thread import BatchProcessThread
-from src.cli_helpers import BatchConfig, resolve_file_format
-from src.file_cache import get_file_cache
-# 委托到 preview 子模块以避免在函数体内延迟导入
-from gui.batch_manager_preview import (
-    _build_row_preview_text as _build_row_preview_text_impl,
-    _format_preview_value as _format_preview_value_impl,
-    _apply_quick_filter_to_table as _apply_quick_filter_to_table_impl,
-    _apply_quick_filter_to_special_table as _apply_quick_filter_to_special_table_impl,
-    _apply_quick_filter_special_iter as _apply_quick_filter_special_iter_impl,
-    _build_table_row_preview_text as _build_table_row_preview_text_impl,
-    _get_table_df_preview as _get_table_df_preview_impl,
-)
-from gui.batch_manager_preview import (
-    _create_preview_table as _create_preview_table_impl,
-    _ensure_table_row_selection_storage as _ensure_table_row_selection_storage_impl,
-    _populate_table_data_rows as _populate_table_data_rows_impl,
-    _make_preview_toggle_callback as _make_preview_toggle_callback_impl,
-    _apply_preview_filters as _apply_preview_filters_impl,
-    _embed_preview_table as _embed_preview_table_impl,
-    _populate_special_data_rows as _populate_special_data_rows_impl,
-    _clear_preview_group as _clear_preview_group_impl,
-)
-from gui.batch_manager_files import (
-    _populate_file_tree_from_files as _populate_file_tree_from_files_impl,
-    _safe_add_file_tree_entry as _safe_add_file_tree_entry_impl,
-    _collect_files_for_scan as _collect_files_for_scan_impl,
-    _add_file_tree_entry as _add_file_tree_entry_impl,
-    _ensure_file_part_selection_storage as _ensure_file_part_selection_storage_impl,
-    _remove_old_selector_children as _remove_old_selector_children_impl,
-    _collect_files_to_process as _collect_files_to_process_impl,
-    _scan_dir_for_patterns as _scan_dir_for_patterns_impl,
-)
-from gui.batch_manager_files import (
-    _ensure_regular_file_selector_rows as _ensure_regular_file_selector_rows_impl,
-    _infer_target_part as _infer_target_part_impl,
-    _make_part_change_handler as _make_part_change_handler_impl,
-    _auto_fill_special_mappings as _auto_fill_special_mappings_impl,
-    _get_or_init_special_mapping as _get_or_init_special_mapping_impl,
-    _create_part_mapping_combo as _create_part_mapping_combo_impl,
-    _safe_set_combo_selection as _safe_set_combo_selection_impl,
-    _create_special_part_node as _create_special_part_node_impl,
-)
-from gui.batch_manager_batch import (
-    run_batch_processing as _run_batch_processing_impl,
-    attach_batch_thread_signals as _attach_batch_thread_signals_impl,
-    prepare_gui_for_batch as _prepare_gui_for_batch_impl,
-    create_batch_thread as _create_batch_thread_impl,
-    restore_gui_after_batch as _restore_gui_after_batch_impl,
-    request_cancel_batch as _request_cancel_batch_impl,
-    undo_batch_processing as _undo_batch_processing_impl,
-    delete_new_output_files as _delete_new_output_files_impl,
-)
-from gui.batch_manager_ui import (
-    connect_signal_bus_events as _connect_signal_bus_events_impl,
-    connect_quick_filter as _connect_quick_filter_impl,
-    safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -498,7 +552,9 @@ class BatchManager:
                 pass
 
             # 应用筛选（委托给 helper）
-            return _apply_quick_filter_to_special_table_impl(self, table, file_path_str, source_part)
+            return _apply_quick_filter_to_special_table_impl(
+                self, table, file_path_str, source_part
+            )
         except Exception as e:
             logger.debug(f"应用特殊格式表格快速筛选失败: {e}", exc_info=True)
             return None
@@ -570,6 +626,7 @@ class BatchManager:
             return cached.get("df")
 
         try:
+
             def _csv_has_header(path: Path) -> bool:
                 """简单探测：首行含非数值token则视为表头。"""
                 try:
@@ -628,9 +685,7 @@ class BatchManager:
         try:
             if not hasattr(self.gui, "table_row_selection_by_file"):
                 self.gui.table_row_selection_by_file = {}
-            by_file = getattr(
-                self.gui, "table_row_selection_by_file", {}
-            ) or {}
+            by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
             fp_str = str(file_path)
             sel = by_file.get(fp_str)
             if sel is None:
@@ -661,6 +716,7 @@ class BatchManager:
     def _populate_table_data_rows(self, file_item, file_path: Path, df) -> None:
         """为常规表格文件创建数据行预览表格（带勾选列）。"""
         return _populate_table_data_rows_impl(self, file_item, file_path, df)
+
     def _make_preview_toggle_callback(
         self,
         *,
@@ -941,9 +997,13 @@ class BatchManager:
         # 委托给 files 子模块实现（已在模块顶层导入）
         return _populate_file_tree_from_files_impl(self, files, base_path, p)
 
-    def _safe_add_file_tree_entry(self, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool) -> None:
+    def _safe_add_file_tree_entry(
+        self, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
+    ) -> None:
         """安全地调用 `_add_file_tree_entry` 并在发生异常时记录调试信息。"""
-        return _safe_add_file_tree_entry_impl(self, base_path, dir_items, fp, single_file_mode)
+        return _safe_add_file_tree_entry_impl(
+            self, base_path, dir_items, fp, single_file_mode
+        )
 
     def _sync_row_selection(
         self,
@@ -964,9 +1024,9 @@ class BatchManager:
             if is_special:
                 if not hasattr(self.gui, "special_part_row_selection_by_file"):
                     self.gui.special_part_row_selection_by_file = {}
-                by_file = getattr(
-                    self.gui, "special_part_row_selection_by_file", {}
-                ) or {}
+                by_file = (
+                    getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
+                )
                 by_part = by_file.setdefault(fp_str, {})
                 sel = by_part.get(source_part)
                 if sel is None:
@@ -980,9 +1040,7 @@ class BatchManager:
             else:
                 if not hasattr(self.gui, "table_row_selection_by_file"):
                     self.gui.table_row_selection_by_file = {}
-                by_file = getattr(
-                    self.gui, "table_row_selection_by_file", {}
-                ) or {}
+                by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
                 sel = by_file.get(fp_str)
                 if sel is None:
                     sel = set()
@@ -1148,7 +1206,9 @@ class BatchManager:
                     try:
                         self._handle_regular_file_click(item, file_path)
                     except Exception:
-                        logger.debug("_handle_regular_file_click 调用失败", exc_info=True)
+                        logger.debug(
+                            "_handle_regular_file_click 调用失败", exc_info=True
+                        )
             except Exception:
                 logger.debug("ensure special mapping rows failed", exc_info=True)
         except Exception:
@@ -1221,6 +1281,7 @@ class BatchManager:
                         if len(ci) == 1:
                             result = ci[0]
                         else:
+
                             def norm(s: str) -> str:
                                 try:
                                     return "".join(
@@ -1243,9 +1304,9 @@ class BatchManager:
     def _determine_part_selection_status(self, file_path: Path, project_data) -> str:
         """基于 project_data 与当前选择推断该文件的 source/target 状态。"""
         try:
-            sel = (
-                getattr(self.gui, "file_part_selection_by_file", {}) or {}
-            ).get(str(file_path)) or {}
+            sel = (getattr(self.gui, "file_part_selection_by_file", {}) or {}).get(
+                str(file_path)
+            ) or {}
             source_sel = (sel.get("source") or "").strip()
             target_sel = (sel.get("target") or "").strip()
 
@@ -1333,7 +1394,9 @@ class BatchManager:
         self, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
     ) -> None:
         """将单个文件添加到文件树，委托到 `gui.batch_manager_files` 实现。"""
-        return _add_file_tree_entry_impl(self, base_path, dir_items, fp, single_file_mode)
+        return _add_file_tree_entry_impl(
+            self, base_path, dir_items, fp, single_file_mode
+        )
 
     def _ensure_file_part_selection_storage(self, file_path: Path) -> dict:
         """确保常规文件的 source/target 选择缓存存在（委托子模块）。"""
@@ -1396,7 +1459,9 @@ class BatchManager:
         Returns:
             是否发生了映射变更。
         """
-        return _auto_fill_special_mappings_impl(self, file_path, part_names, target_names, mapping)
+        return _auto_fill_special_mappings_impl(
+            self, file_path, part_names, target_names, mapping
+        )
 
     def _get_or_init_special_mapping(self, file_path: Path) -> dict:
         return _get_or_init_special_mapping_impl(self, file_path)
@@ -1404,11 +1469,12 @@ class BatchManager:
     def _create_part_mapping_combo(
         self, file_path: Path, source_part, target_names: list, mapping: dict
     ):
-        return _create_part_mapping_combo_impl(self, file_path, source_part, target_names, mapping)
+        return _create_part_mapping_combo_impl(
+            self, file_path, source_part, target_names, mapping
+        )
 
     def _safe_set_combo_selection(self, combo, current, names):
         return _safe_set_combo_selection_impl(self, combo, current, names)
-
 
     def _create_special_part_node(
         self,
@@ -1419,9 +1485,13 @@ class BatchManager:
         mapping: dict,
         data_dict: dict,
     ) -> None:
-        return _create_special_part_node_impl(self, file_item, file_path, source_part, target_names, mapping, data_dict)
+        return _create_special_part_node_impl(
+            self, file_item, file_path, source_part, target_names, mapping, data_dict
+        )
 
-    def _safe_populate_special_preview(self, child, file_path: Path, source_part, data_dict: dict):
+    def _safe_populate_special_preview(
+        self, child, file_path: Path, source_part, data_dict: dict
+    ):
         """安全地填充单个 special part 的数据预览表格（捕获异常）。"""
         try:
             df = (data_dict or {}).get(str(source_part))
@@ -1762,11 +1832,15 @@ class BatchManager:
                     if kind == "table_data_group":
                         fp_str = str(meta.get("file") or "")
                         if fp_str:
-                            file_item = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
+                            file_item = getattr(self.gui, "_file_tree_items", {}).get(
+                                fp_str
+                            )
                     elif kind == "table_data_row":
                         fp_str = str(meta.get("file") or "")
                         if fp_str:
-                            file_item = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
+                            file_item = getattr(self.gui, "_file_tree_items", {}).get(
+                                fp_str
+                            )
         except Exception:
             logger.debug("获取当前表格数据行上下文失败", exc_info=True)
 
@@ -1780,7 +1854,9 @@ class BatchManager:
                 inner = getattr(table, "table", None)
                 while w is not None:
                     if w is table or (inner is not None and w is inner):
-                        file_item = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
+                        file_item = getattr(self.gui, "_file_tree_items", {}).get(
+                            fp_str
+                        )
                         if file_item is not None:
                             return file_item, fp_str
                         break
@@ -1934,7 +2010,9 @@ class BatchManager:
         if table is not None:
             self._is_updating_tree = True
             try:
-                by_file[fp_str] = self._apply_table_checkbox_mode(table, mode, by_file, fp_str)
+                by_file[fp_str] = self._apply_table_checkbox_mode(
+                    table, mode, by_file, fp_str
+                )
             finally:
                 self._is_updating_tree = False
             self.gui.table_row_selection_by_file = by_file
@@ -1989,7 +2067,9 @@ class BatchManager:
                 continue
         return row_items
 
-    def _apply_mode_to_special_row_items(self, row_items, fp_str, source_part, mode, by_file) -> None:
+    def _apply_mode_to_special_row_items(
+        self, row_items, fp_str, source_part, mode, by_file
+    ) -> None:
         """针对 special 类型的树节点行集合应用 `all|none|invert` 操作并更新 by_file 与 GUI 状态。"""
         if not row_items:
             return
@@ -1998,7 +2078,9 @@ class BatchManager:
         self._is_updating_tree = True
         try:
             if mode == "all":
-                by_part[str(source_part)] = self._select_all_special_row_items(row_items)
+                by_part[str(source_part)] = self._select_all_special_row_items(
+                    row_items
+                )
 
             elif mode == "none":
                 for child in row_items:
@@ -2105,7 +2187,9 @@ class BatchManager:
         row_items = self._collect_special_row_items_for_part(part_item)
         if not row_items:
             return
-        self._apply_mode_to_special_row_items(row_items, fp_str, source_part, mode, by_file)
+        self._apply_mode_to_special_row_items(
+            row_items, fp_str, source_part, mode, by_file
+        )
 
     # 文件选择方法（从 main_window 迁移）
     def select_all_files(self):

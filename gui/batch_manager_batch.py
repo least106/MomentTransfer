@@ -3,9 +3,10 @@
 本模块提供一组函数，封装 `BatchManager` 中与批处理线程、GUI 状态准备与撤销相关的逻辑，
 以便将 `gui/batch_manager.py` 逐步拆分为更小的子模块。
 """
+
+import logging
 from datetime import datetime
 from pathlib import Path
-import logging
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -81,6 +82,7 @@ def attach_batch_thread_signals(manager):
             pass
 
         try:
+
             def _on_thread_log(msg):
                 try:
                     manager.gui.txt_batch_log.append(f"[{_now_str(manager)}] {msg}")
@@ -204,13 +206,17 @@ def request_cancel_batch(manager):
             if hasattr(manager.gui, "txt_batch_log"):
                 try:
                     ts = datetime.now().strftime("%H:%M:%S")
-                    manager.gui.txt_batch_log.append(f"[{ts}] 用户请求取消任务，正在停止...")
+                    manager.gui.txt_batch_log.append(
+                        f"[{ts}] 用户请求取消任务，正在停止..."
+                    )
                 except Exception:
                     pass
             try:
                 batch_thread.request_stop()
             except Exception:
-                logger.debug("batch_thread.request_stop 调用失败（可能已结束）", exc_info=True)
+                logger.debug(
+                    "batch_thread.request_stop 调用失败（可能已结束）", exc_info=True
+                )
 
             if hasattr(manager.gui, "btn_cancel"):
                 try:
@@ -248,7 +254,9 @@ def undo_batch_processing(manager):
 
         try:
             deleted_count = delete_new_output_files(manager, output_dir, existing_files)
-            QMessageBox.information(manager.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件")
+            QMessageBox.information(
+                manager.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件"
+            )
 
             # pylint: disable=protected-access
             manager.gui._batch_output_dir = None
@@ -277,7 +285,7 @@ def delete_new_output_files(manager, output_dir, existing_files):
     try:
         if output_dir and Path(output_dir).exists():
             output_path = Path(output_dir)
-            existing_iter = (existing_files or set())
+            existing_iter = existing_files or set()
             existing_files_resolved = set()
             for p in existing_iter:
                 try:

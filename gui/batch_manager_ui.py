@@ -3,9 +3,11 @@
 此模块包含与 UI 信号连接、SignalBus 事件绑定以及快速筛选连接相关的逻辑，
 设计为可由 `BatchManager` 委托调用以便拆分主模块责任。
 """
-from pathlib import Path
+
 import logging
+from pathlib import Path
 from typing import Any
+
 from PySide6.QtCore import Qt
 
 logger = logging.getLogger(__name__)
@@ -16,6 +18,7 @@ def connect_ui_signals(manager: Any) -> None:
     try:
         gui = manager.gui
         if hasattr(gui, "file_tree") and gui.file_tree is not None:
+
             def _connect_file_tree(signal_name: str, handler_name: str) -> None:
                 try:
                     bm = getattr(gui, "batch_manager", None)
@@ -30,7 +33,9 @@ def connect_ui_signals(manager: Any) -> None:
                     try:
                         sig.connect(handler)
                     except Exception:
-                        logger.debug(f"连接 file_tree.{signal_name} 失败", exc_info=True)
+                        logger.debug(
+                            f"连接 file_tree.{signal_name} 失败", exc_info=True
+                        )
                 except Exception:
                     logger.debug(f"连接 file_tree {signal_name} 失败", exc_info=True)
 
@@ -79,7 +84,9 @@ def connect_quick_filter(manager: Any) -> None:
     """连接快速筛选面板的变化信号到 manager 的回调。"""
     try:
         gui = manager.gui
-        if hasattr(gui, "batch_panel") and hasattr(gui.batch_panel, "quickFilterChanged"):
+        if hasattr(gui, "batch_panel") and hasattr(
+            gui.batch_panel, "quickFilterChanged"
+        ):
             handler = getattr(manager, "_on_quick_filter_changed", None)
             if callable(handler):
                 try:
@@ -88,9 +95,13 @@ def connect_quick_filter(manager: Any) -> None:
                 except Exception as e:
                     logger.error(f"连接快速筛选信号失败: {e}", exc_info=True)
             else:
-                logger.warning("快速筛选信号连接失败：manager 未提供 _on_quick_filter_changed 回调")
+                logger.warning(
+                    "快速筛选信号连接失败：manager 未提供 _on_quick_filter_changed 回调"
+                )
         else:
-            logger.warning("快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在")
+            logger.warning(
+                "快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在"
+            )
     except Exception:
         logger.debug("connect_quick_filter 失败", exc_info=True)
 

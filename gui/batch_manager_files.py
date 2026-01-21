@@ -9,14 +9,14 @@
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTreeWidgetItem
 
 logger = logging.getLogger(__name__)
-from src.file_cache import get_file_cache
 from src.cli_helpers import BatchConfig, resolve_file_format
+from src.file_cache import get_file_cache
 from src.special_format_detector import looks_like_special_format
 from src.special_format_parser import get_part_names
 
@@ -89,7 +89,9 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
     logger.info(f"已扫描到 {len(files)} 个文件")
 
 
-def _safe_add_file_tree_entry(manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool) -> None:
+def _safe_add_file_tree_entry(
+    manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
+) -> None:
     """安全地调用 `_add_file_tree_entry` 并在发生异常时记录调试信息。"""
     try:
         try:
@@ -100,7 +102,9 @@ def _safe_add_file_tree_entry(manager, base_path: Path, dir_items: dict, fp: Pat
         logger.debug("_safe_add_file_tree_entry 内部错误", exc_info=True)
 
 
-def _add_file_tree_entry(manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool) -> None:
+def _add_file_tree_entry(
+    manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
+) -> None:
     """将单个文件添加到文件树，包含目录节点构建与状态校验。"""
     try:
         try:
@@ -209,7 +213,9 @@ def _collect_files_to_process(manager, input_path: Path):
 
         if input_path.is_dir():
             # 优先使用 GUI 的树形选择（若存在）
-            if hasattr(manager.gui, "file_tree") and hasattr(manager.gui, "_file_tree_items"):
+            if hasattr(manager.gui, "file_tree") and hasattr(
+                manager.gui, "_file_tree_items"
+            ):
                 files_to_process.extend(_collect_files_for_scan(manager, input_path)[0])
                 if output_dir is None:
                     output_dir = input_path
@@ -258,9 +264,7 @@ def _scan_dir_for_patterns(manager, input_path: Path, patterns: list) -> list:
     return found
 
 
-def _ensure_regular_file_selector_rows(
-    manager, file_item, file_path: Path
-) -> None:
+def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> None:
     """为常规文件创建 source/target 选择行（树内联下拉）。"""
     try:
         sel = _ensure_file_part_selection_storage(manager, file_path)
@@ -338,6 +342,7 @@ def _infer_target_part(manager, source_part: str, target_names: list) -> Optiona
                     if len(ci) == 1:
                         result = ci[0]
                     else:
+
                         def norm(s: str) -> str:
                             try:
                                 s2 = "".join(
@@ -379,7 +384,9 @@ def _make_part_change_handler(manager, fp_str: str, key: str):
     return _handler
 
 
-def _auto_fill_special_mappings(manager, file_path: Path, part_names: list, target_names: list, mapping: dict) -> bool:
+def _auto_fill_special_mappings(
+    manager, file_path: Path, part_names: list, target_names: list, mapping: dict
+) -> bool:
     changed = False
     try:
         if mapping is None or not isinstance(mapping, dict):
@@ -411,7 +418,9 @@ def _get_or_init_special_mapping(manager, file_path: Path) -> dict:
         return {}
 
 
-def _create_part_mapping_combo(manager, file_path: Path, source_part, target_names: list, mapping: dict):
+def _create_part_mapping_combo(
+    manager, file_path: Path, source_part, target_names: list, mapping: dict
+):
     from PySide6.QtWidgets import QComboBox
 
     combo = QComboBox(manager.gui.file_tree)
@@ -468,7 +477,15 @@ def _safe_set_combo_selection(manager, combo, current, names):
             pass
 
 
-def _create_special_part_node(manager, file_item, file_path: Path, source_part, target_names: list, mapping: dict, data_dict: dict) -> None:
+def _create_special_part_node(
+    manager,
+    file_item,
+    file_path: Path,
+    source_part,
+    target_names: list,
+    mapping: dict,
+    data_dict: dict,
+) -> None:
     from PySide6.QtWidgets import QTreeWidgetItem
 
     try:
@@ -484,7 +501,9 @@ def _create_special_part_node(manager, file_item, file_path: Path, source_part, 
         )
         file_item.addChild(child)
 
-        combo = _create_part_mapping_combo(manager, file_path, source_part, target_names, mapping)
+        combo = _create_part_mapping_combo(
+            manager, file_path, source_part, target_names, mapping
+        )
         manager.gui.file_tree.setItemWidget(child, 1, combo)
         key = (str(file_path), str(source_part))
         manager._special_part_combo[key] = combo
@@ -569,7 +588,9 @@ def _validate_special_format(manager, file_path: Path) -> Optional[str]:
                     # reuse manager-side analyze if exists
                     analyze_fn = getattr(manager, "_analyze_special_mapping", None)
                     if callable(analyze_fn):
-                        unmapped, missing_target = analyze_fn(part_names, mapping, list(target_parts.keys()))
+                        unmapped, missing_target = analyze_fn(
+                            part_names, mapping, list(target_parts.keys())
+                        )
                     else:
                         unmapped, missing_target = ([], [])
 

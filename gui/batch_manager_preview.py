@@ -7,8 +7,8 @@
 # pylint: disable=C0301
 """
 
-import math
 import logging
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -129,6 +129,7 @@ def _make_simple_preview_table(
         except Exception:
             pass
         try:
+
             def _cb_state(state, row=r):
                 try:
                     on_toggle(row, state == Qt.Checked)
@@ -268,7 +269,7 @@ def _apply_quick_filter_with_paged_table_obj(
     operator: str,
     qcol,
     qval,
- ) -> bool:  # pylint: disable=too-many-return-statements,too-many-branches
+) -> bool:  # pylint: disable=too-many-return-statements,too-many-branches
     """分页表格的快速筛选实现（不依赖 manager）。"""
     try:
         if not hasattr(table, "set_filter_with_df"):
@@ -343,7 +344,9 @@ def _apply_quick_filter_table_iter_obj(table, df, operator: str, qcol, qval) -> 
             pass
 
 
-def _evaluate_filter(manager, row_value, operator: str, filter_value: str) -> bool:  # pylint: disable=too-many-return-statements,too-many-branches
+def _evaluate_filter(
+    manager, row_value, operator: str, filter_value: str
+) -> bool:  # pylint: disable=too-many-return-statements,too-many-branches
     try:
         if operator == "包含":
             return str(filter_value).lower() in str(row_value).lower()
@@ -362,7 +365,9 @@ def _evaluate_filter(manager, row_value, operator: str, filter_value: str) -> bo
         return False
 
 
-def _compare_numeric(manager, val: float, flt: float, operator: str) -> bool:  # pylint: disable=too-many-return-statements,too-many-branches
+def _compare_numeric(
+    manager, val: float, flt: float, operator: str
+) -> bool:  # pylint: disable=too-many-return-statements,too-many-branches
     try:
         if operator == "≈":
             if abs(flt) > 1e-10:
@@ -525,6 +530,7 @@ def _get_table_df_preview(manager, file_path: Path, *, max_rows: int = 200):
         return cached.get("df")
 
     try:
+
         def _csv_has_header(path: Path) -> bool:
             try:
                 with open(path, "r", encoding="utf-8") as fh:
@@ -668,9 +674,7 @@ def _make_preview_toggle_callback(
             else:
                 if not hasattr(manager.gui, "table_row_selection_by_file"):
                     manager.gui.table_row_selection_by_file = {}
-                by_file_local = getattr(
-                    manager.gui, "table_row_selection_by_file", {}
-                )
+                by_file_local = getattr(manager.gui, "table_row_selection_by_file", {})
                 by_file_local = by_file_local or {}
                 sel_local = by_file_local.get(fp_local_inner)
                 if sel_local is None:
