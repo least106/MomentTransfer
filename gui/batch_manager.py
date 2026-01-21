@@ -637,7 +637,8 @@ class BatchManager:
     def _find_special_part_item(self, fp_str: str, source_part: str):
         """根据文件与part名在树中查找对应part节点。"""
         try:
-            file_item = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
+            file_item = getattr(self.gui, "_file_tree_items", {})
+            file_item = file_item.get(fp_str)
             if file_item is None:
                 return None
             for i in range(file_item.childCount()):
@@ -652,7 +653,7 @@ class BatchManager:
 
     def _populate_table_data_rows(self, file_item, file_path: Path, df) -> None:
         """为常规表格文件创建数据行预览表格（带勾选列）。"""
-        
+
         if df is None:
             return
 
@@ -738,7 +739,7 @@ class BatchManager:
         self, part_item, file_path: Path, source_part: str, df
     ) -> None:
         """为某个 part 节点创建数据行预览表格（带勾选列）。"""
-        
+
         fp_str = str(file_path)
         try:
             by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
@@ -979,7 +980,6 @@ class BatchManager:
 
     def _scan_and_populate_files(self, chosen_path: Path):
         """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。"""
-        
         try:
             p = Path(chosen_path)
             # 根据所选路径类型启用/禁用匹配模式控件：
@@ -1449,7 +1449,7 @@ class BatchManager:
 
     def _ensure_regular_file_selector_rows(self, file_item, file_path: Path) -> None:
         """为常规文件创建 source/target 选择行（树内联下拉）。"""
-        
+
         try:
             sel = self._ensure_file_part_selection_storage(file_path)
             source_names = self._get_source_part_names()
@@ -1727,16 +1727,16 @@ class BatchManager:
 
             def _on_changed(text: str, *, fp_str=str(file_path), sp=str(source_part)):
                 try:
-                    m = (
-                        getattr(self.gui, "special_part_mapping_by_file", {}) or {}
-                    ).setdefault(fp_str, {})
+                    tmp = getattr(self.gui, "special_part_mapping_by_file", {}) or {}
+                    m = tmp.setdefault(fp_str, {})
                     val = (text or "").strip()
                     if not val or val == "（未选择）":
                         m.pop(sp, None)
                     else:
                         m[sp] = val
                     try:
-                        file_node = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
+                        tmp_items = getattr(self.gui, "_file_tree_items", {}) or {}
+                        file_node = tmp_items.get(fp_str)
                         if file_node is not None:
                             file_node.setText(
                                 1, self._validate_file_config(Path(fp_str))
@@ -1744,7 +1744,10 @@ class BatchManager:
                     except Exception:
                         pass
                 except Exception:
-                    logger.debug("special mapping changed handler failed", exc_info=True)
+                    logger.debug(
+                        "special mapping changed handler failed",
+                        exc_info=True,
+                    )
 
             combo.currentTextChanged.connect(_on_changed)
             self.gui.file_tree.setItemWidget(child, 1, combo)
@@ -1763,10 +1766,10 @@ class BatchManager:
 
     def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
         """在文件节点下创建/刷新子节点：每个 source part 一行，右侧为 target 下拉。"""
-        
         try:
             mapping = self._get_or_init_special_mapping(file_path)
-            mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", {}) or {}
+            mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", {})
+            mapping_by_file = mapping_by_file or {}
             part_names = get_part_names(file_path)
             target_names = self._get_target_part_names()
 
@@ -1774,7 +1777,10 @@ class BatchManager:
             try:
                 if target_names:
                     if self._auto_fill_special_mappings(
-                        file_path, part_names, target_names, mapping
+                        file_path,
+                        part_names,
+                        target_names,
+                        mapping,
                     ):
                         mapping_by_file[str(file_path)] = mapping
                         self.gui.special_part_mapping_by_file = mapping_by_file
@@ -2016,18 +2022,25 @@ class BatchManager:
                     for file_path in input_path.rglob("*"):
                         if not file_path.is_file():
                             continue
-                        if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
+                        matches = any(
+                            fnmatch.fnmatch(file_path.name, pat) for pat in patterns
+                        )
+                        if matches:
                             files_to_process.append(file_path)
                     if output_dir is None:
                         output_dir = input_path
 
                 if not files_to_process:
+                    pattern_widget = getattr(self.gui, "inp_pattern", None)
                     pattern_display = (
-                        getattr(self.gui, "inp_pattern", None).text()
-                        if hasattr(self.gui, "inp_pattern")
+                        pattern_widget.text()
+                        if (pattern_widget and hasattr(pattern_widget, "text"))
                         else "*.csv"
                     )
-                    return [], None, f"未找到匹配 '{pattern_display}' 的文件或未选择任何文件"
+                    msg = (
+                        "未找到匹配 '" + pattern_display + "' 的文件或未选择任何文件"
+                    )
+                    return [], None, msg
                 return files_to_process, output_dir, None
 
             return [], None, "输入路径无效"
@@ -2238,7 +2251,6 @@ class BatchManager:
     def _iter_checked_file_items(self):
         """遍历当前文件树中被勾选的文件项（仅文件项）。"""
         try:
-            
             if not hasattr(self.gui, "file_tree") or self.gui.file_tree is None:
                 return
             it = QTreeWidgetItemIterator(self.gui.file_tree)
@@ -2501,7 +2513,6 @@ class BatchManager:
 
     def invert_file_selection(self):
         """反选：文件模式下反选文件；数据模式下反选当前 part 数据行。"""
-        
         if not hasattr(self.gui, "file_tree"):
             return
 
@@ -2540,7 +2551,6 @@ class BatchManager:
 
     def _set_all_file_items_checked(self, check_state):
         """设置所有文件项的选中状态（仅文件，不包括目录节点）"""
-        
         if not hasattr(self.gui, "file_tree"):
             return
 
