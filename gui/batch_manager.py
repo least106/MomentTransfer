@@ -1,5 +1,10 @@
 """批处理管理模块 - 处理批处理相关功能"""
 
+# 模块级 pylint 配置：批处理模块包含多个 GUI 回调，接受较多参数
+# 为了在小步重构过程中避免大量噪声，临时禁用参数过多与超长行警告。
+# 之后可以逐步移除或替换为局部禁用。
+# pylint: disable=too-many-arguments,line-too-long
+
 import fnmatch
 import math
 import logging
@@ -32,6 +37,61 @@ from gui.paged_table import PagedTableWidget
 from gui.batch_thread import BatchProcessThread
 from src.cli_helpers import BatchConfig, resolve_file_format
 from src.file_cache import get_file_cache
+# 委托到 preview 子模块以避免在函数体内延迟导入
+from gui.batch_manager_preview import (
+    _build_row_preview_text as _build_row_preview_text_impl,
+    _format_preview_value as _format_preview_value_impl,
+    _apply_quick_filter_to_table as _apply_quick_filter_to_table_impl,
+    _apply_quick_filter_to_special_table as _apply_quick_filter_to_special_table_impl,
+    _apply_quick_filter_special_iter as _apply_quick_filter_special_iter_impl,
+    _build_table_row_preview_text as _build_table_row_preview_text_impl,
+    _get_table_df_preview as _get_table_df_preview_impl,
+)
+from gui.batch_manager_preview import (
+    _create_preview_table as _create_preview_table_impl,
+    _ensure_table_row_selection_storage as _ensure_table_row_selection_storage_impl,
+    _populate_table_data_rows as _populate_table_data_rows_impl,
+    _make_preview_toggle_callback as _make_preview_toggle_callback_impl,
+    _apply_preview_filters as _apply_preview_filters_impl,
+    _embed_preview_table as _embed_preview_table_impl,
+    _populate_special_data_rows as _populate_special_data_rows_impl,
+    _clear_preview_group as _clear_preview_group_impl,
+)
+from gui.batch_manager_files import (
+    _populate_file_tree_from_files as _populate_file_tree_from_files_impl,
+    _safe_add_file_tree_entry as _safe_add_file_tree_entry_impl,
+    _collect_files_for_scan as _collect_files_for_scan_impl,
+    _add_file_tree_entry as _add_file_tree_entry_impl,
+    _ensure_file_part_selection_storage as _ensure_file_part_selection_storage_impl,
+    _remove_old_selector_children as _remove_old_selector_children_impl,
+    _collect_files_to_process as _collect_files_to_process_impl,
+    _scan_dir_for_patterns as _scan_dir_for_patterns_impl,
+)
+from gui.batch_manager_files import (
+    _ensure_regular_file_selector_rows as _ensure_regular_file_selector_rows_impl,
+    _infer_target_part as _infer_target_part_impl,
+    _make_part_change_handler as _make_part_change_handler_impl,
+    _auto_fill_special_mappings as _auto_fill_special_mappings_impl,
+    _get_or_init_special_mapping as _get_or_init_special_mapping_impl,
+    _create_part_mapping_combo as _create_part_mapping_combo_impl,
+    _safe_set_combo_selection as _safe_set_combo_selection_impl,
+    _create_special_part_node as _create_special_part_node_impl,
+)
+from gui.batch_manager_batch import (
+    run_batch_processing as _run_batch_processing_impl,
+    attach_batch_thread_signals as _attach_batch_thread_signals_impl,
+    prepare_gui_for_batch as _prepare_gui_for_batch_impl,
+    create_batch_thread as _create_batch_thread_impl,
+    restore_gui_after_batch as _restore_gui_after_batch_impl,
+    request_cancel_batch as _request_cancel_batch_impl,
+    undo_batch_processing as _undo_batch_processing_impl,
+    delete_new_output_files as _delete_new_output_files_impl,
+)
+from gui.batch_manager_ui import (
+    connect_signal_bus_events as _connect_signal_bus_events_impl,
+    connect_quick_filter as _connect_quick_filter_impl,
+    safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +127,10 @@ class BatchManager:
         self._table_preview_tables = {}
 
         # 快速筛选状态
+        # 在 __init__ 中初始化快速筛选相关属性，避免 W0201 警告
+        self._quick_filter_column = None
+        self._quick_filter_operator = None
+        self._quick_filter_value = None
         self._connect_signal_bus_events()
         self._connect_quick_filter()
 
@@ -91,52 +155,18 @@ class BatchManager:
 
     def _connect_signal_bus_events(self) -> None:
         """将配置/Part 变更信号与文件状态刷新绑定（只注册一次）。"""
-        if self._bus_connected:
-            return
-        try:
-            bus = getattr(self.gui, "signal_bus", None)
-            if bus is None:
-                return
-            try:
-                bus.configLoaded.connect(lambda _m=None: self.refresh_file_statuses())
-            except Exception:
-                pass
-            try:
-                bus.configApplied.connect(lambda: self.refresh_file_statuses())
-            except Exception:
-                pass
-            try:
-                bus.partAdded.connect(
-                    lambda _side=None, _name=None: self.refresh_file_statuses()
-                )
-            except Exception:
-                pass
-            try:
-                bus.partRemoved.connect(
-                    lambda _side=None, _name=None: self.refresh_file_statuses()
-                )
-            except Exception:
-                pass
-            self._bus_connected = True
-        except Exception:
-            logger.debug("连接 SignalBus 刷新事件失败", exc_info=True)
+        return _connect_signal_bus_events_impl(self)
 
     def _connect_quick_filter(self) -> None:
         """连接快速筛选信号"""
-        try:
-            if hasattr(self.gui, "batch_panel") and hasattr(
-                self.gui.batch_panel, "quickFilterChanged"
-            ):
-                self.gui.batch_panel.quickFilterChanged.connect(
-                    self._on_quick_filter_changed
-                )
-                logger.info("快速筛选信号连接成功")
-            else:
-                logger.warning(
-                    "快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在"
-                )
-        except Exception as e:
-            logger.error(f"连接快速筛选信号失败: {e}", exc_info=True)
+        return _connect_quick_filter_impl(self)
+
+    def _safe_refresh_file_statuses(self, *args, **kwargs):
+        """容错包装：用于 SignalBus 回调，安全地调用 `refresh_file_statuses`。
+
+        接收任意参数以兼容不同信号签名。
+        """
+        return _safe_refresh_file_statuses_impl(self, *args, **kwargs)
 
     def _on_quick_filter_changed(self, column: str, operator: str, value: str) -> None:
         """快速筛选条件变化，刷新所有表格的行显示"""
@@ -242,18 +272,8 @@ class BatchManager:
 
     def _format_preview_value(self, v):
         """将单元格值格式化为便于显示的字符串（处理 None/NaN 和异常）。"""
-        try:
-            if v is None:
-                return ""
-            fv = float(v)
-            if math.isnan(fv):
-                return ""
-            return f"{fv:.6g}"
-        except Exception:
-            try:
-                return str(v)
-            except Exception:
-                return ""
+        # 委托到 preview 子模块实现（已在模块顶层导入）
+        return _format_preview_value_impl(self, v)
 
     def _build_row_preview_text(self, row_index: int, row_series) -> str:
         """构造数据行预览文本（尽量精简，便于在树节点中展示）。"""
@@ -282,7 +302,7 @@ class BatchManager:
         if not parts:
             return f"第{row_index + 1}行"
         # 显示全部已格式化的列键值对，而不是仅前6项
-        return f"第{row_index + 1}行：" + " ".join(parts)
+        return _build_row_preview_text_impl(self, row_index, row_series)
 
     def _create_preview_table(  # pylint: disable=too-many-arguments,too-many-locals
         self,
@@ -292,61 +312,20 @@ class BatchManager:
         *,
         max_rows: int = 200,
         max_cols: int = None,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """创建带勾选列的数据预览表格（分页版）。
 
         为了适配 5000+ 行数据，使用分页容器 PagedTableWidget，其中每页默认显示
         max_rows 行，并内置上一页/下一页按钮，且与快速筛选联动。
         """
-        try:
-            widget = PagedTableWidget(
-                df,
-                set(selected_set or set()),
-                on_toggle,
-                page_size=max(1, int(max_rows)),
-                max_cols=max_cols,
-            )
-            return widget
-        except Exception:
-            # 回退为简单 QTableWidget（在极端环境下）
-            table = QTableWidget()
-            rows = min(len(df), int(max_rows))
-            if max_cols is None:
-                cols = len(df.columns)
-            else:
-                cols = min(len(df.columns), int(max_cols))
-            table.setRowCount(rows)
-            table.setColumnCount(cols + 1)
-            try:
-                headers = ["选中"] + [str(c) for c in list(df.columns)[:cols]]
-                table.setHorizontalHeaderLabels(headers)
-            except Exception:
-                pass
-            for r in range(rows):
-                cb = QCheckBox()
-                cb.setChecked(r in (selected_set or set()))
-                try:
-                    cb.stateChanged.connect(
-                        lambda state, row=r: on_toggle(row, state == Qt.Checked)
-                    )
-                except Exception:
-                    pass
-                table.setCellWidget(r, 0, cb)
-                for c in range(cols):
-                    try:
-                        val = df.iloc[r, c]
-                        text = "" if val is None else str(val)
-                    except Exception:
-                        text = ""
-                    item = QTableWidgetItem(text)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(r, c + 1, item)
-            try:
-                table.resizeColumnsToContents()
-                table.resizeRowsToContents()
-            except Exception:
-                pass
-            return table
+        return _create_preview_table_impl(
+            self,
+            df,
+            selected_set,
+            on_toggle,
+            max_rows=max_rows,
+            max_cols=max_cols,
+        )
 
     def _apply_quick_filter_to_table(self, table, file_path_str: str) -> None:
         """对常规表格应用快速筛选。
@@ -358,28 +337,31 @@ class BatchManager:
             # 如果没有筛选条件，恢复所有行
             if not self._quick_filter_column or not self._quick_filter_value:
                 self._clear_quick_filter_table(table)
-                return
+                return None
 
             # 获取数据
             cached = self._table_data_cache.get(file_path_str)
             if not cached or cached.get("df") is None:
-                return
+                return None
 
             df = cached.get("df")
             if df is None or df.empty or self._quick_filter_column not in df.columns:
-                return
+                return None
 
             operator = self._quick_filter_operator
             operator = self._quick_filter_operator
 
             # 分页组件联动：优先使用分页表格的筛选跳页
             if self._apply_quick_filter_with_paged_table(table, df, operator):
-                return
+                return None
 
             # 应用筛选（委托给 helper，减少分支与局部变量）
-            self._apply_quick_filter_table_iter(table, df, operator)
+            return _apply_quick_filter_to_table_impl(
+                table, df, self._quick_filter_column, self._quick_filter_value, operator
+            )
         except Exception as e:
             logger.debug(f"应用表格快速筛选失败: {e}", exc_info=True)
+            return None
 
     def _clear_quick_filter_table(self, table) -> None:
         """将表格恢复到未筛选的显示（白底黑字），跳过勾选列。"""
@@ -491,13 +473,13 @@ class BatchManager:
             # 如果没有筛选条件，恢复所有行
             if not self._quick_filter_column or not self._quick_filter_value:
                 self._clear_quick_filter_table(table)
-                return
+                return None
 
             # 获取数据
             data_dict = self._get_special_data_dict(Path(file_path_str))
             df = data_dict.get(source_part)
             if df is None or df.empty or self._quick_filter_column not in df.columns:
-                return
+                return None
 
             operator = self._quick_filter_operator
 
@@ -511,14 +493,15 @@ class BatchManager:
                         )
 
                     table.set_filter_with_df(df, _eval, self._quick_filter_column)
-                    return
+                    return None
             except Exception:
                 pass
 
             # 应用筛选（委托给 helper）
-            self._apply_quick_filter_special_iter(table, df, operator)
+            return _apply_quick_filter_to_special_table_impl(self, table, file_path_str, source_part)
         except Exception as e:
             logger.debug(f"应用特殊格式表格快速筛选失败: {e}", exc_info=True)
+            return None
 
     def _apply_quick_filter_special_iter(self, table, df, operator: str) -> None:
         """针对特殊格式表的筛选迭代与颜色更新逻辑。"""
@@ -543,6 +526,7 @@ class BatchManager:
                             item.setForeground(text_color)
             except Exception:
                 pass
+        return _apply_quick_filter_special_iter_impl(self, table, df, operator)
 
     def _build_table_row_preview_text(self, row_index: int, row_series) -> str:
         """构造表格（CSV/Excel）数据行预览文本。"""
@@ -676,81 +660,18 @@ class BatchManager:
 
     def _populate_table_data_rows(self, file_item, file_path: Path, df) -> None:
         """为常规表格文件创建数据行预览表格（带勾选列）。"""
-
-        if df is None:
-            return
-
-        fp_str = str(file_path)
-        # 清理旧的表格预览 group 和 widget 引用
-        self._clear_preview_group(
-            file_item,
-            ("table_data_group",),
-            self._table_preview_tables,
-            fp_str,
-        )
-
-        group = QTreeWidgetItem(["数据行预览", ""])
-        group.setData(
-            0,
-            int(Qt.UserRole) + 1,
-            {"kind": "table_data_group", "file": fp_str},
-        )
-        file_item.addChild(group)
-
-        try:
-            sel = self._ensure_table_row_selection_storage(file_path, len(df)) or set()
-        except Exception:
-            sel = set()
-
-        # 嵌入常规表格预览（使用通用 helper）
-        self._embed_preview_table(group, df, sel, fp_str, is_special=False)
+        return _populate_table_data_rows_impl(self, file_item, file_path, df)
     def _make_preview_toggle_callback(
         self,
         *,
         is_special: bool = False,
         fp_local=None,
         source_part=None,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """返回一个用于预览表格行勾选的回调函数（用于减小单个函数体大小）。"""
-        def _cb(row_idx: int, checked: bool):
-            try:
-                fp_local_inner = fp_local
-                sp_local_inner = str(source_part) if source_part is not None else None
-                if is_special:
-                    if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                        self.gui.special_part_row_selection_by_file = {}
-                    by_file_local = getattr(
-                        self.gui, "special_part_row_selection_by_file", {}
-                    ) or {}
-                    by_part_local = by_file_local.setdefault(fp_local_inner, {})
-                    sel_local = by_part_local.get(sp_local_inner)
-                    if sel_local is None:
-                        sel_local = set()
-                        by_part_local[sp_local_inner] = sel_local
-                    if checked:
-                        sel_local.add(int(row_idx))
-                    else:
-                        sel_local.discard(int(row_idx))
-                    self.gui.special_part_row_selection_by_file = by_file_local
-                else:
-                    if not hasattr(self.gui, "table_row_selection_by_file"):
-                        self.gui.table_row_selection_by_file = {}
-                    by_file_local = getattr(
-                        self.gui, "table_row_selection_by_file", {}
-                    ) or {}
-                    sel_local = by_file_local.get(fp_local_inner)
-                    if sel_local is None:
-                        sel_local = set()
-                        by_file_local[fp_local_inner] = sel_local
-                    if checked:
-                        sel_local.add(int(row_idx))
-                    else:
-                        sel_local.discard(int(row_idx))
-                    self.gui.table_row_selection_by_file = by_file_local
-            except Exception:
-                logger.debug("preview table toggle failed", exc_info=True)
-
-        return _cb
+        return _make_preview_toggle_callback_impl(
+            self, is_special=is_special, fp_local=fp_local, source_part=source_part
+        )
 
     def _apply_preview_filters(
         self,
@@ -760,24 +681,16 @@ class BatchManager:
         *,
         is_special: bool = False,
         source_part=None,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """应用快速筛选并通知 batch_panel 更新列列表（提取为独立函数）。"""
-        try:
-            if hasattr(self.gui, "batch_panel"):
-                try:
-                    self.gui.batch_panel.update_filter_columns(list(df.columns))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        try:
-            if is_special:
-                self._apply_quick_filter_to_special_table(table, fp_str, source_part)
-            else:
-                self._apply_quick_filter_to_table(table, fp_str)
-        except Exception:
-            pass
+        return _apply_preview_filters_impl(
+            self,
+            table,
+            df,
+            fp_str,
+            is_special=is_special,
+            source_part=source_part,
+        )
 
     def _embed_preview_table(
         self,
@@ -790,130 +703,35 @@ class BatchManager:
         source_part=None,
     ):
         """在树节点中嵌入预览表格并处理行选择回调与筛选应用（精简参数）。"""
-        # 选择对应的表格存储与键
-        if is_special:
-            table_store = getattr(self, "_special_preview_tables", None)
-            store_key = (fp_str, str(source_part) if source_part is not None else None)
-        else:
-            table_store = getattr(self, "_table_preview_tables", None)
-            store_key = fp_str
-
-        callback = self._make_preview_toggle_callback(
+        return _embed_preview_table_impl(
+            self,
+            group,
+            df,
+            fp_str,
+            sel=sel,
             is_special=is_special,
-            fp_local=fp_str,
             source_part=source_part,
         )
-
-        table = self._create_preview_table(
-            df,
-            set(sel or set()),
-            callback,
-            max_rows=200,
-            max_cols=None,
-        )
-        try:
-            self.gui.file_tree.setItemWidget(group, 0, table)
-            try:
-                if table_store is not None:
-                    table_store[store_key] = table
-            except Exception:
-                pass
-
-                self._apply_preview_filters(
-                    table,
-                    df,
-                    fp_str,
-                    is_special=is_special,
-                    source_part=source_part,
-                )
-        except Exception:
-            logger.debug("embed preview table failed", exc_info=True)
-
-        try:
-            group.setExpanded(False)
-        except Exception:
-            pass
 
     def _populate_special_data_rows(
         self, part_item, file_path: Path, source_part: str, df
     ) -> None:
         """为某个 part 节点创建数据行预览表格（带勾选列）。"""
-
-        fp_str = str(file_path)
-        try:
-            by_file = getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
-            by_part = by_file.setdefault(fp_str, {})
-            sel = by_part.get(source_part)
-        except Exception:
-            by_part = {}
-            sel = None
-
-        # 默认全选
-        if sel is None:
-            try:
-                sel = set(range(len(df)))
-                by_part[source_part] = sel
-                if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                    self.gui.special_part_row_selection_by_file = {}
-                self.gui.special_part_row_selection_by_file.setdefault(fp_str, {})[
-                    source_part
-                ] = sel
-            except Exception:
-                sel = set()
-
-        # 清理旧的预览节点和表格引用
-        # 清理旧的预览节点和表格引用
-        self._clear_preview_group(
-            part_item,
-            ("special_data_row", "special_data_table"),
-            self._special_preview_tables,
-            (fp_str, str(source_part)),
+        return _populate_special_data_rows_impl(
+            self, part_item, file_path, source_part, df
         )
 
-        group = QTreeWidgetItem(["数据行预览", ""])
-        group.setData(
-            0,
-            int(Qt.UserRole) + 1,
-            {
-                "kind": "special_data_table",
-                "file": fp_str,
-                "source": str(source_part),
-            },
-        )
-        part_item.addChild(group)
-
-        # 嵌入 special 预览表格（使用通用 helper）
-        self._embed_preview_table(
-            group,
-            df,
-            sel,
-            fp_str,
-            is_special=True,
-            source_part=source_part,
-        )
-
-    def _clear_preview_group(self, parent_item, kind_names, table_store=None, store_key=None):
+    def _clear_preview_group(
+        self,
+        parent_item,
+        kind_names,
+        table_store=None,
+        store_key=None,
+    ):
         """通用：清理 parent_item 下的 preview 节点并从 table_store 中移除对应引用（若提供）。"""
-        try:
-            for i in range(parent_item.childCount() - 1, -1, -1):
-                try:
-                    child = parent_item.child(i)
-                    meta = self._get_item_meta(child)
-                    if isinstance(meta, dict) and meta.get("kind") in tuple(kind_names):
-                        try:
-                            self.gui.file_tree.removeItemWidget(child, 0)
-                        except Exception:
-                            pass
-                        parent_item.removeChild(child)
-                except Exception:
-                    pass
-            if table_store is not None and store_key is not None:
-                try:
-                    table_store.pop(store_key, None)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        return _clear_preview_group_impl(
+            self, parent_item, kind_names, table_store=table_store, store_key=store_key
+        )
 
     def _on_file_tree_item_changed(self, item, column: int) -> None:
         """监听数据行复选框变化，同步到 selection 缓存。"""
@@ -1072,7 +890,10 @@ class BatchManager:
 
             # 清空旧的树项
             self.gui.file_tree.clear()
+            # 访问 GUI 的受保护属性以维护文件树映射。
+            # pylint: disable=protected-access
             self.gui._file_tree_items = {}
+            # pylint: enable=protected-access
 
             if not files:
                 try:
@@ -1113,25 +934,16 @@ class BatchManager:
             pass
 
     def _populate_file_tree_from_files(self, files, base_path, p: Path) -> None:
-        """根据 files 填充 `self.gui.file_tree` 并显示文件列表区域。"""
-        dir_items = {}
-        for fp in files:
-            try:
-                self._add_file_tree_entry(base_path, dir_items, fp, p.is_file())
-            except Exception:
-                logger.debug("添加文件树项失败（外层）", exc_info=True)
+        """根据 files 填充 `self.gui.file_tree` 并显示文件列表区域。
 
-        try:
-            self.gui.file_tree.expandAll()
-        except Exception:
-            pass
+        委托到 `gui.batch_manager_files` 子模块实现以便拆分。
+        """
+        # 委托给 files 子模块实现（已在模块顶层导入）
+        return _populate_file_tree_from_files_impl(self, files, base_path, p)
 
-        try:
-            self.gui.file_list_widget.setVisible(True)
-        except Exception:
-            pass
-
-        logger.info(f"已扫描到 {len(files)} 个文件")
+    def _safe_add_file_tree_entry(self, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool) -> None:
+        """安全地调用 `_add_file_tree_entry` 并在发生异常时记录调试信息。"""
+        return _safe_add_file_tree_entry_impl(self, base_path, dir_items, fp, single_file_mode)
 
     def _sync_row_selection(
         self,
@@ -1141,7 +953,7 @@ class BatchManager:
         *,
         is_special: bool = False,
         source_part: Optional[str] = None,
-    ) -> None:
+    ) -> None:  # pylint: disable=too-many-arguments
         """同步单行复选框状态到对应的 selection 缓存（special 或 常规）。"""
         try:
             try:
@@ -1184,49 +996,7 @@ class BatchManager:
             logger.debug("同步单行选择失败", exc_info=True)
 
     def _collect_files_for_scan(self, p: Path):
-        """根据路径 `p` 和当前 UI 设置收集匹配的文件列表，返回 (files, base_path)。"""
-        files = []
-        base_path = p
-
-        if p.is_file():
-            files = [p]
-            try:
-                self.gui.output_dir = p.parent
-            except Exception:
-                pass
-        elif p.is_dir():
-            # 支持分号分隔多模式：*.csv;*.xlsx
-            pattern_text = "*.csv"
-            try:
-                if (
-                    hasattr(self.gui, "inp_pattern")
-                    and self.gui.inp_pattern is not None
-                ):
-                    pt = self.gui.inp_pattern.text().strip()
-                    if pt:
-                        pattern_text = pt
-            except Exception:
-                pass
-
-            patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
-            if not patterns:
-                patterns = ["*.csv"]
-
-            for file_path in p.rglob("*"):
-                if not file_path.is_file():
-                    continue
-                if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
-                    files.append(file_path)
-            files = sorted(set(files))
-
-            try:
-                self.gui.output_dir = p
-            except Exception:
-                pass
-
-            base_path = p
-
-        return files, base_path
+        return _collect_files_for_scan_impl(self, p)
 
     def _validate_file_config(self, file_path: Path) -> str:
         """验证文件的配置，返回状态文本"""
@@ -1544,7 +1314,12 @@ class BatchManager:
         except Exception:
             logger.debug("设置控件启用/样式失败", exc_info=True)
 
-    def _evaluate_file_config_non_special(self, file_path: Path, fmt_info, project_data) -> str:
+    def _evaluate_file_config_non_special(
+        self,
+        file_path: Path,
+        fmt_info,
+        project_data,
+    ) -> str:
         """评估非特殊格式文件的配置状态（小包装）。"""
         try:
             if project_data is None:
@@ -1557,87 +1332,27 @@ class BatchManager:
     def _add_file_tree_entry(
         self, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
     ) -> None:
-        """将单个文件添加到文件树，包含目录节点构建与状态校验。"""
-        try:
-            try:
-                rel_path = fp.relative_to(base_path)
-            except ValueError:
-                rel_path = fp
-
-            parts = rel_path.parts[:-1]
-            parent_item = None
-            current_path = Path()
-
-            for part in parts:
-                current_path = current_path / part
-                if current_path not in dir_items:
-                    dir_item = QTreeWidgetItem([str(part), ""])
-                    dir_item.setData(0, Qt.UserRole, None)
-                    if parent_item is None:
-                        self.gui.file_tree.addTopLevelItem(dir_item)
-                    else:
-                        parent_item.addChild(dir_item)
-                    dir_items[current_path] = dir_item
-                    parent_item = dir_item
-                else:
-                    parent_item = dir_items[current_path]
-
-            file_item = QTreeWidgetItem([rel_path.name, ""])
-            file_item.setCheckState(0, Qt.Checked)
-            file_item.setData(0, Qt.UserRole, str(fp))
-
-            if single_file_mode:
-                try:
-                    file_item.setCheckState(0, Qt.Checked)
-                    flags = file_item.flags()
-                    file_item.setFlags(flags & ~Qt.ItemIsUserCheckable)
-                    try:
-                        file_item.setToolTip(0, "单文件模式，无法修改选择状态")
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-
-            status_text = self._validate_file_config(fp)
-            file_item.setText(1, status_text)
-
-            if parent_item is None:
-                self.gui.file_tree.addTopLevelItem(file_item)
-            else:
-                parent_item.addChild(file_item)
-
-            self.gui._file_tree_items[str(fp)] = file_item
-        except Exception:
-            logger.debug("添加文件树项失败", exc_info=True)
+        """将单个文件添加到文件树，委托到 `gui.batch_manager_files` 实现。"""
+        return _add_file_tree_entry_impl(self, base_path, dir_items, fp, single_file_mode)
 
     def _ensure_file_part_selection_storage(self, file_path: Path) -> dict:
-        """确保常规文件的 source/target 选择缓存存在。"""
-        try:
-            if not hasattr(self.gui, "file_part_selection_by_file"):
-                self.gui.file_part_selection_by_file = {}
-            by_file = getattr(self.gui, "file_part_selection_by_file", {}) or {}
-            by_file.setdefault(str(file_path), {"source": "", "target": ""})
-            self.gui.file_part_selection_by_file = by_file
-            return by_file[str(file_path)]
-        except Exception:
-            return {"source": "", "target": ""}
+        """确保常规文件的 source/target 选择缓存存在（委托子模块）。"""
+        return _ensure_file_part_selection_storage_impl(self, file_path)
 
     def _remove_old_selector_children(self, file_item) -> None:
-        """移除文件节点中已存在的 source/target selector 子节点。"""
-        for i in range(file_item.childCount() - 1, -1, -1):
-            try:
-                child = file_item.child(i)
-                meta = self._get_item_meta(child)
-                if isinstance(meta, dict) and meta.get("kind") in (
-                    "file_source_selector",
-                    "file_target_selector",
-                ):
-                    file_item.removeChild(child)
-            except Exception:
-                pass
+        """移除文件节点中已存在的 source/target selector 子节点（委托子模块）。"""
+        return _remove_old_selector_children_impl(self, file_item)
 
     def _add_part_selector(
-        self, file_item, file_path: Path, kind: str, label: str, names, current_value, on_change, tooltip=None
+        self,
+        file_item,
+        file_path: Path,
+        kind: str,
+        label: str,
+        names,
+        current_value,
+        on_change,
+        tooltip=None,
     ) -> None:  # pylint: disable=too-many-arguments
         """为 file_item 添加一个下拉选择器并连接回调。"""
         item = QTreeWidgetItem([label, ""])
@@ -1654,146 +1369,20 @@ class BatchManager:
             combo.setEnabled(False)
             combo.setToolTip(tooltip)
 
-        try:
-            combo.blockSignals(True)
-            if current_value and current_value in names:
-                combo.setCurrentText(current_value)
-            else:
-                combo.setCurrentIndex(0)
-        finally:
-            combo.blockSignals(False)
+        # 使用 helper 统一处理信号阻塞与选择，减少重复代码
+        self._safe_set_combo_selection(combo, current_value, names)
 
         combo.currentTextChanged.connect(on_change)
         self.gui.file_tree.setItemWidget(item, 1, combo)
 
     def _ensure_regular_file_selector_rows(self, file_item, file_path: Path) -> None:
-        """为常规文件创建 source/target 选择行（树内联下拉）。"""
-
-        try:
-            sel = self._ensure_file_part_selection_storage(file_path)
-            source_names = self._get_source_part_names()
-            target_names = self._get_target_part_names()
-
-            # 智能推测：首次进入时，尝试用文件名推测
-            try:
-                stem = file_path.stem
-                if not (sel.get("source") or "").strip() and source_names:
-                    inferred_s = self._infer_part_from_text(stem, source_names)
-                    if inferred_s:
-                        sel["source"] = inferred_s
-                if not (sel.get("target") or "").strip() and target_names:
-                    inferred_t = self._infer_part_from_text(stem, target_names)
-                    if inferred_t:
-                        sel["target"] = inferred_t
-            except Exception:
-                pass
-
-            # 清理旧的 selector 子节点（避免重复）
-            self._remove_old_selector_children(file_item)
-
-            # Source selector
-            current_src = (sel.get("source") or "").strip()
-            src_handler = self._make_part_change_handler(str(file_path), "source")
-
-            self._add_part_selector(
-                file_item,
-                file_path,
-                "file_source_selector",
-                "Source Part",
-                source_names,
-                current_src,
-                src_handler,
-                tooltip="请先加载配置以获得 Source parts",
-            )
-
-            # Target selector
-            current_tgt = (sel.get("target") or "").strip()
-            tgt_handler = self._make_part_change_handler(str(file_path), "target")
-
-            self._add_part_selector(
-                file_item,
-                file_path,
-                "file_target_selector",
-                "Target Part",
-                target_names,
-                current_tgt,
-                tgt_handler,
-                tooltip="请先加载配置以获得 Target parts",
-            )
-
-            try:
-                file_item.setExpanded(True)
-            except Exception:
-                pass
-        except Exception:
-            logger.debug("_ensure_regular_file_selector_rows failed", exc_info=True)
+        return _ensure_regular_file_selector_rows_impl(self, file_item, file_path)
 
     def _infer_target_part(self, source_part: str, target_names: list) -> Optional[str]:
-        """智能推测 source->target 映射。
-
-        规则（从强到弱，且必须唯一命中才返回）：
-        1) 完全同名
-        2) 忽略大小写同名
-        3) 归一化（去掉空格/下划线/连字符等分隔符）后同名
-
-        注意：该推测只用于“默认填充”，不会覆盖用户手动设置的映射。
-        """
-        result = None
-        try:
-            sp = (source_part or "").strip()
-            if sp:
-                tns = [str(x) for x in (target_names or []) if str(x).strip()]
-                if tns:
-                    # 1) 完全同名
-                    if sp in tns:
-                        result = sp
-                    else:
-                        # 2) 忽略大小写
-                        sp_lower = sp.lower()
-                        ci = [t for t in tns if t.lower() == sp_lower]
-                        if len(ci) == 1:
-                            result = ci[0]
-                        else:
-                            # 3) 归一化：仅保留字母/数字/中文
-                            def norm(s: str) -> str:
-                                try:
-                                    s2 = "".join(
-                                        ch
-                                        for ch in (s or "")
-                                        if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff")
-                                    )
-                                    return s2.lower()
-                                except Exception:
-                                    return (s or "").lower()
-
-                            sp_norm = norm(sp)
-                            if sp_norm:
-                                nm = [t for t in tns if norm(t) == sp_norm]
-                                if len(nm) == 1:
-                                    result = nm[0]
-        except Exception:
-            logger.debug("推测 target part 失败", exc_info=True)
-            result = None
-        return result
+        return _infer_target_part_impl(self, source_part, target_names)
 
     def _make_part_change_handler(self, fp_str: str, key: str):
-        """返回一个回调，用于处理文件节点下 source/target 下拉变更并刷新文件状态。"""
-        def _handler(text: str):
-            try:
-                d = (
-                    getattr(self.gui, "file_part_selection_by_file", {}) or {}
-                ).setdefault(fp_str, {"source": "", "target": ""})
-                d[key] = (text or "").strip()
-                try:
-                    node = getattr(self.gui, "_file_tree_items", {}).get(fp_str)
-                    if node is not None:
-                        node.setText(1, self._validate_file_config(Path(fp_str)))
-                except Exception:
-                    pass
-            except Exception:
-                logger.debug(f"更新文件 {key} 选择失败", exc_info=True)
-
-        return _handler
+        return _make_part_change_handler_impl(self, fp_str, key)
 
     def _auto_fill_special_mappings(
         self,
@@ -1807,86 +1396,19 @@ class BatchManager:
         Returns:
             是否发生了映射变更。
         """
-        changed = False
-        try:
-            if mapping is None or not isinstance(mapping, dict):
-                return False
-            for sp in part_names or []:
-                sp = str(sp)
-                # 不覆盖用户已选映射
-                if (mapping.get(sp) or "").strip():
-                    continue
-                inferred = self._infer_target_part(sp, target_names)
-                if inferred:
-                    mapping[sp] = inferred
-                    changed = True
-        except Exception:
-            logger.debug("自动补全映射失败", exc_info=True)
-        return changed
+        return _auto_fill_special_mappings_impl(self, file_path, part_names, target_names, mapping)
 
     def _get_or_init_special_mapping(self, file_path: Path) -> dict:
-        """返回文件对应的 special mapping 字典（必要时初始化容器）。"""
-        try:
-            mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", None)
-            if mapping_by_file is None:
-                self.gui.special_part_mapping_by_file = {}
-                mapping_by_file = self.gui.special_part_mapping_by_file
-            mapping_by_file.setdefault(str(file_path), {})
-            mapping = mapping_by_file[str(file_path)]
-            return mapping
-        except Exception:
-            logger.debug("获取或初始化 special mapping 失败", exc_info=True)
-            return {}
+        return _get_or_init_special_mapping_impl(self, file_path)
 
     def _create_part_mapping_combo(
         self, file_path: Path, source_part, target_names: list, mapping: dict
     ):
-        """创建用于 special part 的 target 下拉并绑定 change 回调。"""
-        combo = QComboBox(self.gui.file_tree)
-        combo.setEditable(False)
-        combo.setMinimumWidth(160)
-        combo.addItem("（未选择）", "")
-        for tn in target_names:
-            combo.addItem(tn, tn)
+        return _create_part_mapping_combo_impl(self, file_path, source_part, target_names, mapping)
 
-        if not target_names:
-            combo.setEnabled(False)
-            combo.setToolTip("请先加载配置或创建 Target Part")
-        else:
-            combo.setEnabled(True)
-            combo.setToolTip("选择该 Source part 对应的 Target part")
+    def _safe_set_combo_selection(self, combo, current, names):
+        return _safe_set_combo_selection_impl(self, combo, current, names)
 
-        current = (mapping or {}).get(source_part) or ""
-        try:
-            combo.blockSignals(True)
-            if current and current in target_names:
-                combo.setCurrentText(current)
-            else:
-                combo.setCurrentIndex(0)
-        finally:
-            combo.blockSignals(False)
-
-        def _on_changed(text: str, *, fp_str=str(file_path), sp=str(source_part)):
-            try:
-                tmp = getattr(self.gui, "special_part_mapping_by_file", {}) or {}
-                m = tmp.setdefault(fp_str, {})
-                val = (text or "").strip()
-                if not val or val == "（未选择）":
-                    m.pop(sp, None)
-                else:
-                    m[sp] = val
-                try:
-                    tmp_items = getattr(self.gui, "_file_tree_items", {}) or {}
-                    file_node = tmp_items.get(fp_str)
-                    if file_node is not None:
-                        file_node.setText(1, self._validate_file_config(Path(fp_str)))
-                except Exception:
-                    pass
-            except Exception:
-                logger.debug("special mapping changed handler failed", exc_info=True)
-
-        combo.currentTextChanged.connect(_on_changed)
-        return combo
 
     def _create_special_part_node(
         self,
@@ -1897,35 +1419,15 @@ class BatchManager:
         mapping: dict,
         data_dict: dict,
     ) -> None:
-        """创建单个 source part 子节点及其 Target 下拉与数据预览。"""
-        try:
-            child = QTreeWidgetItem([str(source_part), ""])
-            child.setData(
-                0,
-                int(Qt.UserRole) + 1,
-                {
-                    "kind": "special_part",
-                    "file": str(file_path),
-                    "source": str(source_part),
-                },
-            )
-            file_item.addChild(child)
-
-            combo = self._create_part_mapping_combo(file_path, source_part, target_names, mapping)
-            self.gui.file_tree.setItemWidget(child, 1, combo)
-            self._special_part_combo[(str(file_path), str(source_part))] = combo
-
-            # 填充特殊格式的预览表格（封装为 helper 以减少函数复杂度）
-            self._safe_populate_special_preview(child, file_path, source_part, data_dict)
-        except Exception:
-            logger.debug("创建 special part 节点失败（内部）", exc_info=True)
+        return _create_special_part_node_impl(self, file_item, file_path, source_part, target_names, mapping, data_dict)
 
     def _safe_populate_special_preview(self, child, file_path: Path, source_part, data_dict: dict):
         """安全地填充单个 special part 的数据预览表格（捕获异常）。"""
         try:
             df = (data_dict or {}).get(str(source_part))
             if df is not None:
-                self._populate_special_data_rows(child, file_path, str(source_part), df)
+                sp = str(source_part)
+                self._populate_special_data_rows(child, file_path, sp, df)
         except Exception:
             logger.debug("填充数据行预览失败", exc_info=True)
 
@@ -2033,162 +1535,37 @@ class BatchManager:
             logger.debug("_on_pattern_changed 处理失败", exc_info=True)
 
     def run_batch_processing(self):
-        """运行批处理（兼容 GUI 原有文件复选框面板与输出目录逻辑）。"""
-        try:
-            # 新语义：不再依赖“全局 calculator / 应用配置”。
-            # 批处理只需要当前配置(ProjectData)存在，并且每个文件已在列表中选择 source/target（或可唯一推断）。
-            project_data = getattr(self.gui, "current_config", None)
-            if project_data is None:
-                QMessageBox.warning(self.gui, "提示", "请先加载配置（JSON）")
-                return
-
-            # 输入路径
-            if not hasattr(self.gui, "inp_batch_input"):
-                QMessageBox.warning(self.gui, "提示", "缺少输入路径控件")
-                return
-            input_path = Path(self.gui.inp_batch_input.text().strip())
-            if not input_path.exists():
-                QMessageBox.warning(self.gui, "错误", "输入路径不存在")
-                return
-
-            files_to_process, output_dir, error_msg = self._collect_files_to_process(
-                input_path
-            )
-            if error_msg:
-                QMessageBox.warning(self.gui, "提示", error_msg)
-                return
-
-            # 输出目录
-            if output_dir is None:
-                output_dir = Path("data/output")
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-
-            # 记录批处理前的文件列表（用于撤销时恢复）
-            # 重要：使用完整路径字符串，而不是仅文件名，确保撤销时能正确比对
-            existing_files = set(str(f) for f in output_path.glob("*") if f.is_file())
-            self.gui._batch_output_dir = output_path
-            self.gui._batch_existing_files = existing_files
-            # 全局数据格式配置已废弃：线程内部将按文件解析格式（sidecar/目录）。
-            data_config = None
-
-            self.batch_thread = self._create_batch_thread(
-                files_to_process, output_path, data_config, project_data
-            )
-
-            # 连接信号并准备 GUI
-            self._attach_batch_thread_signals()
-            self._prepare_gui_for_batch()
-
-            self.batch_thread.start()
-            logger.info(f"开始批处理 {len(files_to_process)} 个文件")
-        except Exception as e:
-            logger.error(f"启动批处理失败: {e}")
-            QMessageBox.critical(self.gui, "错误", f"启动失败: {e}")
+        return _run_batch_processing_impl(self)
 
     def _now_str(self):
         return datetime.now().strftime("%H:%M:%S")
 
     def _attach_batch_thread_signals(self):
         """为当前的 `self.batch_thread` 连接信号（安全地忽略错误）。"""
+        # 委托给批处理子模块的实现（已在模块顶层导入）
         try:
-            if getattr(self, "batch_thread", None) is None:
-                return
-            try:
-                self.batch_thread.progress.connect(self.gui.progress_bar.setValue)
-            except Exception:
-                pass
-            try:
-                self.batch_thread.log_message.connect(
-                    lambda msg: self.gui.txt_batch_log.append(f"[{self._now_str()}] {msg}")
-                )
-            except Exception:
-                pass
-            try:
-                self.batch_thread.finished.connect(self.on_batch_finished)
-            except Exception:
-                pass
-            try:
-                self.batch_thread.error.connect(self.on_batch_error)
-            except Exception:
-                pass
+            return _attach_batch_thread_signals_impl(self)
         except Exception:
             logger.debug("连接 batch_thread 信号失败", exc_info=True)
+            return None
 
     def _prepare_gui_for_batch(self):
         """更新 GUI 状态以进入批处理模式（锁定控件、切换标签、禁用按钮）。"""
         try:
-            try:
-                if hasattr(self.gui, "_set_controls_locked"):
-                    self.gui._set_controls_locked(True)
-            except Exception:
-                pass
-
-            # 禁用批处理按钮，防止重复点击
-            try:
-                if hasattr(self.gui, "btn_batch"):
-                    self.gui.btn_batch.setEnabled(False)
-                    self.gui.btn_batch.setText("处理中...")
-            except Exception:
-                logger.debug("无法禁用批处理按钮", exc_info=True)
-
-            # 批处理开始时自动切换到处理日志页
-            try:
-                if hasattr(self.gui, "tab_main"):
-                    self.gui.tab_main.setCurrentIndex(1)
-            except Exception:
-                pass
+            return _prepare_gui_for_batch_impl(self)
         except Exception:
             logger.debug("准备 GUI 进入批处理失败", exc_info=True)
+            return None
 
     def _create_batch_thread(
         self, files_to_process, output_path: Path, data_config, project_data
     ):
-        """构造并返回配置好的 `BatchProcessThread` 实例（安全容错）。"""
-        try:
-            return BatchProcessThread(
-                getattr(self.gui, "calculator", None),
-                files_to_process,
-                output_path,
-                data_config,
-                project_data=project_data,
-                timestamp_format=getattr(self.gui, "timestamp_format", "%Y%m%d_%H%M%S"),
-                special_part_mapping_by_file=getattr(self.gui, "special_part_mapping_by_file", {}),
-                special_row_selection_by_file=getattr(self.gui, "special_part_row_selection_by_file", {}),
-                file_part_selection_by_file=getattr(self.gui, "file_part_selection_by_file", {}),
-                table_row_selection_by_file=getattr(self.gui, "table_row_selection_by_file", {}),
-            )
-        except Exception:
-            logger.debug("创建 BatchProcessThread 失败", exc_info=True)
-            return None
+        return _create_batch_thread_impl(
+            self, files_to_process, output_path, data_config, project_data
+        )
 
     def _restore_gui_after_batch(self, *, enable_undo: bool = False):
-        """在批处理结束或出错后恢复 GUI 状态（解锁控件、恢复按钮状态）。"""
-        try:
-            try:
-                if hasattr(self.gui, "_set_controls_locked"):
-                    self.gui._set_controls_locked(False)
-            except Exception:
-                pass
-
-            # 重新启用批处理按钮
-            try:
-                if hasattr(self.gui, "btn_batch"):
-                    self.gui.btn_batch.setEnabled(True)
-                    self.gui.btn_batch.setText("开始批量处理")
-            except Exception:
-                logger.debug("无法启用批处理按钮", exc_info=True)
-
-            # 可选：启用撤销按钮
-            if enable_undo:
-                try:
-                    if hasattr(self.gui, "btn_undo"):
-                        self.gui.btn_undo.setEnabled(True)
-                        self.gui.btn_undo.setVisible(True)
-                except Exception:
-                    logger.debug("无法启用撤销按钮", exc_info=True)
-        except Exception:
-            logger.debug("恢复 GUI 状态失败", exc_info=True)
+        return _restore_gui_after_batch_impl(self, enable_undo=enable_undo)
 
     def _collect_files_from_tree(self):
         """从 GUI 的文件树中收集被勾选的文件并返回 Path 列表（安全包装）。"""
@@ -2210,81 +1587,28 @@ class BatchManager:
             logger.debug("从树收集文件失败", exc_info=True)
         return files
 
-    def _collect_files_to_process(self, input_path: Path):
-        """根据输入路径和 GUI 当前选择收集要处理的文件列表。
+    def _get_patterns_from_widget(self):
+        """从 GUI 的 pattern 控件获取模式列表和原始显示文本。
 
-        Returns (files_list, output_dir_or_none, error_message_or_none).
+        返回 (patterns_list, pattern_display_text)
         """
-        try:
-            files_to_process = []
-            output_dir = getattr(self.gui, "output_dir", None)
+        pattern_widget = getattr(self.gui, "inp_pattern", None)
+        pattern_text = (
+            pattern_widget.text().strip()
+            if (pattern_widget and hasattr(pattern_widget, "text"))
+            else "*.csv"
+        )
+        patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
+        if not patterns:
+            patterns = ["*.csv"]
+        return patterns, pattern_text
 
-            if input_path.is_file():
-                files_to_process = [input_path]
-                if output_dir is None:
-                    output_dir = input_path.parent
-                return files_to_process, output_dir, None
-
-            if input_path.is_dir():
-                # 优先使用 GUI 的树形选择（委托 helper）
-                if hasattr(self.gui, "file_tree") and hasattr(self.gui, "_file_tree_items"):
-                    files_to_process.extend(self._collect_files_from_tree())
-                    if output_dir is None:
-                        output_dir = input_path
-                else:
-                    # 回退：直接根据模式扫描目录
-                    pattern = getattr(self.gui, "inp_pattern", None)
-                    pattern_text = pattern.text().strip() if pattern else "*.csv"
-                    patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
-                    if not patterns:
-                        patterns = ["*.csv"]
-                    files_to_process.extend(
-                        self._scan_dir_for_patterns(input_path, patterns)
-                    )
-                    if output_dir is None:
-                        output_dir = input_path
-
-                if not files_to_process:
-                    pattern_widget = getattr(self.gui, "inp_pattern", None)
-                    pattern_display = (
-                        pattern_widget.text()
-                        if (pattern_widget and hasattr(pattern_widget, "text"))
-                        else "*.csv"
-                    )
-                    msg = (
-                        "未找到匹配 '" + pattern_display + "' 的文件或未选择任何文件"
-                    )
-                    return [], None, msg
-                return files_to_process, output_dir, None
-
-            return [], None, "输入路径无效"
-        except Exception:
-            logger.debug("收集待处理文件失败", exc_info=True)
-            return [], None, "收集待处理文件时发生错误"
+    def _collect_files_to_process(self, input_path: Path):
+        # 委托给文件相关子模块实现
+        return _collect_files_to_process_impl(self, input_path)
 
     def _scan_dir_for_patterns(self, input_path: Path, patterns: list) -> list:
-        """扫描目录并返回匹配指定模式的文件路径列表。
-
-        参数:
-            input_path: 要扫描的目录路径
-            patterns: 文件名模式列表，例如 ['*.csv', '*.txt']
-        返回:
-            匹配的文件 Path 列表
-        """
-        found = []
-        try:
-            for file_path in input_path.rglob("*"):
-                try:
-                    if not file_path.is_file():
-                        continue
-                    matches = any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns)
-                    if matches:
-                        found.append(file_path)
-                except Exception:
-                    pass
-        except Exception:
-            logger.debug("按模式扫描目录失败", exc_info=True)
-        return found
+        return _scan_dir_for_patterns_impl(self, input_path, patterns)
 
     def _on_batch_log(self, message: str):
         """批处理日志回调"""
@@ -2380,7 +1704,9 @@ class BatchManager:
 
             kind = meta.get("kind")
             if kind == "special_part":
-                return item, str(meta.get("file") or ""), str(meta.get("source") or "")
+                fp = str(meta.get("file") or "")
+                sp = str(meta.get("source") or "")
+                return item, fp, sp
 
             if kind == "special_data_row":
                 parent = item.parent()
@@ -2391,7 +1717,9 @@ class BatchManager:
                     isinstance(parent_meta, dict)
                     and parent_meta.get("kind") == "special_part"
                 ):
-                    return parent, str(parent_meta.get("file") or ""), str(parent_meta.get("source") or "")
+                    fp = str(parent_meta.get("file") or "")
+                    sp = str(parent_meta.get("source") or "")
+                    return parent, fp, sp
         except Exception:
             return None, None, None
 
@@ -2698,6 +2026,35 @@ class BatchManager:
 
         self.gui.special_part_row_selection_by_file = by_file
 
+    def _apply_mode_to_special_table(self, table, by_part, source_part, mode):
+        """在特殊格式的预览表格上按 mode 操作复选框并返回更新后的选中集合。"""
+        selected = set(by_part.get(str(source_part)) or set())
+        try:
+            rows = table.rowCount()
+            for r in range(rows):
+                try:
+                    cb = table.cellWidget(r, 0)
+                    if cb is None:
+                        continue
+                    if mode == "all":
+                        cb.setChecked(True)
+                        selected.add(r)
+                    elif mode == "none":
+                        cb.setChecked(False)
+                        selected.discard(r)
+                    elif mode == "invert":
+                        new_state = not cb.isChecked()
+                        cb.setChecked(new_state)
+                        if new_state:
+                            selected.add(r)
+                        else:
+                            selected.discard(r)
+                except Exception:
+                    continue
+        except Exception:
+            logger.debug("在 special 表格中应用复选框模式失败", exc_info=True)
+        return selected
+
     def _select_all_special_row_items(self, row_items):
         """将 special row_items 全部选中并返回所选索引集合（安全包装）。"""
         selected = set()
@@ -2734,25 +2091,9 @@ class BatchManager:
         if table is not None:
             self._is_updating_tree = True
             try:
-                selected = set(by_part.get(str(source_part)) or set())
-                rows = table.rowCount()
-                for r in range(rows):
-                    cb = table.cellWidget(r, 0)
-                    if cb is None:
-                        continue
-                    if mode == "all":
-                        cb.setChecked(True)
-                        selected.add(r)
-                    elif mode == "none":
-                        cb.setChecked(False)
-                        selected.discard(r)
-                    elif mode == "invert":
-                        new_state = not cb.isChecked()
-                        cb.setChecked(new_state)
-                        if new_state:
-                            selected.add(r)
-                        else:
-                            selected.discard(r)
+                selected = self._apply_mode_to_special_table(
+                    table, by_part, source_part, mode
+                )
                 by_part[str(source_part)] = selected
             finally:
                 self._is_updating_tree = False
@@ -2861,102 +2202,10 @@ class BatchManager:
     # 批处理控制方法（从 main_window 迁移）
     def request_cancel_batch(self):
         """请求取消正在运行的批处理任务"""
-        try:
-            batch_thread = getattr(self.gui, "batch_thread", None)
-            if batch_thread is not None:
-                if hasattr(self.gui, "txt_batch_log"):
-                    self.gui.txt_batch_log.append(
-                        f"[{datetime.now().strftime('%H:%M:%S')}] 用户请求取消任务，正在停止..."
-                    )
-                try:
-                    batch_thread.request_stop()
-                except Exception:
-                    logger.debug(
-                        "batch_thread.request_stop 调用失败（可能已结束）",
-                        exc_info=True,
-                    )
-
-                # 禁用取消按钮以避免重复点击
-                if hasattr(self.gui, "btn_cancel"):
-                    try:
-                        self.gui.btn_cancel.setEnabled(False)
-                    except Exception:
-                        pass
-        except Exception:
-            logger.debug("request_cancel_batch 失败", exc_info=True)
+        return _request_cancel_batch_impl(self)
 
     def undo_batch_processing(self):
-        """撤销最近一次批处理操作"""
-        try:
-            output_dir = getattr(self.gui, "_batch_output_dir", None)
-            existing_files = getattr(self.gui, "_batch_existing_files", set())
-
-            # 安全检查：确保有记录的输出目录和已存在文件列表
-            if not output_dir or not isinstance(existing_files, set):
-                QMessageBox.warning(
-                    self.gui,
-                    "提示",
-                    "没有可撤销的批处理记录。请先运行批处理。",
-                )
-                return
-
-            reply = QMessageBox.question(
-                self.gui,
-                "确认撤销",
-                f"确定要撤销最近一次批处理？\n将删除 {output_dir} 中的新生成文件（保留源数据）。",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-
-            if reply != QMessageBox.Yes:
-                return
-
-            # 只删除本次批处理新生成的文件（委托 helper）
-            try:
-                deleted_count = self._delete_new_output_files(output_dir, existing_files)
-                QMessageBox.information(
-                    self.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件"
-                )
-
-                # 清空批处理记录
-                self.gui._batch_output_dir = None
-                self.gui._batch_existing_files = set()
-                # 隐藏并禁用撤销按钮，避免用户误以为仍可撤销
-                try:
-                    if hasattr(self.gui, "btn_undo"):
-                        self.gui.btn_undo.setEnabled(False)
-                        self.gui.btn_undo.setVisible(False)
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.error(f"撤销批处理失败: {e}", exc_info=True)
-                QMessageBox.critical(self.gui, "错误", f"撤销失败: {e}")
-
-        except Exception as e:
-            logger.error(f"undo_batch_processing 失败: {e}", exc_info=True)
+        return _undo_batch_processing_impl(self)
 
     def _delete_new_output_files(self, output_dir, existing_files):
-        """删除 `output_dir` 中不在 `existing_files` 中的新文件，返回删除计数。"""
-        deleted_count = 0
-        try:
-            if output_dir and Path(output_dir).exists():
-                output_path = Path(output_dir)
-                # 解析为绝对路径集合以便比较
-                existing_files_resolved = set(str(Path(p).resolve()) for p in (existing_files or set()))
-                for file in output_path.iterdir():
-                    try:
-                        file_path_str = str(file.resolve())
-                    except Exception:
-                        # 若无法解析路径则跳过
-                        continue
-                    if file.is_file() and file_path_str not in existing_files_resolved:
-                        try:
-                            file.unlink()
-                            deleted_count += 1
-                            logger.info(f"已删除: {file}")
-                        except Exception as e:
-                            logger.warning(f"无法删除 {file}: {e}")
-        except Exception:
-            logger.debug("删除输出文件时发生错误", exc_info=True)
-            raise
-        return deleted_count
+        return _delete_new_output_files_impl(self, output_dir, existing_files)
