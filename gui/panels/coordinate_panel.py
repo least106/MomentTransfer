@@ -77,15 +77,17 @@ class CoordinateSystemPanel(QGroupBox):
     def _init_ui(self):
         """初始化UI布局"""
         # 设置尺寸约束
+        # 侧边栏默认宽度有限，面板内容不要被强行压缩到不可读；
+        # 交给外层 QScrollArea 负责横向滚动展示。
         self.setMinimumWidth(320)
-        self.setMaximumHeight(500)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # 创建表单布局
         self.form_layout = QFormLayout()
-        self.form_layout.setContentsMargins(10, 10, 10, 10)
+        # 略微收紧外边距与间距，使面板更紧凑
+        self.form_layout.setContentsMargins(8, 8, 8, 8)
         self.form_layout.setSpacing(4)
-        self.form_layout.setHorizontalSpacing(8)
+        self.form_layout.setHorizontalSpacing(6)
         self.form_layout.setVerticalSpacing(4)
         try:
             self.form_layout.setLabelAlignment(Qt.AlignRight)
@@ -101,12 +103,20 @@ class CoordinateSystemPanel(QGroupBox):
 
         # Part选择器（用于加载配置后选择不同的Part）
         self.part_selector = QComboBox(self)
+        # 限制下拉框宽度并使用紧凑尺寸策略，确保与 + - 按钮同行
+        try:
+            self.part_selector.setMaximumWidth(160)
+            self.part_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        except Exception:
+            pass
         self.part_selector.currentTextChanged.connect(self._on_part_selected)
 
         # Part管理按钮
         part_widget = QWidget()
         part_layout = QHBoxLayout(part_widget)
         part_layout.setContentsMargins(0, 0, 0, 0)
+        part_layout.setSpacing(6)
+        part_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         part_layout.addWidget(self.part_selector)
 
         self.btn_add_part = QPushButton("+")
@@ -121,14 +131,26 @@ class CoordinateSystemPanel(QGroupBox):
 
         part_layout.addWidget(self.btn_add_part)
         part_layout.addWidget(self.btn_remove_part)
+        # 保证容器在表单里不会垂直拉伸
+        try:
+            part_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        except Exception:
+            pass
 
         lbl_select = QLabel(f"选择 {self.prefix.upper()} Part:")
         lbl_select.setFixedWidth(90)
         self.form_layout.addRow(lbl_select, part_widget)
 
-        # 坐标系表格
+        # 坐标系表格 — 放到一个容器中作为整行项，避免被左侧标签列缩进
         self.coord_table = self._create_coord_table()
-        self.form_layout.addRow("", self.coord_table)
+        table_container = QWidget()
+        table_layout = QHBoxLayout(table_container)
+        table_layout.setContentsMargins(0, 0, 0, 0)
+        table_layout.setSpacing(0)
+        table_layout.addWidget(self.coord_table)
+        table_layout.setAlignment(self.coord_table, Qt.AlignLeft | Qt.AlignTop)
+        # 作为单列行添加，避免使用空字符串标签造成缩进
+        self.form_layout.addRow(table_container)
 
         # 参考量输入
         self.cref_input = self._create_input("1.0")
@@ -216,7 +238,8 @@ class CoordinateSystemPanel(QGroupBox):
         table.setMinimumHeight(170)
         table.setMaximumHeight(190)
         table.setMinimumWidth(250)
-        table.setMaximumWidth(280)
+        # 不限制最大宽度，避免在更宽布局下仍被“挤成一条”
+        table.setMaximumWidth(16777215)
 
         # 列宽自适应
         h_header = table.horizontalHeader()

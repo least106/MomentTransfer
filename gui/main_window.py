@@ -101,7 +101,6 @@ class IntegratedAeroGUI(QMainWindow):
             parent=self,
             on_batch_start=self.run_batch_processing,
             on_format_config=self.configure_data_format,
-            on_undo=self.undo_batch_processing,
             on_browse=self.browse_batch_input,
             on_pattern_changed=lambda: self._on_pattern_changed(),
             on_select_all=self._select_all_files,
@@ -126,6 +125,28 @@ class IntegratedAeroGUI(QMainWindow):
             )
 
         return panel
+
+    def toggle_config_sidebar(self) -> bool:
+        """切换配置侧边栏，返回当前是否展开。"""
+        try:
+            sb = getattr(self, "config_sidebar", None)
+            if sb is not None:
+                sb.toggle_panel()
+                return sb.is_expanded()
+        except Exception:
+            logger.debug("toggle_config_sidebar failed", exc_info=True)
+        return False
+
+    def toggle_history_sidebar(self) -> bool:
+        """切换批处理历史侧边栏，返回当前是否展开。"""
+        try:
+            sb = getattr(self, "history_sidebar", None)
+            if sb is not None:
+                sb.toggle_panel()
+                return sb.is_expanded()
+        except Exception:
+            logger.debug("toggle_history_sidebar failed", exc_info=True)
+        return False
 
     def _quick_select(self):
         if self.batch_manager:
@@ -389,10 +410,6 @@ class IntegratedAeroGUI(QMainWindow):
     def request_cancel_batch(self):
         if self.batch_manager:
             self.batch_manager.request_cancel_batch()
-
-    def undo_batch_processing(self):
-        if self.batch_manager:
-            self.batch_manager.undo_batch_processing()
 
     def _setup_gui_logging(self):
         """设置日志系统，将所有日志输出到 GUI 的处理日志面板"""

@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 def connect_ui_signals(manager: Any) -> None:
     """连接文件树与 UI 回调（由 BatchManager 委托调用）。"""
     try:
+        if getattr(manager, "_ui_signals_connected", False):
+            return
         gui = manager.gui
         if hasattr(gui, "file_tree") and gui.file_tree is not None:
 
             def _connect_file_tree(signal_name: str, handler_name: str) -> None:
                 try:
-                    bm = getattr(gui, "batch_manager", None)
-                    if bm is None:
-                        return
+                    bm = getattr(gui, "batch_manager", None) or manager
                     handler = getattr(bm, handler_name, None)
                     if not callable(handler):
                         return
@@ -40,7 +40,12 @@ def connect_ui_signals(manager: Any) -> None:
                     logger.debug(f"连接 file_tree {signal_name} 失败", exc_info=True)
 
             _connect_file_tree("itemClicked", "_on_file_tree_item_clicked")
+            _connect_file_tree("itemDoubleClicked", "_on_file_tree_item_clicked")
             _connect_file_tree("itemChanged", "_on_file_tree_item_changed")
+        try:
+            setattr(manager, "_ui_signals_connected", True)
+        except Exception:
+            pass
     except Exception:
         logger.debug("connect_ui_signals 失败", exc_info=True)
 

@@ -33,6 +33,7 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
                 manager.gui.output_dir = p.parent
             except Exception:
                 pass
+            base_path = p.parent
         elif p.is_dir():
             pattern_text = "*.csv"
             try:

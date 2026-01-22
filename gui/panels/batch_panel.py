@@ -297,18 +297,6 @@ class BatchPanel(QWidget):
         btn_row.addWidget(self.btn_select_invert)
         btn_row.addWidget(self.btn_quick_select)
 
-        # 配置编辑器显示控制：默认不弹出，用户勾选后再显示
-        self.chk_show_config = QCheckBox("显示配置编辑器")
-        try:
-            self.chk_show_config.setChecked(False)
-            self.chk_show_config.setToolTip("勾选后显示配置编辑器；不勾选则保持隐藏")
-        except Exception:
-            pass
-        try:
-            self.chk_show_config.toggled.connect(self._on_toggle_config_panel)
-        except Exception:
-            logger.debug("无法连接 chk_show_config 信号", exc_info=True)
-        btn_row.addWidget(self.chk_show_config)
 
         # 行选择批量作用域：当用户在数据行上执行“全选/全不选/反选”时，可对所有选中文件生效
         self.chk_bulk_row_selection = QCheckBox("行选择批量作用域")
@@ -425,15 +413,6 @@ class BatchPanel(QWidget):
         layout.addWidget(self.file_tree)
 
         return widget
-
-    def _on_toggle_config_panel(self, checked: bool) -> None:
-        """用户勾选后再显示配置编辑器，避免点击文件时突然弹出。"""
-        try:
-            win = self.window()
-            if win is not None and hasattr(win, "set_config_panel_visible"):
-                win.set_config_panel_visible(bool(checked))
-        except Exception:
-            logger.debug("toggle config panel failed", exc_info=True)
 
     def _on_load_config_clicked(self) -> None:
         """从文件列表入口加载配置（替代旧的全局 Source 显示区）。"""
@@ -613,22 +592,6 @@ class BatchPanel(QWidget):
         self.btn_config_format.setVisible(False)
         self.btn_config_format.setEnabled(False)
 
-        # 撤销按钮
-        self.btn_undo = QPushButton("撤销\n批处理")
-        try:
-            self.btn_undo.setObjectName("secondaryButton")
-            self.btn_undo.setShortcut("Ctrl+Z")
-            self.btn_undo.setToolTip("撤销最近一次批处理")
-        except Exception:
-            pass
-        self.btn_undo.setFixedWidth(100)
-        self.btn_undo.setFixedHeight(50)
-        self.btn_undo.clicked.connect(self.undoRequested.emit)
-        self.btn_undo.setVisible(False)
-        self.btn_undo.setEnabled(False)
-
-        # layout.addWidget(self.btn_config_format)  # 已移除
-        layout.addWidget(self.btn_undo)
         layout.addStretch()
 
         return layout

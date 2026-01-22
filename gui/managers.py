@@ -716,10 +716,17 @@ class UIStateManager:
     def set_config_panel_visible(self, visible: bool) -> None:
         # 直接实现显示/隐藏配置编辑器的行为，避免递归委托到主窗口同名方法。
         try:
+            sidebar = getattr(self.parent, "config_sidebar", None)
+            if sidebar is not None:
+                if visible:
+                    sidebar.show_panel()
+                else:
+                    sidebar.hide_panel()
+                return
+
+            # 旧版兼容代码（侧边栏已改为浮动层，不再使用 splitter）
             panel = getattr(self.parent, "config_panel", None)
-            splitter = getattr(self.parent, "main_splitter", None)
-            if panel is None or splitter is None:
-                # 无法访问面板或 splitter，则尝试调用主窗口的底层实现（若存在）
+            if panel is None:
                 func = getattr(self.parent, "_set_config_panel_visible", None)
                 if callable(func):
                     try:
@@ -730,17 +737,13 @@ class UIStateManager:
 
             panel.setVisible(bool(visible))
             try:
-                # 调整 splitter 大小：显示时分配更多给配置面板，隐藏时将其收缩
                 if visible:
-                    # 给配置面板一个合理的初始高度比例（1:3）
                     splitter.setSizes([1, 3])
                 else:
                     splitter.setSizes([0, 1])
             except Exception:
-                # 忽略 splitter 调整失败
                 pass
 
-            # 尝试强制刷新主窗口布局以确保可见性更新
             try:
                 if hasattr(self.parent, "_force_layout_refresh"):
                     self.parent._force_layout_refresh()

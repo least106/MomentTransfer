@@ -163,11 +163,28 @@ def _apply_quick_filter_to_table(table, df, qcol, qval, operator: str) -> None:
     参数由调用方传入以避免直接访问 protected 属性。
     """
     try:
+        get_item = None
+        try:
+            if hasattr(table, "item"):
+                get_item = table.item
+            elif hasattr(table, "table") and hasattr(table.table, "item"):
+                get_item = table.table.item
+        except Exception:
+            get_item = None
+
         if not qcol or not qval:
             # 恢复样式到未筛选状态
             for r in range(table.rowCount()):
                 for c in range(1, table.columnCount()):
-                    item = table.item(r, c)
+                    try:
+                        item = get_item(r, c) if callable(get_item) else None
+                    except Exception:
+                        item = None
+                    if item is None:
+                        try:
+                            item = table.item(r, c)
+                        except Exception:
+                            item = None
                     if item:
                         item.setBackground(QColor(255, 255, 255))
                         item.setForeground(QColor(0, 0, 0))

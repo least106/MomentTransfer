@@ -23,7 +23,6 @@ class OperationPanel(QWidget):
         parent: Optional[QWidget] = None,
         on_batch_start: Callable[[], None],
         on_format_config: Callable[[], None],
-        on_undo: Callable[[], None],
         on_browse: Callable[[], None],
         on_pattern_changed: Callable[[], None],
         on_select_all: Callable[[], None],
@@ -50,7 +49,6 @@ class OperationPanel(QWidget):
             # 连接信号到回调
             self.batch_panel.batchStartRequested.connect(on_batch_start)
             self.batch_panel.formatConfigRequested.connect(on_format_config)
-            self.batch_panel.undoRequested.connect(on_undo)
             self.batch_panel.browseRequested.connect(on_browse)
             self.batch_panel.patternChanged.connect(lambda _text: on_pattern_changed())
             self.batch_panel.selectAllRequested.connect(on_select_all)
@@ -87,7 +85,6 @@ class OperationPanel(QWidget):
         gui_instance.btn_batch = getattr(
             bp, "btn_batch_in_toolbar", None
         )  # 兼容性别名，指向工具栏按钮
-        gui_instance.btn_undo = bp.btn_undo
         gui_instance.tab_logs_widget = bp.log_tab
         gui_instance.lbl_format_summary = getattr(bp, "lbl_format_summary", None)
         gui_instance.lbl_source_part_applied = None

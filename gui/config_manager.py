@@ -231,13 +231,6 @@ class ConfigManager:
 
             # 仅加载配置：不再自动应用为“全局计算器”。
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
-
-            # 添加到最近项目
-            try:
-                self.gui.add_recent_project(fname)
-            except Exception:
-                logger.debug("add_recent_project 失败", exc_info=True)
-
         except Exception as e:
             QMessageBox.critical(self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}")
 

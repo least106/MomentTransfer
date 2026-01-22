@@ -101,6 +101,7 @@ from gui.batch_manager_preview import (
 from gui.batch_manager_preview import (
     _apply_quick_filter_to_table as _apply_quick_filter_to_table_impl,
 )
+from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager_preview import (
     _build_row_preview_text as _build_row_preview_text_impl,
 )
@@ -131,6 +132,7 @@ from gui.batch_manager_preview import (
     _populate_table_data_rows as _populate_table_data_rows_impl,
 )
 from gui.batch_manager_ui import connect_quick_filter as _connect_quick_filter_impl
+from gui.batch_manager_ui import connect_ui_signals as _connect_ui_signals_impl
 from gui.batch_manager_ui import (
     connect_signal_bus_events as _connect_signal_bus_events_impl,
 )
@@ -158,6 +160,8 @@ class BatchManager:
         self.gui = gui_instance
         self.batch_thread = None
         self._bus_connected = False
+        self.history_store: Optional[BatchHistoryStore] = None
+        self.history_panel: Optional[BatchHistoryPanel] = None
 
         # 特殊格式：缓存每个文件的 source->target 映射控件
         # key: (file_path_str, source_part)
@@ -187,25 +191,21 @@ class BatchManager:
         self._quick_filter_value = None
         self._connect_signal_bus_events()
         self._connect_quick_filter()
+        self._connect_ui_signals()
+
+    def attach_history(self, store: BatchHistoryStore, panel: Optional[BatchHistoryPanel]):
+        """绑定批处理历史存储与面板，供记录与撤销使用。"""
+        try:
+            self.history_store = store
+            self.history_panel = panel
+            if panel is not None and hasattr(panel, "set_undo_callback"):
+                panel.set_undo_callback(self.undo_history_record)
+        except Exception:
+            logger.debug("绑定历史组件失败", exc_info=True)
 
     def _connect_ui_signals(self) -> None:
         """连接文件树与 SignalBus 事件，保证状态/映射随配置变化刷新。"""
-        try:
-            if hasattr(self.gui, "file_tree") and self.gui.file_tree is not None:
-                try:
-                    self.gui.file_tree.itemClicked.connect(
-                        self._on_file_tree_item_clicked
-                    )
-                except Exception:
-                    logger.debug("连接 file_tree.itemClicked 失败", exc_info=True)
-                try:
-                    self.gui.file_tree.itemChanged.connect(
-                        self._on_file_tree_item_changed
-                    )
-                except Exception:
-                    logger.debug("连接 file_tree.itemChanged 失败", exc_info=True)
-        except Exception:
-            pass
+        return _connect_ui_signals_impl(self)
 
     def _connect_signal_bus_events(self) -> None:
         """将配置/Part 变更信号与文件状态刷新绑定（只注册一次）。"""
@@ -1692,6 +1692,7 @@ class BatchManager:
         """批处理完成回调"""
         try:
             logger.info(f"批处理完成: {message}")
+            self._record_batch_history(status="completed")
             # 恢复 GUI 状态并提示完成
             self._restore_gui_after_batch(enable_undo=True)
             QMessageBox.information(self.gui, "完成", message)
@@ -1702,11 +1703,110 @@ class BatchManager:
         """批处理错误回调"""
         try:
             logger.error(f"批处理错误: {error_msg}")
+            self._record_batch_history(status="failed")
             # 恢复 GUI 状态并提示错误
             self._restore_gui_after_batch(enable_undo=False)
             QMessageBox.critical(self.gui, "错误", f"批处理出错: {error_msg}")
         except Exception as e:
             logger.error(f"处理错误事件失败: {e}")
+
+    def _record_batch_history(self, status: str = "completed") -> None:
+        """记录批处理历史并刷新右侧历史面板。"""
+        try:
+            store = self.history_store or getattr(self.gui, "history_store", None)
+            if store is None:
+                return
+
+            ctx = getattr(self, "_current_batch_context", {}) or {}
+            input_path = ctx.get("input_path", "")
+            files = ctx.get("files", [])
+            output_dir = ctx.get("output_dir") or getattr(
+                self.gui, "_batch_output_dir", None
+            )
+            if not output_dir:
+                return
+
+            try:
+                output_path = Path(output_dir)
+            except Exception:
+                return
+
+            existing = getattr(self.gui, "_batch_existing_files", set()) or set()
+            existing_resolved = set()
+            for p in existing:
+                try:
+                    existing_resolved.add(str(Path(p).resolve()))
+                except Exception:
+                    existing_resolved.add(str(p))
+
+            current_files = []
+            try:
+                for f in output_path.glob("*"):
+                    if f.is_file():
+                        current_files.append(str(f.resolve()))
+            except Exception:
+                pass
+
+            new_files = [p for p in current_files if p not in existing_resolved]
+            rec = store.add_record(
+                input_path=input_path,
+                output_dir=str(output_path),
+                files=files,
+                new_files=new_files,
+                status=status,
+            )
+            try:
+                self._last_history_record_id = rec.get("id")
+            except Exception:
+                pass
+
+            try:
+                if self.history_panel is not None:
+                    self.history_panel.refresh()
+            except Exception:
+                logger.debug("刷新历史面板失败", exc_info=True)
+        except Exception:
+            logger.debug("记录批处理历史失败", exc_info=True)
+
+    def undo_history_record(self, record_id: str) -> None:
+        """撤销指定历史记录（删除新生成的输出文件）。"""
+        try:
+            store = self.history_store or getattr(self.gui, "history_store", None)
+            if store is None or not record_id:
+                return
+
+            record = None
+            for rec in store.get_records():
+                if rec.get("id") == record_id:
+                    record = rec
+                    break
+            if record is None:
+                return
+
+            new_files = record.get("new_files") or []
+            deleted = 0
+            for p in new_files:
+                try:
+                    fp = Path(p)
+                    if fp.exists() and fp.is_file():
+                        fp.unlink()
+                        deleted += 1
+                except Exception:
+                    logger.debug("删除输出文件失败", exc_info=True)
+
+            store.mark_status(record_id, "undone")
+            try:
+                if self.history_panel is not None:
+                    self.history_panel.refresh()
+            except Exception:
+                pass
+
+            try:
+                QMessageBox.information(self.gui, "撤销完成", f"已删除 {deleted} 个输出文件")
+            except Exception:
+                logger.debug("撤销提示失败", exc_info=True)
+        except Exception:
+            logger.debug("撤销历史记录失败", exc_info=True)
 
     # 文件来源标签相关实现已完全移除
 

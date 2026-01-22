@@ -4,8 +4,8 @@
 
 import logging
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from .source_panel import SourcePanel
 from .target_panel import TargetPanel
@@ -23,8 +23,9 @@ class ConfigPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(950)
-        self.setMaximumHeight(550)
+        # 不设置固定的最小宽度，让侧边栏容器决定大小
+        self.setMinimumWidth(100)
+        # 移除最大高度限制，允许滚动
         self._init_ui()
 
     def _init_ui(self):
@@ -42,10 +43,15 @@ class ConfigPanel(QWidget):
         self.source_panel = SourcePanel(self)
         self.target_panel = TargetPanel(self)
 
+        # 防止在侧边栏宽度较小时被强行压缩导致控件挤压/错位。
+        # 外层 QScrollArea 会自动提供水平滚动条。
+        self.source_panel.setMinimumWidth(360)
+        self.target_panel.setMinimumWidth(360)
+
         # 配置操作按钮
         btn_widget = QWidget(self)
-        btn_widget.setFixedWidth(120)
-        btn_layout = QVBoxLayout(btn_widget)
+        btn_widget.setFixedHeight(50)
+        btn_layout = QHBoxLayout(btn_widget)
         btn_layout.setSpacing(8)
         btn_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -63,18 +69,27 @@ class ConfigPanel(QWidget):
             pass
         self.btn_save.clicked.connect(self.saveRequested.emit)
 
+        btn_layout.addStretch()
         btn_layout.addWidget(self.btn_save)
         btn_layout.addStretch()
 
-        # 横向布局
-        coord_layout = QHBoxLayout()
-        coord_layout.setSpacing(8)
+        # 创建滚动区域容纳横向布局的面板
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # 滚动内容容器
+        scroll_content = QWidget()
+        coord_layout = QHBoxLayout(scroll_content)
+        coord_layout.setSpacing(4)
+        coord_layout.setContentsMargins(0, 0, 0, 0)
         coord_layout.addWidget(self.source_panel)
         coord_layout.addWidget(self.target_panel)
-        coord_layout.addWidget(btn_widget)
         coord_layout.setStretch(0, 1)
         coord_layout.setStretch(1, 1)
-        coord_layout.setStretch(2, 0)
+        
+        scroll_area.setWidget(scroll_content)
 
-        main_layout.addLayout(coord_layout)
-        main_layout.addStretch()
+        main_layout.addWidget(scroll_area)
+        main_layout.addWidget(btn_widget)

@@ -51,6 +51,15 @@ def run_batch_processing(manager):
         manager.gui._batch_existing_files = existing_files
         # pylint: enable=protected-access
 
+        try:
+            manager._current_batch_context = {
+                "input_path": str(input_path),
+                "files": [str(f) for f in files_to_process],
+                "output_dir": str(output_path),
+            }
+        except Exception:
+            pass
+
         data_config = None
 
         manager.batch_thread = create_batch_thread(
@@ -183,7 +192,7 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
         try:
             if hasattr(manager.gui, "btn_batch"):
                 manager.gui.btn_batch.setEnabled(True)
-                manager.gui.btn_batch.setText("开始批量处理")
+                manager.gui.btn_batch.setText("开始处理")
         except Exception:
             logger.debug("无法启用批处理按钮", exc_info=True)
 
@@ -262,6 +271,15 @@ def undo_batch_processing(manager):
             manager.gui._batch_output_dir = None
             manager.gui._batch_existing_files = set()
             # pylint: enable=protected-access
+
+            try:
+                rid = getattr(manager, "_last_history_record_id", None)
+                if rid and getattr(manager, "history_store", None):
+                    manager.history_store.mark_status(rid, "undone")
+                    if getattr(manager, "history_panel", None):
+                        manager.history_panel.refresh()
+            except Exception:
+                logger.debug("更新历史记录状态失败", exc_info=True)
 
             try:
                 if hasattr(manager.gui, "btn_undo"):

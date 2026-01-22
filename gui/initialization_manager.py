@@ -5,13 +5,15 @@
 import logging
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from gui.batch_manager import BatchManager
+from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager
 from gui.part_manager import PartManager
+from gui.slide_sidebar import SlideSidebar
 
 logger = logging.getLogger(__name__)
 
@@ -38,33 +40,84 @@ class InitializationManager:
             )
             main_layout.setSpacing(LAYOUT_SPACING)
 
-            # 创建配置面板
+            # 创建配置/操作面板
             config_panel = self.main_window.create_config_panel()
-
-            # 创建操作面板（使用 main_window 的方法）
             operation_panel = self.main_window.create_operation_panel()
             self.main_window.operation_panel = operation_panel
-
-            # 存储引用以便管理器访问
             self.main_window.config_panel = config_panel
 
-            # 创建主分割器
-            splitter = QSplitter(Qt.Vertical)
-            splitter.addWidget(config_panel)
-            splitter.addWidget(operation_panel)
+            # 创建历史存储与面板
+            history_store = BatchHistoryStore()
+            history_panel = BatchHistoryPanel(history_store)
+            self.main_window.history_store = history_store
+            self.main_window.history_panel = history_panel
 
-            # 记录 splitter，便于后续按流程动态显示/隐藏配置面板
-            self.main_window.main_splitter = splitter
+            # 主内容区域占满整个空间（不被侧边栏挤压）
+            main_layout.addWidget(operation_panel)
 
-            # 初始化阶段：默认隐藏配置编辑器，避免页面初始化可选项过多导致注意力分散。
-            # 在用户选中数据文件后再显示配置编辑器。
-            try:
-                config_panel.setVisible(False)
-                splitter.setSizes([0, 1])
-            except Exception:
-                logger.debug("splitter initial hide failed (non-fatal)", exc_info=True)
+            # 构建浮动覆盖层侧边栏（默认隐藏），直接作为 central_widget 的子组件
+            # 重要：这些侧边栏是绝对定位的（不通过布局管理），所以需要手动设置几何位置
+            config_sidebar = SlideSidebar(
+                config_panel,
+                side="left",
+                # 配置面板需要同时容纳 Source/Target 两列，侧边栏过窄会导致横向滚动体验很怪。
+                # 这里加宽左侧侧边栏，优先保证配置编辑器可读性。
+                expanded_width=820,
+                button_text_collapsed=">>",
+                button_text_expanded="<<",
+                parent=central_widget,
+            )
+            history_sidebar = SlideSidebar(
+                history_panel,
+                side="right",
+                expanded_width=360,
+                button_text_collapsed="<<",
+                button_text_expanded=">>",
+                parent=central_widget,
+            )
 
-            main_layout.addWidget(splitter)
+            # 侧边栏为浮动覆盖层子组件：显示按钮、置顶层级
+            config_sidebar.setVisible(True)
+            history_sidebar.setVisible(True)
+            config_sidebar.raise_()
+            history_sidebar.raise_()
+
+            self.main_window.config_sidebar = config_sidebar
+            self.main_window.history_sidebar = history_sidebar
+            self.main_window.operation_panel = operation_panel
+            self.main_window.central_widget = central_widget
+
+            # 动态调整侧边栏位置（贴合边缘，不受主内容影响）
+            def resize_sidebars():
+                try:
+                    h = central_widget.height()
+                    w = central_widget.width()
+
+                    if h <= 0 or w <= 0:
+                        return
+
+                    # 统一由 SlideSidebar 自身根据 side 贴边定位
+                    config_sidebar.reposition_in_parent()
+                    history_sidebar.reposition_in_parent()
+
+                    # 保持覆盖层在最上面
+                    config_sidebar.raise_()
+                    history_sidebar.raise_()
+                except Exception as e:
+                    logger.error("侧边栏定位失败: %s", e, exc_info=True)
+
+            # 重写 central_widget 的 resizeEvent
+            original_resize = central_widget.resizeEvent
+
+            def new_resize_event(event):
+                original_resize(event)
+                resize_sidebars()
+
+            central_widget.resizeEvent = new_resize_event
+
+            # 初始调整一次
+            QTimer.singleShot(0, resize_sidebars)
+
             # 将状态信息显示为状态栏右侧的永久标签，避免默认消息框在左侧分散注意力
             try:
                 from PySide6.QtWidgets import QLabel, QSizePolicy
@@ -101,6 +154,15 @@ class InitializationManager:
             self.main_window.part_manager = PartManager(self.main_window)
             self.main_window.batch_manager = BatchManager(self.main_window)
             self.main_window.layout_manager = LayoutManager(self.main_window)
+
+            try:
+                if hasattr(self.main_window, "history_store"):
+                    self.main_window.batch_manager.attach_history(
+                        self.main_window.history_store,
+                        getattr(self.main_window, "history_panel", None),
+                    )
+            except Exception:
+                logger.debug("绑定批处理历史失败", exc_info=True)
 
             logger.info("所有管理器初始化成功")
             # 绑定：当用户在输入框直接输入路径并完成编辑时，触发扫描和控件启用状态更新
