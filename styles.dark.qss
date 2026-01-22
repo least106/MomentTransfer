@@ -68,3 +68,72 @@ QToolTip {
 /* 小按钮与标签轻微对比 */
 QLabel[variant="muted"] { color: #a0a0a0; }
 QLabel[variant="error"] { color: #ff6b6b; }
+
+/* 侧边栏（左/右）- 暗色主题 */
+#LeftSidePanel {
+  background-color: #252526;
+  border-right: 1px solid #3f3f46;
+}
+#RightSidePanel {
+  background-color: #252526;
+  border-left: 1px solid #3f3f46;
+}
+
+/* ===== 新侧边栏样式 ===== */
+QWidget#SidebarContainer {
+  background: #1f2430;
+  border-left: 1px solid #2e3445;
+  border-right: 1px solid #2e3445;
+}
+/* toggle button styles consolidated near file end to avoid duplicates */
+
+/* 更高优先级选择器：限定在 SidebarContainer 内的切换按钮，防止被全局 QPushButton 覆盖 */
+QWidget#SidebarContainer > QPushButton#SidebarToggleLeft,
+QWidget#SidebarContainer > QPushButton#SidebarToggleLeft:hover,
+QWidget#SidebarContainer > QPushButton#SidebarToggleLeft:pressed {
+  border-top-left-radius: 0px !important;
+  border-bottom-left-radius: 0px !important;
+  border-top-right-radius: 4px !important;
+  border-bottom-right-radius: 4px !important;
+}
+QWidget#SidebarContainer > QPushButton#SidebarToggleRight,
+QWidget#SidebarContainer > QPushButton#SidebarToggleRight:hover,
+QWidget#SidebarContainer > QPushButton#SidebarToggleRight:pressed {
+  border-top-left-radius: 4px !important;
+  border-bottom-left-radius: 4px !important;
+  border-top-right-radius: 0px !important;
+  border-bottom-right-radius: 0px !important;
+}
+/* 最精确的覆盖：限定在 SlideSidebar 实例下的切换按钮（直接子控件），确保在所有主题与全局规则之上 */
+QWidget#SlideSidebar > QPushButton#SidebarToggleLeft,
+QWidget#SlideSidebar > QPushButton#SidebarToggleLeft:hover,
+QWidget#SlideSidebar > QPushButton#SidebarToggleLeft:pressed {
+  border-top-left-radius: 0px !important;
+  border-bottom-left-radius: 0px !important;
+  border-top-right-radius: 4px !important;
+  border-bottom-right-radius: 4px !important;
+}
+QWidget#SlideSidebar > QPushButton#SidebarToggleRight,
+QWidget#SlideSidebar > QPushButton#SidebarToggleRight:hover,
+QWidget#SlideSidebar > QPushButton#SidebarToggleRight:pressed {
+  border-top-left-radius: 4px !important;
+  border-bottom-left-radius: 4px !important;
+  border-top-right-radius: 0px !important;
+  border-bottom-right-radius: 0px !important;
+}
+/* 侧边栏按钮样式已合并到文件末尾的高优先级选择器 */
+QLabel[class="sidebar-title"] {
+  font-weight: 600;
+  color: #dbe5ff;
+  padding: 6px 8px;
+}
+QPushButton[class="ghost"] {
+  background: transparent;
+  border: 1px solid #3a4153;
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: #e2e6f2;
+}
+QPushButton[class="ghost"]:hover {
+  background: #2b3243;
+}

@@ -122,6 +122,49 @@ QProgressBar::chunk:horizontal {
 	border-right-color:qlineargradient(spread:pad, x1:0, y1:0.5, x2:1, y2:0.5, stop:0 rgba(253,156,113,255), stop:1 rgba(205,90,46, 255));
 	border-left-color:qlineargradient(spread:pad, x1:1, y1:0.5, x2:0, y2:0.5, stop:0 rgba(253,156,113,255), stop:1 rgba(205,90,46, 255));
 }
+
+/* ===== 侧边栏 ===== */
+QWidget#SidebarContainer {
+    background: #f7f9fc;
+    border-left: 1px solid #dfe4ed;
+    border-right: 1px solid #dfe4ed;
+}
+/* toggle button styles consolidated near file end to avoid duplicates */
+/* 保留旧的通用选择器用于向后兼容 */
+QPushButton#SidebarToggle {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #dfe4ed;
+    border-radius: 4px;
+    color: #2f3c55;
+    font-weight: bold;
+    padding: 2px;
+    min-width: 24px;
+    max-width: 24px;
+}
+QPushButton#SidebarToggle:hover {
+    background: #0078d7;
+    border-color: #0078d7;
+    color: #ffffff;
+}
+QPushButton#SidebarToggle:pressed {
+    background: #005a9e;
+    border-color: #005a9e;
+}
+QLabel[class="sidebar-title"] {
+    font-weight: 600;
+    color: #1f2a44;
+    padding: 6px 8px;
+}
+QPushButton[class="ghost"] {
+    background: transparent;
+    border: 1px solid #cfd5df;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #2f3c55;
+}
+QPushButton[class="ghost"]:hover {
+    background: #e9edf5;
+}
 QPushButton{
 	color:rgb(17,17,17);
 	border-width: 1px;
@@ -177,6 +220,8 @@ QPushButton:disabled{
 	border-radius: 6px;
 	background-color: qlineargradient(spread:pad, x1:0.5, y1:1, x2:0.5, y2:0, stop:0 rgba(200, 200, 200, 255), stop:1 rgba(230, 230, 230, 255));
 }
+
+/* 侧边栏按钮样式已合并到文件末尾的高优先级选择器 */
 QRadioButton {
 	padding: 1px;
 }
@@ -284,6 +329,8 @@ QScrollBar::add-line:horizontal:hover {
   	subcontrol-position: right;
   	subcontrol-origin: margin;
 }
+
+/* 强制覆盖：侧边栏切换按钮角落已合并到末尾的高优先级选择器 */
 QScrollBar::add-line:horizontal:pressed {
   	border: 1px solid grey;
   	border-top-left-radius: 7px;
@@ -343,6 +390,16 @@ QScrollBar::right-arrow:horizontal {
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
  	background: none;
 } 
+
+/* 侧边栏（左/右）统一样式，可被局部覆盖 */
+#LeftSidePanel {
+	background: rgba(0, 0, 0, 0.02);
+	border-right: 1px solid #e0e0e0;
+}
+#RightSidePanel {
+	background: rgba(0, 0, 0, 0.02);
+	border-left: 1px solid #e0e0e0;
+}
 QScrollBar:vertical {
 	max-width: 20px;
 	border: 1px transparent grey;
