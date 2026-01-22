@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItemIterator,
 )
 
+from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager_batch import (
     attach_batch_thread_signals as _attach_batch_thread_signals_impl,
 )
@@ -101,7 +102,6 @@ from gui.batch_manager_preview import (
 from gui.batch_manager_preview import (
     _apply_quick_filter_to_table as _apply_quick_filter_to_table_impl,
 )
-from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager_preview import (
     _build_row_preview_text as _build_row_preview_text_impl,
 )
@@ -132,10 +132,10 @@ from gui.batch_manager_preview import (
     _populate_table_data_rows as _populate_table_data_rows_impl,
 )
 from gui.batch_manager_ui import connect_quick_filter as _connect_quick_filter_impl
-from gui.batch_manager_ui import connect_ui_signals as _connect_ui_signals_impl
 from gui.batch_manager_ui import (
     connect_signal_bus_events as _connect_signal_bus_events_impl,
 )
+from gui.batch_manager_ui import connect_ui_signals as _connect_ui_signals_impl
 from gui.batch_manager_ui import (
     safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
 )
@@ -193,7 +193,9 @@ class BatchManager:
         self._connect_quick_filter()
         self._connect_ui_signals()
 
-    def attach_history(self, store: BatchHistoryStore, panel: Optional[BatchHistoryPanel]):
+    def attach_history(
+        self, store: BatchHistoryStore, panel: Optional[BatchHistoryPanel]
+    ):
         """绑定批处理历史存储与面板，供记录与撤销使用。"""
         try:
             self.history_store = store
@@ -1802,7 +1804,9 @@ class BatchManager:
                 pass
 
             try:
-                QMessageBox.information(self.gui, "撤销完成", f"已删除 {deleted} 个输出文件")
+                QMessageBox.information(
+                    self.gui, "撤销完成", f"已删除 {deleted} 个输出文件"
+                )
             except Exception:
                 logger.debug("撤销提示失败", exc_info=True)
         except Exception:

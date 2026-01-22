@@ -11,11 +11,11 @@ from typing import Callable, Dict, List, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QHeaderView,
     QLabel,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
-    QHeaderView,
     QVBoxLayout,
     QWidget,
 )
@@ -88,7 +88,13 @@ class BatchHistoryStore:
 class BatchHistoryPanel(QWidget):
     """右侧历史面板：按日期分组显示批处理记录，并提供撤销按钮。"""
 
-    def __init__(self, store: BatchHistoryStore, *, on_undo: Optional[Callable[[str], None]] = None, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        store: BatchHistoryStore,
+        *,
+        on_undo: Optional[Callable[[str], None]] = None,
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self.store = store
         self._on_undo_cb = on_undo
@@ -171,4 +177,3 @@ class BatchHistoryPanel(QWidget):
         if record_id and callable(self._on_undo_cb):
             self._on_undo_cb(record_id)
             self.refresh()
-

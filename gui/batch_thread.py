@@ -76,6 +76,7 @@ class BatchProcessThread(QThread):
             self._global_batch_cfg = base
         except Exception:
             self._global_batch_cfg = None
+        # 内部 helper 已提升为实例方法 (_emit_log/_emit_progress/_emit_finished/_handle_special_report/_atomic_write)
 
     def _resolve_cfg_for_file(self, file_path: Path):
         """为单个文件返回全局批处理配置。"""
@@ -88,98 +89,141 @@ class BatchProcessThread(QThread):
         )
         return resolve_file_format(str(file_path), base)
 
+    def _emit_log(self, msg: str) -> None:
+        """安全发送日志 signal（捕获异常避免重复 try/except 代码）。"""
+        try:
+            # 在某些测试场景下，signals 可能被替换为简单可调用对象
+            emit = getattr(self.log_message, "emit", None)
+            if callable(emit):
+                emit(msg)
+            else:
+                # 兼容直接把 log_message 设为可调用对象
+                if callable(self.log_message):
+                    self.log_message(msg)
+        except Exception:
+            logger.debug("无法发送日志消息: %s", msg, exc_info=True)
+
+    def _emit_progress(self, pct: int) -> None:
+        """安全发送进度 signal。"""
+        try:
+            emit = getattr(self.progress, "emit", None)
+            if callable(emit):
+                emit(pct)
+            else:
+                if callable(self.progress):
+                    self.progress(pct)
+        except Exception:
+            logger.debug("无法发送进度消息: %s", pct, exc_info=True)
+
+    def _emit_finished(self, msg: str) -> None:
+        """安全发送 finished signal。"""
+        try:
+            emit = getattr(self.finished, "emit", None)
+            if callable(emit):
+                emit(msg)
+            else:
+                if callable(self.finished):
+                    self.finished(msg)
+        except Exception:
+            logger.debug("无法发送 finished 消息: %s", msg, exc_info=True)
+
+    def _handle_special_report(self, report) -> None:
+        """将特殊格式解析报告转换为日志消息并发送（集中处理）。"""
+        try:
+            for r in report:
+                status = r.get("status")
+                part = r.get("part")
+                if status == "success":
+                    msg = f"part '{part}' 处理成功，输出: {r.get('out_path', '')}"
+                elif status == "skipped":
+                    reason = r.get("reason")
+                    msg = f"part '{part}' 被跳过: {reason} - {r.get('message','') }"
+                else:
+                    msg = f"part '{part}' 处理失败: {r.get('reason')} - {r.get('message','') }"
+                self._emit_log(msg)
+        except Exception:
+            logger.debug("处理 special format report 时发生错误", exc_info=True)
+
+    def _atomic_write(self, output_df: pd.DataFrame, output_file: Path) -> None:
+        """原子写入 DataFrame 到 csv：先写临时文件，再 replace。"""
+        tmp_name = f".{output_file.name}.{uuid.uuid4().hex}.tmp"
+        tmp_path = output_file.parent / tmp_name
+        try:
+            output_df.to_csv(tmp_path, index=False)
+            os.replace(tmp_path, output_file)
+        except Exception:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            output_df.to_csv(output_file, index=False)
+
+    def _process_special_format_branch(self, file_path: Path):
+        """处理特殊格式文件的分支逻辑，成功返回 outputs 列表或其他 truthy 值，否则返回 None。"""
+        if self.project_data is None or not looks_like_special_format(file_path):
+            return None
+
+        overwrite_flag = False
+        try:
+            if isinstance(self.data_config, dict):
+                overwrite_flag = bool(self.data_config.get("overwrite", False))
+            else:
+                overwrite_flag = bool(getattr(self.data_config, "overwrite", False))
+        except Exception:
+            overwrite_flag = False
+
+        part_mapping = None
+        try:
+            part_mapping = self.special_part_mapping_by_file.get(str(Path(file_path)))
+        except Exception:
+            part_mapping = None
+
+        row_selection = None
+        try:
+            row_selection = self.special_row_selection_by_file.get(str(Path(file_path)))
+        except Exception:
+            row_selection = None
+
+        # 在调用可能耗时的特殊格式解析前检查停止请求
+        if self._stop_requested:
+            raise RuntimeError("处理已被请求停止")
+
+        outputs, report = process_special_format_file(
+            Path(file_path),
+            self.project_data,
+            self.output_dir,
+            part_target_mapping=part_mapping,
+            part_row_selection=row_selection,
+            timestamp_format=self.timestamp_format,
+            overwrite=overwrite_flag,
+            return_report=True,
+        )
+
+        # 将详细报告转换为 GUI 日志消息，按 part 显示成功/跳过/失败原因
+        self._handle_special_report(report)
+
+        # 如果特殊格式解析既没有产出 outputs 也没有 report，回退为常规处理
+        if not outputs and not report:
+            logger.debug(
+                "special_format 解析未提取到任何 part，回退到常规 CSV/Excel 处理: %s",
+                file_path,
+            )
+            self._emit_log(
+                f"特殊格式解析未提取到 part，回退为常规表格处理: {file_path.name}"
+            )
+            return None
+
+        return outputs
+
     def process_file(self, file_path):
         """处理单个文件并返回输出路径"""
         if self._stop_requested:
             raise RuntimeError("处理已被请求停止")
         # 特殊格式分支：解析多 part 并按 target part 输出
-        if self.project_data is not None and looks_like_special_format(file_path):
-            overwrite_flag = False
-            try:
-                if isinstance(self.data_config, dict):
-                    overwrite_flag = bool(self.data_config.get("overwrite", False))
-                else:
-                    overwrite_flag = bool(getattr(self.data_config, "overwrite", False))
-            except Exception:
-                overwrite_flag = False
-
-            part_mapping = None
-            try:
-                part_mapping = self.special_part_mapping_by_file.get(
-                    str(Path(file_path))
-                )
-            except Exception:
-                part_mapping = None
-
-            row_selection = None
-            try:
-                row_selection = self.special_row_selection_by_file.get(
-                    str(Path(file_path))
-                )
-            except Exception:
-                row_selection = None
-
-            # 在调用可能耗时的特殊格式解析前检查停止请求
-            if self._stop_requested:
-                raise RuntimeError("处理已被请求停止")
-
-            outputs, report = process_special_format_file(
-                Path(file_path),
-                self.project_data,
-                self.output_dir,
-                part_target_mapping=part_mapping,
-                part_row_selection=row_selection,
-                timestamp_format=self.timestamp_format,
-                overwrite=overwrite_flag,
-                return_report=True,
-            )
-
-            # 将详细报告转换为 GUI 日志消息，按 part 显示成功/跳过/失败原因
-            try:
-                for r in report:
-                    status = r.get("status")
-                    part = r.get("part")
-                    if status == "success":
-                        msg = f"part '{part}' 处理成功，输出: {r.get('out_path', '')}"
-                        try:
-                            self.log_message.emit(msg)
-                        except Exception:
-                            logger.debug("无法发送 part 成功消息", exc_info=True)
-                    elif status == "skipped":
-                        reason = r.get("reason")
-                        msg = f"part '{part}' 被跳过: {reason} - {r.get('message','') }"
-                        try:
-                            self.log_message.emit(msg)
-                        except Exception:
-                            logger.debug("无法发送 part 跳过消息", exc_info=True)
-                    else:
-                        msg = f"part '{part}' 处理失败: {r.get('reason')} - {r.get('message','') }"
-                        try:
-                            self.log_message.emit(msg)
-                        except Exception:
-                            logger.debug("无法发送 part 失败消息", exc_info=True)
-            except Exception:
-                logger.debug("处理 special format report 时发生错误", exc_info=True)
-
-            # 如果特殊格式解析既没有产出 outputs 也没有 report（即解析器判定为特殊但未提取到任何 part），
-            # 则回退为普通 CSV/Excel 处理（避免把空结果当作成功）。
-            if not outputs and not report:
-                try:
-                    logger.debug(
-                        "special_format 解析未提取到任何 part，回退到常规 CSV/Excel 处理: %s",
-                        file_path,
-                    )
-                    try:
-                        self.log_message.emit(
-                            f"特殊格式解析未提取到 part，回退为常规表格处理: {file_path.name}"
-                        )
-                    except Exception:
-                        logger.debug("无法发送回退日志消息", exc_info=True)
-                except Exception:
-                    pass
-                # 不返回，此时继续到后面的常规分支处理
-            else:
-                return outputs
+        out = self._process_special_format_branch(file_path)
+        if out is not None:
+            return out
 
         try:
             if self._stop_requested:
@@ -187,45 +231,11 @@ class BatchProcessThread(QThread):
 
             cfg_to_use = self._resolve_cfg_for_file(Path(file_path))
         except Exception as e:
-            try:
-                self.log_message.emit(
-                    f"为文件 {Path(file_path).name} 解析 per-file 格式失败: {e}"
-                )
-            except Exception:
-                logger.debug("无法发送 per-file 格式失败日志", exc_info=True)
+            self._emit_log(f"为文件 {Path(file_path).name} 解析 per-file 格式失败: {e}")
             raise
 
-        if file_path.suffix.lower() == ".csv":
-            # 按列名读取 CSV（要求有表头）
-            try:
-                df = pd.read_csv(
-                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
-                )
-                logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
-                try:
-                    self.log_message.emit(
-                        f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列"
-                    )
-                except Exception:
-                    logger.debug("无法通过 signal 发送 df.shape", exc_info=True)
-            except Exception as e:
-                try:
-                    self.log_message.emit(f"CSV 读取失败: {file_path.name} -> {e}")
-                except Exception:
-                    pass
-                raise
-        else:
-            # Excel 文件也按列名读取
-            try:
-                df = pd.read_excel(
-                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
-                )
-            except Exception as e:
-                try:
-                    self.log_message.emit(f"Excel 读取失败: {file_path.name} -> {e}")
-                except Exception:
-                    pass
-                raise
+        # 读取输入为 DataFrame（CSV/Excel）
+        df = self._read_input_dataframe(file_path, cfg_to_use)
 
         # 读取后检查是否需要停止
         if self._stop_requested:
@@ -443,7 +453,23 @@ class BatchProcessThread(QThread):
                 pass
             output_df.to_csv(output_file, index=False)
 
-        return output_file
+    def _read_input_dataframe(self, file_path: Path, cfg_to_use):
+        """读取输入文件为 DataFrame（CSV 或 Excel），并发送日志。"""
+        try:
+            if file_path.suffix.lower() == ".csv":
+                df = pd.read_csv(
+                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
+                )
+                logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
+                self._emit_log(f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列")
+            else:
+                df = pd.read_excel(
+                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
+                )
+            return df
+        except Exception as e:
+            self._emit_log(f"读取文件失败: {file_path.name} -> {e}")
+            raise
 
     def request_stop(self):
         """请求停止后台线程的处理"""

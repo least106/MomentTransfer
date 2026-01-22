@@ -7,8 +7,8 @@ import logging
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from gui.batch_manager import BatchManager
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
+from gui.batch_manager import BatchManager
 from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager

@@ -5,7 +5,14 @@
 import logging
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .source_panel import SourcePanel
 from .target_panel import TargetPanel
@@ -78,7 +85,7 @@ class ConfigPanel(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        
+
         # 滚动内容容器
         scroll_content = QWidget()
         coord_layout = QHBoxLayout(scroll_content)
@@ -88,7 +95,7 @@ class ConfigPanel(QWidget):
         coord_layout.addWidget(self.target_panel)
         coord_layout.setStretch(0, 1)
         coord_layout.setStretch(1, 1)
-        
+
         scroll_area.setWidget(scroll_content)
 
         main_layout.addWidget(scroll_area)

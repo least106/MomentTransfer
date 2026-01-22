@@ -297,7 +297,6 @@ class BatchPanel(QWidget):
         btn_row.addWidget(self.btn_select_invert)
         btn_row.addWidget(self.btn_quick_select)
 
-
         # 行选择批量作用域：当用户在数据行上执行“全选/全不选/反选”时，可对所有选中文件生效
         self.chk_bulk_row_selection = QCheckBox("行选择批量作用域")
         try:
