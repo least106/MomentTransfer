@@ -132,8 +132,6 @@ class DataValidator:
 
             return path
 
-        except ValidationError:
-            raise
         except OSError as e:
             raise ValidationError(f"路径验证失败: {e}") from e
 
@@ -178,8 +176,6 @@ class DataValidator:
 
             return path
 
-        except ValidationError:
-            raise
         except OSError as e:
             raise ValidationError(f"CSV 安全检查失败: {e}") from e
 
@@ -219,8 +215,6 @@ class DataValidator:
 
             return df
 
-        except ValidationError:
-            raise
         except (TypeError, ValueError) as e:
             raise ValidationError(f"DataFrame 验证失败: {e}") from e
 
@@ -260,8 +254,6 @@ class DataValidator:
 
             return validated_mapping
 
-        except ValidationError:
-            raise
         except (TypeError, ValueError, IndexError) as e:
             raise ValidationError(f"列映射验证失败: {e}") from e
 

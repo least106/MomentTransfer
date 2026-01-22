@@ -22,6 +22,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from typing import Dict, List, Optional  # noqa: E402
+from typing import Tuple, Any
 
 import pandas as pd  # noqa: E402
 
@@ -108,6 +109,64 @@ def _finalize_part(
         logger.warning("创建 DataFrame 失败 (part=%s): %s", current_part, e)
 
 
+def _extract_parts_from_lines(
+    lines: List[str], file_path: Path
+) -> Dict[str, Tuple[Optional[List[str]], List[List[str]]]]:
+    """从文本行中提取每个 part 的表头和原始数据行。
+
+    返回字典: part_name -> (header_tokens, list_of_rows)
+    """
+    extracted_parts: Dict[str, Tuple[Optional[List[str]], List[List[str]]]] = {}
+    current_part = None
+    current_header = None
+    current_data: List[List[str]] = []
+
+    for idx, raw in enumerate(lines):
+        line = raw.strip()
+        if not line or is_metadata_line(line):
+            continue
+
+        next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else None
+        if is_part_name_line(line, next_line):
+            # 切换 part
+            if current_part:
+                extracted_parts[current_part] = (current_header, current_data)
+            current_part = line.strip()
+            current_header = None
+            current_data = []
+            continue
+
+        if current_part and current_header is None:
+            tokens = line.split()
+            if _tokens_looks_like_header(tokens):
+                current_header = tokens
+                continue
+
+        if current_part and current_header and is_data_line(line):
+            tokens = line.split()
+            if len(tokens) == len(current_header):
+                current_data.append([t.strip() for t in tokens])
+            else:
+                logger.debug(
+                    "跳过数据行（列数不匹配）：file=%s part=%s expected=%d got=%d line=%r",
+                    file_path,
+                    current_part,
+                    len(current_header),
+                    len(tokens),
+                    line,
+                )
+            continue
+
+        if is_summary_line(line):
+            continue
+
+    # 结束时保存最后一个 part
+    if current_part:
+        extracted_parts[current_part] = (current_header, current_data)
+
+    return extracted_parts
+
+
 def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     """
     解析特殊格式文件，返回 {part_name: DataFrame} 字典
@@ -122,63 +181,7 @@ def parse_special_format_file(file_path: Path) -> Dict[str, pd.DataFrame]:
     # pylint: disable=R0915  # 待重构：逐步拆分此函数以移除此项
     lines = _read_text_file_lines(file_path)
 
-    # 将解析循环拆分为子函数以降低单函数复杂度
-    def _extract_parts_from_lines(lines: List[str]) -> Dict[str, List]:
-        """从文本行中提取每个 part 的表头和原始数据行。
-
-        返回字典: part_name -> (header_tokens, list_of_rows)
-        """
-        parts = {}
-        current_part = None
-        current_header = None
-        current_data = []
-
-        for idx, raw in enumerate(lines):
-            line = raw.strip()
-            if not line or is_metadata_line(line):
-                continue
-
-            next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else None
-            if is_part_name_line(line, next_line):
-                # 切换 part
-                if current_part:
-                    parts[current_part] = (current_header, current_data)
-                current_part = line.strip()
-                current_header = None
-                current_data = []
-                continue
-
-            if current_part and current_header is None:
-                tokens = line.split()
-                if _tokens_looks_like_header(tokens):
-                    current_header = tokens
-                    continue
-
-            if current_part and current_header and is_data_line(line):
-                tokens = line.split()
-                if len(tokens) == len(current_header):
-                    current_data.append([t.strip() for t in tokens])
-                else:
-                    logger.debug(
-                        "跳过数据行（列数不匹配）：file=%s part=%s expected=%d got=%d line=%r",
-                        file_path,
-                        current_part,
-                        len(current_header),
-                        len(tokens),
-                        line,
-                    )
-                continue
-
-            if is_summary_line(line):
-                continue
-
-        # 结束时保存最后一个 part
-        if current_part:
-            parts[current_part] = (current_header, current_data)
-
-        return parts
-
-    extracted = _extract_parts_from_lines(lines)
+    extracted = _extract_parts_from_lines(lines, file_path)
     result: Dict[str, pd.DataFrame] = {}
     for part_name, (hdr, rows) in extracted.items():
         _finalize_part(part_name, hdr, rows, result)
@@ -198,6 +201,8 @@ def process_special_format_file(
     return_report: bool = False,
 ):
     """兼容入口：委托给 `src.special_format_processor.process_special_format_file`。"""
+    # 以下延迟导入是为避免循环导入；同时该函数参数较多，暂在此处抑制 pylint 的相关复杂度/导入位置警告。
+    # pylint: disable=R0913,import-outside-toplevel
     from src.special_format_processor import process_special_format_file as _proc
 
     return _proc(

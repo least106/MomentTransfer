@@ -215,19 +215,40 @@ class PluginLoader:
         且该类应有 `create_plugin()` 工厂函数。
         """
         filepath = Path(filepath)
-        loaded_plugin: Optional[BasePlugin] = None
 
         if not filepath.exists():
             logger.error("插件文件不存在: %s", filepath)
             return None
 
-        # 使用循环/分支结构统一退出点，减少函数内的 return 数量
-        while True:
-            try:
-                # 先在独立子进程中快速验证插件文件的导入与 create_plugin() 是否会在短时间内完成，
-                # 以避免无限循环或长时间阻塞主进程。
-                try:
-                    validator = """
+        # 先在独立子进程中快速验证插件文件的导入与 create_plugin() 是否会在短时间内完成，
+        # 以避免无限循环或长时间阻塞主进程。
+        proc = self._validate_plugin_file_subprocess(filepath, timeout=5)
+        if proc is None or getattr(proc, "returncode", 0) != 0:
+            stderr = "" if proc is None else (proc.stderr or "").strip()
+            logger.error(
+                "插件文件 %s 在子进程验证失败: returncode=%s, stderr=%s",
+                filepath,
+                getattr(proc, "returncode", None),
+                stderr,
+            )
+            return None
+
+        # 动态加载模块（抽离为小函数以降低复杂度）
+        module = self._dynamic_import_module(filepath)
+        if module is None:
+            return None
+
+        # 实例化并注册插件（抽离为小函数以降低复杂度）
+        plugin = self._instantiate_and_register(module, filepath)
+        return plugin
+
+    def _validate_plugin_file_subprocess(self, filepath: Path, timeout: int = 5):
+        """在子进程中运行轻量验证脚本，返回 subprocess.CompletedProcess 或 None。
+
+        该 helper 将子进程执行抽离，便于主函数更清晰。
+        """
+        validator = (
+            """
 import importlib.util, json, sys, traceback
 p = r'%s'
 spec = importlib.util.spec_from_file_location('plugin_validation', p)
@@ -240,7 +261,11 @@ if hasattr(module, 'create_plugin') and callable(getattr(module, 'create_plugin'
         plugin = module.create_plugin()
         meta = getattr(plugin, 'metadata', None)
         if meta is not None:
-            d = {"name": getattr(meta, 'name', ''), "version": getattr(meta, 'version', ''), "plugin_type": getattr(meta, 'plugin_type', '')}
+            d = {
+                "name": getattr(meta, 'name', ''),
+                "version": getattr(meta, 'version', ''),
+                "plugin_type": getattr(meta, 'plugin_type', ''),
+            }
             print(json.dumps(d))
             sys.exit(0)
         else:
@@ -252,95 +277,86 @@ if hasattr(module, 'create_plugin') and callable(getattr(module, 'create_plugin'
 else:
     print('NO_FACTORY')
     sys.exit(4)
-""" % str(
-                        filepath
-                    )
+""" % str(filepath))
 
-                    proc = subprocess.run(
-                        [sys.executable, "-c", validator],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c", validator],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            return proc
+        except subprocess.TimeoutExpired:
+            logger.error("插件文件 %s 验证超时（>%ss），已跳过", filepath, timeout)
+            return None
+        except Exception:
+            logger.exception("在验证插件 %s 时发生内部错误", filepath)
+            return None
 
-                    if proc.returncode != 0:
-                        logger.error(
-                            "插件文件 %s 在子进程验证失败: returncode=%s, stderr=%s",
-                            filepath,
-                            proc.returncode,
-                            proc.stderr.strip(),
-                        )
-                        break
-                except subprocess.TimeoutExpired:
-                    logger.error("插件文件 %s 验证超时（>%ss），已跳过", filepath, 5)
-                    break
-                except Exception:
-                    logger.exception("在验证插件 %s 时发生内部错误", filepath)
-                    break
+    def _dynamic_import_module(self, filepath: Path) -> Optional[Any]:
+        """动态从文件导入模块并返回 module 对象，失败时返回 None。"""
+        try:
+            spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
+            if spec is None or spec.loader is None:
+                logger.error("无法加载模块: %s", filepath)
+                return None
 
-                # 动态加载模块
-                spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
-                if spec is None or spec.loader is None:
-                    logger.error("无法加载模块: %s", filepath)
-                    break
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+        except (OSError, ImportError, AttributeError, SyntaxError) as exc:
+            logger.error("加载模块 %s 失败: %s", filepath, exc, exc_info=True)
+            return None
+        except Exception as exc:  # pragma: no cover - 防御性捕获
+            logger.exception("在动态导入 %s 时发生内部错误", filepath)
+            return None
 
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+    def _instantiate_and_register(
+        self,
+        module: Any,
+        filepath: Path,
+    ) -> Optional[BasePlugin]:
+        """调用模块的 create_plugin() 并在成功时将插件注册到注册表。"""
+        if not hasattr(module, "create_plugin") or not callable(
+            getattr(module, "create_plugin")
+        ):
+            logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
+            return None
 
-                # 查找 create_plugin 工厂函数并验证返回类型
-                if hasattr(module, "create_plugin") and callable(
-                    getattr(module, "create_plugin")
-                ):
-                    try:
-                        plugin = module.create_plugin()
-                    except (TypeError, ValueError, RuntimeError) as exc:
-                        logger.error(
-                            "插件工厂 create_plugin() 在 %s 中抛出异常: %s",
-                            filepath,
-                            exc,
-                            exc_info=True,
-                        )
-                        break
+        try:
+            plugin = module.create_plugin()
+        except (TypeError, ValueError, RuntimeError) as exc:
+            logger.error(
+                "create_plugin() 在 %s 抛异常: %s",
+                filepath,
+                exc,
+                exc_info=True,
+            )
+            return None
 
-                    # 校验返回对象是 BasePlugin 的子类实例
-                    if not isinstance(plugin, BasePlugin):
-                        logger.error(
-                            "插件工厂 %s.create_plugin() 返回的对象无效（需要 BasePlugin 子类），实际类型：%s",
-                            filepath,
-                            type(plugin),
-                        )
-                        break
+        if not isinstance(plugin, BasePlugin):
+            logger.error(
+                "create_plugin() 返回对象无效，类型：%s",
+                type(plugin),
+            )
+            return None
 
-                    # 注册并记录插件元数据（如果可用）
-                    try:
-                        self.registry.register(plugin)
-                        name = getattr(plugin.metadata, "name", str(filepath))
-                        logger.info("成功加载插件: %s (%s)", filepath, name)
-                    except (RuntimeError, ValueError, TypeError) as exc:
-                        logger.error(
-                            "注册插件 %s 时失败: %s",
-                            filepath,
-                            exc,
-                            exc_info=True,
-                        )
-                        break
+        try:
+            self.registry.register(plugin)
+            name = getattr(plugin.metadata, "name", str(filepath))
+            logger.info("成功加载插件: %s (%s)", filepath, name)
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.error(
+                "注册插件 %s 时失败: %s",
+                filepath,
+                exc,
+                exc_info=True,
+            )
+            return None
 
-                    loaded_plugin = plugin
-                    break
-
-                logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
-                break
-
-            except (OSError, ImportError, AttributeError, SyntaxError) as exc:
-                # 捕获常见的加载/语法错误并记录
-                logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
-                break
-            except (RuntimeError, TypeError, NameError, ValueError) as exc:
-                # 捕获插件导入/执行时常见运行时错误并记录
-                logger.error("加载插件 %s 失败: %s", filepath, exc, exc_info=True)
-                break
-
-        return loaded_plugin
+        return plugin
 
     def load_plugins_from_directory(self, directory: Path) -> List[BasePlugin]:
         """从目录加载所有插件"""

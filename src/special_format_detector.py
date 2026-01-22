@@ -55,10 +55,10 @@ def _read_text_file_lines(
             if max_lines is None:
                 return fh.readlines()
             return fh.readlines()[:max_lines]
-    except OSError:
+    except OSError as e:
         # 若此前有解码错误，优先抛出该错误以便上层判断编码问题
         if last_exc:
-            raise last_exc
+            raise last_exc from e
         raise
 
 
