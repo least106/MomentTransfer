@@ -103,7 +103,8 @@ def main():
     # 在窗口调整大小时重新定位
     def on_resize(event):
         reposition_sidebars()
-        return super(QWidget, central).resizeEvent(event)
+        # 正确调用父类的 resizeEvent，之前的 super 用法在此环境下会报错
+        return QWidget.resizeEvent(central, event)
 
     central.resizeEvent = on_resize
 

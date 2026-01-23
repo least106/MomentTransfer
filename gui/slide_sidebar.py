@@ -8,13 +8,23 @@ from PySide6.QtCore import (
     Property,
     QEasingCurve,
     QPoint,
+    QEvent,
     QPropertyAnimation,
     QSize,
     Qt,
     QTimer,
 )
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+    QGraphicsOpacityEffect,
+)
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # 延迟导入 Qt 相关类型以避免部分环境下的循环导入警告
 # pylint: disable=import-outside-toplevel
@@ -101,12 +111,18 @@ class SlideSidebar(QWidget):
         self._button_x_offset = 0  # 按钮偏移位置（用于动画）
         self._edge_detect_distance = 15  # 从屏幕边缘多少像素内触发显示
         self._hide_delay_ms = 2000  # 鼠标离开后2秒自动隐藏
+        # 上次是否处于应显示状态（用于节流调试日志）
+        self._last_should_show = False
 
         self._update_layout()
 
-        # 按钮显示/隐藏动画（透明度）
+        # 按钮显示/隐藏动画（透明度） — 使用 QGraphicsOpacityEffect，适用于子控件
+        self._btn_opacity_effect = QGraphicsOpacityEffect(self._toggle_btn)
+        self._toggle_btn.setGraphicsEffect(self._btn_opacity_effect)
+        self._btn_opacity_effect.setOpacity(0.0)
+
         self._button_opacity_anim = QPropertyAnimation(
-            self._toggle_btn, b"windowOpacity", self
+            self._btn_opacity_effect, b"opacity", self
         )
         self._button_opacity_anim.setDuration(150)
         self._button_opacity_anim.setEasingCurve(QEasingCurve.InOutQuad)
@@ -121,8 +137,14 @@ class SlideSidebar(QWidget):
         self._mouse_hide_timer.setSingleShot(True)
         self._mouse_hide_timer.timeout.connect(self._hide_button_animated)
 
-        # 初始状态：按钮隐藏
-        self._toggle_btn.setWindowOpacity(0.0)
+        # 初始状态：按钮隐藏（通过 opacity effect）
+
+        # 将按钮初始位置设置到屏幕外，确保显示/隐藏动画有位移效果
+        if self._side == "left":
+            self._button_x_offset = -self._button_width
+        else:
+            self._button_x_offset = self._button_width
+        self._update_layout()
 
         # 启用鼠标追踪
         self.setMouseTracking(True)
@@ -132,6 +154,16 @@ class SlideSidebar(QWidget):
         self._original_button_enter_event = None
         self._original_button_leave_event = None
         self._setup_button_events()
+
+        # 延迟安装父窗口的鼠标移动事件过滤器，确保在父窗口任意位置移动时可检测到边缘
+        QTimer.singleShot(0, self._attach_parent_mouse_tracking)
+
+        # 轮询定时器：在某些平台或布局下，事件过滤器可能无法覆盖所有鼠标移动，
+        # 使用短间隔轮询全局鼠标位置作为补偿，保证边缘检测可靠性。
+        self._poll_timer = QTimer(self)
+        self._poll_timer.setInterval(150)
+        self._poll_timer.timeout.connect(self._check_edge_proximity)
+        self._poll_timer.start()
 
     def _get_button_x(self) -> int:
         """获取按钮的 X 偏移量（用于动画）。"""
@@ -279,6 +311,16 @@ class SlideSidebar(QWidget):
         return self._sidebar_width > self._button_width
 
     def show_panel(self) -> None:
+        # 在展开时确保按钮可见且可交互
+        try:
+            self._toggle_btn.setEnabled(True)
+            self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+            # 立即将按钮移到可见位置，避免快速点击时按钮仍在屏外
+            self._button_x_offset = 0
+            self._btn_opacity_effect.setOpacity(1.0)
+            self._update_layout()
+        except Exception:
+            pass
         self._animate_to(self._button_width + self._expanded_width)
 
     def hide_panel(self) -> None:
@@ -344,13 +386,26 @@ class SlideSidebar(QWidget):
 
             screen_geometry = screen.geometry()
 
-            # 检查鼠标是否靠近左边缘或右边缘
-            is_near_left = (
-                global_pos.x() <= screen_geometry.left() + self._edge_detect_distance
-            )
-            is_near_right = (
-                global_pos.x() >= screen_geometry.right() - self._edge_detect_distance
-            )
+            # 优先检测顶层父窗口边缘（用户更常在窗口边缘触发），若未获取则退回到屏幕边缘检测
+            parent_left = None
+            parent_right = None
+            try:
+                parent_geom = root.frameGeometry()
+                parent_left = parent_geom.left()
+                parent_right = parent_geom.right()
+                is_near_left = (
+                    global_pos.x() <= parent_left + self._edge_detect_distance
+                )
+                is_near_right = (
+                    global_pos.x() >= parent_right - self._edge_detect_distance
+                )
+            except Exception:
+                is_near_left = (
+                    global_pos.x() <= screen_geometry.left() + self._edge_detect_distance
+                )
+                is_near_right = (
+                    global_pos.x() >= screen_geometry.right() - self._edge_detect_distance
+                )
 
             # 判断是否应该显示按钮
             should_show = (self._side == "left" and is_near_left) or (
@@ -358,16 +413,39 @@ class SlideSidebar(QWidget):
             )
 
             if should_show:
-                # 显示按钮
+                # 仅在显示状态发生变化时记录一次调试日志，避免刷屏
+                if not self._last_should_show:
+                    try:
+                        _logger.debug(
+                            "SlideSidebar: should_show=True mouse=(%s,%s) parent=(%s,%s) screen=(%s,%s)",
+                            global_pos.x(),
+                            global_pos.y(),
+                            parent_left,
+                            parent_right,
+                            screen_geometry.left(),
+                            screen_geometry.right(),
+                        )
+                    except Exception:
+                        pass
+                    self._last_should_show = True
+
                 self._show_button_animated()
                 # 重置隐藏计时器
                 self._mouse_hide_timer.stop()
                 self._mouse_hide_timer.start(self._hide_delay_ms)
-            elif self._toggle_btn.windowOpacity() > 0.5:
+            elif self._btn_opacity_effect.opacity() > 0.5:
                 # 鼠标离开边缘且不在按钮上方时，启动隐藏计时器
                 if not self._is_mouse_on_button():
-                    self._mouse_hide_timer.stop()
-                    self._mouse_hide_timer.start(self._hide_delay_ms)
+                    # 如果侧边栏已展开，则不自动隐藏按钮
+                    if self.is_expanded():
+                        self._last_should_show = True
+                        return
+                    # 仅在计时器未激活时启动，避免轮询不断重置计时器
+                    if not self._mouse_hide_timer.isActive():
+                        self._mouse_hide_timer.start(self._hide_delay_ms)
+            else:
+                # 当不应显示时，重置状态标记，便于下次变化时记录日志一次
+                self._last_should_show = False
         except Exception:
             pass
 
@@ -387,15 +465,22 @@ class SlideSidebar(QWidget):
         """显示按钮（带动画）。"""
         try:
             # 如果已经显示，不再重复
-            if self._toggle_btn.windowOpacity() > 0.9:
+            if self._btn_opacity_effect.opacity() > 0.9:
                 return
 
             # 停止之前的动画
             self._button_opacity_anim.stop()
             self._button_pos_anim.stop()
 
+            # 确保按钮可交互
+            try:
+                self._toggle_btn.setEnabled(True)
+                self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+            except Exception:
+                pass
+
             # 透明度动画
-            self._button_opacity_anim.setStartValue(self._toggle_btn.windowOpacity())
+            self._button_opacity_anim.setStartValue(self._btn_opacity_effect.opacity())
             self._button_opacity_anim.setEndValue(1.0)
 
             # 位置动画（从边缘滑入）
@@ -410,17 +495,28 @@ class SlideSidebar(QWidget):
     def _hide_button_animated(self) -> None:
         """隐藏按钮（带动画）。"""
         try:
+            # 如果侧边栏已展开，则不要自动隐藏按钮
+            if self.is_expanded():
+                return
+
             # 检查鼠标是否仍在边缘或按钮上方，如果是则不隐藏
             if self._is_mouse_on_button():
                 self._mouse_hide_timer.start(self._hide_delay_ms)
                 return
+
+            # 在隐藏时禁止按钮交互，避免透明但仍可点击
+            try:
+                self._toggle_btn.setEnabled(False)
+                self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            except Exception:
+                pass
 
             # 停止之前的动画
             self._button_opacity_anim.stop()
             self._button_pos_anim.stop()
 
             # 透明度动画
-            self._button_opacity_anim.setStartValue(self._toggle_btn.windowOpacity())
+            self._button_opacity_anim.setStartValue(self._btn_opacity_effect.opacity())
             self._button_opacity_anim.setEndValue(0.0)
 
             # 位置动画（滑出屏幕边缘）
@@ -452,9 +548,11 @@ class SlideSidebar(QWidget):
 
                 def leaveEvent(self, event):
                     """鼠标离开按钮时启动隐藏计时器。"""
-                    self.parent_sidebar._mouse_hide_timer.start(
-                        self.parent_sidebar._hide_delay_ms
-                    )
+                    # 仅在侧边栏未展开时启动隐藏计时器
+                    if not self.parent_sidebar.is_expanded():
+                        self.parent_sidebar._mouse_hide_timer.start(
+                            self.parent_sidebar._hide_delay_ms
+                        )
                     return super().leaveEvent(event)
 
             # 保存原始事件处理
@@ -467,6 +565,39 @@ class SlideSidebar(QWidget):
         except Exception:
             pass
 
+    def _attach_parent_mouse_tracking(self) -> None:
+        """为顶层父窗口安装事件过滤器以接收全局鼠标移动事件。"""
+        try:
+            root = self.parent()
+            while root and root.parent():
+                root = root.parent()
+
+            if not root:
+                return
+
+            try:
+                root.setMouseTracking(True)
+            except Exception:
+                pass
+
+            try:
+                root.installEventFilter(self)
+                _logger.debug("SlideSidebar: 已在父窗口安装事件过滤器: %s", root)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, event) -> bool:
+        """捕获父窗口的鼠标移动事件并转发给内部处理逻辑。"""
+        try:
+            if event.type() == QEvent.MouseMove:
+                # 将父窗口的鼠标移动事件转换为内部处理
+                self._on_parent_mouse_move(event)
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
+
     def _on_button_enter(self, event: QMouseEvent) -> None:
         """鼠标进入按钮时的事件处理。"""
         try:
@@ -478,6 +609,8 @@ class SlideSidebar(QWidget):
     def _on_button_leave(self, event: QMouseEvent) -> None:
         """鼠标离开按钮时的事件处理。"""
         try:
-            self._mouse_hide_timer.start(self._hide_delay_ms)
+            # 仅在侧边栏未展开时启动隐藏计时器
+            if not self.is_expanded():
+                self._mouse_hide_timer.start(self._hide_delay_ms)
         except Exception:
             pass
