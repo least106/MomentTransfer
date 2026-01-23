@@ -166,16 +166,10 @@ class BatchProcessThread(QThread):
                 status = r.get("status")
                 part = r.get("part")
                 if status == "success":
-                    msg = (
-                        f"part '{part}' 处理成功，输出: "
-                        f"{r.get('out_path', '')}"
-                    )
+                    msg = f"part '{part}' 处理成功，输出: " f"{r.get('out_path', '')}"
                 elif status == "skipped":
                     reason = r.get("reason")
-                    msg = (
-                        f"part '{part}' 被跳过: {reason} - "
-                        f"{r.get('message','') }"
-                    )
+                    msg = f"part '{part}' 被跳过: {reason} - " f"{r.get('message','') }"
                 else:
                     msg = (
                         f"part '{part}' 处理失败: {r.get('reason')} - "
@@ -254,10 +248,7 @@ class BatchProcessThread(QThread):
                 "special_format 解析未提取到任何 part，回退到常规 CSV/Excel 处理: %s",
                 file_path,
             )
-            msg = (
-                "特殊格式解析未提取到 part，回退为常规表格处理: "
-                f"{file_path.name}"
-            )
+            msg = "特殊格式解析未提取到 part，回退为常规表格处理: " f"{file_path.name}"
             self._emit_log(msg)
             return None
 
@@ -432,10 +423,7 @@ class BatchProcessThread(QThread):
             )
         except Exception as e:
             try:
-                msg = (
-                    f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: "
-                    f"{e}"
-                )
+                msg = f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: " f"{e}"
                 self._emit_log(msg)
             except Exception:
                 logger.debug("无法发送 per-file 计算器失败日志", exc_info=True)
