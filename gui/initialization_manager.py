@@ -9,7 +9,7 @@
 import logging
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager import BatchManager
@@ -17,7 +17,7 @@ from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager
 from gui.part_manager import PartManager
-from gui.slide_sidebar import SlideSidebar
+# 侧边栏改为合并到底部栏，移除浮动 SlideSidebar 的使用
 
 logger = logging.getLogger(__name__)
 
@@ -59,68 +59,78 @@ class InitializationManager:
             # 主内容区域占满整个空间（不被侧边栏挤压）
             main_layout.addWidget(operation_panel)
 
-            # 构建浮动覆盖层侧边栏（默认隐藏），直接作为 central_widget 的子组件
-            # 重要：这些侧边栏是绝对定位的（不通过布局管理），所以需要手动设置几何位置
-            config_sidebar = SlideSidebar(
-                config_panel,
-                side="left",
-                # 配置面板需要同时容纳 Source/Target 两列，侧边栏过窄会导致横向滚动体验很怪。
-                # 这里加宽左侧侧边栏，优先保证配置编辑器可读性。
-                expanded_width=820,
-                button_text_collapsed=">>",
-                button_text_expanded="<<",
-                parent=central_widget,
-            )
-            history_sidebar = SlideSidebar(
-                history_panel,
-                side="right",
-                expanded_width=360,
-                button_text_collapsed="<<",
-                button_text_expanded=">>",
-                parent=central_widget,
-            )
+            # 将原来的左右浮动侧边栏合并到一个底部栏（避免浮动按钮与动画）
+            bottom_bar = QWidget()
+            bottom_layout = QHBoxLayout(bottom_bar)
+            bottom_layout.setContentsMargins(0, 0, 0, 0)
+            bottom_layout.setSpacing(LAYOUT_SPACING)
 
-            # 侧边栏为浮动覆盖层子组件：显示按钮、置顶层级
-            config_sidebar.setVisible(True)
-            history_sidebar.setVisible(True)
-            config_sidebar.raise_()
-            history_sidebar.raise_()
+            # 左右并排放置原先的配置与历史面板
+            bottom_layout.addWidget(config_panel, 1)
+            bottom_layout.addWidget(history_panel, 0)
+
+            # 初始折叠（隐藏底部栏）
+            bottom_bar.setVisible(False)
+
+            # 简单包装以兼容旧的侧边栏 API（提供 toggle_panel/is_expanded）
+            class BottomDock:
+                def __init__(self, widget, bar: QWidget):
+                    self._widget = widget
+                    self._bar = bar
+
+                def toggle_panel(self) -> None:
+                    if self.is_expanded():
+                        self.hide_panel()
+                    else:
+                        self.show_panel()
+
+                def show_panel(self) -> None:
+                    try:
+                        self._widget.setVisible(True)
+                        self._bar.setVisible(True)
+                    except Exception:
+                        pass
+
+                def hide_panel(self) -> None:
+                    try:
+                        self._widget.setVisible(False)
+                        # 如果所有子控件都不可见，则隐藏底部栏
+                        any_visible = False
+                        for i in range(self._bar.layout().count()):
+                            w = self._bar.layout().itemAt(i).widget()
+                            if w is not None and w.isVisible():
+                                any_visible = True
+                                break
+                        if not any_visible:
+                            self._bar.setVisible(False)
+                    except Exception:
+                        pass
+
+                def is_expanded(self) -> bool:
+                    try:
+                        return self._widget.isVisible() and self._bar.isVisible()
+                    except Exception:
+                        return False
+
+            # 兼容旧属性：指向包装对象
+            config_sidebar = BottomDock(config_panel, bottom_bar)
+            history_sidebar = BottomDock(history_panel, bottom_bar)
 
             self.main_window.config_sidebar = config_sidebar
             self.main_window.history_sidebar = history_sidebar
             self.main_window.operation_panel = operation_panel
             self.main_window.central_widget = central_widget
 
-            # 动态调整侧边栏位置（贴合边缘，不受主内容影响）
-            def resize_sidebars():
-                try:
-                    h = central_widget.height()
-                    w = central_widget.width()
+            # 将底部栏加入主布局（位于 operation_panel 之下）
+            main_layout.addWidget(bottom_bar)
 
-                    if h <= 0 or w <= 0:
-                        return
-
-                    # 统一由 SlideSidebar 自身根据 side 贴边定位
-                    config_sidebar.reposition_in_parent()
-                    history_sidebar.reposition_in_parent()
-
-                    # 保持覆盖层在最上面
-                    config_sidebar.raise_()
-                    history_sidebar.raise_()
-                except Exception as e:
-                    logger.error("侧边栏定位失败: %s", e, exc_info=True)
-
-            # 重写 central_widget 的 resizeEvent
-            original_resize = central_widget.resizeEvent
-
-            def new_resize_event(event):
-                original_resize(event)
-                resize_sidebars()
-
-            central_widget.resizeEvent = new_resize_event
-
-            # 初始调整一次
-            QTimer.singleShot(0, resize_sidebars)
+            # 连接 BatchPanel 的复选框信号以控制底部栏显示/隐藏
+            try:
+                operation_panel.batch_panel.bottomBarToggled.connect(
+                    lambda visible: bottom_bar.setVisible(bool(visible))
+                )
+            except Exception:
+                logger.debug("连接底部栏切换信号失败", exc_info=True)
 
             # 将状态信息显示为状态栏右侧的永久标签，避免默认消息框在左侧分散注意力
             try:
