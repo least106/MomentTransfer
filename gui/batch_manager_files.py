@@ -13,6 +13,7 @@ from typing import Optional, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTreeWidgetItem
+
 from src.cli_helpers import BatchConfig, resolve_file_format
 from src.file_cache import get_file_cache
 from src.special_format_detector import looks_like_special_format
