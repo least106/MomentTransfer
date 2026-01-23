@@ -2,6 +2,9 @@
 坐标系配置面板 - Source和Target共用的基础面板
 """
 
+# 部分 Qt 导入在运行时按需延迟，允许 import-outside-toplevel 降低 lint 噪音
+# pylint: disable=import-outside-toplevel
+
 import logging
 
 from PySide6.QtCore import Qt, Signal

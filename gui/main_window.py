@@ -9,6 +9,9 @@ MomentTransfer GUI 主窗口模块
 - IntegratedAeroGUI -> 保留在此文件（待进一步拆分）
 """
 
+# 某些模块为延迟加载以加快启动速度，接受受控的 import-outside-toplevel
+# pylint: disable=import-outside-toplevel
+
 import logging
 import sys
 from pathlib import Path

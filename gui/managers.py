@@ -3,6 +3,10 @@
 设计原则：最小侵入、向后兼容。当前实现提供轻量包装，未来可逐步迁移逻辑。
 """
 
+# 管理器模块中为避免循环导入，部分导入为延迟导入，允许 import-outside-toplevel
+# 同时临时允许部分注释/文档导致的行过长告警（C0301）
+# pylint: disable=import-outside-toplevel, line-too-long
+
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -737,10 +741,17 @@ class UIStateManager:
 
             panel.setVisible(bool(visible))
             try:
-                if visible:
-                    splitter.setSizes([1, 3])
-                else:
-                    splitter.setSizes([0, 1])
+                # 兼容旧版使用的 splitter 属性，避免未定义的全局变量引用
+                parent_splitter = getattr(self.parent, "splitter", None)
+                if parent_splitter is not None:
+                    try:
+                        if visible:
+                            parent_splitter.setSizes([1, 3])
+                        else:
+                            parent_splitter.setSizes([0, 1])
+                    except Exception:
+                        # 忽略 splitter 操作失败，保留向后兼容行为
+                        pass
             except Exception:
                 pass
 

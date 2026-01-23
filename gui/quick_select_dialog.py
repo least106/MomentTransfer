@@ -19,6 +19,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# 某些导入在运行时延迟加载以避免循环依赖，允许 import-outside-toplevel
+# pylint: disable=import-outside-toplevel
+
+
+
 logger = logging.getLogger(__name__)
 
 

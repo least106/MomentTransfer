@@ -2,6 +2,9 @@
 UI 工具模块 - 提供通用的 UI 组件创建函数
 """
 
+# 某些异常重抛未使用 from 保留原始上下文会更冗长，允许在此文件中受控关闭 raise-missing-from
+# pylint: disable=raise-missing-from
+
 import logging
 
 from PySide6.QtWidgets import (

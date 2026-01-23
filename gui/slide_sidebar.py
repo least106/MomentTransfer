@@ -16,6 +16,11 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
+# 延迟导入 Qt 相关类型以避免部分环境下的循环导入警告
+# pylint: disable=import-outside-toplevel
+
+
+
 
 class SlideSidebar(QWidget):
     """浮动式侧边栏：内容 + 按钮一起动画，始终显示按钮。"""

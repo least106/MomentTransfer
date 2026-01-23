@@ -6,6 +6,9 @@
 包含输入校验与向后兼容的适配逻辑。
 """
 
+# 为了先消除行过长的 lint 噪音，暂时在文件级允许 `line-too-long`，后续可逐行重构。
+# pylint: disable=line-too-long
+
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional

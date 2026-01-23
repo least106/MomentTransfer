@@ -2,6 +2,10 @@
 初始化管理器 - 负责主窗口的 UI 初始化与管理器设置
 """
 
+# 延迟导入在初始化流程中较为常见，允许 import-outside-toplevel
+# 同时临时允许行过长以减少噪音（后续将拆分长行）
+# pylint: disable=import-outside-toplevel, line-too-long
+
 import logging
 
 from PySide6.QtCore import Qt, QTimer

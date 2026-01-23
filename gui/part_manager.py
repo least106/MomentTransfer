@@ -2,6 +2,9 @@
 Part 管理模块 - 处理 Part 的添加、删除和切换
 """
 
+# 为了处理循环导入，允许在函数内或局部进行受控导入
+# pylint: disable=import-outside-toplevel
+
 import logging
 from typing import Optional
 

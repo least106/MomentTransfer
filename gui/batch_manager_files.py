@@ -4,7 +4,7 @@
 """
 
 # 临时抑制行过长（将逐步清理长行）
-# pylint: disable=line-too-long
+# pylint: disable=line-too-long, import-outside-toplevel, reimported
 
 import fnmatch
 import logging

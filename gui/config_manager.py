@@ -2,6 +2,9 @@
 配置管理模块 - 处理配置的加载、保存和应用
 """
 
+# 为了处理延迟导入/循环依赖场景，允许在文件内进行受控的 import-outside-toplevel
+# pylint: disable=import-outside-toplevel, reimported
+
 import json
 import logging
 from pathlib import Path

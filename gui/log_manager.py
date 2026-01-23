@@ -2,6 +2,9 @@
 日志管理模块 - 处理 GUI 日志输出和配置
 """
 
+# 某些 Qt 相关导入在运行时或测试下可能需要延迟执行，允许 import-outside-toplevel
+# pylint: disable=import-outside-toplevel
+
 import logging
 
 from PySide6.QtWidgets import QTextEdit

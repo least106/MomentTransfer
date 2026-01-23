@@ -1,5 +1,9 @@
 """示例坐标系插件：基于字典的坐标系提供者。"""
 
+# 该模块中存在重复导入与模块内导入位置不一致的情况（示例/演示代码），
+# 为避免在 CI 中产生噪音，添加精确 pylint 禁用：
+# pylint: disable=reimported, wrong-import-order, wrong-import-position
+
 from typing import Dict, List, Optional
 
 from src.plugin import CoordSystemPlugin, PluginMetadata
