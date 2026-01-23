@@ -227,7 +227,6 @@ class AeroCalculator:
         self.r_target = self._init_r_target(cache_cfg)
 
         # 额外校验：确保 R_matrix 与 r_target 具有期望的形状和值；若缓存返回异常形状或 NaN，则回退为直接计算
-        # 额外校验：确保 R_matrix 与 r_target 具有期望的形状和值；若缓存返回异常形状或 NaN，则回退为直接计算
         self._validate_and_fix_R()
         self._validate_and_fix_r_target()
 
