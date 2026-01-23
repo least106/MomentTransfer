@@ -185,7 +185,8 @@ class PagedTableWidget(QWidget):
         self.table.setRowCount(rows)
         self.table.setColumnCount(cols + 1)
         try:
-            headers = ["选中"] + [str(c) for c in list(self.df.columns)[:cols]]
+            # 在列名前加上序号，便于用户识别列索引（从1开始）
+            headers = ["选中"] + [f"{i+1}\n{str(c)}" for i, c in enumerate(list(self.df.columns)[:cols])]
             self.table.setHorizontalHeaderLabels(headers)
         except Exception:
             pass
