@@ -136,11 +136,7 @@ def prepare_gui_for_batch(manager):
         except Exception:
             logger.debug("无法禁用批处理按钮", exc_info=True)
 
-        try:
-            if hasattr(manager.gui, "tab_main"):
-                manager.gui.tab_main.setCurrentIndex(1)
-        except Exception:
-            pass
+        # 不再在开始处理时自动切换到日志标签，保持用户当前视图不变
     except Exception:
         logger.debug("准备 GUI 进入批处理失败", exc_info=True)
 
