@@ -23,6 +23,7 @@ venv/
 data/
 tools/
 .coverage
+pylint*
 
 # Packaging / build artifacts
 build/

@@ -21,8 +21,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from typing import Dict, List, Optional  # noqa: E402
-from typing import Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple  # noqa: E402
 
 import pandas as pd  # noqa: E402
 

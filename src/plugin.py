@@ -247,8 +247,7 @@ class PluginLoader:
 
         该 helper 将子进程执行抽离，便于主函数更清晰。
         """
-        validator = (
-            """
+        validator = """
 import importlib.util, json, sys, traceback
 p = r'%s'
 spec = importlib.util.spec_from_file_location('plugin_validation', p)
@@ -277,7 +276,9 @@ if hasattr(module, 'create_plugin') and callable(getattr(module, 'create_plugin'
 else:
     print('NO_FACTORY')
     sys.exit(4)
-""" % str(filepath))
+""" % str(
+            filepath
+        )
 
         try:
             proc = subprocess.run(
