@@ -15,6 +15,9 @@
     (1, 3)
 """
 
+# 临时允许文件级 `line-too-long`（待逐步拆分长注释与字符串）
+# pylint: disable=line-too-long
+
 import logging
 import warnings
 from dataclasses import dataclass
@@ -55,6 +58,40 @@ class AeroInitOptions:
     target_variant: int = 0
     cache_provider: Optional[Any] = None
     cache_cfg: Optional[Any] = None
+
+
+@dataclass
+class AeroConfig:
+    """Aero 计算器的配置骨架（迁移目标）。
+
+    该 dataclass 用于逐步将多个构造参数合并为单一配置对象，初始版本仅包含常用字段。
+    目前为迁移骨架，暂不改变 `AeroCalculator` 的行为；后续可将 `__init__` 的关键字参数
+    替换为接受该类型定义。
+    """
+
+    source_part: Optional[str] = None
+    source_variant: int = 0
+    target_part: Optional[str] = None
+    target_variant: int = 0
+    cache_provider: Optional[Any] = None
+    cache_cfg: Optional[Any] = None
+
+    @classmethod
+    def from_init_options(cls, opts: Optional[AeroInitOptions]):
+        """从现有的 AeroInitOptions 构造器对象创建 AeroConfig（兼容适配）。"""
+        if opts is None:
+            return cls()
+        try:
+            return cls(
+                source_part=getattr(opts, "source_part", None),
+                source_variant=getattr(opts, "source_variant", 0),
+                target_part=getattr(opts, "target_part", None),
+                target_variant=getattr(opts, "target_variant", 0),
+                cache_provider=getattr(opts, "cache_provider", None),
+                cache_cfg=getattr(opts, "cache_cfg", None),
+            )
+        except Exception:
+            return cls()
 
 
 class AeroCalculator:
