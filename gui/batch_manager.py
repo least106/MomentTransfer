@@ -100,9 +100,6 @@ from gui.batch_manager_preview import (
     _apply_quick_filter_to_special_table as _apply_quick_filter_to_special_table_impl,
 )
 from gui.batch_manager_preview import (
-    _apply_quick_filter_to_table as _apply_quick_filter_to_table_impl,
-)
-from gui.batch_manager_preview import (
     _build_row_preview_text as _build_row_preview_text_impl,
 )
 from gui.batch_manager_preview import (
@@ -411,10 +408,7 @@ class BatchManager:
             if self._apply_quick_filter_with_paged_table(table, df, operator):
                 return None
 
-            # 应用筛选（委托给 helper，减少分支与局部变量）
-            return _apply_quick_filter_to_table_impl(
-                table, df, self._quick_filter_column, self._quick_filter_value, operator
-            )
+
         except Exception as e:
             logger.debug(f"应用表格快速筛选失败: {e}", exc_info=True)
             return None
