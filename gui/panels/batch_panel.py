@@ -46,6 +46,7 @@ class BatchPanel(QWidget):
     invertSelectionRequested = Signal()  # 反选
     quickFilterChanged = Signal(str, str, str)  # 快速筛选变化(列名, 运算符, 筛选值)
     quickSelectRequested = Signal()  # 快速选择
+    bottomBarToggled = Signal(bool)  # 切换底部栏显示/隐藏
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -140,6 +141,36 @@ class BatchPanel(QWidget):
         input_row.setContentsMargins(0, 0, 0, 0)
         input_row.addWidget(self.inp_batch_input)
         input_row.addWidget(self.btn_browse_input)
+        # 将“加载配置”和“开始处理”按钮放在“浏览文件”右侧
+        self.btn_load_config = QPushButton("加载配置")
+        try:
+            self.btn_load_config.setMaximumWidth(90)
+            self.btn_load_config.setToolTip(
+                "加载配置文件（JSON），用于提供 Source/Target part 定义"
+            )
+        except Exception:
+            pass
+        try:
+            self.btn_load_config.clicked.connect(self._on_load_config_clicked)
+        except Exception:
+            logger.debug("无法连接 btn_load_config 信号", exc_info=True)
+
+        self.btn_batch_in_toolbar = QPushButton("开始处理")
+        try:
+            self.btn_batch_in_toolbar.setMaximumWidth(80)
+            self.btn_batch_in_toolbar.setToolTip("开始批量处理（Ctrl+R）")
+        except Exception:
+            pass
+        try:
+            self.btn_batch_in_toolbar.clicked.connect(self.batchStartRequested.emit)
+        except Exception:
+            logger.debug("无法连接 btn_batch_in_toolbar 信号", exc_info=True)
+
+        # 兼容旧字段名
+        self.btn_batch = self.btn_batch_in_toolbar
+
+        input_row.addWidget(self.btn_load_config)
+        input_row.addWidget(self.btn_batch_in_toolbar)
         self.row_input_widget = QWidget()
         self.row_input_widget.setLayout(input_row)
         self.file_form.addRow("输入路径:", self.row_input_widget)
@@ -308,6 +339,17 @@ class BatchPanel(QWidget):
             pass
         btn_row.addWidget(self.chk_bulk_row_selection)
 
+        # 底部栏显示切换复选框（放在“行选择批量作用域”右侧）
+        try:
+            self.chk_bottom_bar = QCheckBox("展开配置编辑器")
+            self.chk_bottom_bar.setToolTip("在底部显示配置编辑器与批处理记录")
+            self.chk_bottom_bar.setChecked(False)
+            self.chk_bottom_bar.setMaximumWidth(120)
+            self.chk_bottom_bar.toggled.connect(self.bottomBarToggled.emit)
+            btn_row.addWidget(self.chk_bottom_bar)
+        except Exception:
+            logger.debug("无法创建底部栏切换复选框", exc_info=True)
+
         # 快速筛选：简洁的单列筛选
         filter_label = QLabel("快速筛选:")
         filter_label.setStyleSheet("margin-left: 10px;")
@@ -363,37 +405,7 @@ class BatchPanel(QWidget):
 
         btn_row.addStretch()
 
-        # 加载配置：移动到文件列表右上角（替代旧的全局 Source 显示）
-        self.btn_load_config = QPushButton("加载配置")
-        try:
-            self.btn_load_config.setMaximumWidth(90)
-            self.btn_load_config.setToolTip(
-                "加载配置文件（JSON），用于提供 Source/Target part 定义"
-            )
-        except Exception:
-            pass
-        try:
-            self.btn_load_config.clicked.connect(self._on_load_config_clicked)
-        except Exception:
-            logger.debug("无法连接 btn_load_config 信号", exc_info=True)
-
-        # 开始批量处理：紧跟在加载配置后
-        self.btn_batch_in_toolbar = QPushButton("开始处理")
-        try:
-            self.btn_batch_in_toolbar.setMaximumWidth(80)
-            self.btn_batch_in_toolbar.setToolTip("开始批量处理（Ctrl+R）")
-        except Exception:
-            pass
-        try:
-            self.btn_batch_in_toolbar.clicked.connect(self.batchStartRequested.emit)
-        except Exception:
-            logger.debug("无法连接 btn_batch_in_toolbar 信号", exc_info=True)
-
-        # 兼容旧字段名
-        self.btn_batch = self.btn_batch_in_toolbar
-
-        btn_row.addWidget(self.btn_load_config)
-        btn_row.addWidget(self.btn_batch_in_toolbar)
+        # 注意："加载配置" 与 "开始处理" 按钮已移至输入行，避免在此重复创建
         layout.addLayout(btn_row)
 
         # 文件树
