@@ -36,6 +36,9 @@ class InitializationManager:
     def setup_ui(self):
         """初始化 UI 组件"""
         try:
+            # 创建菜单栏
+            self._setup_menu_bar()
+            
             central_widget = QWidget()
             self.main_window.setCentralWidget(central_widget)
             main_layout = QVBoxLayout(central_widget)
@@ -168,6 +171,21 @@ class InitializationManager:
             self.main_window.part_manager = PartManager(self.main_window)
             self.main_window.batch_manager = BatchManager(self.main_window)
             self.main_window.layout_manager = LayoutManager(self.main_window)
+            
+            # 初始化 ProjectManager
+            from gui.project_manager import ProjectManager
+            self.main_window.project_manager = ProjectManager(self.main_window)
+            
+            # 将 ConfigPanel 替换到 Tab 的"参考系管理"位置
+            try:
+                if hasattr(self.main_window, "tab_main") and hasattr(self.main_window, "config_tab_placeholder"):
+                    tab_main = self.main_window.tab_main
+                    config_panel = self.main_window.config_panel
+                    # 替换第0个Tab的内容
+                    tab_main.removeTab(0)
+                    tab_main.insertTab(0, config_panel, "参考系管理")
+            except Exception:
+                logger.debug("替换参考系管理Tab失败", exc_info=True)
 
             try:
                 if hasattr(self.main_window, "history_store"):
@@ -274,6 +292,39 @@ class InitializationManager:
 
         # 延迟完成标志，避免 showEvent 期间的弹窗
         QTimer.singleShot(150, _finalize)
+
+
+    def _setup_menu_bar(self):
+        """创建菜单栏"""
+        try:
+            from PySide6.QtWidgets import QMenuBar
+            
+            menubar = self.main_window.menuBar()
+            
+            # 文件菜单
+            file_menu = menubar.addMenu("文件(&F)")
+            
+            new_project_action = file_menu.addAction("新建 Project(&N)")
+            new_project_action.setShortcut("Ctrl+N")
+            new_project_action.triggered.connect(self.main_window._new_project)
+            
+            open_project_action = file_menu.addAction("打开 Project(&O)")
+            open_project_action.setShortcut("Ctrl+O")
+            open_project_action.triggered.connect(self.main_window._open_project)
+            
+            save_project_action = file_menu.addAction("保存 Project(&S)")
+            save_project_action.setShortcut("Ctrl+Shift+S")
+            save_project_action.triggered.connect(self.main_window._on_save_project)
+            
+            file_menu.addSeparator()
+            
+            exit_action = file_menu.addAction("退出(&Q)")
+            exit_action.setShortcut("Alt+F4")
+            exit_action.triggered.connect(self.main_window.close)
+            
+            logger.info("菜单栏已创建")
+        except Exception as e:
+            logger.error("创建菜单栏失败: %s", e)
 
     def trigger_initial_layout_update(self):
         """触发初始布局更新"""

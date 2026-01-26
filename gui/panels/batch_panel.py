@@ -47,6 +47,7 @@ class BatchPanel(QWidget):
     quickFilterChanged = Signal(str, str, str)  # 快速筛选变化(列名, 运算符, 筛选值)
     quickSelectRequested = Signal()  # 快速选择
     bottomBarToggled = Signal(bool)  # 切换底部栏显示/隐藏
+    saveProjectRequested = Signal()  # 保存Project请求
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -166,11 +167,23 @@ class BatchPanel(QWidget):
         except Exception:
             logger.debug("无法连接 btn_batch_in_toolbar 信号", exc_info=True)
 
+        self.btn_save_project = QPushButton("保存Project")
+        try:
+            self.btn_save_project.setMaximumWidth(90)
+            self.btn_save_project.setToolTip("保存当前项目配置和状态")
+        except Exception:
+            pass
+        try:
+            self.btn_save_project.clicked.connect(self.saveProjectRequested.emit)
+        except Exception:
+            logger.debug("无法连接 btn_save_project 信号", exc_info=True)
+
         # 兼容旧字段名
         self.btn_batch = self.btn_batch_in_toolbar
 
         input_row.addWidget(self.btn_load_config)
         input_row.addWidget(self.btn_batch_in_toolbar)
+        input_row.addWidget(self.btn_save_project)
         self.row_input_widget = QWidget()
         self.row_input_widget.setLayout(input_row)
         self.file_form.addRow("输入路径:", self.row_input_widget)
@@ -551,12 +564,16 @@ class BatchPanel(QWidget):
         except Exception:
             pass
 
-        # Tab 0: 文件列表
-        tab.addTab(self.file_list_widget, "文件列表")
+        # Tab 0: 参考系管理（将由主窗口替换为ConfigPanel）
+        self.config_tab_placeholder = QWidget()
+        tab.addTab(self.config_tab_placeholder, "参考系管理")
 
-        # Tab 1: 处理日志
+        # Tab 1: 数据管理（文件列表）
+        tab.addTab(self.file_list_widget, "数据管理")
+
+        # Tab 2: 操作日志
         self.log_tab = self._create_log_tab()
-        tab.addTab(self.log_tab, "处理日志")
+        tab.addTab(self.log_tab, "操作日志")
 
         return tab
 

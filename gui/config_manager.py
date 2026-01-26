@@ -34,6 +34,7 @@ class ConfigManager:
         self._raw_project_dict = None
         # 统一使用 ProjectConfigModel
         self.project_config_model: Optional[ProjectConfigModel] = None
+        self._config_modified = False  # 追踪配置是否被修改
         try:
             self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
         except Exception:
@@ -229,11 +230,25 @@ class ConfigManager:
             # 填充 Source 表单
             self._populate_source_form(project)
 
+            # 连接坐标系面板的修改信号
+            try:
+                self.gui.source_panel.valuesChanged.connect(
+                    lambda: self.set_config_modified(True)
+                )
+                self.gui.target_panel.valuesChanged.connect(
+                    lambda: self.set_config_modified(True)
+                )
+            except Exception:
+                logger.debug("连接坐标系面板信号失败", exc_info=True)
+
             QMessageBox.information(self.gui, "成功", f"配置已加载:\n{fname}")
             self.gui.statusBar().showMessage(f"已加载: {fname}")
 
             # 仅加载配置：不再自动应用为“全局计算器”。
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
+            
+            # 重置修改标志
+            self._config_modified = False
         except Exception as e:
             QMessageBox.critical(self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}")
 
@@ -336,6 +351,9 @@ class ConfigManager:
                         self.signal_bus.configSaved.emit(self._last_loaded_config_path)
                     except Exception:
                         logger.debug("发射 configSaved 失败", exc_info=True)
+                    
+                    # 重置修改标志
+                    self._config_modified = False
                     return
             except Exception:
                 logger.debug("直接覆盖失败，使用另存为", exc_info=True)
@@ -358,6 +376,9 @@ class ConfigManager:
                 self.signal_bus.configSaved.emit(Path(fname))
             except Exception:
                 logger.debug("发射 configSaved 失败", exc_info=True)
+            
+            # 重置修改标志
+            self._config_modified = False
 
         except ValueError as e:
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
@@ -475,3 +496,12 @@ class ConfigManager:
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
         except Exception as e:
             QMessageBox.critical(self.gui, "应用失败", f"配置应用失败:\n{str(e)}")
+
+    def is_config_modified(self):
+        """返回配置是否被修改"""
+        return self._config_modified
+
+    def set_config_modified(self, modified: bool):
+        """设置配置修改状态"""
+        self._config_modified = modified
+

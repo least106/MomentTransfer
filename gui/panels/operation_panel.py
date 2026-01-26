@@ -29,6 +29,7 @@ class OperationPanel(QWidget):
         on_select_none: Callable[[], None],
         on_invert_selection: Callable[[], None],
         on_quick_select: Callable[[], None],
+        on_save_project: Optional[Callable[[], None]] = None,
     ) -> None:
         super().__init__(parent)
         app = QApplication.instance()
@@ -55,6 +56,8 @@ class OperationPanel(QWidget):
             self.batch_panel.selectNoneRequested.connect(on_select_none)
             self.batch_panel.invertSelectionRequested.connect(on_invert_selection)
             self.batch_panel.quickSelectRequested.connect(on_quick_select)
+            if on_save_project:
+                self.batch_panel.saveProjectRequested.connect(on_save_project)
         finally:
             try:
                 if app:
@@ -79,12 +82,14 @@ class OperationPanel(QWidget):
         gui_instance._file_tree_items = bp._file_tree_items
         gui_instance.progress_bar = bp.progress_bar
         gui_instance.tab_main = bp.tab_main
+        gui_instance.config_tab_placeholder = bp.config_tab_placeholder  # 参考系管理Tab占位符
         gui_instance.info_tab_widget = None
         gui_instance.txt_batch_log = bp.txt_batch_log
         gui_instance.btn_config_format = bp.btn_config_format
         gui_instance.btn_batch = getattr(
             bp, "btn_batch_in_toolbar", None
         )  # 兼容性别名，指向工具栏按钮
+        gui_instance.btn_save_project = bp.btn_save_project  # 保存Project按钮
         gui_instance.tab_logs_widget = bp.log_tab
         gui_instance.lbl_format_summary = getattr(bp, "lbl_format_summary", None)
         gui_instance.lbl_source_part_applied = None

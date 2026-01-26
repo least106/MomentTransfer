@@ -110,6 +110,7 @@ class IntegratedAeroGUI(QMainWindow):
             on_select_none=self._select_none_files,
             on_invert_selection=self._invert_file_selection,
             on_quick_select=self._quick_select,
+            on_save_project=self._on_save_project,
         )
 
         # 兼容旧属性映射
@@ -248,6 +249,74 @@ class IntegratedAeroGUI(QMainWindow):
                 "_scan_and_populate_files delegated call failed", exc_info=True
             )
 
+    def _on_save_project(self):
+        """保存Project（打开选择文件对话框）"""
+        try:
+            from pathlib import Path
+            from PySide6.QtWidgets import QFileDialog
+            
+            # 打开保存文件对话框
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "保存Project文件",
+                "",
+                "MomentTransfer Project (*.mtproject);;All Files (*)"
+            )
+            
+            if file_path:
+                if self.project_manager:
+                    self.project_manager.save_project(Path(file_path))
+                    try:
+                        QMessageBox.information(self, "成功", f"项目已保存到: {file_path}")
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error("保存Project失败: %s", e)
+            try:
+                QMessageBox.critical(self, "错误", f"保存Project失败: {e}")
+            except Exception:
+                pass
+
+    def _new_project(self):
+        """创建新Project"""
+        try:
+            if self.project_manager:
+                if self.project_manager.create_new_project():
+                    try:
+                        QMessageBox.information(self, "成功", "新项目已创建")
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error("创建新Project失败: %s", e)
+
+    def _open_project(self):
+        """打开Project文件"""
+        try:
+            from pathlib import Path
+            from PySide6.QtWidgets import QFileDialog
+            
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "打开Project文件",
+                "",
+                "MomentTransfer Project (*.mtproject);;All Files (*)"
+            )
+            
+            if file_path:
+                if self.project_manager:
+                    if self.project_manager.load_project(Path(file_path)):
+                        try:
+                            QMessageBox.information(self, "成功", f"项目已加载: {file_path}")
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            QMessageBox.critical(self, "错误", "项目加载失败")
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error("打开Project失败: %s", e)
+
     def _on_pattern_changed(self):
         """当匹配模式改变时刷新文件列表（委托给 BatchManager）。"""
         try:
@@ -258,6 +327,22 @@ class IntegratedAeroGUI(QMainWindow):
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""
         try:
+            # 检查配置是否被修改
+            if self.config_manager and self.config_manager.is_config_modified():
+                reply = QMessageBox.question(
+                    self,
+                    "配置已修改",
+                    "检测到配置已修改但未保存。\n\n是否要保存修改的配置后再进行批处理？",
+                    QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                    QMessageBox.Save,
+                )
+                if reply == QMessageBox.Cancel:
+                    return
+                elif reply == QMessageBox.Save:
+                    self.config_manager.save_config()
+                    return
+                # 如果选择 Discard，继续处理
+            
             self.batch_manager.run_batch_processing()
         except AttributeError:
             logger.warning("BatchManager 未初始化")
