@@ -215,6 +215,25 @@ class BatchProcessThread(QThread):
             )
         except Exception:
             part_mapping = None
+        
+        # 解析part_mapping，从新的格式{"internal_part": {"source": "...", "target": "..."}}
+        # 提取出part_source_mapping和part_target_mapping
+        part_source_mapping = {}
+        part_target_mapping = {}
+        if isinstance(part_mapping, dict):
+            for internal_part, mapping_data in part_mapping.items():
+                if isinstance(mapping_data, dict):
+                    source_val = mapping_data.get("source", "").strip()
+                    target_val = mapping_data.get("target", "").strip()
+                    if source_val:
+                        part_source_mapping[internal_part] = source_val
+                    if target_val:
+                        part_target_mapping[internal_part] = target_val
+                elif isinstance(mapping_data, str):
+                    # 兼容旧格式：internal_part -> target_part
+                    target_val = mapping_data.strip()
+                    if target_val:
+                        part_target_mapping[internal_part] = target_val
 
         row_selection = None
         try:
@@ -232,7 +251,8 @@ class BatchProcessThread(QThread):
             Path(file_path),
             self.config.project_data,
             self.output_dir,
-            part_target_mapping=part_mapping,
+            part_target_mapping=part_target_mapping,
+            part_source_mapping=part_source_mapping,
             part_row_selection=row_selection,
             timestamp_format=self.config.timestamp_format,
             overwrite=overwrite_flag,

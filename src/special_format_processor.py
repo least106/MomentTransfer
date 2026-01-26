@@ -27,12 +27,32 @@ def _process_single_part(
     project_data,
     output_dir,
     part_target_mapping=None,
+    part_source_mapping=None,
     part_row_selection=None,
     timestamp_format="%Y%m%d_%H%M%S",
     overwrite=False,
 ):
-    """处理单个 part，返回 (out_path or None, report_entry)。"""
+    """处理单个 part，返回 (out_path or None, report_entry)。
+    
+    Args:
+        part_name: 内部部件名
+        df: 该部件的数据
+        file_path: 输入文件路径
+        project_data: 项目配置
+        output_dir: 输出目录
+        part_target_mapping: 内部部件名 -> target部件名的映射
+        part_source_mapping: 内部部件名 -> source部件名的映射（新增）
+        part_row_selection: 行选择缓存
+        timestamp_format: 时间戳格式
+        overwrite: 是否覆盖
+    """
+    # 推断source part：优先使用part_source_mapping，否则默认=part_name
     source_part = part_name
+    try:
+        if isinstance(part_source_mapping, dict) and part_source_mapping.get(part_name):
+            source_part = part_source_mapping.get(part_name)
+    except (TypeError, AttributeError):
+        pass
 
     try:
         selected = None
@@ -221,6 +241,7 @@ def _make_handle_single_part(
     output_dir: Path,
     *,
     part_target_mapping: dict = None,
+    part_source_mapping: dict = None,
     part_row_selection: dict = None,
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
@@ -235,6 +256,7 @@ def _make_handle_single_part(
             project_data=project_data,
             output_dir=output_dir,
             part_target_mapping=part_target_mapping,
+            part_source_mapping=part_source_mapping,
             part_row_selection=part_row_selection,
             timestamp_format=timestamp_format,
             overwrite=overwrite,
@@ -269,6 +291,7 @@ class ProcessOptions:
     """封装 process_special_format_file 的可选参数。"""
 
     part_target_mapping: Optional[dict] = None
+    part_source_mapping: Optional[dict] = None
     part_row_selection: Optional[dict] = None
     timestamp_format: str = "%Y%m%d_%H%M%S"
     overwrite: bool = False
@@ -290,6 +313,7 @@ def _process_special_format_file_core(
         project_data,
         output_dir,
         part_target_mapping=options.part_target_mapping,
+        part_source_mapping=options.part_source_mapping,
         part_row_selection=options.part_row_selection,
         timestamp_format=options.timestamp_format,
         overwrite=options.overwrite,
@@ -316,14 +340,28 @@ def process_special_format_file(
     output_dir: Path,
     *,
     part_target_mapping: dict = None,
+    part_source_mapping: dict = None,
     part_row_selection: dict = None,
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
     return_report: bool = False,
 ) -> List[Path]:
-    """处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。"""
+    """处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
+    
+    Args:
+        file_path: 输入文件路径
+        project_data: 项目配置
+        output_dir: 输出目录
+        part_target_mapping: 内部部件名 -> target部件名的映射
+        part_source_mapping: 内部部件名 -> source部件名的映射（新增）
+        part_row_selection: 行选择缓存
+        timestamp_format: 时间戳格式
+        overwrite: 是否覆盖已存在的输出文件
+        return_report: 是否返回处理报告
+    """
     options = ProcessOptions(
         part_target_mapping=part_target_mapping,
+        part_source_mapping=part_source_mapping,
         part_row_selection=part_row_selection,
         timestamp_format=timestamp_format,
         overwrite=overwrite,

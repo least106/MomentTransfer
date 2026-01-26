@@ -160,9 +160,17 @@ class BatchManager:
         self.history_store: Optional[BatchHistoryStore] = None
         self.history_panel: Optional[BatchHistoryPanel] = None
 
-        # 特殊格式：缓存每个文件的 source->target 映射控件
+        # 特殊格式：缓存每个文件的 source->target 映射控件（已废弃，使用下面两个）
         # key: (file_path_str, source_part)
         self._special_part_combo = {}
+        
+        # 特殊格式：缓存source part选择器控件
+        # key: (file_path_str, internal_part_name)
+        self._special_part_source_combo = {}
+        
+        # 特殊格式：缓存target part选择器控件
+        # key: (file_path_str, internal_part_name)
+        self._special_part_target_combo = {}
 
         # 特殊格式：缓存解析结果，避免频繁全量解析
         # key: file_path_str -> {"mtime": float, "data": Dict[str, DataFrame]}
@@ -176,7 +184,7 @@ class BatchManager:
         self._is_updating_tree = False
 
         # 预览表格控件映射，便于批量全选/反选
-        # 特殊格式：key=(file_path_str, source_part) -> QTableWidget
+        # 特殊格式：key=(file_path_str, internal_part_name) -> QTableWidget
         self._special_preview_tables = {}
         # 常规表格：key=file_path_str -> QTableWidget
         self._table_preview_tables = {}
@@ -1115,7 +1123,6 @@ class BatchManager:
                 status = None
             else:
                 part_names = get_part_names(file_path)
-
                 mapping = self._get_special_mapping_if_exists(file_path)
                 source_parts, target_parts = self._get_project_parts()
 
@@ -1123,21 +1130,46 @@ class BatchManager:
                 if not source_parts and not target_parts:
                     status = "✓ 特殊格式(待配置)"
                 else:
-                    missing_source = [pn for pn in part_names if pn not in source_parts]
-                    if missing_source:
-                        status = f"⚠ Source缺失: {', '.join(missing_source)}"
+                    mapping = mapping or {}
+                    
+                    # 检查新的映射结构：每个内部部件 -> {source, target}
+                    unmapped_parts = []
+                    missing_source_parts = []
+                    missing_target_parts = []
+                    
+                    for part_name in part_names:
+                        part_name_str = str(part_name)
+                        part_mapping = mapping.get(part_name_str)
+                        
+                        if not isinstance(part_mapping, dict):
+                            # 兼容旧格式或未映射
+                            unmapped_parts.append(part_name_str)
+                            continue
+                        
+                        source_part = (part_mapping.get("source") or "").strip()
+                        target_part = (part_mapping.get("target") or "").strip()
+                        
+                        # 检查source part
+                        if not source_part:
+                            unmapped_parts.append(part_name_str)
+                        elif source_part not in source_parts:
+                            missing_source_parts.append(f"{part_name_str}→{source_part}")
+                        
+                        # 检查target part
+                        if not target_part:
+                            if source_part:  # 只有当source已选择时才检查target
+                                unmapped_parts.append(part_name_str)
+                        elif target_part not in target_parts:
+                            missing_target_parts.append(f"{part_name_str}→{target_part}")
+                    
+                    if unmapped_parts:
+                        status = f"⚠ 未映射: {', '.join(unmapped_parts)}"
+                    elif missing_source_parts:
+                        status = f"⚠ Source缺失: {', '.join(missing_source_parts)}"
+                    elif missing_target_parts:
+                        status = f"⚠ Target缺失: {', '.join(missing_target_parts)}"
                     else:
-                        mapping = mapping or {}
-                        unmapped, missing_target = self._analyze_special_mapping(
-                            part_names, mapping, target_parts
-                        )
-
-                        if unmapped:
-                            status = f"⚠ 未映射: {', '.join(unmapped)}"
-                        elif missing_target:
-                            status = f"⚠ Target缺失: {', '.join(missing_target)}"
-                        else:
-                            status = "✓ 特殊格式(可处理)"
+                        status = "✓ 特殊格式(可处理)"
         except Exception:
             logger.debug("特殊格式校验失败", exc_info=True)
             status = None
@@ -1447,16 +1479,17 @@ class BatchManager:
         self,
         file_path: Path,
         part_names: list,
+        source_names: list,
         target_names: list,
         mapping: dict,
     ) -> bool:
-        """为某个文件自动补全未映射的 source->target。
+        """为某个文件自动补全未映射的 内部部件->source->target。
 
         Returns:
             是否发生了映射变更。
         """
         return _auto_fill_special_mappings_impl(
-            self, file_path, part_names, target_names, mapping
+            self, file_path, part_names, source_names, target_names, mapping
         )
 
     def _get_or_init_special_mapping(self, file_path: Path) -> dict:
@@ -1476,13 +1509,14 @@ class BatchManager:
         self,
         file_item,
         file_path: Path,
-        source_part,
+        internal_part_name: str,
+        source_names: list,
         target_names: list,
         mapping: dict,
         data_dict: dict,
     ) -> None:
         return _create_special_part_node_impl(
-            self, file_item, file_path, source_part, target_names, mapping, data_dict
+            self, file_item, file_path, internal_part_name, source_names, target_names, mapping, data_dict
         )
 
     def _safe_populate_special_preview(
@@ -1498,20 +1532,22 @@ class BatchManager:
             logger.debug("填充数据行预览失败", exc_info=True)
 
     def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
-        """在文件节点下创建/刷新子节点：每个 source part 一行，右侧为 target 下拉。"""
+        """在文件节点下创建/刷新子节点：每个内部部件一行，包含source和target两个下拉框。"""
         try:
             mapping = self._get_or_init_special_mapping(file_path)
             mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", {})
             mapping_by_file = mapping_by_file or {}
             part_names = get_part_names(file_path)
+            source_names = self._get_source_part_names()
             target_names = self._get_target_part_names()
 
             # 智能推测：在加载配置/新增 part 后自动补全未映射项（不覆盖用户已设置的映射）
             try:
-                if target_names:
+                if source_names and target_names:
                     if self._auto_fill_special_mappings(
                         file_path,
                         part_names,
+                        source_names,
                         target_names,
                         mapping,
                     ):
@@ -1535,12 +1571,13 @@ class BatchManager:
                 except Exception:
                     pass
 
-            for source_part in part_names:
+            for internal_part_name in part_names:
                 try:
                     self._create_special_part_node(
                         file_item,
                         file_path,
-                        source_part,
+                        internal_part_name,
+                        source_names,
                         target_names,
                         mapping,
                         data_dict,
