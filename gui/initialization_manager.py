@@ -333,7 +333,8 @@ class InitializationManager:
             btn_load_config = QPushButton("加载配置")
             btn_load_config.setMaximumWidth(80)
             btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
-            btn_load_config.clicked.connect(self.main_window.configure_data_format)
+            # 绑定到主窗口的 load_config，以恢复旧的加载配置行为
+            btn_load_config.clicked.connect(self.main_window.load_config)
             toolbar.addWidget(btn_load_config)
             
             btn_start = QPushButton("开始处理")
