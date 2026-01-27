@@ -187,6 +187,11 @@ class BatchPanel(QWidget):
         self.row_input_widget = QWidget()
         self.row_input_widget.setLayout(input_row)
         self.file_form.addRow("输入路径:", self.row_input_widget)
+        # 为了移除首页显示的旧输入路径控件，仅隐藏该行但保留属性以兼容旧代码
+        try:
+            self.row_input_widget.setVisible(False)
+        except Exception:
+            pass
 
         # 全局数据格式配置已移除：表格列映射由 per-file sidecar/目录 format.json/registry 自动解析。
         self.lbl_format_summary = None
