@@ -9,7 +9,7 @@
 import logging
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QSplitter
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager import BatchManager
@@ -60,8 +60,11 @@ class InitializationManager:
             self.main_window.history_store = history_store
             self.main_window.history_panel = history_panel
 
-            # 主内容区域占满整个空间（不被侧边栏挤压）
-            main_layout.addWidget(operation_panel)
+            # 使用垂直分割 (QSplitter) 将主内容与可伸缩的底部栏分隔，允许用户上下拖拽调整高度
+            splitter = QSplitter(Qt.Vertical)
+
+            # 主内容区域放入分割上方
+            splitter.addWidget(operation_panel)
 
             # 将原来的左右浮动侧边栏合并到一个底部栏（避免浮动按钮与动画）
             bottom_bar = QWidget()
@@ -73,8 +76,13 @@ class InitializationManager:
             bottom_layout.addWidget(config_panel, 1)
             bottom_layout.addWidget(history_panel, 0)
 
-            # 初始折叠（隐藏底部栏）
+            # 初始折叠（隐藏底部栏） — 同时将分割器下部高度设为 0
             bottom_bar.setVisible(False)
+            splitter.addWidget(bottom_bar)
+            try:
+                splitter.setSizes([1000, 0])
+            except Exception:
+                pass
 
             # 简单包装以兼容旧的侧边栏 API（提供 toggle_panel/is_expanded）
             class BottomDock:
@@ -125,14 +133,30 @@ class InitializationManager:
             self.main_window.operation_panel = operation_panel
             self.main_window.central_widget = central_widget
 
-            # 将底部栏加入主布局（位于 operation_panel 之下）
-            main_layout.addWidget(bottom_bar)
+            # 将分割器加入主布局（包含 operation_panel 与 bottom_bar）
+            main_layout.addWidget(splitter)
 
             # 连接工具栏中的复选框信号以控制底部栏显示/隐藏
             try:
-                self.main_window.chk_bottom_bar_toolbar.toggled.connect(
-                    lambda visible: bottom_bar.setVisible(bool(visible))
-                )
+                # 切换时同时调整 splitter 尺寸以折叠/展开底部栏
+                def _toggle_bottom_bar(visible: bool) -> None:
+                    try:
+                        bottom_bar.setVisible(bool(visible))
+                        if bool(visible):
+                            # 展开到合理默认高度
+                            try:
+                                splitter.setSizes([800, 200])
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                splitter.setSizes([1000, 0])
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                self.main_window.chk_bottom_bar_toolbar.toggled.connect(_toggle_bottom_bar)
             except Exception:
                 logger.debug("连接底部栏切换信号失败", exc_info=True)
 
