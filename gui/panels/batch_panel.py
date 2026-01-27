@@ -116,8 +116,14 @@ class BatchPanel(QWidget):
             self.file_form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         except Exception:
             pass
+        # 保留属性以兼容旧代码，但在首页不显示输入框
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
+        try:
+            # 隐藏旧输入框，避免在首页展示
+            self.inp_batch_input.setVisible(False)
+        except Exception:
+            pass
         self.btn_browse_input = QPushButton("浏览文件")
         try:
             self.btn_browse_input.setObjectName("smallButton")
@@ -140,7 +146,7 @@ class BatchPanel(QWidget):
 
         input_row = QHBoxLayout()
         input_row.setContentsMargins(0, 0, 0, 0)
-        input_row.addWidget(self.inp_batch_input)
+        # 不再将旧输入框加入布局，仅保留浏览/操作按钮
         input_row.addWidget(self.btn_browse_input)
         # 将“加载配置”和“开始处理”按钮放在“浏览文件”右侧
         self.btn_load_config = QPushButton("加载配置")
@@ -186,12 +192,8 @@ class BatchPanel(QWidget):
         input_row.addWidget(self.btn_save_project)
         self.row_input_widget = QWidget()
         self.row_input_widget.setLayout(input_row)
-        self.file_form.addRow("输入路径:", self.row_input_widget)
-        # 为了移除首页显示的旧输入路径控件，仅隐藏该行但保留属性以兼容旧代码
-        try:
-            self.row_input_widget.setVisible(False)
-        except Exception:
-            pass
+        # 去除表单左侧的标签提示（首页不再展示输入路径标签）
+        self.file_form.addRow("", self.row_input_widget)
 
         # 全局数据格式配置已移除：表格列映射由 per-file sidecar/目录 format.json/registry 自动解析。
         self.lbl_format_summary = None
