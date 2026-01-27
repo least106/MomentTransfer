@@ -367,8 +367,12 @@ class BatchPanel(QWidget):
 
         header = self.file_tree.header()
         try:
-            header.setSectionResizeMode(0, QHeaderView.Stretch)
-            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            # 允许用户拖动调整列宽
+            header.setSectionResizeMode(0, QHeaderView.Interactive)
+            header.setSectionResizeMode(1, QHeaderView.Interactive)
+            # 设置默认列宽（11:4 比例）
+            header.resizeSection(0, 1100)
+            header.resizeSection(1, 200)
         except Exception:
             pass
 
@@ -576,4 +580,15 @@ class BatchPanel(QWidget):
 
     def switch_to_log_tab(self):
         """切换到日志Tab"""
-        self.tab_main.setCurrentIndex(1)
+        try:
+            idx = self.tab_main.indexOf(getattr(self, "log_tab", None))
+            if idx is not None and idx != -1:
+                self.tab_main.setCurrentIndex(idx)
+            else:
+                # 兜底到最后一个 Tab（若找不到 log_tab）
+                self.tab_main.setCurrentIndex(max(0, self.tab_main.count() - 1))
+        except Exception:
+            try:
+                self.tab_main.setCurrentIndex(1)
+            except Exception:
+                pass

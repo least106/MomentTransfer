@@ -206,8 +206,16 @@ class IntegratedAeroGUI(QMainWindow):
             self.config_manager.apply_config()
             # 应用配置后自动切换到文件列表
             try:
-                if hasattr(self, "tab_main"):
-                    self.tab_main.setCurrentIndex(0)  # 文件列表在第0个Tab
+                    if hasattr(self, "tab_main"):
+                        tab = self.tab_main
+                        idx = -1
+                        try:
+                            idx = tab.indexOf(getattr(self, "file_list_widget", None))
+                        except Exception:
+                            idx = -1
+                        if idx is None or idx == -1:
+                            idx = 0
+                        tab.setCurrentIndex(idx)
             except Exception:
                 pass
         except AttributeError:

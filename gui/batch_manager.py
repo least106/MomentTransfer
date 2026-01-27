@@ -866,7 +866,25 @@ class BatchManager:
             # 输入路径后自动切换到文件列表页
             try:
                 if hasattr(self.gui, "tab_main"):
-                    self.gui.tab_main.setCurrentIndex(0)  # 文件列表在第0个Tab
+                    try:
+                        tab = self.gui.tab_main
+                        # 尝试通过文件列表控件查找正确的 Tab 索引（避免硬编码索引）
+                        idx = -1
+                        try:
+                            idx = tab.indexOf(getattr(self.gui, "file_list_widget", None))
+                        except Exception:
+                            idx = -1
+
+                        if idx is None or idx == -1:
+                            # 兜底到第一个可用 Tab
+                            idx = 0
+                        tab.setCurrentIndex(idx)
+                    except Exception:
+                        # 最后兜底方案：直接切换到第0个Tab
+                        try:
+                            self.gui.tab_main.setCurrentIndex(0)
+                        except Exception:
+                            pass
             except Exception:
                 pass
 

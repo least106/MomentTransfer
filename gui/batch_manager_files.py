@@ -258,7 +258,9 @@ def _scan_dir_for_patterns(manager, input_path: Path, patterns: list) -> list:
 
 
 def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> None:
-    """为常规文件创建 source/target 选择行（树内联下拉）。"""
+    """为常规文件创建 source/target 选择行（并排双下拉，与特殊格式统一）。"""
+    from PySide6.QtWidgets import QWidget, QHBoxLayout, QComboBox, QTreeWidgetItem
+    
     try:
         sel = _ensure_file_part_selection_storage(manager, file_path)
         source_names = manager._get_source_part_names()
@@ -281,35 +283,65 @@ def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> N
         # 清理旧的 selector 子节点（避免重复）
         _remove_old_selector_children(manager, file_item)
 
-        # Source selector
+        # 创建一个包含并排双下拉的节点
+        selector_item = QTreeWidgetItem(["", ""])
+        selector_item.setData(0, int(Qt.UserRole) + 1, {"kind": "file_part_selectors", "file": str(file_path)})
+        file_item.addChild(selector_item)
+        
+        # 创建容器widget
+        selector_widget = QWidget()
+        selector_layout = QHBoxLayout(selector_widget)
+        selector_layout.setContentsMargins(0, 0, 0, 0)
+        selector_layout.setSpacing(4)
+        
+        # Source部分选择器
         current_src = (sel.get("source") or "").strip()
-        src_handler = manager._make_part_change_handler(str(file_path), "source")
-
-        manager._add_part_selector(
-            file_item,
-            file_path,
-            "file_source_selector",
-            "Source Part",
-            source_names,
-            current_src,
-            src_handler,
-            tooltip="请先加载配置以获得 Source parts",
-        )
-
-        # Target selector
+        source_combo = QComboBox()
+        source_combo.setEditable(False)
+        source_combo.setMinimumWidth(140)
+        source_combo.addItem("(选择source)", "")
+        for sn in source_names:
+            source_combo.addItem(str(sn), str(sn))
+        
+        if not source_names:
+            source_combo.setEnabled(False)
+            source_combo.setToolTip("请先加载配置以获得 Source parts")
+        else:
+            source_combo.setEnabled(True)
+            source_combo.setToolTip("选择该文件对应的 Source part")
+        
+        _safe_set_combo_selection(manager, source_combo, current_src, source_names)
+        
+        # Target部分选择器
         current_tgt = (sel.get("target") or "").strip()
+        target_combo = QComboBox()
+        target_combo.setEditable(False)
+        target_combo.setMinimumWidth(140)
+        target_combo.addItem("(选择target)", "")
+        for tn in target_names:
+            target_combo.addItem(str(tn), str(tn))
+        
+        if not target_names:
+            target_combo.setEnabled(False)
+            target_combo.setToolTip("请先加载配置以获得 Target parts")
+        else:
+            target_combo.setEnabled(True)
+            target_combo.setToolTip("选择该文件对应的 Target part")
+        
+        _safe_set_combo_selection(manager, target_combo, current_tgt, target_names)
+        
+        # 绑定source改变事件
+        src_handler = manager._make_part_change_handler(str(file_path), "source")
+        source_combo.currentTextChanged.connect(src_handler)
+        
+        # 绑定target改变事件
         tgt_handler = manager._make_part_change_handler(str(file_path), "target")
-
-        manager._add_part_selector(
-            file_item,
-            file_path,
-            "file_target_selector",
-            "Target Part",
-            target_names,
-            current_tgt,
-            tgt_handler,
-            tooltip="请先加载配置以获得 Target parts",
-        )
+        target_combo.currentTextChanged.connect(tgt_handler)
+        
+        selector_layout.addWidget(source_combo, 1)
+        selector_layout.addWidget(target_combo, 1)
+        
+        manager.gui.file_tree.setItemWidget(selector_item, 0, selector_widget)
 
         try:
             file_item.setExpanded(True)
