@@ -71,7 +71,12 @@ class OperationPanel(QWidget):
         gui_instance.grp_batch = bp
         gui_instance.file_form = bp.file_form
         gui_instance.inp_batch_input = bp.inp_batch_input
-        gui_instance.btn_browse_input = bp.btn_browse_input
+        # 按钮已移到菜单栏，设置为None保持兼容性
+        gui_instance.btn_browse_input = None
+        gui_instance.btn_load_config = None
+        gui_instance.btn_batch_in_toolbar = None
+        gui_instance.btn_batch = None
+        gui_instance.btn_save_project = None
         # 匹配模式控件已移除，设置为None保持兼容性
         gui_instance.inp_pattern = None
         gui_instance.cmb_pattern_preset = None
@@ -85,10 +90,6 @@ class OperationPanel(QWidget):
         gui_instance.info_tab_widget = None
         gui_instance.txt_batch_log = bp.txt_batch_log
         gui_instance.btn_config_format = bp.btn_config_format
-        gui_instance.btn_batch = getattr(
-            bp, "btn_batch_in_toolbar", None
-        )  # 兼容性别名，指向工具栏按钮
-        gui_instance.btn_save_project = bp.btn_save_project  # 保存Project按钮
         gui_instance.tab_logs_widget = bp.log_tab
         gui_instance.lbl_format_summary = getattr(bp, "lbl_format_summary", None)
         gui_instance.lbl_source_part_applied = None
