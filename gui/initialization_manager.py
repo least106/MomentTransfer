@@ -308,6 +308,36 @@ class InitializationManager:
             exit_action.setShortcut("Alt+F4")
             exit_action.triggered.connect(self.main_window.close)
             
+            # 操作菜单
+            operation_menu = menubar.addMenu("操作(&O)")
+            
+            browse_action = operation_menu.addAction("浏览文件(&B)")
+            browse_action.setShortcut("Ctrl+B")
+            browse_action.triggered.connect(self.main_window.browse_batch_input)
+            
+            load_config_action = operation_menu.addAction("加载配置(&L)")
+            load_config_action.setShortcut("Ctrl+Shift+L")
+            try:
+                load_config_action.triggered.connect(self.main_window.load_config)
+            except Exception:
+                logger.debug("无法连接加载配置菜单项", exc_info=True)
+            
+            start_process_action = operation_menu.addAction("开始处理(&R)")
+            start_process_action.setShortcut("Ctrl+R")
+            start_process_action.triggered.connect(self.main_window.run_batch_processing)
+            
+            operation_menu.addSeparator()
+            
+            format_config_action = operation_menu.addAction("配置数据格式(&F)")
+            format_config_action.setShortcut("Ctrl+Shift+F")
+            format_config_action.triggered.connect(self.main_window.configure_data_format)
+            
+            operation_menu.addSeparator()
+            
+            save_project_menu_action = operation_menu.addAction("保存为 Project(&S)")
+            save_project_menu_action.setShortcut("Ctrl+Shift+P")
+            save_project_menu_action.triggered.connect(self.main_window._on_save_project)
+            
             logger.info("菜单栏已创建")
         except Exception as e:
             logger.error("创建菜单栏失败: %s", e)

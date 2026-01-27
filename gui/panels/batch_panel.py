@@ -191,6 +191,8 @@ class BatchPanel(QWidget):
         input_row.addWidget(self.btn_save_project)
         self.row_input_widget = QWidget()
         self.row_input_widget.setLayout(input_row)
+        # 按钮已移至菜单栏，此行隐藏
+        self.row_input_widget.setVisible(False)
         # 去除表单左侧的标签提示（首页不再展示输入路径标签）
         self.file_form.addRow("", self.row_input_widget)
 
