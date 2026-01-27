@@ -246,7 +246,7 @@ class ConfigManager:
 
             # 仅加载配置：不再自动应用为“全局计算器”。
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
-            
+
             # 重置修改标志
             self._config_modified = False
         except Exception as e:
@@ -351,7 +351,7 @@ class ConfigManager:
                         self.signal_bus.configSaved.emit(self._last_loaded_config_path)
                     except Exception:
                         logger.debug("发射 configSaved 失败", exc_info=True)
-                    
+
                     # 重置修改标志
                     self._config_modified = False
                     return
@@ -376,7 +376,7 @@ class ConfigManager:
                 self.signal_bus.configSaved.emit(Path(fname))
             except Exception:
                 logger.debug("发射 configSaved 失败", exc_info=True)
-            
+
             # 重置修改标志
             self._config_modified = False
 
@@ -531,18 +531,47 @@ class ConfigManager:
                 panel = getattr(self.gui, "config_panel", None)
                 if panel is not None:
                     try:
-                        if hasattr(panel, "source_panel") and hasattr(panel.source_panel, "apply_variant_payload"):
-                            panel.source_panel.apply_variant_payload({
-                                "PartName": "", "CoordSystem": {"Orig": [0, 0, 0], "X": [1, 0, 0], "Y": [0, 1, 0], "Z": [0, 0, 1]}, "MomentCenter": [0, 0, 0], "Cref": 1.0, "Bref": 1.0, "Sref": 10.0, "Q": 1000.0
-                            })
-                        if hasattr(panel, "target_panel") and hasattr(panel.target_panel, "apply_variant_payload"):
-                            panel.target_panel.apply_variant_payload({
-                                "PartName": "", "CoordSystem": {"Orig": [0, 0, 0], "X": [1, 0, 0], "Y": [0, 1, 0], "Z": [0, 0, 1]}, "MomentCenter": [0, 0, 0], "Cref": 1.0, "Bref": 1.0, "Sref": 10.0, "Q": 1000.0
-                            })
+                        if hasattr(panel, "source_panel") and hasattr(
+                            panel.source_panel, "apply_variant_payload"
+                        ):
+                            panel.source_panel.apply_variant_payload(
+                                {
+                                    "PartName": "",
+                                    "CoordSystem": {
+                                        "Orig": [0, 0, 0],
+                                        "X": [1, 0, 0],
+                                        "Y": [0, 1, 0],
+                                        "Z": [0, 0, 1],
+                                    },
+                                    "MomentCenter": [0, 0, 0],
+                                    "Cref": 1.0,
+                                    "Bref": 1.0,
+                                    "Sref": 10.0,
+                                    "Q": 1000.0,
+                                }
+                            )
+                        if hasattr(panel, "target_panel") and hasattr(
+                            panel.target_panel, "apply_variant_payload"
+                        ):
+                            panel.target_panel.apply_variant_payload(
+                                {
+                                    "PartName": "",
+                                    "CoordSystem": {
+                                        "Orig": [0, 0, 0],
+                                        "X": [1, 0, 0],
+                                        "Y": [0, 1, 0],
+                                        "Z": [0, 0, 1],
+                                    },
+                                    "MomentCenter": [0, 0, 0],
+                                    "Cref": 1.0,
+                                    "Bref": 1.0,
+                                    "Sref": 10.0,
+                                    "Q": 1000.0,
+                                }
+                            )
                     except Exception:
                         pass
             except Exception:
                 pass
         except Exception:
             logger.debug("reset_config failed", exc_info=True)
-

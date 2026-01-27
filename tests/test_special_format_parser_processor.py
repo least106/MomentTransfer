@@ -31,7 +31,7 @@ Alpha CL CD Cx Cy Cz/FN CMx CMy CMz
     assert "PartA" in data and isinstance(data["PartA"], pd.DataFrame)
     assert data["PartA"].shape[0] == 1
     # 核心列应被标准化存在
-    assert any(c in data["PartA"].columns for c in ["Cx", "Cy", "Cz/FN"]) 
+    assert any(c in data["PartA"].columns for c in ["Cx", "Cy", "Cz/FN"])
 
 
 def test_process_single_part_missing_columns(tmp_path):
@@ -61,14 +61,16 @@ def test_process_single_part_missing_columns(tmp_path):
 
 def test_process_single_part_success(tmp_path, monkeypatch):
     # 构造含必需列的 df
-    df = pd.DataFrame({
-        "Cx": [1.0, 2.0],
-        "Cy": [0.5, 0.6],
-        "Cz/FN": [0.1, 0.2],
-        "CMx": [0.0, 0.0],
-        "CMy": [0.0, 0.0],
-        "CMz": [0.0, 0.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Cx": [1.0, 2.0],
+            "Cy": [0.5, 0.6],
+            "Cz/FN": [0.1, 0.2],
+            "CMx": [0.0, 0.0],
+            "CMy": [0.0, 0.0],
+            "CMz": [0.0, 0.0],
+        }
+    )
     file_path = tmp_path / "f.mtfmt"
     output_dir = tmp_path / "out"
     output_dir.mkdir()

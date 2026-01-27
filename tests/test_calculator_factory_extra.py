@@ -1,4 +1,5 @@
 import json
+
 import pytest
 
 from src import calculator_factory as cf
@@ -50,7 +51,7 @@ def test_load_project_calculator_json_error(monkeypatch):
 
 def test_load_project_calculator_key_error(monkeypatch):
     def raise_fn(p):
-        raise KeyError('missing')
+        raise KeyError("missing")
 
     monkeypatch.setattr(cf, "load_data", raise_fn)
     with pytest.raises(ValueError) as ei:
@@ -60,11 +61,17 @@ def test_load_project_calculator_key_error(monkeypatch):
 
 def test_attempt_load_project_data_strict_and_non_strict(monkeypatch):
     proj = DummyProject()
-    monkeypatch.setattr(cf, "try_load_project_data", lambda p, strict=True: (True, proj, {}))
+    monkeypatch.setattr(
+        cf, "try_load_project_data", lambda p, strict=True: (True, proj, {})
+    )
     got = cf.attempt_load_project_data("x", strict=True)
     assert got is proj
 
-    monkeypatch.setattr(cf, "try_load_project_data", lambda p, strict=True: (False, None, {"message":"m","suggestion":"s"}))
+    monkeypatch.setattr(
+        cf,
+        "try_load_project_data",
+        lambda p, strict=True: (False, None, {"message": "m", "suggestion": "s"}),
+    )
     with pytest.raises(ValueError):
         cf.attempt_load_project_data("x", strict=True)
 

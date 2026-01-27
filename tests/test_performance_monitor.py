@@ -26,7 +26,11 @@ def test_record_metric_and_get_stats():
     m.record_metric("m1", 30.0)
     stats = m.get_stats("m1")
     assert stats["count"] == 2
-    assert stats["duration_ms"]["min"] <= stats["duration_ms"]["avg"] <= stats["duration_ms"]["max"]
+    assert (
+        stats["duration_ms"]["min"]
+        <= stats["duration_ms"]["avg"]
+        <= stats["duration_ms"]["max"]
+    )
 
 
 def test_measure_context_and_decorator(caplog):

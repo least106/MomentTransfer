@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from src.physics import AeroCalculator, AeroConfig
 from src.data_loader import CoordSystemDefinition, FrameConfiguration, ProjectData
+from src.physics import AeroCalculator, AeroConfig
 
 
 def make_coord():
@@ -60,7 +60,9 @@ def test_process_batch_shape_mismatch_raises():
     f = make_frame()
     calc = AeroCalculator(f)
     with pytest.raises(ValueError):
-        calc.process_batch(np.array([1.0, 2.0, 3.0]), np.array([[1.0, 2.0, 3.0], [4, 5, 6]]))
+        calc.process_batch(
+            np.array([1.0, 2.0, 3.0]), np.array([[1.0, 2.0, 3.0], [4, 5, 6]])
+        )
 
 
 def test_compute_coefficients_warns_when_q_or_s_zero():

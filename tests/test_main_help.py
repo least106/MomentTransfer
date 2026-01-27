@@ -1,4 +1,5 @@
 import logging
+
 from src import __main__ as main_mod
 
 

@@ -163,11 +163,11 @@ class BatchManager:
         # 特殊格式：缓存每个文件的 source->target 映射控件（已废弃，使用下面两个）
         # key: (file_path_str, source_part)
         self._special_part_combo = {}
-        
+
         # 特殊格式：缓存source part选择器控件
         # key: (file_path_str, internal_part_name)
         self._special_part_source_combo = {}
-        
+
         # 特殊格式：缓存target part选择器控件
         # key: (file_path_str, internal_part_name)
         self._special_part_target_combo = {}
@@ -429,7 +429,6 @@ class BatchManager:
             # 分页组件联动：优先使用分页表格的筛选跳页
             if self._apply_quick_filter_with_paged_table(table, df, operator):
                 return None
-
 
         except Exception as e:
             logger.debug(f"应用表格快速筛选失败: {e}", exc_info=True)
@@ -885,7 +884,9 @@ class BatchManager:
                         # 尝试通过文件列表控件查找正确的 Tab 索引（避免硬编码索引）
                         idx = -1
                         try:
-                            idx = tab.indexOf(getattr(self.gui, "file_list_widget", None))
+                            idx = tab.indexOf(
+                                getattr(self.gui, "file_list_widget", None)
+                            )
                         except Exception:
                             idx = -1
 
@@ -1136,37 +1137,41 @@ class BatchManager:
                     status = "✓ 特殊格式(待配置)"
                 else:
                     mapping = mapping or {}
-                    
+
                     # 检查新的映射结构：每个内部部件 -> {source, target}
                     unmapped_parts = []
                     missing_source_parts = []
                     missing_target_parts = []
-                    
+
                     for part_name in part_names:
                         part_name_str = str(part_name)
                         part_mapping = mapping.get(part_name_str)
-                        
+
                         if not isinstance(part_mapping, dict):
                             # 兼容旧格式或未映射
                             unmapped_parts.append(part_name_str)
                             continue
-                        
+
                         source_part = (part_mapping.get("source") or "").strip()
                         target_part = (part_mapping.get("target") or "").strip()
-                        
+
                         # 检查source part
                         if not source_part:
                             unmapped_parts.append(part_name_str)
                         elif source_part not in source_parts:
-                            missing_source_parts.append(f"{part_name_str}→{source_part}")
-                        
+                            missing_source_parts.append(
+                                f"{part_name_str}→{source_part}"
+                            )
+
                         # 检查target part
                         if not target_part:
                             if source_part:  # 只有当source已选择时才检查target
                                 unmapped_parts.append(part_name_str)
                         elif target_part not in target_parts:
-                            missing_target_parts.append(f"{part_name_str}→{target_part}")
-                    
+                            missing_target_parts.append(
+                                f"{part_name_str}→{target_part}"
+                            )
+
                     if unmapped_parts:
                         status = f"⚠ 未映射: {', '.join(unmapped_parts)}"
                     elif missing_source_parts:
@@ -1521,7 +1526,14 @@ class BatchManager:
         data_dict: dict,
     ) -> None:
         return _create_special_part_node_impl(
-            self, file_item, file_path, internal_part_name, source_names, target_names, mapping, data_dict
+            self,
+            file_item,
+            file_path,
+            internal_part_name,
+            source_names,
+            target_names,
+            mapping,
+            data_dict,
         )
 
     def _safe_populate_special_preview(

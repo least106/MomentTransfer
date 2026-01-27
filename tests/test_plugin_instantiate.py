@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.plugin import PluginLoader, PluginRegistry, BasePlugin, PluginMetadata
+from src.plugin import BasePlugin, PluginLoader, PluginMetadata, PluginRegistry
 
 
 def write(p: Path, s: str):
@@ -60,9 +60,9 @@ def test_instantiate_register_raises(tmp_path, monkeypatch):
 
     # 模拟 register 抛异常
     def bad_register(plugin):
-        raise RuntimeError('boom')
+        raise RuntimeError("boom")
 
-    monkeypatch.setattr(registry, 'register', bad_register)
+    monkeypatch.setattr(registry, "register", bad_register)
 
     mod = loader._dynamic_import_module(p)
     plugin = loader._instantiate_and_register(mod, p)

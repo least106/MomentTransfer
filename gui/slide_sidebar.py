@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
-    QPoint,
     QEvent,
+    QPoint,
     QPropertyAnimation,
     QSize,
     Qt,
@@ -16,20 +17,17 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
+    QGraphicsOpacityEffect,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
-    QGraphicsOpacityEffect,
 )
-import logging
 
 _logger = logging.getLogger(__name__)
 
 # 延迟导入 Qt 相关类型以避免部分环境下的循环导入警告
 # pylint: disable=import-outside-toplevel
-
-
 
 
 class SlideSidebar(QWidget):
@@ -401,10 +399,12 @@ class SlideSidebar(QWidget):
                 )
             except Exception:
                 is_near_left = (
-                    global_pos.x() <= screen_geometry.left() + self._edge_detect_distance
+                    global_pos.x()
+                    <= screen_geometry.left() + self._edge_detect_distance
                 )
                 is_near_right = (
-                    global_pos.x() >= screen_geometry.right() - self._edge_detect_distance
+                    global_pos.x()
+                    >= screen_geometry.right() - self._edge_detect_distance
                 )
 
             # 判断是否应该显示按钮

@@ -9,7 +9,7 @@
 import logging
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager import BatchManager
@@ -17,6 +17,7 @@ from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager
 from gui.part_manager import PartManager
+
 # 侧边栏改为合并到底部栏，移除浮动 SlideSidebar 的使用
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class InitializationManager:
         try:
             # 创建菜单栏
             self._setup_menu_bar()
-            
+
             central_widget = QWidget()
             self.main_window.setCentralWidget(central_widget)
             main_layout = QVBoxLayout(central_widget)
@@ -171,14 +172,17 @@ class InitializationManager:
             self.main_window.part_manager = PartManager(self.main_window)
             self.main_window.batch_manager = BatchManager(self.main_window)
             self.main_window.layout_manager = LayoutManager(self.main_window)
-            
+
             # 初始化 ProjectManager
             from gui.project_manager import ProjectManager
+
             self.main_window.project_manager = ProjectManager(self.main_window)
-            
+
             # 将 ConfigPanel 替换到 Tab 的"参考系管理"位置
             try:
-                if hasattr(self.main_window, "tab_main") and hasattr(self.main_window, "config_tab_placeholder"):
+                if hasattr(self.main_window, "tab_main") and hasattr(
+                    self.main_window, "config_tab_placeholder"
+                ):
                     tab_main = self.main_window.tab_main
                     config_panel = self.main_window.config_panel
                     # 替换第0个Tab的内容
@@ -273,7 +277,11 @@ class InitializationManager:
             sb = getattr(self.main_window, "signal_bus", None)
             if sb is not None:
                 try:
-                    sb.configLoaded.connect(lambda _model=None: getattr(self.main_window, "mark_config_loaded", lambda: None)())
+                    sb.configLoaded.connect(
+                        lambda _model=None: getattr(
+                            self.main_window, "mark_config_loaded", lambda: None
+                        )()
+                    )
                 except Exception:
                     logger.debug("连接 configLoaded 信号失败", exc_info=True)
         except Exception:
@@ -300,50 +308,53 @@ class InitializationManager:
         # 延迟完成标志，避免 showEvent 期间的弹窗
         QTimer.singleShot(150, _finalize)
 
-
     def _setup_menu_bar(self):
         """创建工具栏（伪菜单栏）"""
         try:
-            from PySide6.QtWidgets import (
-                QPushButton, QWidget, QToolBar, QSizePolicy, QCheckBox
-            )
             from PySide6.QtCore import Qt
-            
+            from PySide6.QtWidgets import (
+                QCheckBox,
+                QPushButton,
+                QSizePolicy,
+                QToolBar,
+                QWidget,
+            )
+
             # 隐藏传统菜单栏
             self.main_window.menuBar().setVisible(False)
-            
+
             # 创建工具栏作为伪菜单栏
             toolbar = QToolBar("主工具栏")
             toolbar.setObjectName("MainToolBar")
             toolbar.setMovable(False)
             toolbar.setFloatable(False)
-            
+
             # 左侧：文件操作按钮
             btn_new_project = QPushButton("新建Project")
             btn_new_project.setMaximumWidth(90)
             btn_new_project.setToolTip("新建 Project（Ctrl+N）")
             btn_new_project.clicked.connect(self.main_window._new_project)
             toolbar.addWidget(btn_new_project)
-            
+
             btn_open_project = QPushButton("打开Project")
             btn_open_project.setMaximumWidth(90)
             btn_open_project.setToolTip("打开 Project（Ctrl+O）")
             btn_open_project.clicked.connect(self.main_window._open_project)
             toolbar.addWidget(btn_open_project)
-            
+
             btn_save_project = QPushButton("保存Project")
             btn_save_project.setMaximumWidth(90)
             btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
             btn_save_project.clicked.connect(self.main_window._on_save_project)
             toolbar.addWidget(btn_save_project)
-            
+
             toolbar.addSeparator()
-            
+
             # 添加弹性间隔，使右侧按钮靠右
             spacer = QWidget()
             spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             toolbar.addWidget(spacer)
-            
+
             # 右侧：主要操作按钮（将复选框放在浏览按钮左侧）
             # 右侧：展开批处理记录复选框（放在浏览按钮左侧）
             chk_bottom_bar = QCheckBox("展开批处理记录")
@@ -359,23 +370,25 @@ class InitializationManager:
 
             btn_load_config = QPushButton("加载配置")
             btn_load_config.setMaximumWidth(80)
-            btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
+            btn_load_config.setToolTip(
+                "加载配置文件（JSON），用于提供 Source/Target part 定义"
+            )
             # 绑定到主窗口的 load_config，以恢复旧的加载配置行为
             btn_load_config.clicked.connect(self.main_window.load_config)
             toolbar.addWidget(btn_load_config)
-            
+
             btn_start = QPushButton("开始处理")
             btn_start.setMaximumWidth(80)
             btn_start.setToolTip("开始批量处理（Ctrl+R）")
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
-            
+
             # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
             self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
-            
+
             # 将工具栏添加到主窗口顶部
             self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
-            
+
             # 保存按钮引用以供后续使用
             self.main_window.btn_new_project = btn_new_project
             self.main_window.btn_open_project = btn_open_project
@@ -383,7 +396,7 @@ class InitializationManager:
             self.main_window.btn_browse_menu = btn_browse
             self.main_window.btn_load_config_menu = btn_load_config
             self.main_window.btn_start_menu = btn_start
-            
+
             logger.info("工具栏已创建")
         except Exception as e:
             logger.error("创建工具栏失败: %s", e)

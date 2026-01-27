@@ -6,9 +6,9 @@ import pytest
 from src.config import (
     SystemConfig,
     get_config,
-    set_config,
     load_config_from_file,
     reset_config,
+    set_config,
 )
 
 

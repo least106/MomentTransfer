@@ -33,7 +33,7 @@ def _process_single_part(
     overwrite=False,
 ):
     """处理单个 part，返回 (out_path or None, report_entry)。
-    
+
     Args:
         part_name: 内部部件名
         df: 该部件的数据
@@ -347,7 +347,7 @@ def process_special_format_file(
     return_report: bool = False,
 ) -> List[Path]:
     """处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
-    
+
     Args:
         file_path: 输入文件路径
         project_data: 项目配置

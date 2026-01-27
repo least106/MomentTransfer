@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
+from src.logging_config import configure_logging
 from src.logging_system import (
-    StructuredLogFormatter,
     LogContext,
-    StructuredLogger,
     LoggerFactory,
+    StructuredLogFormatter,
+    StructuredLogger,
     log_operation_context,
 )
-from src.logging_config import configure_logging
 
 
 def _parse_json_lines(s: str):
@@ -37,7 +37,15 @@ def test_structured_formatter_and_logger_factory_json(capsys):
     parsed = _parse_json_lines(out)
     assert parsed, "没有输出 JSON 日志"
     entry = parsed[-1]
-    for key in ("timestamp", "level", "logger", "module", "function", "line", "message"):
+    for key in (
+        "timestamp",
+        "level",
+        "logger",
+        "module",
+        "function",
+        "line",
+        "message",
+    ):
         assert key in entry
     assert entry["level"] == "INFO"
 
@@ -99,6 +107,7 @@ def test_configure_logging_handles_handlers_and_file(tmp_path):
 def test_configure_logging_closes_existing_handlers_gracefully(monkeypatch):
     # 给 batch logger 添加入会在 close 时抛异常的 handler，确认 configure_logging 不抛
     batch = logging.getLogger("batch")
+
     class BadHandler(logging.StreamHandler):
         def close(self):
             raise OSError("close fail")

@@ -180,9 +180,11 @@ def _remove_old_selector_children(manager, file_item) -> None:
             # pylint: disable=protected-access
             meta = manager._get_item_meta(child)
             # pylint: enable=protected-access
+            # 移除旧的 selector 节点（支持旧的 file_source/target 名称与新的 file_part_selectors）
             if isinstance(meta, dict) and meta.get("kind") in (
                 "file_source_selector",
                 "file_target_selector",
+                "file_part_selectors",
             ):
                 file_item.removeChild(child)
         except Exception:
@@ -259,8 +261,8 @@ def _scan_dir_for_patterns(manager, input_path: Path, patterns: list) -> list:
 
 def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> None:
     """为常规文件创建 source/target 选择行（并排双下拉，与特殊格式统一）。"""
-    from PySide6.QtWidgets import QWidget, QHBoxLayout, QComboBox, QTreeWidgetItem
-    
+    from PySide6.QtWidgets import QComboBox, QHBoxLayout, QTreeWidgetItem, QWidget
+
     try:
         sel = _ensure_file_part_selection_storage(manager, file_path)
         source_names = manager._get_source_part_names()
@@ -285,15 +287,19 @@ def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> N
 
         # 创建一个包含并排双下拉的节点
         selector_item = QTreeWidgetItem(["", ""])
-        selector_item.setData(0, int(Qt.UserRole) + 1, {"kind": "file_part_selectors", "file": str(file_path)})
+        selector_item.setData(
+            0,
+            int(Qt.UserRole) + 1,
+            {"kind": "file_part_selectors", "file": str(file_path)},
+        )
         file_item.addChild(selector_item)
-        
+
         # 创建容器widget
         selector_widget = QWidget()
         selector_layout = QHBoxLayout(selector_widget)
         selector_layout.setContentsMargins(0, 0, 0, 0)
         selector_layout.setSpacing(4)
-        
+
         # Source部分选择器
         current_src = (sel.get("source") or "").strip()
         source_combo = QComboBox()
@@ -302,16 +308,16 @@ def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> N
         source_combo.addItem("(选择source)", "")
         for sn in source_names:
             source_combo.addItem(str(sn), str(sn))
-        
+
         if not source_names:
             source_combo.setEnabled(False)
             source_combo.setToolTip("请先加载配置以获得 Source parts")
         else:
             source_combo.setEnabled(True)
             source_combo.setToolTip("选择该文件对应的 Source part")
-        
+
         _safe_set_combo_selection(manager, source_combo, current_src, source_names)
-        
+
         # Target部分选择器
         current_tgt = (sel.get("target") or "").strip()
         target_combo = QComboBox()
@@ -320,27 +326,27 @@ def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> N
         target_combo.addItem("(选择target)", "")
         for tn in target_names:
             target_combo.addItem(str(tn), str(tn))
-        
+
         if not target_names:
             target_combo.setEnabled(False)
             target_combo.setToolTip("请先加载配置以获得 Target parts")
         else:
             target_combo.setEnabled(True)
             target_combo.setToolTip("选择该文件对应的 Target part")
-        
+
         _safe_set_combo_selection(manager, target_combo, current_tgt, target_names)
-        
+
         # 绑定source改变事件
         src_handler = manager._make_part_change_handler(str(file_path), "source")
         source_combo.currentTextChanged.connect(src_handler)
-        
+
         # 绑定target改变事件
         tgt_handler = manager._make_part_change_handler(str(file_path), "target")
         target_combo.currentTextChanged.connect(tgt_handler)
-        
+
         selector_layout.addWidget(source_combo, 1)
         selector_layout.addWidget(target_combo, 1)
-        
+
         manager.gui.file_tree.setItemWidget(selector_item, 0, selector_widget)
 
         try:
@@ -353,7 +359,7 @@ def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> N
 
 def _infer_source_part(manager, part_name: str, source_names: list) -> Optional[str]:
     """智能推测source part（内部部件名与配置中的source part对应关系）。
-    
+
     策略：
     1. 在source_names中查找同名的
     2. 不区分大小写查找
@@ -460,18 +466,23 @@ def _make_part_change_handler(manager, fp_str: str, key: str):
 
 
 def _auto_fill_special_mappings(
-    manager, file_path: Path, part_names: list, source_names: list, target_names: list, mapping: dict
+    manager,
+    file_path: Path,
+    part_names: list,
+    source_names: list,
+    target_names: list,
+    mapping: dict,
 ) -> bool:
     """自动推断并填充特殊格式文件的内部部件->source部件->target部件映射。
-    
+
     mapping结构：
     {
         "internal_part_name": {
             "source": "配置中的Source Part",
-            "target": "配置中的Target Part"  
+            "target": "配置中的Target Part"
         }
     }
-    
+
     策略：
     1. 为每个内部部件名推断对应的source part（查找配置中的同名，未找到则用"Global"）
     2. 为每个source part推断对应的target part（查找配置中的同名）
@@ -480,27 +491,29 @@ def _auto_fill_special_mappings(
     try:
         if mapping is None or not isinstance(mapping, dict):
             return False
-        
+
         for part_name in part_names or []:
             part_name = str(part_name)
-            
+
             # 初始化该部件的映射
             if part_name not in mapping:
                 mapping[part_name] = {"source": "", "target": ""}
                 changed = True
-            
+
             # 步骤1：推断source part
             if not (mapping[part_name].get("source") or "").strip():
                 inferred_source = _infer_source_part(manager, part_name, source_names)
                 if inferred_source:
                     mapping[part_name]["source"] = inferred_source
                     changed = True
-            
+
             # 步骤2：推断target part（基于已有或推断的source part）
             if not (mapping[part_name].get("target") or "").strip():
                 source_part = mapping[part_name].get("source", "").strip()
                 if source_part:
-                    inferred_target = _infer_target_part(manager, source_part, target_names)
+                    inferred_target = _infer_target_part(
+                        manager, source_part, target_names
+                    )
                     if inferred_target:
                         mapping[part_name]["target"] = inferred_target
                         changed = True
@@ -593,23 +606,23 @@ def _create_special_part_node(
     data_dict: dict,
 ) -> None:
     """为特殊格式文件的每个内部部件创建一个节点，包含source和target两个选择器。
-    
+
     布局：
     第1行：内部部件名 | (空)
     第2行：(选择source) | (选择target)
     第3行：数据预览表格
     """
-    from PySide6.QtWidgets import QTreeWidgetItem, QWidget, QHBoxLayout, QComboBox
+    from PySide6.QtWidgets import QComboBox, QHBoxLayout, QTreeWidgetItem, QWidget
 
     try:
         internal_part_name = str(internal_part_name)
-        
+
         # 确保mapping中有该部件的数据结构
         if internal_part_name not in mapping:
             mapping[internal_part_name] = {"source": "", "target": ""}
-        
+
         part_mapping = mapping[internal_part_name]
-        
+
         # 创建部件名节点
         part_item = QTreeWidgetItem([internal_part_name, ""])
         part_item.setData(
@@ -622,18 +635,20 @@ def _create_special_part_node(
             },
         )
         file_item.addChild(part_item)
-        
+
         # 创建source和target选择器行
         selector_item = QTreeWidgetItem(["", ""])
-        selector_item.setData(0, int(Qt.UserRole) + 1, {"kind": "special_part_selectors"})
+        selector_item.setData(
+            0, int(Qt.UserRole) + 1, {"kind": "special_part_selectors"}
+        )
         part_item.addChild(selector_item)
-        
+
         # 创建一个容器widget来放置两个下拉框
         selector_widget = QWidget()
         selector_layout = QHBoxLayout(selector_widget)
         selector_layout.setContentsMargins(0, 0, 0, 0)
         selector_layout.setSpacing(4)
-        
+
         # Source部分选择器
         source_combo = QComboBox()
         source_combo.setEditable(False)
@@ -641,17 +656,17 @@ def _create_special_part_node(
         source_combo.addItem("(选择source)", "")
         for sn in source_names:
             source_combo.addItem(str(sn), str(sn))
-        
+
         if not source_names:
             source_combo.setEnabled(False)
             source_combo.setToolTip("请先加载配置以获得 Source parts")
         else:
             source_combo.setEnabled(True)
             source_combo.setToolTip("选择该部件对应的 Source part")
-        
+
         current_source = (part_mapping.get("source") or "").strip()
         _safe_set_combo_selection(manager, source_combo, current_source, source_names)
-        
+
         # Target部分选择器
         target_combo = QComboBox()
         target_combo.setEditable(False)
@@ -659,19 +674,21 @@ def _create_special_part_node(
         target_combo.addItem("(选择target)", "")
         for tn in target_names:
             target_combo.addItem(str(tn), str(tn))
-        
+
         if not target_names:
             target_combo.setEnabled(False)
             target_combo.setToolTip("请先加载配置以获得 Target parts")
         else:
             target_combo.setEnabled(True)
             target_combo.setToolTip("选择该 Source part 对应的 Target part")
-        
+
         current_target = (part_mapping.get("target") or "").strip()
         _safe_set_combo_selection(manager, target_combo, current_target, target_names)
-        
+
         # 绑定source改变事件
-        def _on_source_changed(text: str, *, fp_str=str(file_path), internal=internal_part_name):
+        def _on_source_changed(
+            text: str, *, fp_str=str(file_path), internal=internal_part_name
+        ):
             try:
                 tmp = getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
                 m = tmp.setdefault(fp_str, {})
@@ -686,14 +703,18 @@ def _create_special_part_node(
                     tmp_items = getattr(manager.gui, "_file_tree_items", {}) or {}
                     file_node = tmp_items.get(fp_str)
                     if file_node is not None:
-                        file_node.setText(1, manager._validate_file_config(Path(fp_str)))
+                        file_node.setText(
+                            1, manager._validate_file_config(Path(fp_str))
+                        )
                 except Exception:
                     pass
             except Exception:
                 logger.debug("source part changed handler failed", exc_info=True)
-        
+
         # 绑定target改变事件
-        def _on_target_changed(text: str, *, fp_str=str(file_path), internal=internal_part_name):
+        def _on_target_changed(
+            text: str, *, fp_str=str(file_path), internal=internal_part_name
+        ):
             try:
                 tmp = getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
                 m = tmp.setdefault(fp_str, {})
@@ -708,20 +729,22 @@ def _create_special_part_node(
                     tmp_items = getattr(manager.gui, "_file_tree_items", {}) or {}
                     file_node = tmp_items.get(fp_str)
                     if file_node is not None:
-                        file_node.setText(1, manager._validate_file_config(Path(fp_str)))
+                        file_node.setText(
+                            1, manager._validate_file_config(Path(fp_str))
+                        )
                 except Exception:
                     pass
             except Exception:
                 logger.debug("target part changed handler failed", exc_info=True)
-        
+
         source_combo.currentTextChanged.connect(_on_source_changed)
         target_combo.currentTextChanged.connect(_on_target_changed)
-        
+
         selector_layout.addWidget(source_combo, 1)
         selector_layout.addWidget(target_combo, 1)
-        
+
         manager.gui.file_tree.setItemWidget(selector_item, 0, selector_widget)
-        
+
         # 缓存combo引用
         key = (str(file_path), internal_part_name)
         if not hasattr(manager, "_special_part_source_combo"):
@@ -730,10 +753,12 @@ def _create_special_part_node(
             manager._special_part_target_combo = {}
         manager._special_part_source_combo[key] = source_combo
         manager._special_part_target_combo[key] = target_combo
-        
+
         # 填充数据预览
-        manager._safe_populate_special_preview(part_item, file_path, internal_part_name, data_dict)
-        
+        manager._safe_populate_special_preview(
+            part_item, file_path, internal_part_name, data_dict
+        )
+
     except Exception:
         logger.debug("创建 special part 节点失败（内部）", exc_info=True)
 

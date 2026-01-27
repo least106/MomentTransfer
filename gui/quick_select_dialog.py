@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
 # pylint: disable=import-outside-toplevel
 
 
-
 logger = logging.getLogger(__name__)
 
 

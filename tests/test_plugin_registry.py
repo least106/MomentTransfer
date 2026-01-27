@@ -16,7 +16,12 @@ class SimpleCoordPlugin(plugin_mod.CoordSystemPlugin):
         )
 
     def get_coordinate_system(self, name: str):
-        return {"origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0], "z_axis": [0, 0, 1]}
+        return {
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "z_axis": [0, 0, 1],
+        }
 
     def list_coordinate_systems(self):
         return ["default"]

@@ -313,7 +313,6 @@ class BatchPanel(QWidget):
             pass
         btn_row.addWidget(self.chk_bulk_row_selection)
 
-
         # 快速筛选：简洁的单列筛选
         filter_label = QLabel("快速筛选:")
         filter_label.setStyleSheet("margin-left: 10px;")
@@ -558,8 +557,6 @@ class BatchPanel(QWidget):
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setAlignment(Qt.AlignTop)
-
-
 
         # 数据格式配置按钮
         self.btn_config_format = QPushButton("⚙ 配置\n数据格式")

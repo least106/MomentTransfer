@@ -2,13 +2,13 @@ import numpy as np
 
 from src.cache import (
     CacheKey,
+    CacheManager,
     CalculationCache,
     RotationMatrixCache,
     TransformationCache,
-    CacheManager,
+    clear_all_caches,
     get_rotation_cache,
     get_transformation_cache,
-    clear_all_caches,
 )
 
 

@@ -114,8 +114,8 @@ class IntegratedAeroGUI(QMainWindow):
     def _refresh_controls_state(self) -> None:
         """根据当前状态标志启用/禁用按钮与选项卡。"""
         try:
-            # Start 按钮：在没有加载数据且没有加载配置时禁用
-            start_enabled = bool(self.data_loaded or self.config_loaded)
+            # Start 按钮：仅在已加载数据且已加载配置时启用
+            start_enabled = bool(self.data_loaded and self.config_loaded)
             for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
                 try:
                     btn = getattr(self, name, None)
@@ -300,16 +300,16 @@ class IntegratedAeroGUI(QMainWindow):
             self.config_manager.apply_config()
             # 应用配置后自动切换到文件列表
             try:
-                    if hasattr(self, "tab_main"):
-                        tab = self.tab_main
+                if hasattr(self, "tab_main"):
+                    tab = self.tab_main
+                    idx = -1
+                    try:
+                        idx = tab.indexOf(getattr(self, "file_list_widget", None))
+                    except Exception:
                         idx = -1
-                        try:
-                            idx = tab.indexOf(getattr(self, "file_list_widget", None))
-                        except Exception:
-                            idx = -1
-                        if idx is None or idx == -1:
-                            idx = 0
-                        tab.setCurrentIndex(idx)
+                    if idx is None or idx == -1:
+                        idx = 0
+                    tab.setCurrentIndex(idx)
             except Exception:
                 pass
         except AttributeError:
@@ -354,21 +354,24 @@ class IntegratedAeroGUI(QMainWindow):
         """保存Project（打开选择文件对话框）"""
         try:
             from pathlib import Path
+
             from PySide6.QtWidgets import QFileDialog
-            
+
             # 打开保存文件对话框
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "保存Project文件",
                 "",
-                "MomentTransfer Project (*.mtproject);;All Files (*)"
+                "MomentTransfer Project (*.mtproject);;All Files (*)",
             )
-            
+
             if file_path:
                 if self.project_manager:
                     self.project_manager.save_project(Path(file_path))
                     try:
-                        QMessageBox.information(self, "成功", f"项目已保存到: {file_path}")
+                        QMessageBox.information(
+                            self, "成功", f"项目已保存到: {file_path}"
+                        )
                     except Exception:
                         pass
         except Exception as e:
@@ -394,20 +397,23 @@ class IntegratedAeroGUI(QMainWindow):
         """打开Project文件"""
         try:
             from pathlib import Path
+
             from PySide6.QtWidgets import QFileDialog
-            
+
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
                 "打开Project文件",
                 "",
-                "MomentTransfer Project (*.mtproject);;All Files (*)"
+                "MomentTransfer Project (*.mtproject);;All Files (*)",
             )
-            
+
             if file_path:
                 if self.project_manager:
                     if self.project_manager.load_project(Path(file_path)):
                         try:
-                            QMessageBox.information(self, "成功", f"项目已加载: {file_path}")
+                            QMessageBox.information(
+                                self, "成功", f"项目已加载: {file_path}"
+                            )
                         except Exception:
                             pass
                     else:
@@ -436,7 +442,7 @@ class IntegratedAeroGUI(QMainWindow):
                     self.config_manager.save_config()
                     return
                 # 如果选择 Discard，继续处理
-            
+
             self.batch_manager.run_batch_processing()
         except AttributeError:
             logger.warning("BatchManager 未初始化")

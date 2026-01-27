@@ -21,7 +21,13 @@ def make_df():
 def test_process_single_part_no_rows_selected(tmp_path):
     df = make_df().iloc[0:0]
     out, report = proc_mod._process_single_part(
-        "p", df, file_path=Path("f.mtfmt"), project_data=type("P", (), {"source_parts": {"p": {}}, "target_parts": {"p": {}}})(), output_dir=tmp_path
+        "p",
+        df,
+        file_path=Path("f.mtfmt"),
+        project_data=type(
+            "P", (), {"source_parts": {"p": {}}, "target_parts": {"p": {}}}
+        )(),
+        output_dir=tmp_path,
     )
     assert out is None
     assert report["reason"] == "no_rows_selected"
@@ -83,7 +89,9 @@ def test_process_single_part_processing_failed(monkeypatch, tmp_path):
     monkeypatch.setattr(proc_mod, "AeroCalculator", Bad)
 
     df = make_df()
-    PD = type("P", (), {"source_parts": {"p": {}}, "target_parts": {"p": {"variants": []}}})
+    PD = type(
+        "P", (), {"source_parts": {"p": {}}, "target_parts": {"p": {"variants": []}}}
+    )
     out, report = proc_mod._process_single_part(
         "p", df, file_path=Path("f.mtfmt"), project_data=PD(), output_dir=tmp_path
     )

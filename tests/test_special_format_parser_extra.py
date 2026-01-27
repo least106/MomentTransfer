@@ -75,14 +75,20 @@ def test_parse_and_get_part_names_monkeypatched_read():
 
 def test_process_special_format_file_delegates(monkeypatch):
     # 创建一个假的模块并注入到 sys.modules，以便延迟导入时被发现
-    fake_mod = types.SimpleNamespace(process_special_format_file=lambda *a, **k: {"ok": True})
+    fake_mod = types.SimpleNamespace(
+        process_special_format_file=lambda *a, **k: {"ok": True}
+    )
     sys.modules["src.special_format_processor"] = fake_mod
 
     try:
-        ret = parser.process_special_format_file(Path("p"), project_data=None, output_dir=Path("."))
+        ret = parser.process_special_format_file(
+            Path("p"), project_data=None, output_dir=Path(".")
+        )
         assert ret == {"ok": True}
     finally:
         del sys.modules["src.special_format_processor"]
+
+
 from pathlib import Path
 
 import pandas as pd

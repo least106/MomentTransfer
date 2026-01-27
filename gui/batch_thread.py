@@ -215,7 +215,7 @@ class BatchProcessThread(QThread):
             )
         except Exception:
             part_mapping = None
-        
+
         # 解析part_mapping，从新的格式{"internal_part": {"source": "...", "target": "..."}}
         # 提取出part_source_mapping和part_target_mapping
         part_source_mapping = {}

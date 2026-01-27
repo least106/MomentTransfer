@@ -1,17 +1,16 @@
 import json
+
 import pytest
 
 from src import calculator_factory as cf
-from src.data_loader import (
-    CoordSystemDefinition,
-    FrameConfiguration,
-    ProjectData,
-)
+from src.data_loader import CoordSystemDefinition, FrameConfiguration, ProjectData
 from src.physics import AeroCalculator
 
 
 def make_project(single_target=True):
-    coord = CoordSystemDefinition(origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1])
+    coord = CoordSystemDefinition(
+        origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0], z_axis=[0, 0, 1]
+    )
     frame = FrameConfiguration(
         part_name="P",
         coord_system=coord,

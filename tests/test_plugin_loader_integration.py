@@ -102,4 +102,4 @@ def create_plugin():
 
     plugins = loader.load_plugins_from_directory(tmp_path)
     names = [p.metadata.name for p in plugins]
-    assert 'p1' in names and 'p2' in names
+    assert "p1" in names and "p2" in names

@@ -18,7 +18,12 @@ class DummyCoordPlugin(plugin_mod.CoordSystemPlugin):
         )
 
     def get_coordinate_system(self, name: str):
-        return {"origin": [0, 0, 0], "x_axis": [1, 0, 0], "y_axis": [0, 1, 0], "z_axis": [0,0,1]}
+        return {
+            "origin": [0, 0, 0],
+            "x_axis": [1, 0, 0],
+            "y_axis": [0, 1, 0],
+            "z_axis": [0, 0, 1],
+        }
 
     def list_coordinate_systems(self):
         return ["dummy"]
@@ -41,7 +46,7 @@ def write_plugin_file(path: Path, content: str):
 
 def test_loader_load_valid_plugin(tmp_path):
     # valid plugin file with create_plugin returning a CoordSystemPlugin
-    code = '''
+    code = """
 from src.plugin import CoordSystemPlugin, PluginMetadata
 class P(CoordSystemPlugin):
     @property
@@ -53,13 +58,13 @@ class P(CoordSystemPlugin):
         return ['tmpplug']
 def create_plugin():
     return P()
-'''
+"""
     f = write_plugin_file(tmp_path / "good_plugin.py", code)
     reg = plugin_mod.PluginRegistry()
     loader = plugin_mod.PluginLoader(reg)
     plugin = loader.load_plugin_from_file(f)
     assert plugin is not None
-    assert reg.get_plugin('tmpplug') is plugin
+    assert reg.get_plugin("tmpplug") is plugin
 
 
 def test_loader_missing_create_factory(tmp_path):
@@ -92,7 +97,7 @@ def test_plugin_manager_get_and_clear():
     assert isinstance(reg, plugin_mod.PluginRegistry)
     # register dummy
     reg.register(DummyCoordPlugin())
-    assert 'dummy' in reg.list_plugins()
+    assert "dummy" in reg.list_plugins()
     mgr.clear()
     # after clear, asking for registry returns a new instance
     newreg = mgr.get_registry()

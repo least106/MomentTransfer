@@ -1,12 +1,13 @@
 import time
+
 import pytest
 
 from src.performance import (
+    PSUTIL_AVAILABLE,
     PerformanceMonitor,
     get_performance_monitor,
-    reset_performance_monitor,
     measure_performance,
-    PSUTIL_AVAILABLE,
+    reset_performance_monitor,
 )
 
 
