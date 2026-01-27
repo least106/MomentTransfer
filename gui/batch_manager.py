@@ -31,8 +31,6 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
-    QVBoxLayout,
-    QWidget,
 )
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
@@ -881,7 +879,9 @@ class BatchManager:
             QMessageBox.critical(self.gui, "错误", f"浏览失败: {e}")
 
     def _create_browse_dialog(self):
-        """创建并配置选择输入文件或目录的 QFileDialog 实例（含目录切换复选框和直接输入路径功能）。"""
+        """创建并配置选择输入文件或目录的 QFileDialog 实例（含路径输入框与目录切换复选框）。"""
+        from pathlib import Path as PathClass
+
         dlg = QFileDialog(self.gui, "选择输入文件或目录")
         dlg.setOption(QFileDialog.DontUseNativeDialog, True)
         dlg.setFileMode(QFileDialog.ExistingFile)
@@ -893,116 +893,105 @@ class BatchManager:
         ]
         dlg.setNameFilter(";;".join(parts))
 
-        # 在对话框底部添加自定义控件区域
+        # 创建路径输入框（类似 Windows 资源管理器地址栏）
+        try:
+            path_layout = QHBoxLayout()
+            path_layout.setContentsMargins(0, 0, 0, 0)
+            path_layout.setSpacing(4)
+
+            path_label = QLabel("路径:")
+            path_input = QLineEdit()
+            path_input.setPlaceholderText("输入或粘贴文件路径...")
+            path_input.setToolTip("直接输入路径，按回车导航到该位置")
+
+            # 初始化路径输入框为当前目录
+            current_dir = dlg.directory().path()
+            path_input.setText(current_dir)
+
+            def navigate_to_path():
+                """导航到输入框中的路径"""
+                path_text = path_input.text().strip()
+                if not path_text:
+                    return
+                try:
+                    p = PathClass(path_text)
+                    if p.exists():
+                        if p.is_dir():
+                            dlg.setDirectory(str(p))
+                        else:
+                            dlg.setDirectory(str(p.parent))
+                            dlg.selectFile(str(p))
+                        # 更新路径输入框
+                        path_input.setText(dlg.directory().path())
+                    else:
+                        QMessageBox.warning(dlg, "路径不存在", f"路径不存在：{path_text}")
+                except Exception as e:
+                    QMessageBox.warning(dlg, "路径错误", f"无效的路径：{path_text}\n{str(e)}")
+
+            def update_path_input():
+                """当在对话框中选择文件/目录时，更新路径输入框"""
+                path_input.setText(dlg.directory().path())
+
+            # 监听对话框的目录变化
+            try:
+                dlg.directoryEntered.connect(update_path_input)
+            except Exception:
+                pass
+
+            # 按钮：导航到指定路径
+            nav_btn = QPushButton("转到")
+            nav_btn.setToolTip("导航到输入的路径")
+            nav_btn.setMaximumWidth(50)
+            nav_btn.clicked.connect(navigate_to_path)
+
+            # 按钮：刷新路径输入框
+            refresh_btn = QPushButton("刷新")
+            refresh_btn.setToolTip("刷新当前路径")
+            refresh_btn.setMaximumWidth(50)
+
+            def refresh_path():
+                """刷新路径输入框为当前目录"""
+                path_input.setText(dlg.directory().path())
+
+            refresh_btn.clicked.connect(refresh_path)
+
+            # 回车键导航
+            path_input.returnPressed.connect(navigate_to_path)
+
+            path_layout.addWidget(path_label)
+            path_layout.addWidget(path_input, 1)
+            path_layout.addWidget(nav_btn)
+            path_layout.addWidget(refresh_btn)
+
+            # 将路径布局添加到对话框
+            layout = dlg.layout()
+            if layout:
+                # 在顶部插入路径输入框
+                layout.insertLayout(0, path_layout)
+        except Exception as e:
+            logger.debug(f"添加路径输入框失败: {e}")
+
+        # 允许切换目录模式
+        chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
+        chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
         try:
             layout = dlg.layout()
-            
-            # 创建自定义路径输入区域
-            custom_widget = QWidget()
-            custom_layout = QVBoxLayout(custom_widget)
-            custom_layout.setContentsMargins(0, 4, 0, 4)
-            
-            # 路径直接输入行
-            path_input_row = QHBoxLayout()
-            path_input_label = QLabel("直接输入路径：")
-            path_input_field = QLineEdit()
-            path_input_field.setPlaceholderText("可直接粘贴文件或目录路径...")
-            path_input_field.setToolTip(
-                "您可以直接在此输入或粘贴文件/目录的完整路径，按回车确认"
-            )
-            
-            # 确认按钮
-            btn_confirm_path = QPushButton("确认路径")
-            btn_confirm_path.setToolTip("点击验证并使用输入的路径")
-            
-            path_input_row.addWidget(path_input_label)
-            path_input_row.addWidget(path_input_field, 1)
-            path_input_row.addWidget(btn_confirm_path)
-            custom_layout.addLayout(path_input_row)
-            
-            # 允许切换目录模式
-            chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
-            chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
-            custom_layout.addWidget(chk_dir)
-            
-            layout.addWidget(custom_widget)
-            
-            def on_toggle_dir(checked):
-                if checked:
-                    dlg.setFileMode(QFileDialog.Directory)
-                    dlg.setOption(QFileDialog.ShowDirsOnly, True)
-                    path_input_field.setPlaceholderText("可直接粘贴目录路径...")
-                else:
-                    dlg.setFileMode(QFileDialog.ExistingFile)
-                    dlg.setOption(QFileDialog.ShowDirsOnly, False)
-                    path_input_field.setPlaceholderText("可直接粘贴文件路径...")
-            
-            def confirm_path():
-                """验证并使用用户输入的路径"""
-                input_path = path_input_field.text().strip()
-                if not input_path:
-                    QMessageBox.warning(dlg, "提示", "请输入路径")
-                    return
-                
-                p = Path(input_path)
-                if not p.exists():
-                    QMessageBox.warning(
-                        dlg, "路径不存在", 
-                        f"输入的路径不存在：\n{input_path}\n\n请检查路径是否正确。"
-                    )
-                    return
-                
-                # 检查路径类型是否匹配当前模式
-                if chk_dir.isChecked() and not p.is_dir():
-                    QMessageBox.warning(
-                        dlg, "类型不匹配",
-                        "当前为目录选择模式，但输入的路径不是目录。\n请取消勾选目录模式或输入目录路径。"
-                    )
-                    return
-                
-                if not chk_dir.isChecked() and not p.is_file():
-                    reply = QMessageBox.question(
-                        dlg, "确认",
-                        "输入的路径不是文件。是否切换到目录模式并使用此路径？",
-                        QMessageBox.Yes | QMessageBox.No
-                    )
-                    if reply == QMessageBox.Yes:
-                        chk_dir.setChecked(True)
-                    else:
-                        return
-                
-                # 设置选中路径并关闭对话框
-                dlg.selectFile(str(p))
-                dlg.accept()
-            
-            try:
-                chk_dir.toggled.connect(on_toggle_dir)
-                btn_confirm_path.clicked.connect(confirm_path)
-                # 支持在输入框中按回车确认
-                path_input_field.returnPressed.connect(confirm_path)
-            except Exception:
-                pass
-                
-        except Exception as e:
-            logger.warning(f"添加自定义路径输入区域失败: {e}")
-            # 如果自定义控件添加失败，仍保留基本的目录切换功能
-            try:
-                chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
-                chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
-                layout = dlg.layout()
-                layout.addWidget(chk_dir)
-                
-                def on_toggle_dir(checked):
-                    if checked:
-                        dlg.setFileMode(QFileDialog.Directory)
-                        dlg.setOption(QFileDialog.ShowDirsOnly, True)
-                    else:
-                        dlg.setFileMode(QFileDialog.ExistingFile)
-                        dlg.setOption(QFileDialog.ShowDirsOnly, False)
-                
-                chk_dir.toggled.connect(on_toggle_dir)
-            except Exception:
-                pass
+            layout.addWidget(chk_dir)
+        except Exception:
+            pass
+
+        def on_toggle_dir(checked):
+            if checked:
+                dlg.setFileMode(QFileDialog.Directory)
+                dlg.setOption(QFileDialog.ShowDirsOnly, True)
+            else:
+                dlg.setFileMode(QFileDialog.ExistingFile)
+                dlg.setOption(QFileDialog.ShowDirsOnly, False)
+
+        try:
+            chk_dir.toggled.connect(on_toggle_dir)
+        except Exception:
+            pass
 
         return dlg
 
