@@ -281,80 +281,81 @@ class InitializationManager:
 
 
     def _setup_menu_bar(self):
-        """创建菜单栏和操作按钮"""
+        """创建工具栏（伪菜单栏）"""
         try:
             from PySide6.QtWidgets import (
-                QMenuBar, QPushButton, QWidget, QHBoxLayout, QToolBar, QLabel, QSizePolicy
+                QPushButton, QWidget, QToolBar, QSizePolicy
             )
             from PySide6.QtCore import Qt
             
-            menubar = self.main_window.menuBar()
+            # 隐藏传统菜单栏
+            self.main_window.menuBar().setVisible(False)
             
-            # 文件菜单
-            file_menu = menubar.addMenu("文件(&F)")
-            
-            new_project_action = file_menu.addAction("新建 Project(&N)")
-            new_project_action.setShortcut("Ctrl+N")
-            new_project_action.triggered.connect(self.main_window._new_project)
-            
-            open_project_action = file_menu.addAction("打开 Project(&O)")
-            open_project_action.setShortcut("Ctrl+O")
-            open_project_action.triggered.connect(self.main_window._open_project)
-            
-            save_project_action = file_menu.addAction("保存 Project(&S)")
-            save_project_action.setShortcut("Ctrl+Shift+S")
-            save_project_action.triggered.connect(self.main_window._on_save_project)
-            
-            file_menu.addSeparator()
-            
-            exit_action = file_menu.addAction("退出(&Q)")
-            exit_action.setShortcut("Alt+F4")
-            exit_action.triggered.connect(self.main_window.close)
-            
-            # 在菜单栏右侧添加操作按钮（使用工具栏）
-            toolbar = QToolBar("操作栏")
-            toolbar.setObjectName("ActionToolBar")
-            toolbar.setIconSize(toolbar.iconSize())
+            # 创建工具栏作为伪菜单栏
+            toolbar = QToolBar("主工具栏")
+            toolbar.setObjectName("MainToolBar")
             toolbar.setMovable(False)
             toolbar.setFloatable(False)
             
-            # 添加弹性间隔，使按钮靠右
+            # 左侧：文件操作按钮
+            btn_new_project = QPushButton("新建Project")
+            btn_new_project.setMaximumWidth(90)
+            btn_new_project.setToolTip("新建 Project（Ctrl+N）")
+            btn_new_project.clicked.connect(self.main_window._new_project)
+            toolbar.addWidget(btn_new_project)
+            
+            btn_open_project = QPushButton("打开Project")
+            btn_open_project.setMaximumWidth(90)
+            btn_open_project.setToolTip("打开 Project（Ctrl+O）")
+            btn_open_project.clicked.connect(self.main_window._open_project)
+            toolbar.addWidget(btn_open_project)
+            
+            btn_save_project = QPushButton("保存Project")
+            btn_save_project.setMaximumWidth(90)
+            btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
+            btn_save_project.clicked.connect(self.main_window._on_save_project)
+            toolbar.addWidget(btn_save_project)
+            
+            toolbar.addSeparator()
+            
+            # 添加弹性间隔，使右侧按钮靠右
             spacer = QWidget()
             spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             toolbar.addWidget(spacer)
             
-            # 浏览文件按钮
+            # 右侧：主要操作按钮
             btn_browse = QPushButton("浏览文件")
             btn_browse.setMaximumWidth(80)
             btn_browse.setToolTip("选择输入文件或目录")
             btn_browse.clicked.connect(self.main_window.browse_batch_input)
             toolbar.addWidget(btn_browse)
             
-            # 加载配置按钮
             btn_load_config = QPushButton("加载配置")
             btn_load_config.setMaximumWidth(80)
             btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
             btn_load_config.clicked.connect(self.main_window.configure_data_format)
             toolbar.addWidget(btn_load_config)
             
-            # 开始处理按钮
             btn_start = QPushButton("开始处理")
             btn_start.setMaximumWidth(80)
             btn_start.setToolTip("开始批量处理（Ctrl+R）")
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
             
-            # 将工具栏添加到主窗口的菜单栏下方（顶部）
+            # 将工具栏添加到主窗口顶部
             self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
             
             # 保存按钮引用以供后续使用
+            self.main_window.btn_new_project = btn_new_project
+            self.main_window.btn_open_project = btn_open_project
+            self.main_window.btn_save_project_toolbar = btn_save_project
             self.main_window.btn_browse_menu = btn_browse
             self.main_window.btn_load_config_menu = btn_load_config
             self.main_window.btn_start_menu = btn_start
             
-            logger.info("菜单栏已创建")
+            logger.info("工具栏已创建")
         except Exception as e:
-            logger.error("创建菜单栏失败: %s", e)
+            logger.error("创建工具栏失败: %s", e)
 
     def trigger_initial_layout_update(self):
         """触发初始布局更新"""
