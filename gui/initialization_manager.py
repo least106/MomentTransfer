@@ -281,9 +281,12 @@ class InitializationManager:
 
 
     def _setup_menu_bar(self):
-        """创建菜单栏"""
+        """创建菜单栏和操作按钮"""
         try:
-            from PySide6.QtWidgets import QMenuBar
+            from PySide6.QtWidgets import (
+                QMenuBar, QPushButton, QWidget, QHBoxLayout, QToolBar, QLabel, QSizePolicy
+            )
+            from PySide6.QtCore import Qt
             
             menubar = self.main_window.menuBar()
             
@@ -308,23 +311,46 @@ class InitializationManager:
             exit_action.setShortcut("Alt+F4")
             exit_action.triggered.connect(self.main_window.close)
             
-            # 工具菜单 - 添加操作按钮
-            tools_menu = menubar.addMenu("工具(&T)")
+            # 在菜单栏右侧添加操作按钮（使用工具栏）
+            toolbar = QToolBar("操作栏")
+            toolbar.setObjectName("ActionToolBar")
+            toolbar.setIconSize(toolbar.iconSize())
+            toolbar.setMovable(False)
+            toolbar.setFloatable(False)
             
-            browse_action = tools_menu.addAction("浏览文件(&B)")
-            browse_action.setToolTip("选择输入文件或目录")
-            browse_action.triggered.connect(self.main_window.browse_batch_input)
+            # 添加弹性间隔，使按钮靠右
+            spacer = QWidget()
+            spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            toolbar.addWidget(spacer)
             
-            load_config_action = tools_menu.addAction("加载配置(&L)")
-            load_config_action.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
-            load_config_action.triggered.connect(self.main_window.configure_data_format)
+            # 浏览文件按钮
+            btn_browse = QPushButton("浏览文件")
+            btn_browse.setMaximumWidth(80)
+            btn_browse.setToolTip("选择输入文件或目录")
+            btn_browse.clicked.connect(self.main_window.browse_batch_input)
+            toolbar.addWidget(btn_browse)
             
-            tools_menu.addSeparator()
+            # 加载配置按钮
+            btn_load_config = QPushButton("加载配置")
+            btn_load_config.setMaximumWidth(80)
+            btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
+            btn_load_config.clicked.connect(self.main_window.configure_data_format)
+            toolbar.addWidget(btn_load_config)
             
-            start_action = tools_menu.addAction("开始处理(&S)")
-            start_action.setShortcut("Ctrl+R")
-            start_action.setToolTip("开始批量处理")
-            start_action.triggered.connect(self.main_window.run_batch_processing)
+            # 开始处理按钮
+            btn_start = QPushButton("开始处理")
+            btn_start.setMaximumWidth(80)
+            btn_start.setToolTip("开始批量处理（Ctrl+R）")
+            btn_start.clicked.connect(self.main_window.run_batch_processing)
+            toolbar.addWidget(btn_start)
+            
+            # 将工具栏添加到主窗口的菜单栏下方（顶部）
+            self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
+            
+            # 保存按钮引用以供后续使用
+            self.main_window.btn_browse_menu = btn_browse
+            self.main_window.btn_load_config_menu = btn_load_config
+            self.main_window.btn_start_menu = btn_start
             
             logger.info("菜单栏已创建")
         except Exception as e:
