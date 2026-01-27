@@ -70,6 +70,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.batch_manager = None
         self.layout_manager = None
 
+        # UI 状态标志
+        self.data_loaded = False
+        self.config_loaded = False
+        self.operation_performed = False
+
         # 新管理器
         self.initialization_manager = InitializationManager(self)
         self.event_manager = EventManager(self)
@@ -87,6 +92,95 @@ class IntegratedAeroGUI(QMainWindow):
             self.ui_state_manager.set_config_panel_visible(visible)
         except Exception:
             logger.debug("set_config_panel_visible failed", exc_info=True)
+
+    def mark_data_loaded(self) -> None:
+        """标记已加载数据文件并刷新控件状态"""
+        try:
+            self.data_loaded = True
+            self.operation_performed = True
+            self._refresh_controls_state()
+        except Exception:
+            logger.debug("mark_data_loaded failed", exc_info=True)
+
+    def mark_config_loaded(self) -> None:
+        """标记已加载配置并刷新控件状态"""
+        try:
+            self.config_loaded = True
+            self.operation_performed = True
+            self._refresh_controls_state()
+        except Exception:
+            logger.debug("mark_config_loaded failed", exc_info=True)
+
+    def _refresh_controls_state(self) -> None:
+        """根据当前状态标志启用/禁用按钮与选项卡。"""
+        try:
+            # Start 按钮：在没有加载数据且没有加载配置时禁用
+            start_enabled = bool(self.data_loaded or self.config_loaded)
+            for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
+                try:
+                    btn = getattr(self, name, None)
+                    if btn is not None:
+                        btn.setEnabled(bool(start_enabled))
+                except Exception:
+                    pass
+
+            # 数据管理选项卡：在没有加载数据时禁用
+            try:
+                if hasattr(self, "tab_main") and hasattr(self, "file_list_widget"):
+                    tab = self.tab_main
+                    idx = -1
+                    try:
+                        idx = tab.indexOf(getattr(self, "file_list_widget", None))
+                    except Exception:
+                        idx = -1
+                    if idx is not None and idx >= 0:
+                        tab.setTabEnabled(idx, bool(self.data_loaded))
+            except Exception:
+                pass
+
+            # 参考系管理（配置）选项卡：使用实际插入的 ConfigPanel 来定位并在没有加载数据文件时禁止切换
+            try:
+                if hasattr(self, "tab_main"):
+                    tab = self.tab_main
+                    config_panel = getattr(self, "config_panel", None)
+                    if config_panel is not None:
+                        try:
+                            cidx = tab.indexOf(config_panel)
+                        except Exception:
+                            cidx = -1
+                        if cidx is not None and cidx >= 0:
+                            tab.setTabEnabled(cidx, bool(self.data_loaded))
+            except Exception:
+                pass
+
+            # 保存按钮：在没有任何操作前禁用
+            save_enabled = bool(self.operation_performed)
+            for name in ("btn_save_project_toolbar",):
+                try:
+                    btn = getattr(self, name, None)
+                    if btn is not None:
+                        btn.setEnabled(bool(save_enabled))
+                except Exception:
+                    pass
+
+            try:
+                if hasattr(self, "batch_panel"):
+                    try:
+                        self.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                if hasattr(self, "config_panel"):
+                    try:
+                        self.config_panel.btn_save.setEnabled(bool(save_enabled))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_refresh_controls_state failed", exc_info=True)
 
     def create_config_panel(self):
         """创建配置编辑器面板（由 InitializationManager 调用）"""

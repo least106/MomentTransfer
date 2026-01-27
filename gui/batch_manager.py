@@ -218,6 +218,20 @@ class BatchManager:
         """将配置/Part 变更信号与文件状态刷新绑定（只注册一次）。"""
         return _connect_signal_bus_events_impl(self)
 
+    # 向后兼容：提供旧代码可能调用的接口
+    def _set_workflow_step(self, step: str) -> None:
+        """兼容旧接口：将 workflow step 转发到 GUI 的 BatchPanel（若存在）。"""
+        try:
+            bp = getattr(self.gui, "batch_panel", None)
+            if bp is not None and hasattr(bp, "set_workflow_step"):
+                try:
+                    bp.set_workflow_step(step)
+                except Exception:
+                    # 忽略以保持兼容性
+                    pass
+        except Exception:
+            pass
+
     def _connect_quick_filter(self) -> None:
         """连接快速筛选信号"""
         return _connect_quick_filter_impl(self)

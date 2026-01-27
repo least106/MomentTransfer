@@ -505,3 +505,44 @@ class ConfigManager:
         """设置配置修改状态"""
         self._config_modified = modified
 
+    def reset_config(self) -> None:
+        """重置配置到初始状态（向后兼容旧接口）。
+
+        清除加载的配置、项目模型，重置修改标志，并尝试清空界面面板显示。
+        """
+        try:
+            self._last_loaded_config_path = None
+            self._raw_project_dict = None
+            self.project_config_model = None
+            self._config_modified = False
+            try:
+                if hasattr(self.gui, "current_config"):
+                    self.gui.current_config = None
+            except Exception:
+                pass
+            try:
+                if hasattr(self.gui, "project_model"):
+                    self.gui.project_model = None
+            except Exception:
+                pass
+
+            # 尝试清空 ConfigPanel 的面板内容
+            try:
+                panel = getattr(self.gui, "config_panel", None)
+                if panel is not None:
+                    try:
+                        if hasattr(panel, "source_panel") and hasattr(panel.source_panel, "apply_variant_payload"):
+                            panel.source_panel.apply_variant_payload({
+                                "PartName": "", "CoordSystem": {"Orig": [0, 0, 0], "X": [1, 0, 0], "Y": [0, 1, 0], "Z": [0, 0, 1]}, "MomentCenter": [0, 0, 0], "Cref": 1.0, "Bref": 1.0, "Sref": 10.0, "Q": 1000.0
+                            })
+                        if hasattr(panel, "target_panel") and hasattr(panel.target_panel, "apply_variant_payload"):
+                            panel.target_panel.apply_variant_payload({
+                                "PartName": "", "CoordSystem": {"Orig": [0, 0, 0], "X": [1, 0, 0], "Y": [0, 1, 0], "Z": [0, 0, 1]}, "MomentCenter": [0, 0, 0], "Cref": 1.0, "Bref": 1.0, "Sref": 10.0, "Q": 1000.0
+                            })
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("reset_config failed", exc_info=True)
+

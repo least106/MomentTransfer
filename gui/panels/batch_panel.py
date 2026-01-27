@@ -232,6 +232,29 @@ class BatchPanel(QWidget):
         # step2+：保持默认显示
         if step in ("step2", "step3"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
+            # 标记为已加载数据（主要用于启用 Data 管理选项卡与开始按钮）
+            try:
+                win = self.window()
+                if win is not None and hasattr(win, "mark_data_loaded"):
+                    try:
+                        win.mark_data_loaded()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        # 兼容性回退：直接设置属性并刷新（若方法不存在）
+                        if win is not None:
+                            win.data_loaded = True
+                            win.operation_performed = True
+                            if hasattr(win, "_refresh_controls_state"):
+                                try:
+                                    win._refresh_controls_state()
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             return
 
     def _create_file_list(self) -> QWidget:
@@ -290,16 +313,6 @@ class BatchPanel(QWidget):
             pass
         btn_row.addWidget(self.chk_bulk_row_selection)
 
-        # 底部栏显示切换复选框（放在“行选择批量作用域”右侧）
-        try:
-            self.chk_bottom_bar = QCheckBox("展开配置编辑器")
-            self.chk_bottom_bar.setToolTip("在底部显示配置编辑器与批处理记录")
-            self.chk_bottom_bar.setChecked(False)
-            self.chk_bottom_bar.setMaximumWidth(120)
-            self.chk_bottom_bar.toggled.connect(self.bottomBarToggled.emit)
-            btn_row.addWidget(self.chk_bottom_bar)
-        except Exception:
-            logger.debug("无法创建底部栏切换复选框", exc_info=True)
 
         # 快速筛选：简洁的单列筛选
         filter_label = QLabel("快速筛选:")
@@ -545,6 +558,8 @@ class BatchPanel(QWidget):
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setAlignment(Qt.AlignTop)
+
+
 
         # 数据格式配置按钮
         self.btn_config_format = QPushButton("⚙ 配置\n数据格式")

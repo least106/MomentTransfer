@@ -127,9 +127,9 @@ class InitializationManager:
             # 将底部栏加入主布局（位于 operation_panel 之下）
             main_layout.addWidget(bottom_bar)
 
-            # 连接 BatchPanel 的复选框信号以控制底部栏显示/隐藏
+            # 连接工具栏中的复选框信号以控制底部栏显示/隐藏
             try:
-                operation_panel.batch_panel.bottomBarToggled.connect(
+                self.main_window.chk_bottom_bar_toolbar.toggled.connect(
                     lambda visible: bottom_bar.setVisible(bool(visible))
                 )
             except Exception:
@@ -268,6 +268,27 @@ class InitializationManager:
         except Exception:
             logger.debug("初始 Part 状态更新失败", exc_info=True)
 
+        # 连接配置加载信号以更新主窗口控件状态
+        try:
+            sb = getattr(self.main_window, "signal_bus", None)
+            if sb is not None:
+                try:
+                    sb.configLoaded.connect(lambda _model=None: getattr(self.main_window, "mark_config_loaded", lambda: None)())
+                except Exception:
+                    logger.debug("连接 configLoaded 信号失败", exc_info=True)
+        except Exception:
+            logger.debug("绑定 configLoaded 失败", exc_info=True)
+
+        # 初始刷新一次控件状态（确保开始/保存/选项卡按需禁用）
+        try:
+            if hasattr(self.main_window, "_refresh_controls_state"):
+                try:
+                    self.main_window._refresh_controls_state()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
 
@@ -284,7 +305,7 @@ class InitializationManager:
         """创建工具栏（伪菜单栏）"""
         try:
             from PySide6.QtWidgets import (
-                QPushButton, QWidget, QToolBar, QSizePolicy
+                QPushButton, QWidget, QToolBar, QSizePolicy, QCheckBox
             )
             from PySide6.QtCore import Qt
             
@@ -323,13 +344,19 @@ class InitializationManager:
             spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             toolbar.addWidget(spacer)
             
-            # 右侧：主要操作按钮
+            # 右侧：主要操作按钮（将复选框放在浏览按钮左侧）
+            # 右侧：展开批处理记录复选框（放在浏览按钮左侧）
+            chk_bottom_bar = QCheckBox("展开批处理记录")
+            chk_bottom_bar.setToolTip("在底部显示批处理历史记录与配置编辑器")
+            chk_bottom_bar.setChecked(False)
+            toolbar.addWidget(chk_bottom_bar)
+
             btn_browse = QPushButton("浏览文件")
             btn_browse.setMaximumWidth(80)
             btn_browse.setToolTip("选择输入文件或目录")
             btn_browse.clicked.connect(self.main_window.browse_batch_input)
             toolbar.addWidget(btn_browse)
-            
+
             btn_load_config = QPushButton("加载配置")
             btn_load_config.setMaximumWidth(80)
             btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
@@ -342,6 +369,9 @@ class InitializationManager:
             btn_start.setToolTip("开始批量处理（Ctrl+R）")
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
+            
+            # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
+            self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
             
             # 将工具栏添加到主窗口顶部
             self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
