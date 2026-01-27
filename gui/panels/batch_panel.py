@@ -199,14 +199,17 @@ class BatchPanel(QWidget):
         self.lbl_format_summary = None
         self.row_format_summary_widget = None
 
-        # 匹配模式
+        # 匹配模式：已移至文件浏览对话框中，不再在主面板展示
+        # 保留以下属性以兼容旧代码，但不添加到表单
         self.inp_pattern = QLineEdit("*.csv")
         self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv;*.xlsx；支持分号多模式")
+        self.inp_pattern.setVisible(False)
         self.cmb_pattern_preset = QComboBox()
         try:
             self.cmb_pattern_preset.setObjectName("patternPreset")
         except Exception:
             pass
+        self.cmb_pattern_preset.setVisible(False)
         self._pattern_presets = [
             ("自定义", None),
             ("仅 CSV", "*.csv"),
@@ -253,21 +256,8 @@ class BatchPanel(QWidget):
         except Exception:
             logger.debug("无法连接 inp_pattern 信号", exc_info=True)
 
-        # 保持匹配模式输入与下拉高度一致
-        try:
-            h2 = max(self.inp_pattern.sizeHint().height(), 26)
-            self.inp_pattern.setFixedHeight(h2)
-            self.cmb_pattern_preset.setFixedHeight(h2)
-        except Exception:
-            pass
-
-        pattern_row = QHBoxLayout()
-        pattern_row.setContentsMargins(0, 0, 0, 0)
-        pattern_row.addWidget(self.inp_pattern)
-        pattern_row.addWidget(self.cmb_pattern_preset)
-        self.row_pattern_widget = QWidget()
-        self.row_pattern_widget.setLayout(pattern_row)
-        self.file_form.addRow("匹配模式:", self.row_pattern_widget)
+        # 匹配模式行已从表单中移除（现在位于文件对话框中）
+        self.row_pattern_widget = None
 
     def set_workflow_step(self, step: str) -> None:
         """按流程显示/隐藏控件，减少初始化时的注意力分散。"""
