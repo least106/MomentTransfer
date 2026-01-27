@@ -217,21 +217,7 @@ class InitializationManager:
                                         p
                                     )
                                 except Exception:
-                                    # 兜底：仅更新匹配控件的启用状态
-                                    try:
-                                        if hasattr(self.main_window, "inp_pattern"):
-                                            self.main_window.inp_pattern.setEnabled(
-                                                not p.is_file()
-                                            )
-                                        if hasattr(
-                                            self.main_window,
-                                            "cmb_pattern_preset",
-                                        ):
-                                            self.main_window.cmb_pattern_preset.setEnabled(
-                                                not p.is_file()
-                                            )
-                                    except Exception:
-                                        pass
+                                    logger.debug("扫描文件失败", exc_info=True)
                         except Exception:
                             pass
 

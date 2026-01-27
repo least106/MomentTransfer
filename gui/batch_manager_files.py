@@ -36,17 +36,8 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
                 pass
             base_path = p.parent
         elif p.is_dir():
-            pattern_text = "*.csv"
-            try:
-                if (
-                    hasattr(manager.gui, "inp_pattern")
-                    and manager.gui.inp_pattern is not None
-                ):
-                    pt = manager.gui.inp_pattern.text().strip()
-                    if pt:
-                        pattern_text = pt
-            except Exception:
-                pass
+            # 使用默认的文件匹配模式（支持所有常见格式）
+            pattern_text = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
 
             patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
             if not patterns:

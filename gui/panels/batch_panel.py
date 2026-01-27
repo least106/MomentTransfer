@@ -40,7 +40,6 @@ class BatchPanel(QWidget):
     formatConfigRequested = Signal()  # 请求配置数据格式
     undoRequested = Signal()  # 请求撤销
     browseRequested = Signal()  # 请求浏览输入路径
-    patternChanged = Signal(str)  # 匹配模式变化
     selectAllRequested = Signal()  # 全选文件
     selectNoneRequested = Signal()  # 全不选
     invertSelectionRequested = Signal()  # 反选
@@ -199,64 +198,10 @@ class BatchPanel(QWidget):
         self.lbl_format_summary = None
         self.row_format_summary_widget = None
 
-        # 匹配模式：已移至文件浏览对话框中，不再在主面板展示
-        # 保留以下属性以兼容旧代码，但不添加到表单
-        self.inp_pattern = QLineEdit("*.csv")
-        self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv;*.xlsx；支持分号多模式")
-        self.inp_pattern.setVisible(False)
-        self.cmb_pattern_preset = QComboBox()
-        try:
-            self.cmb_pattern_preset.setObjectName("patternPreset")
-        except Exception:
-            pass
-        self.cmb_pattern_preset.setVisible(False)
-        self._pattern_presets = [
-            ("自定义", None),
-            ("仅 CSV", "*.csv"),
-            ("CSV + Excel", "*.csv;*.xlsx;*.xls"),
-            ("特殊格式", "*.mtfmt;*.mtdata;*.txt;*.dat"),
-            ("全部支持", "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"),
-        ]
-        for name, _pat in self._pattern_presets:
-            self.cmb_pattern_preset.addItem(name)
-
-        def _apply_preset(idx: int) -> None:
-            try:
-                if idx < 0 or idx >= len(self._pattern_presets):
-                    return
-                pat = self._pattern_presets[idx][1]
-                if not pat:
-                    return
-                try:
-                    self.inp_pattern.blockSignals(True)
-                    self.inp_pattern.setText(pat)
-                finally:
-                    self.inp_pattern.blockSignals(False)
-                self.patternChanged.emit(pat)
-            except Exception:
-                logger.debug("apply preset failed", exc_info=True)
-
-        def _mark_custom(_text: str) -> None:
-            try:
-                if self.cmb_pattern_preset.currentIndex() != 0:
-                    self.cmb_pattern_preset.blockSignals(True)
-                    self.cmb_pattern_preset.setCurrentIndex(0)
-                    self.cmb_pattern_preset.blockSignals(False)
-            except Exception:
-                pass
-
-        try:
-            self.cmb_pattern_preset.currentIndexChanged.connect(_apply_preset)
-        except Exception:
-            logger.debug("无法连接 cmb_pattern_preset 信号", exc_info=True)
-
-        try:
-            self.inp_pattern.textEdited.connect(_mark_custom)
-            self.inp_pattern.textChanged.connect(self.patternChanged.emit)
-        except Exception:
-            logger.debug("无法连接 inp_pattern 信号", exc_info=True)
-
-        # 匹配模式行已从表单中移除（现在位于文件对话框中）
+        # 匹配模式相关控件已移除，保留兼容性属性
+        self.inp_pattern = None
+        self.cmb_pattern_preset = None
+        self._pattern_presets = []
         self.row_pattern_widget = None
 
     def set_workflow_step(self, step: str) -> None:
@@ -277,21 +222,15 @@ class BatchPanel(QWidget):
             except Exception:
                 pass
 
-        # init：只保留“输入路径”；其他行隐藏
+        # init：只保留操作按钮
         if step in ("init", "step1"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
-            _set_row_visible(getattr(self, "row_pattern_widget", None), False)
             return
 
-        # step2：展示文件列表相关（匹配模式在目录模式下才有意义，默认显示）
-        if step == "step2":
+        # step2+：保持默认显示
+        if step in ("step2", "step3"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
-            _set_row_visible(getattr(self, "row_pattern_widget", None), True)
             return
-
-        # step3+：全部显示
-        _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
-        _set_row_visible(getattr(self, "row_pattern_widget", None), True)
 
     def _create_file_list(self) -> QWidget:
         """创建文件列表区域"""

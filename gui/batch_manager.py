@@ -22,18 +22,11 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
-    QFormLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
     QMessageBox,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
-    QVBoxLayout,
-    QWidget,
 )
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
@@ -154,207 +147,6 @@ from src.special_format_detector import looks_like_special_format
 from src.special_format_parser import get_part_names, parse_special_format_file
 
 logger = logging.getLogger(__name__)
-
-
-class EnhancedFileDialog(QDialog):
-    """增强的文件选择对话框，支持路径输入和文件过滤"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("选择输入文件或目录")
-        self.resize(700, 500)
-        self.selected_path = None
-        self._init_ui()
-
-    def _init_ui(self):
-        """初始化 UI"""
-        layout = QVBoxLayout(self)
-
-        # 顶部：路径输入框（模仿 Windows 资源管理器）
-        path_layout = QHBoxLayout()
-        path_layout.setContentsMargins(0, 0, 0, 0)
-        path_label = QLabel("位置:")
-        self.inp_path = QLineEdit()
-        self.inp_path.setToolTip("输入或编辑文件/文件夹路径，支持自动补全")
-        self.inp_path.returnPressed.connect(self._navigate_to_path)
-        self.btn_navigate = QPushButton("导航")
-        self.btn_navigate.setMaximumWidth(80)
-        self.btn_navigate.clicked.connect(self._navigate_to_path)
-        path_layout.addWidget(path_label)
-        path_layout.addWidget(self.inp_path)
-        path_layout.addWidget(self.btn_navigate)
-        layout.addLayout(path_layout)
-
-        # 中间：内置 QFileDialog
-        self.file_dialog = QFileDialog(self, "选择输入文件或目录")
-        self.file_dialog.setOption(QFileDialog.DontUseNativeDialog, True)
-        self.file_dialog.setFileMode(QFileDialog.ExistingFile)
-        parts = [
-            "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
-            "CSV Files (*.csv)",
-            "Excel Files (*.xlsx *.xls)",
-            "MomentTransfer (*.mtfmt *.mtdata)",
-            "All Files (*)",
-        ]
-        self.file_dialog.setNameFilter(";;".join(parts))
-
-        # 添加 file_dialog 的控件
-        fd_layout = self.file_dialog.layout()
-        if fd_layout is not None:
-            # 提取 file_dialog 的主控件（文件浏览器部分）
-            file_browser = self.file_dialog
-            layout.addWidget(file_browser, 1)
-
-        # 文件模式切换
-        chk_dir = QCheckBox("选择目录（而非单个文件）")
-        chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
-
-        def on_toggle_dir(checked):
-            if checked:
-                self.file_dialog.setFileMode(QFileDialog.Directory)
-                self.file_dialog.setOption(QFileDialog.ShowDirsOnly, True)
-            else:
-                self.file_dialog.setFileMode(QFileDialog.ExistingFile)
-                self.file_dialog.setOption(QFileDialog.ShowDirsOnly, False)
-
-        chk_dir.toggled.connect(on_toggle_dir)
-        layout.addWidget(chk_dir)
-
-        # 匹配模式行（仅在选择目录时启用）
-        pattern_layout = QHBoxLayout()
-        pattern_layout.setContentsMargins(0, 0, 0, 0)
-        pattern_label = QLabel("匹配模式:")
-        self.inp_pattern = QLineEdit("*.csv")
-        self.inp_pattern.setToolTip("文件名匹配模式，如 *.csv;*.xlsx；支持分号多模式")
-        self.cmb_pattern_preset = QComboBox()
-        self._pattern_presets = [
-            ("自定义", None),
-            ("仅 CSV", "*.csv"),
-            ("CSV + Excel", "*.csv;*.xlsx;*.xls"),
-            ("特殊格式", "*.mtfmt;*.mtdata;*.txt;*.dat"),
-            ("全部支持", "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"),
-        ]
-        for name, _pat in self._pattern_presets:
-            self.cmb_pattern_preset.addItem(name)
-
-        def _apply_preset(idx: int) -> None:
-            try:
-                if idx < 0 or idx >= len(self._pattern_presets):
-                    return
-                pat = self._pattern_presets[idx][1]
-                if not pat:
-                    return
-                try:
-                    self.inp_pattern.blockSignals(True)
-                    self.inp_pattern.setText(pat)
-                finally:
-                    self.inp_pattern.blockSignals(False)
-            except Exception:
-                logger.debug("apply preset failed", exc_info=True)
-
-        def _mark_custom(_text: str) -> None:
-            try:
-                if self.cmb_pattern_preset.currentIndex() != 0:
-                    self.cmb_pattern_preset.blockSignals(True)
-                    self.cmb_pattern_preset.setCurrentIndex(0)
-                    self.cmb_pattern_preset.blockSignals(False)
-            except Exception:
-                pass
-
-        try:
-            self.cmb_pattern_preset.currentIndexChanged.connect(_apply_preset)
-            self.inp_pattern.textEdited.connect(_mark_custom)
-        except Exception:
-            logger.debug("无法连接 pattern 信号", exc_info=True)
-
-        pattern_layout.addWidget(pattern_label)
-        pattern_layout.addWidget(self.inp_pattern)
-        pattern_layout.addWidget(self.cmb_pattern_preset)
-        layout.addLayout(pattern_layout)
-
-        # 底部：按钮
-        button_layout = QHBoxLayout()
-        self.btn_ok = QPushButton("确定")
-        self.btn_cancel = QPushButton("取消")
-        self.btn_ok.clicked.connect(self.accept)
-        self.btn_cancel.clicked.connect(self.reject)
-        button_layout.addStretch()
-        button_layout.addWidget(self.btn_ok)
-        button_layout.addWidget(self.btn_cancel)
-        layout.addLayout(button_layout)
-
-        # 连接 file_dialog 的选择变化以更新路径输入框
-        try:
-            self.file_dialog.currentChanged.connect(self._on_file_dialog_path_changed)
-            self.file_dialog.fileSelected.connect(self._on_file_dialog_file_selected)
-            self.file_dialog.directoryEntered.connect(
-                self._on_file_dialog_directory_entered
-            )
-        except Exception:
-            logger.debug("无法连接 file_dialog 信号", exc_info=True)
-
-        # 默认禁用匹配模式（仅文件模式）
-        pattern_label.setEnabled(False)
-        self.inp_pattern.setEnabled(False)
-        self.cmb_pattern_preset.setEnabled(False)
-
-        # 在目录切换时启用/禁用匹配模式
-        chk_dir.toggled.connect(pattern_label.setEnabled)
-        chk_dir.toggled.connect(self.inp_pattern.setEnabled)
-        chk_dir.toggled.connect(self.cmb_pattern_preset.setEnabled)
-
-    def _on_file_dialog_path_changed(self, path: str):
-        """当文件对话框中的路径改变时，更新路径输入框"""
-        try:
-            self.inp_path.blockSignals(True)
-            self.inp_path.setText(path)
-        finally:
-            self.inp_path.blockSignals(False)
-
-    def _on_file_dialog_file_selected(self, path: str):
-        """当文件对话框中选择文件时"""
-        try:
-            self.inp_path.blockSignals(True)
-            self.inp_path.setText(path)
-        finally:
-            self.inp_path.blockSignals(False)
-
-    def _on_file_dialog_directory_entered(self, path: str):
-        """当文件对话框中进入目录时"""
-        try:
-            self.inp_path.blockSignals(True)
-            self.inp_path.setText(path)
-        finally:
-            self.inp_path.blockSignals(False)
-
-    def _navigate_to_path(self):
-        """导航到输入框指定的路径"""
-        try:
-            path = self.inp_path.text().strip()
-            if not path:
-                return
-            p = Path(path)
-            if p.exists():
-                self.file_dialog.setDirectory(str(p))
-            else:
-                QMessageBox.warning(self, "警告", f"路径不存在: {path}")
-        except Exception as e:
-            logger.debug(f"导航失败: {e}")
-            QMessageBox.warning(self, "警告", f"导航失败: {e}")
-
-    def get_selected_path(self) -> Optional[str]:
-        """获取选定的路径"""
-        try:
-            selected = self.file_dialog.selectedFiles()
-            if selected:
-                return selected[0]
-        except Exception:
-            pass
-        return None
-
-    def get_pattern(self) -> str:
-        """获取匹配模式"""
-        return self.inp_pattern.text().strip() or "*.csv"
 
 
 class BatchManager:
@@ -1059,24 +851,14 @@ class BatchManager:
             if dlg.exec() != QDialog.Accepted:
                 return
 
-            # 从新对话框获取选定的路径
-            chosen_path_str = dlg.get_selected_path()
-            if not chosen_path_str:
+            selected = dlg.selectedFiles()
+            if not selected:
                 return
 
-            chosen_path = Path(chosen_path_str)
+            chosen_path = Path(selected[0])
 
             if hasattr(self.gui, "inp_batch_input"):
                 self.gui.inp_batch_input.setText(str(chosen_path))
-
-            # 从对话框获取匹配模式并更新 GUI
-            pattern = dlg.get_pattern()
-            if hasattr(self.gui, "inp_pattern"):
-                try:
-                    self.gui.inp_pattern.blockSignals(True)
-                    self.gui.inp_pattern.setText(pattern)
-                finally:
-                    self.gui.inp_pattern.blockSignals(False)
 
             # 统一由 BatchManager 扫描并填充文件列表
             self._scan_and_populate_files(chosen_path)
@@ -1093,40 +875,46 @@ class BatchManager:
             QMessageBox.critical(self.gui, "错误", f"浏览失败: {e}")
 
     def _create_browse_dialog(self):
-        """创建并配置选择输入文件或目录的对话框（增强型，含路径输入和匹配模式）。"""
-        return EnhancedFileDialog(self.gui)
+        """创建并配置选择输入文件或目录的 QFileDialog 实例（含目录切换复选框）。"""
+        dlg = QFileDialog(self.gui, "选择输入文件或目录")
+        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+        dlg.setFileMode(QFileDialog.ExistingFile)
+        parts = [
+            "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
+            "CSV Files (*.csv)",
+            "Excel Files (*.xlsx *.xls)",
+            "MomentTransfer (*.mtfmt *.mtdata)",
+        ]
+        dlg.setNameFilter(";;".join(parts))
+
+        # 允许切换目录模式
+        chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
+        chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
+        try:
+            layout = dlg.layout()
+            layout.addWidget(chk_dir)
+        except Exception:
+            pass
+
+        def on_toggle_dir(checked):
+            if checked:
+                dlg.setFileMode(QFileDialog.Directory)
+                dlg.setOption(QFileDialog.ShowDirsOnly, True)
+            else:
+                dlg.setFileMode(QFileDialog.ExistingFile)
+                dlg.setOption(QFileDialog.ShowDirsOnly, False)
+
+        try:
+            chk_dir.toggled.connect(on_toggle_dir)
+        except Exception:
+            pass
+
+        return dlg
 
     def _scan_and_populate_files(self, chosen_path: Path):
         """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。"""
         try:
             p = Path(chosen_path)
-            # 根据所选路径类型启用/禁用匹配模式控件：
-            try:
-                # 当选择单个文件时，将匹配模式控件与输入框灰掉，避免用户误操作；选择目录时恢复
-                is_file = p.is_file()
-                # 设置启用/禁用
-                if (
-                    hasattr(self.gui, "inp_pattern")
-                    and self.gui.inp_pattern is not None
-                ):
-                    try:
-                        self._set_control_enabled_with_style(
-                            self.gui.inp_pattern, not is_file
-                        )
-                    except Exception:
-                        pass
-                if (
-                    hasattr(self.gui, "cmb_pattern_preset")
-                    and self.gui.cmb_pattern_preset is not None
-                ):
-                    try:
-                        self._set_control_enabled_with_style(
-                            self.gui.cmb_pattern_preset, not is_file
-                        )
-                    except Exception:
-                        pass
-            except Exception:
-                logger.debug("设置匹配控件/输入框启用状态失败", exc_info=True)
             files, base_path = self._collect_files_for_scan(p)
 
             # 检查UI组件是否存在
@@ -1806,22 +1594,6 @@ class BatchManager:
         except Exception:
             logger.debug("refresh_file_statuses failed", exc_info=True)
 
-    def _on_pattern_changed(self):
-        """当匹配模式改变时，基于当前输入路径重新扫描并刷新文件列表。"""
-        try:
-            path_text = (
-                self.gui.inp_batch_input.text().strip()
-                if hasattr(self.gui, "inp_batch_input")
-                else ""
-            )
-            if not path_text:
-                return
-            chosen = Path(path_text)
-            if chosen.exists():
-                self._scan_and_populate_files(chosen)
-        except Exception:
-            logger.debug("_on_pattern_changed 处理失败", exc_info=True)
-
     def run_batch_processing(self):
         return _run_batch_processing_impl(self)
 
@@ -1876,19 +1648,13 @@ class BatchManager:
         return files
 
     def _get_patterns_from_widget(self):
-        """从 GUI 的 pattern 控件获取模式列表和原始显示文本。
+        """返回默认的文件匹配模式（匹配模式控件已移除）。
 
         返回 (patterns_list, pattern_display_text)
         """
-        pattern_widget = getattr(self.gui, "inp_pattern", None)
-        pattern_text = (
-            pattern_widget.text().strip()
-            if (pattern_widget and hasattr(pattern_widget, "text"))
-            else "*.csv"
-        )
+        # 使用默认的文件匹配模式（支持所有常见格式）
+        pattern_text = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
         patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
-        if not patterns:
-            patterns = ["*.csv"]
         return patterns, pattern_text
 
     def _collect_files_to_process(self, input_path: Path):
@@ -2033,9 +1799,6 @@ class BatchManager:
     # 文件来源相关的对外接口已移除
 
     # 对外提供与 gui.py 同名的委托入口（供 GUI 壳方法调用）
-    def on_pattern_changed(self):
-        return self._on_pattern_changed()
-
     def scan_and_populate_files(self, chosen_path: Path):
         return self._scan_and_populate_files(chosen_path)
 

@@ -105,7 +105,6 @@ class IntegratedAeroGUI(QMainWindow):
             on_batch_start=self.run_batch_processing,
             on_format_config=self.configure_data_format,
             on_browse=self.browse_batch_input,
-            on_pattern_changed=lambda: self._on_pattern_changed(),
             on_select_all=self._select_all_files,
             on_select_none=self._select_none_files,
             on_invert_selection=self._invert_file_selection,
@@ -316,13 +315,6 @@ class IntegratedAeroGUI(QMainWindow):
                             pass
         except Exception as e:
             logger.error("打开Project失败: %s", e)
-
-    def _on_pattern_changed(self):
-        """当匹配模式改变时刷新文件列表（委托给 BatchManager）。"""
-        try:
-            self.batch_manager.on_pattern_changed()
-        except Exception:
-            logger.debug("_on_pattern_changed delegated call failed", exc_info=True)
 
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""

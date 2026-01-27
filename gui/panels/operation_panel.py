@@ -24,7 +24,6 @@ class OperationPanel(QWidget):
         on_batch_start: Callable[[], None],
         on_format_config: Callable[[], None],
         on_browse: Callable[[], None],
-        on_pattern_changed: Callable[[], None],
         on_select_all: Callable[[], None],
         on_select_none: Callable[[], None],
         on_invert_selection: Callable[[], None],
@@ -51,7 +50,6 @@ class OperationPanel(QWidget):
             self.batch_panel.batchStartRequested.connect(on_batch_start)
             self.batch_panel.formatConfigRequested.connect(on_format_config)
             self.batch_panel.browseRequested.connect(on_browse)
-            self.batch_panel.patternChanged.connect(lambda _text: on_pattern_changed())
             self.batch_panel.selectAllRequested.connect(on_select_all)
             self.batch_panel.selectNoneRequested.connect(on_select_none)
             self.batch_panel.invertSelectionRequested.connect(on_invert_selection)
@@ -74,9 +72,10 @@ class OperationPanel(QWidget):
         gui_instance.file_form = bp.file_form
         gui_instance.inp_batch_input = bp.inp_batch_input
         gui_instance.btn_browse_input = bp.btn_browse_input
-        gui_instance.inp_pattern = bp.inp_pattern
-        gui_instance.cmb_pattern_preset = bp.cmb_pattern_preset
-        gui_instance._pattern_presets = bp._pattern_presets
+        # 匹配模式控件已移除，设置为None保持兼容性
+        gui_instance.inp_pattern = None
+        gui_instance.cmb_pattern_preset = None
+        gui_instance._pattern_presets = []
         gui_instance.file_list_widget = bp.file_list_widget
         gui_instance.file_tree = bp.file_tree
         gui_instance._file_tree_items = bp._file_tree_items
