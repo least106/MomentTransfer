@@ -149,7 +149,8 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             cidx = -1
                         if cidx is not None and cidx >= 0:
-                            tab.setTabEnabled(cidx, bool(self.data_loaded))
+                            # 在加载数据或加载配置后均允许进入参考系管理
+                            tab.setTabEnabled(cidx, bool(self.data_loaded or self.config_loaded))
             except Exception:
                 pass
 
