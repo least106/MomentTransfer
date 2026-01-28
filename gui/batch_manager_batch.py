@@ -187,8 +187,50 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
 
         try:
             if hasattr(manager.gui, "btn_batch"):
-                manager.gui.btn_batch.setEnabled(True)
-                manager.gui.btn_batch.setText("开始处理")
+                # 根据线程的停止请求判断是否为已取消状态
+                try:
+                    bt = getattr(manager, "batch_thread", None)
+                    cancelled = False
+                    if bt is not None:
+                        cancelled = bool(getattr(bt, "_stop_requested", False))
+                except Exception:
+                    cancelled = False
+
+                try:
+                    if cancelled:
+                        manager.gui.btn_batch.setEnabled(True)
+                        manager.gui.btn_batch.setText("已取消")
+                        try:
+                            # 显示短时状态栏消息并在两秒后恢复按钮文字
+                            from PySide6.QtCore import QTimer
+
+                            try:
+                                manager.gui.statusBar().showMessage("批处理已取消", 3000)
+                            except Exception:
+                                pass
+
+                            def _reset():
+                                try:
+                                    manager.gui.btn_batch.setText("开始处理")
+                                except Exception:
+                                    pass
+
+                            try:
+                                QTimer.singleShot(2000, _reset)
+                            except Exception:
+                                _reset()
+                        except Exception:
+                            pass
+                    else:
+                        manager.gui.btn_batch.setEnabled(True)
+                        manager.gui.btn_batch.setText("开始处理")
+                except Exception:
+                    # 回退到默认文本
+                    try:
+                        manager.gui.btn_batch.setEnabled(True)
+                        manager.gui.btn_batch.setText("开始处理")
+                    except Exception:
+                        pass
         except Exception:
             logger.debug("无法启用批处理按钮", exc_info=True)
 
@@ -207,27 +249,49 @@ def request_cancel_batch(manager):
     """请求取消正在运行的批处理任务（由 main_window 或 BatchManager 调用）。"""
     try:
         batch_thread = getattr(manager.gui, "batch_thread", None)
-        if batch_thread is not None:
-            if hasattr(manager.gui, "txt_batch_log"):
-                try:
-                    ts = datetime.now().strftime("%H:%M:%S")
-                    manager.gui.txt_batch_log.append(
-                        f"[{ts}] 用户请求取消任务，正在停止..."
-                    )
-                except Exception:
-                    pass
-            try:
-                batch_thread.request_stop()
-            except Exception:
-                logger.debug(
-                    "batch_thread.request_stop 调用失败（可能已结束）", exc_info=True
-                )
+        if batch_thread is None:
+            return
 
-            if hasattr(manager.gui, "btn_cancel"):
+        # 记录日志到界面
+        if hasattr(manager.gui, "txt_batch_log"):
+            try:
+                ts = datetime.now().strftime("%H:%M:%S")
+                manager.gui.txt_batch_log.append(f"[{ts}] 用户请求取消任务，正在停止...")
+            except Exception:
+                pass
+
+        # 立即在 UI 上显示取消中状态
+        try:
+            if hasattr(manager.gui, "btn_batch"):
                 try:
-                    manager.gui.btn_cancel.setEnabled(False)
+                    manager.gui.btn_batch.setText("取消中...")
+                    manager.gui.btn_batch.setEnabled(False)
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+        try:
+            if hasattr(manager.gui, "statusBar"):
+                try:
+                    manager.gui.statusBar().showMessage("取消请求已发送，正在停止...", 5000)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 调用线程取消接口
+        try:
+            batch_thread.request_stop()
+        except Exception:
+            logger.debug("batch_thread.request_stop 调用失败（可能已结束）", exc_info=True)
+
+        # 禁用取消按钮以避免重复请求
+        if hasattr(manager.gui, "btn_cancel"):
+            try:
+                manager.gui.btn_cancel.setEnabled(False)
+            except Exception:
+                pass
     except Exception:
         logger.debug("request_cancel_batch 失败", exc_info=True)
 

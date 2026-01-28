@@ -117,12 +117,21 @@ def _make_simple_preview_table(
     table.setColumnCount(cols + 1)
     try:
         # 在列名前加上序号，便于用户识别列索引（从1开始）
-        table.setHorizontalHeaderLabels(
-            ["选中"]
-            + [f"{i+1}\n{str(c)}" for i, c in enumerate(list(df.columns)[:cols])]
-        )
+        col_names = list(df.columns)[:cols]
+        display_headers = ["选中"] + [f"{i+1}\n{str(c)}" for i, c in enumerate(col_names)]
+        table._column_names = list(col_names)
+        table._display_headers = list(display_headers)
+        table.setHorizontalHeaderLabels(display_headers)
     except Exception:
-        pass
+        # 回退：保留纯列名
+        try:
+            col_names = [str(c) for c in list(df.columns)[:cols]]
+            table._column_names = list(col_names)
+            table._display_headers = ["选中"] + list(col_names)
+            table.setHorizontalHeaderLabels(table._display_headers)
+        except Exception:
+            table._column_names = []
+            table._display_headers = []
 
     for r in range(rows):
         cb = QCheckBox()

@@ -861,6 +861,10 @@ class BatchManager:
         try:
             dlg = self._create_browse_dialog()
 
+            # 若用户在前置选择中取消或发生错误，dlg 可能为 None
+            if dlg is None:
+                return
+
             if dlg.exec() != QDialog.Accepted:
                 return
 
@@ -908,39 +912,52 @@ class BatchManager:
             QMessageBox.critical(self.gui, "错误", f"浏览失败: {e}")
 
     def _create_browse_dialog(self):
-        """创建并配置选择输入文件或目录的 QFileDialog 实例（含目录切换复选框）。"""
-        dlg = QFileDialog(self.gui, "选择输入文件或目录")
-        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
-        dlg.setFileMode(QFileDialog.ExistingFile)
-        parts = [
-            "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
-            "CSV Files (*.csv)",
-            "Excel Files (*.xlsx *.xls)",
-            "MomentTransfer (*.mtfmt *.mtdata)",
-        ]
-        dlg.setNameFilter(";;".join(parts))
+        """创建并配置选择输入文件或目录的 QFileDialog 实例。
 
-        # 允许切换目录模式
-        chk_dir = QCheckBox("选择目录（切换到目录选择模式）")
-        chk_dir.setToolTip("勾选后可以直接选择文件夹；不勾选则选择单个数据文件。")
+        为避免 native 对话框或平台差异下内嵌复选框不可见或行为不一致，
+        先弹出一个简单选择对话框，让用户明确选择“文件”或“目录”。
+        返回一个已配置的 `QFileDialog` 实例；若用户取消则返回 None。
+        """
         try:
-            layout = dlg.layout()
-            layout.addWidget(chk_dir)
-        except Exception:
-            pass
+            # 先询问用户希望选择文件还是目录，保证一致性
+            mb = QMessageBox(self.gui)
+            mb.setWindowTitle("选择输入类型")
+            mb.setText("请选择要选择的类型：")
+            file_btn = mb.addButton("选择文件", QMessageBox.AcceptRole)
+            dir_btn = mb.addButton("选择目录", QMessageBox.AcceptRole)
+            cancel_btn = mb.addButton("取消", QMessageBox.RejectRole)
+            mb.setDefaultButton(file_btn)
+            mb.exec()
 
-        def on_toggle_dir(checked):
-            if checked:
+            clicked = mb.clickedButton()
+            # 如果用户选择取消或关闭对话框，返回 None
+            if clicked is None or clicked == cancel_btn:
+                return None
+
+            choose_dir = clicked == dir_btn
+        except Exception:
+            # 若弹出前置对话失败，回退到原有行为（选择文件模式）
+            logger.debug("前置选择对话失败，回退到默认文件选择模式", exc_info=True)
+            choose_dir = False
+
+        dlg = QFileDialog(self.gui, "选择输入")
+        # 让系统决定是否使用 native dialog（不要强制禁用 native）
+        try:
+            if choose_dir:
                 dlg.setFileMode(QFileDialog.Directory)
                 dlg.setOption(QFileDialog.ShowDirsOnly, True)
             else:
                 dlg.setFileMode(QFileDialog.ExistingFile)
-                dlg.setOption(QFileDialog.ShowDirsOnly, False)
 
-        try:
-            chk_dir.toggled.connect(on_toggle_dir)
+            parts = [
+                "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
+                "CSV Files (*.csv)",
+                "Excel Files (*.xlsx *.xls)",
+                "MomentTransfer (*.mtfmt *.mtdata)",
+            ]
+            dlg.setNameFilter(";;".join(parts))
         except Exception:
-            pass
+            logger.debug("创建文件选择对话框时发生错误，尝试最小化回退", exc_info=True)
 
         return dlg
 
@@ -1735,8 +1752,11 @@ class BatchManager:
             # 恢复 GUI 状态并提示错误
             self._restore_gui_after_batch(enable_undo=False)
             QMessageBox.critical(self.gui, "错误", f"批处理出错: {error_msg}")
+            # 返回 True 表示该 manager 已展示用户可见的错误提示，调用方无需重复展示
+            return True
         except Exception as e:
             logger.error(f"处理错误事件失败: {e}")
+            return False
 
     def _record_batch_history(self, status: str = "completed") -> None:
         """记录批处理历史并刷新右侧历史面板。"""

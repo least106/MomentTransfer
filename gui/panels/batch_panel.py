@@ -389,6 +389,17 @@ class BatchPanel(QWidget):
 
         layout.addWidget(self.file_tree)
 
+        # 未保存配置指示器（在文件列表上方明显显示）
+        try:
+            self.lbl_unsaved_indicator = QLabel("● 有未保存配置")
+            self.lbl_unsaved_indicator.setStyleSheet("color: #d9534f; font-weight: bold;")
+            self.lbl_unsaved_indicator.setVisible(False)
+            self.lbl_unsaved_indicator.setToolTip(
+                "检测到未保存的配置。开始批处理会提示保存，或在文件列表中查看详情。"
+            )
+            layout.addWidget(self.lbl_unsaved_indicator)
+        except Exception:
+            logger.debug("创建未保存配置指示器失败（非致命）", exc_info=True)
         return widget
 
     def _on_load_config_clicked(self) -> None:
@@ -587,3 +598,21 @@ class BatchPanel(QWidget):
                 self.tab_main.setCurrentIndex(1)
             except Exception:
                 pass
+
+    def set_unsaved_indicator(self, unsaved: bool) -> None:
+        """设置文件列表上方的未保存配置指示器的可见性和提示文本。"""
+        try:
+            if not hasattr(self, "lbl_unsaved_indicator"):
+                return
+            self.lbl_unsaved_indicator.setVisible(bool(unsaved))
+            try:
+                if unsaved:
+                    self.lbl_unsaved_indicator.setToolTip(
+                        "检测到未保存的配置。开始批处理会提示保存。"
+                    )
+                else:
+                    self.lbl_unsaved_indicator.setToolTip("")
+            except Exception:
+                logger.debug("更新未保存指示器提示失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("set_unsaved_indicator 失败（非致命）", exc_info=True)
