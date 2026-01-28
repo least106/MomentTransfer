@@ -82,7 +82,7 @@ class InitializationManager:
             try:
                 splitter.setSizes([1000, 0])
             except Exception:
-                pass
+                logger.debug("设置分割器初始大小失败（可忽略）", exc_info=True)
 
             # 简单包装以兼容旧的侧边栏 API（提供 toggle_panel/is_expanded）
             class BottomDock:
@@ -101,7 +101,7 @@ class InitializationManager:
                         self._widget.setVisible(True)
                         self._bar.setVisible(True)
                     except Exception:
-                        pass
+                        logger.debug("显示底部面板失败（非致命）", exc_info=True)
 
                 def hide_panel(self) -> None:
                     try:
@@ -116,7 +116,7 @@ class InitializationManager:
                         if not any_visible:
                             self._bar.setVisible(False)
                     except Exception:
-                        pass
+                        logger.debug("隐藏底部面板失败（非致命）", exc_info=True)
 
                 def is_expanded(self) -> bool:
                     try:
@@ -147,14 +147,14 @@ class InitializationManager:
                             try:
                                 splitter.setSizes([800, 200])
                             except Exception:
-                                pass
+                                logger.debug("展开底部栏时调整分割器大小失败（非致命）", exc_info=True)
                         else:
                             try:
                                 splitter.setSizes([1000, 0])
                             except Exception:
-                                pass
+                                logger.debug("折叠底部栏时调整分割器大小失败（非致命）", exc_info=True)
                     except Exception:
-                        pass
+                        logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
 
                 self.main_window.chk_bottom_bar_toolbar.toggled.connect(_toggle_bottom_bar)
             except Exception:
@@ -175,7 +175,7 @@ class InitializationManager:
                 try:
                     self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
                 except Exception:
-                    pass
+                    logger.debug("回退到状态栏消息显示失败（非致命）", exc_info=True)
 
             logger.info("UI 组件初始化成功")
         except Exception as e:
@@ -247,13 +247,13 @@ class InitializationManager:
                                 except Exception:
                                     logger.debug("扫描文件失败", exc_info=True)
                         except Exception:
-                            pass
+                            logger.debug("处理 inp_batch_input 编辑完成回调失败（非致命）", exc_info=True)
 
                     try:
                         bp.editingFinished.connect(_on_input_edit_finished)
                     except Exception:
-                        # 有些 Qt 版本或组件可能不支持该信号，忽略绑定失败
-                        pass
+                        # 有些 Qt 版本或组件可能不支持该信号，记录并忽略绑定失败
+                        logger.debug("绑定 inp_batch_input.editingFinished 失败（兼容性问题）", exc_info=True)
             except Exception:
                 logger.debug("绑定 inp_batch_input 编辑完成信号失败", exc_info=True)
         except Exception as e:
@@ -312,14 +312,14 @@ class InitializationManager:
             logger.debug("绑定 configLoaded 失败", exc_info=True)
 
         # 初始刷新一次控件状态（确保开始/保存/选项卡按需禁用）
-        try:
-            if hasattr(self.main_window, "_refresh_controls_state"):
                 try:
-                    self.main_window._refresh_controls_state()
+                    if hasattr(self.main_window, "_refresh_controls_state"):
+                        try:
+                            self.main_window._refresh_controls_state()
+                        except Exception:
+                            logger.debug("刷新控件状态失败（非致命）", exc_info=True)
                 except Exception:
-                    pass
-        except Exception:
-            pass
+                    logger.debug("调度刷新控件状态失败（非致命）", exc_info=True)
 
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
@@ -431,21 +431,20 @@ class InitializationManager:
             # 合并为一次定时调用，减少启动时的多次视觉刷新
             def _do_initial_updates():
                 try:
-                    if (
-                        hasattr(self.main_window, "layout_manager")
-                        and self.main_window.layout_manager
-                    ):
-                        self.main_window.layout_manager.update_button_layout()
+                    lm = getattr(self.main_window, "layout_manager", None)
+                    if lm:
+                        try:
+                            # 仅在确实需要调整按钮布局时才执行更新与强制刷新，避免重复昂贵操作
+                            if getattr(lm, "needs_button_layout_update", lambda: False)():
+                                lm.update_button_layout()
+                                try:
+                                    lm.force_layout_refresh()
+                                except Exception:
+                                    logger.debug("强制刷新布局失败（非致命）", exc_info=True)
+                        except Exception:
+                            logger.debug("更新初始布局失败（非致命）", exc_info=True)
                 except Exception:
-                    pass
-                try:
-                    if (
-                        hasattr(self.main_window, "layout_manager")
-                        and self.main_window.layout_manager
-                    ):
-                        self.main_window.layout_manager.force_layout_refresh()
-                except Exception:
-                    pass
+                    logger.debug("调度初始布局更新时发生错误", exc_info=True)
 
             QTimer.singleShot(120, _do_initial_updates)
         except Exception:
