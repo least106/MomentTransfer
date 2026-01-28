@@ -109,6 +109,14 @@ class IntegratedAeroGUI(QMainWindow):
     def mark_data_loaded(self) -> None:
         """标记已加载数据文件并刷新控件状态"""
         try:
+            # 委托给 UIStateManager 以集中管理状态变化
+            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                try:
+                    self.ui_state_manager.set_data_loaded(True)
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.set_data_loaded 调用失败，回退到直接设置", exc_info=True)
+
             self.data_loaded = True
             self._refresh_controls_state()
         except Exception:
@@ -117,6 +125,13 @@ class IntegratedAeroGUI(QMainWindow):
     def mark_config_loaded(self) -> None:
         """标记已加载配置并刷新控件状态"""
         try:
+            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                try:
+                    self.ui_state_manager.set_config_loaded(True)
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.set_config_loaded 调用失败，回退到直接设置", exc_info=True)
+
             self.config_loaded = True
             self._refresh_controls_state()
         except Exception:
@@ -128,6 +143,13 @@ class IntegratedAeroGUI(QMainWindow):
         与 data_loaded/config_loaded 区分，避免仅加载即启用保存。
         """
         try:
+            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                try:
+                    self.ui_state_manager.mark_user_modified()
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.mark_user_modified 调用失败，回退到直接设置", exc_info=True)
+
             self.operation_performed = True
             self._refresh_controls_state()
         except Exception:
@@ -136,34 +158,14 @@ class IntegratedAeroGUI(QMainWindow):
     def _refresh_controls_state(self) -> None:
         """根据当前状态标志启用/禁用按钮与选项卡。"""
         try:
-            # 将控件状态刷新委托给 UIStateManager
+            # 集中化状态管理：始终通过 UIStateManager 负责控件状态刷新。
             if hasattr(self, "ui_state_manager") and self.ui_state_manager:
-                try:
-                    self.ui_state_manager.refresh_controls_state()
-                    return
-                except Exception:
-                    logger.debug("ui_state_manager.refresh_controls_state 调用失败，回退到本地实现", exc_info=True)
-
-            # 回退实现（仅在 UIStateManager 不可用时使用）
-            start_enabled = bool(self.data_loaded and self.config_loaded)
-            for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
-                try:
-                    btn = getattr(self, name, None)
-                    if btn is not None:
-                        btn.setEnabled(bool(start_enabled))
-                except Exception as e:
-                    logger.debug("设置启动按钮状态失败（非致命）: %s", e, exc_info=True)
-
-            save_enabled = bool(self.operation_performed)
-            for name in ("btn_save_project_toolbar",):
-                try:
-                    btn = getattr(self, name, None)
-                    if btn is not None:
-                        btn.setEnabled(bool(save_enabled))
-                except Exception as e:
-                    logger.debug("设置保存按钮状态失败（非致命）: %s", e, exc_info=True)
+                self.ui_state_manager.refresh_controls_state()
+                return
+            # 若缺少 UIStateManager，记录错误以便诊断（保守地不做本地回退）
+            logger.error("无法刷新控件状态：UIStateManager 不存在")
         except Exception:
-            logger.debug("_refresh_controls_state failed", exc_info=True)
+            logger.exception("_refresh_controls_state failed")
 
     def create_config_panel(self):
         """创建配置编辑器面板（由 InitializationManager 调用）"""
@@ -279,41 +281,11 @@ class IntegratedAeroGUI(QMainWindow):
             logger.error("保存配置失败: %s", e)
 
     def apply_config(self):
-        """应用当前配置到计算器 - 委托给 ConfigManager"""
-        try:
-            self.config_manager.apply_config()
-            # 应用配置后：提示用户是否切换到文件列表（避免打断当前任务）
-            try:
-                reply = QMessageBox.question(
-                    self,
-                    "配置已应用",
-                    "配置已应用。是否切换到文件列表以查看文件？",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
-                )
-            except Exception as e:
-                logger.debug("显示切换提示对话框失败（将不切换）: %s", e, exc_info=True)
-                reply = QMessageBox.No
-
-            if reply == QMessageBox.Yes:
-                try:
-                    if hasattr(self, "tab_main"):
-                        tab = self.tab_main
-                        idx = -1
-                        try:
-                            idx = tab.indexOf(getattr(self, "file_list_widget", None))
-                        except Exception:
-                            idx = -1
-                        if idx is None or idx == -1:
-                            idx = 0
-                        tab.setCurrentIndex(idx)
-                except Exception as e:
-                    logger.debug("切换到文件列表失败（非致命）: %s", e, exc_info=True)
-        except AttributeError:
-            # 如果管理器未初始化，记录警告
-            logger.warning("配置Manager 未初始化，无法应用配置")
-        except Exception as e:
-            logger.error("应用配置失败: %s", e)
+        # 已移除：应用配置的交互逻辑。
+        # 该方法曾用于把面板配置应用为“全局 calculator”，
+        # 当前语义改为由批处理在运行时按文件创建计算器，
+        # 因此不再支持通过此入口应用配置。
+        logger.debug("apply_config 已被移除（no-op）")
 
     # 配置格式方法委托给 ConfigManager
     # 已移除全局数据格式配置功能（改为 per-file sidecar / registry 机制）
