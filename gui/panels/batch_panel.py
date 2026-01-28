@@ -37,7 +37,6 @@ class BatchPanel(QWidget):
 
     # 信号定义
     batchStartRequested = Signal()  # 请求开始批处理
-    formatConfigRequested = Signal()  # 请求配置数据格式
     undoRequested = Signal()  # 请求撤销
     browseRequested = Signal()  # 请求浏览输入路径
     selectAllRequested = Signal()  # 全选文件
@@ -557,22 +556,6 @@ class BatchPanel(QWidget):
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setAlignment(Qt.AlignTop)
-
-        # 数据格式配置按钮
-        self.btn_config_format = QPushButton("⚙ 配置\n数据格式")
-        try:
-            self.btn_config_format.setObjectName("secondaryButton")
-            self.btn_config_format.setShortcut("Ctrl+Shift+F")
-        except Exception:
-            pass
-        self.btn_config_format.setToolTip("设置会话级别的全局数据格式")
-        self.btn_config_format.setFixedWidth(100)
-        self.btn_config_format.setFixedHeight(50)
-        self.btn_config_format.clicked.connect(self.formatConfigRequested.emit)
-        # 新流程：不再使用“配置数据格式”按钮（格式相关逻辑交由 per-file/特殊格式解析负责）。
-        # 为保持旧代码兼容，保留对象但隐藏/禁用。
-        self.btn_config_format.setVisible(False)
-        self.btn_config_format.setEnabled(False)
 
         layout.addStretch()
 

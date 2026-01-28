@@ -15,8 +15,20 @@ MomentTransfer GUI 主窗口模块
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QMessageBox,
+    QDialog,
+    QVBoxLayout,
+    QPlainTextEdit,
+    QPushButton,
+    QHBoxLayout,
+)
+from PySide6.QtCore import QUrl, Qt, QTimer
+from PySide6.QtGui import QDesktopServices
 
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
@@ -123,7 +135,15 @@ class IntegratedAeroGUI(QMainWindow):
     def _refresh_controls_state(self) -> None:
         """根据当前状态标志启用/禁用按钮与选项卡。"""
         try:
-            # Start 按钮：仅在已加载数据且已加载配置时启用
+            # 将控件状态刷新委托给 UIStateManager
+            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                try:
+                    self.ui_state_manager.refresh_controls_state()
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.refresh_controls_state 调用失败，回退到本地实现", exc_info=True)
+
+            # 回退实现（仅在 UIStateManager 不可用时使用）
             start_enabled = bool(self.data_loaded and self.config_loaded)
             for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
                 try:
@@ -133,37 +153,6 @@ class IntegratedAeroGUI(QMainWindow):
                 except Exception as e:
                     logger.debug("设置启动按钮状态失败（非致命）: %s", e, exc_info=True)
 
-            # 数据管理选项卡：在没有加载数据时禁用
-            try:
-                if hasattr(self, "tab_main") and hasattr(self, "file_list_widget"):
-                    tab = self.tab_main
-                    idx = -1
-                    try:
-                        idx = tab.indexOf(getattr(self, "file_list_widget", None))
-                    except Exception:
-                        idx = -1
-                    if idx is not None and idx >= 0:
-                        tab.setTabEnabled(idx, bool(self.data_loaded))
-            except Exception as e:
-                logger.debug("设置数据管理选项卡状态失败（非致命）: %s", e, exc_info=True)
-
-            # 参考系管理（配置）选项卡：使用实际插入的 ConfigPanel 来定位并在没有加载数据文件时禁止切换
-            try:
-                if hasattr(self, "tab_main"):
-                    tab = self.tab_main
-                    config_panel = getattr(self, "config_panel", None)
-                    if config_panel is not None:
-                        try:
-                            cidx = tab.indexOf(config_panel)
-                        except Exception:
-                            cidx = -1
-                        if cidx is not None and cidx >= 0:
-                            # 在加载数据或加载配置后均允许进入参考系管理
-                            tab.setTabEnabled(cidx, bool(self.data_loaded or self.config_loaded))
-            except Exception as e:
-                logger.debug("设置参考系管理选项卡状态失败（非致命）: %s", e, exc_info=True)
-
-            # 保存按钮：在没有任何操作前禁用
             save_enabled = bool(self.operation_performed)
             for name in ("btn_save_project_toolbar",):
                 try:
@@ -172,23 +161,6 @@ class IntegratedAeroGUI(QMainWindow):
                         btn.setEnabled(bool(save_enabled))
                 except Exception as e:
                     logger.debug("设置保存按钮状态失败（非致命）: %s", e, exc_info=True)
-
-            try:
-                if hasattr(self, "batch_panel"):
-                    try:
-                        self.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
-                    except Exception as e:
-                        logger.debug("设置 batch_panel 保存按钮状态失败（非致命）: %s", e, exc_info=True)
-            except Exception as e:
-                logger.debug("访问 batch_panel 失败（非致命）: %s", e, exc_info=True)
-            try:
-                if hasattr(self, "config_panel"):
-                    try:
-                        self.config_panel.btn_save.setEnabled(bool(save_enabled))
-                    except Exception as e:
-                        logger.debug("设置 config_panel 保存按钮失败（非致命）: %s", e, exc_info=True)
-            except Exception:
-                logger.debug("访问 config_panel 失败（非致命）", exc_info=True)
         except Exception:
             logger.debug("_refresh_controls_state failed", exc_info=True)
 
@@ -207,7 +179,6 @@ class IntegratedAeroGUI(QMainWindow):
         panel = OperationPanel(
             parent=self,
             on_batch_start=self.run_batch_processing,
-            on_format_config=self.configure_data_format,
             on_browse=self.browse_batch_input,
             on_select_all=self._select_all_files,
             on_select_none=self._select_none_files,
@@ -242,7 +213,8 @@ class IntegratedAeroGUI(QMainWindow):
                 return sb.is_expanded()
         except Exception:
             logger.debug("toggle_config_sidebar failed", exc_info=True)
-        return False
+            # 返回 None 表示发生错误，调用方不要将其误解释为已收起
+            return None
 
     def toggle_history_sidebar(self) -> bool:
         """切换批处理历史侧边栏，返回当前是否展开。"""
@@ -253,7 +225,8 @@ class IntegratedAeroGUI(QMainWindow):
                 return sb.is_expanded()
         except Exception:
             logger.debug("toggle_history_sidebar failed", exc_info=True)
-        return False
+            # 返回 None 表示发生错误，调用方不要将其误解释为已收起
+            return None
 
     def _quick_select(self):
         if self.batch_manager:
@@ -342,22 +315,7 @@ class IntegratedAeroGUI(QMainWindow):
             logger.error("应用配置失败: %s", e)
 
     # 配置格式方法委托给 ConfigManager
-    def configure_data_format(self):
-        # 全局数据格式配置已移除：请使用 per-file format（file-sidecar/目录 format.json/registry）。
-        try:
-            QMessageBox.information(
-                self,
-                "提示",
-                "已移除全局数据格式配置。\n"
-                "请为每类数据文件提供 format.json（同目录）或 <文件名>.format.json（侧车），"
-                "或使用 registry 进行格式匹配。",
-            )
-        except Exception as e:
-            logger.error("显示数据格式提示对话框失败: %s", e)
-            try:
-                QMessageBox.critical(self, "错误", f"无法显示提示对话框: {e}")
-            except Exception:
-                logger.debug("无法显示消息框（非致命）", exc_info=True)
+    # 已移除全局数据格式配置功能（改为 per-file sidecar / registry 机制）
 
     def browse_batch_input(self):
         """选择输入文件或目录 - 委托给 BatchManager"""
@@ -536,9 +494,117 @@ class IntegratedAeroGUI(QMainWindow):
                 "以及 Target 配置中的 MomentCenter/Q/S。"
             )
             dlg.setDetailedText(str(error_msg))
+            # 保留模态对话框以确保用户注意到严重错误
             dlg.exec()
         except Exception:
-            logger.debug("无法显示错误对话框", exc_info=True)
+            logger.debug("无法显示错误对话框（非致命）", exc_info=True)
+
+        # 非阻塞通知：在状态栏添加“查看详情”按钮，点击打开非模态详情对话框
+        try:
+            # 移除旧的按钮（如果存在）
+            try:
+                old_btn = getattr(self, "_batch_error_btn", None)
+                if old_btn is not None:
+                    try:
+                        self.statusBar().removeWidget(old_btn)
+                    except Exception:
+                        old_btn.setVisible(False)
+            except Exception:
+                pass
+
+            btn = QPushButton("查看详情", self)
+            btn.setToolTip("在非模态窗口中查看错误详情，并可复制或打开日志文件")
+            btn.clicked.connect(lambda: self._show_non_modal_error_details(str(error_msg)))
+            self._batch_error_btn = btn
+            try:
+                self.statusBar().addPermanentWidget(btn)
+            except Exception:
+                # 若不支持 addPermanentWidget，回退到简短消息
+                self.statusBar().showMessage("发生错误，查看日志以获取更多信息")
+
+            # 在 2 分钟后自动移除该按钮以避免长期占用状态栏
+            def _remove_btn():
+                try:
+                    b = getattr(self, "_batch_error_btn", None)
+                    if b is not None:
+                        try:
+                            self.statusBar().removeWidget(b)
+                        except Exception:
+                            b.setVisible(False)
+                        try:
+                            del self._batch_error_btn
+                        except Exception:
+                            pass
+                except Exception:
+                    logger.debug("清除状态栏错误按钮失败（非致命）", exc_info=True)
+
+            try:
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(_remove_btn)
+                timer.start(120000)
+            except Exception:
+                pass
+
+            try:
+                self.statusBar().showMessage("批处理出错 — 点击 '查看详情' 获取更多信息")
+            except Exception:
+                logger.debug("无法在状态栏显示消息（非致命）", exc_info=True)
+
+        except Exception:
+            logger.debug("设置非阻塞错误通知失败（非致命）", exc_info=True)
+
+    def _show_non_modal_error_details(self, error_msg: str) -> None:
+        """在非模态对话框中显示错误详情，提供复制与打开日志的功能。"""
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle("错误详情")
+            dlg.setModal(False)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+
+            layout = QVBoxLayout(dlg)
+            text = QPlainTextEdit(dlg)
+            text.setReadOnly(True)
+            text.setPlainText(error_msg)
+            layout.addWidget(text)
+
+            btn_layout = QHBoxLayout()
+            copy_btn = QPushButton("复制错误", dlg)
+            open_log_btn = QPushButton("打开日志文件", dlg)
+            close_btn = QPushButton("关闭", dlg)
+
+            btn_layout.addWidget(copy_btn)
+            btn_layout.addWidget(open_log_btn)
+            btn_layout.addStretch(1)
+            btn_layout.addWidget(close_btn)
+            layout.addLayout(btn_layout)
+
+            def _copy():
+                try:
+                    QApplication.clipboard().setText(str(error_msg))
+                except Exception:
+                    logger.debug("复制错误到剪贴板失败（非致命）", exc_info=True)
+
+            def _open_log():
+                try:
+                    from pathlib import Path
+
+                    log_file = Path.home() / ".momenttransfer" / "momenttransfer.log"
+                    if log_file.exists():
+                        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_file)))
+                    else:
+                        QMessageBox.information(dlg, "日志未找到", f"未找到日志文件: {log_file}")
+                except Exception:
+                    logger.debug("打开日志文件失败（非致命）", exc_info=True)
+
+            copy_btn.clicked.connect(_copy)
+            open_log_btn.clicked.connect(_open_log)
+            close_btn.clicked.connect(dlg.close)
+
+            dlg.resize(700, 400)
+            dlg.show()
+        except Exception:
+            logger.debug("显示非模态错误详情失败（非致命）", exc_info=True)
 
     BUTTON_LAYOUT_THRESHOLD = 720
 

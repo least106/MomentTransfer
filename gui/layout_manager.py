@@ -49,7 +49,6 @@ class LayoutManager:
 
         # 取出已有按钮实例
         btns = [
-            getattr(self.gui, "btn_config_format", None),
             getattr(self.gui, "btn_batch", None),
             getattr(self.gui, "btn_cancel", None),
         ]

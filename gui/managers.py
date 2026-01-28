@@ -771,7 +771,6 @@ class UIStateManager:
                 getattr(self.parent, "btn_load", None),
                 getattr(self.parent, "btn_save", None),
                 getattr(self.parent, "btn_apply", None),
-                getattr(self.parent, "btn_config_format", None),
                 getattr(self.parent, "btn_batch", None),
             ]
             for w in widgets:
@@ -800,3 +799,102 @@ class UIStateManager:
                     func(locked)
             except Exception:
                 pass
+
+    def refresh_controls_state(self) -> None:
+        """集中刷新所有控件的启用/禁用状态。
+
+        该方法读取主窗口的状态标志（`data_loaded`, `config_loaded`,
+        `operation_performed`），并统一更新相关按钮与选项卡的状态。
+        将以前散落在主窗口的方法集中到此处以便维护。
+        """
+        try:
+            parent = self.parent
+            # Start 按钮：仅在已加载数据且已加载配置时启用
+            start_enabled = bool(getattr(parent, "data_loaded", False) and getattr(parent, "config_loaded", False))
+            for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
+                try:
+                    btn = getattr(parent, name, None)
+                    if btn is not None:
+                        btn.setEnabled(bool(start_enabled))
+                except Exception:
+                    # 非致命，记录到日志而不是抛出
+                    import logging
+
+                    logging.getLogger(__name__).debug("设置启动按钮状态失败（非致命）", exc_info=True)
+
+            # 数据管理选项卡：在没有加载数据时禁用
+            try:
+                if hasattr(parent, "tab_main") and hasattr(parent, "file_list_widget"):
+                    tab = parent.tab_main
+                    idx = -1
+                    try:
+                        idx = tab.indexOf(getattr(parent, "file_list_widget", None))
+                    except Exception:
+                        idx = -1
+                    if idx is not None and idx >= 0:
+                        tab.setTabEnabled(idx, bool(getattr(parent, "data_loaded", False)))
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("设置数据管理选项卡状态失败（非致命）", exc_info=True)
+
+            # 参考系管理（配置）选项卡
+            try:
+                if hasattr(parent, "tab_main"):
+                    tab = parent.tab_main
+                    config_panel = getattr(parent, "config_panel", None)
+                    if config_panel is not None:
+                        try:
+                            cidx = tab.indexOf(config_panel)
+                        except Exception:
+                            cidx = -1
+                        if cidx is not None and cidx >= 0:
+                            tab.setTabEnabled(cidx, bool(getattr(parent, "data_loaded", False) or getattr(parent, "config_loaded", False)))
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("设置参考系管理选项卡状态失败（非致命）", exc_info=True)
+
+            # 保存按钮：在没有任何操作前禁用
+            save_enabled = bool(getattr(parent, "operation_performed", False))
+            for name in ("btn_save_project_toolbar",):
+                try:
+                    btn = getattr(parent, name, None)
+                    if btn is not None:
+                        btn.setEnabled(bool(save_enabled))
+                except Exception:
+                    import logging
+
+                    logging.getLogger(__name__).debug("设置保存按钮状态失败（非致命）", exc_info=True)
+
+            try:
+                if hasattr(parent, "batch_panel"):
+                    try:
+                        parent.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
+                    except Exception:
+                        import logging
+
+                        logging.getLogger(__name__).debug("设置 batch_panel 保存按钮状态失败（非致命）", exc_info=True)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("访问 batch_panel 失败（非致命）", exc_info=True)
+
+            try:
+                if hasattr(parent, "config_panel"):
+                    try:
+                        parent.config_panel.btn_save.setEnabled(bool(save_enabled))
+                    except Exception:
+                        import logging
+
+                        logging.getLogger(__name__).debug("设置 config_panel 保存按钮失败（非致命）", exc_info=True)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("访问 config_panel 失败（非致命）", exc_info=True)
+
+        except Exception:
+            # 最后兜底：记录错误但不抛出，避免在 UI 更新时中断
+            import logging
+
+            logging.getLogger(__name__).debug("refresh_controls_state 失败（非致命）", exc_info=True)
