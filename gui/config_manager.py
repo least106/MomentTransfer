@@ -391,117 +391,64 @@ class ConfigManager:
         # 默认返回 False（若未显式返回 True 则视为未保存成功）
         return False
 
-    def apply_config(self):
-        """应用当前配置到计算器"""
+    def get_simple_payload_snapshot(self):
+        """返回当前已加载配置的简化快照，格式与 `save_config` 使用的 data 保持一致。
+
+        返回 None 表示没有可比较的已加载配置。
+        """
         try:
-            # 关键：apply_config 不能把多 Part 配置“缩成”单一 Part。
-            # 否则用户切换下拉时会找不到其它 Part 的变体。
+            project = getattr(self.gui, "current_config", None) or getattr(
+                self, "project_config_model", None
+            )
+            if project is None:
+                return None
 
-            # 先把当前面板上的编辑保存回模型（仅更新当前选择的 Part，不影响其它 Part）
+            # project 可能是 ProjectData 或 ProjectConfigModel；优先使用 ProjectData
+            src_payload = None
+            tgt_payload = None
             try:
-                pm = getattr(self.gui, "part_manager", None)
-                if pm:
-                    pm.save_current_source_part()
-                    pm.save_current_target_part()
+                # 若为 ProjectData，使用 get_source_part/get_target_part
+                src_names = list(project.source_parts.keys()) if hasattr(project, "source_parts") else []
+                if src_names:
+                    frame = project.get_source_part(src_names[0], 0)
+                else:
+                    frame = getattr(project, "source_config", None)
+                if frame is not None:
+                    src_payload = self._frame_to_payload(frame)
             except Exception:
-                logger.debug("apply_config: 保存当前 Part 失败", exc_info=True)
-
-            # 以完整 ProjectConfigModel 生成 ProjectData
-            data = None
-            try:
-                mm = getattr(self.gui, "model_manager", None)
-                model = mm.project_model if mm else None
-                if model:
-                    data = model.to_dict()
-            except Exception:
-                logger.debug("apply_config: 从 project_model 导出失败", exc_info=True)
-
-            if data is None:
-                # 回退：仅当没有模型时，才用面板构造最小配置
-                src_variant = self.gui.source_panel.to_variant_payload()
-                tgt_variant = self.gui.target_panel.to_variant_payload()
-                src_part = {
-                    "PartName": src_variant.get("PartName", "Global"),
-                    "Variants": [src_variant],
-                }
-                tgt_part = {
-                    "PartName": tgt_variant.get("PartName", "Target"),
-                    "Variants": [tgt_variant],
-                }
-                data = {
-                    "Source": {"Parts": [src_part]},
-                    "Target": {"Parts": [tgt_part]},
-                }
-                try:
-                    mm = getattr(self.gui, "model_manager", None)
-                    if mm is None:
-                        logger.warning("ModelManager 缺失，无法同步回退模型")
-                    else:
-                        model_built = ProjectConfigModel.from_dict(data)
-                        mm.project_model = model_built
-                except Exception:
-                    logger.debug(
-                        "apply_config: 回退构造 ProjectConfigModel 失败",
-                        exc_info=True,
-                    )
-
-            mm = getattr(self.gui, "model_manager", None)
-            if mm is None:
-                logger.warning("ModelManager 缺失，无法应用配置")
-                return
-            mm.current_config = ProjectData.from_dict(data)
-            # 确保顶层 gui 对象也保有最新 ProjectData，便于其它模块直接读取
-            try:
-                self.gui.current_config = mm.current_config
-            except Exception:
-                logger.debug(
-                    "apply_config: 同步 current_config 到 gui 失败", exc_info=True
-                )
-            try:
-                self.gui.project_model = mm.project_model
-            except Exception:
-                logger.debug(
-                    "apply_config: 同步 project_model 到 gui 失败", exc_info=True
-                )
-
-            # 不再创建“全局 calculator”，避免批处理对所有文件套用同一组 source/target。
-            # 现在的语义是：用户在文件列表为每个文件（或每个 source part）选择 target，
-            # 批处理线程会按文件动态创建 AeroCalculator。
-            try:
-                mm.calculator = None
-            except Exception:
-                pass
+                src_payload = None
 
             try:
-                self.gui.statusBar().showMessage(
-                    "配置已更新：请在文件列表为每个文件选择 source/target"
-                )
+                tgt_names = list(project.target_parts.keys()) if hasattr(project, "target_parts") else []
+                if tgt_names:
+                    frame = project.get_target_part(tgt_names[0], 0)
+                else:
+                    frame = None
+                if frame is not None:
+                    tgt_payload = self._frame_to_payload(frame)
             except Exception:
-                pass
+                tgt_payload = None
 
-            try:
-                QMessageBox.information(
-                    self.gui,
-                    "成功",
-                    "配置已更新！\n请在文件列表为每个文件选择 source/target 后再运行批处理。",
-                )
-            except Exception:
-                pass
+            if src_payload is None and tgt_payload is None:
+                return None
 
-            try:
-                self.gui.update_config_preview()
-            except Exception:
-                logger.debug("update_config_preview 失败", exc_info=True)
-            # 发射 SignalBus 事件
-            try:
-                self.signal_bus.configApplied.emit()
-            except Exception:
-                logger.debug("发射 configApplied 失败", exc_info=True)
+            src_part = {"PartName": src_payload.get("PartName", "Global"), "Variants": [src_payload]} if src_payload else {"PartName": "Global", "Variants": []}
+            tgt_part = {"PartName": tgt_payload.get("PartName", "Target"), "Variants": [tgt_payload]} if tgt_payload else {"PartName": "Target", "Variants": []}
 
-        except ValueError as e:
-            QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
-        except Exception as e:
-            QMessageBox.critical(self.gui, "应用失败", f"配置应用失败:\n{str(e)}")
+            return {"Source": {"Parts": [src_part]}, "Target": {"Parts": [tgt_part]}}
+        except Exception:
+            logger.debug("生成配置快照失败", exc_info=True)
+            return None
+
+    def apply_config(self):
+        """已移除：原用于将配置应用为全局 calculator 的逻辑。
+
+        当前代码库已改为在批处理运行时按文件创建计算器，
+        因此通过此方法“应用配置”的语义已废弃。
+
+        为保持向后兼容，保留该方法签名但不执行任何变更操作，仅记录调试信息。
+        """
+        logger.debug("ConfigManager.apply_config 已被移除（no-op）")
 
     def is_config_modified(self):
         """返回配置是否被修改"""
