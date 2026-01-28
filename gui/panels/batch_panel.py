@@ -239,10 +239,18 @@ class BatchPanel(QWidget):
                         win.mark_data_loaded()
                     except Exception:
                         pass
-                else:
+                elif win is not None:
                     try:
+                        # 优先通过 UIStateManager 设置（若存在）
+                        if hasattr(win, "ui_state_manager") and getattr(win, "ui_state_manager"):
+                            try:
+                                win.ui_state_manager.set_data_loaded(True)
+                                return
+                            except Exception:
+                                pass
+
                         # 兼容性回退：直接设置属性并刷新（若方法不存在）
-                        if win is not None:
+                        try:
                             win.data_loaded = True
                             # 不再把加载标记视为用户修改：仅刷新状态
                             if hasattr(win, "_refresh_controls_state"):
@@ -250,6 +258,8 @@ class BatchPanel(QWidget):
                                     win._refresh_controls_state()
                                 except Exception:
                                     pass
+                        except Exception:
+                            pass
                     except Exception:
                         pass
             except Exception:
