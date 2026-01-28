@@ -46,6 +46,9 @@ class CoordinateSystemPanel(QGroupBox):
         """
         super().__init__(title, parent)
         self.prefix = prefix
+        # 在程序化更新面板值时抑制 valuesChanged 发射
+        # 使用计数以支持嵌套的静默更新调用
+        self._silent_update_count = 0
         self._current_part_name = "TestModel"
 
         # 获取 SignalBus 并连接监听
@@ -65,9 +68,26 @@ class CoordinateSystemPanel(QGroupBox):
     def _emit_values_changed(self, *args):
         """统一处理带参数的信号，转为无参 valuesChanged。"""
         try:
+            if getattr(self, "_silent_update_count", 0) > 0:
+                return
             self.valuesChanged.emit()
         except Exception:
             logger.debug("valuesChanged 发射失败", exc_info=True)
+
+    def begin_silent_update(self):
+        """在批量程序化更新前调用以抑制 valuesChanged 信号（可嵌套）。"""
+        try:
+            self._silent_update_count = getattr(self, "_silent_update_count", 0) + 1
+        except Exception:
+            self._silent_update_count = 1
+
+    def end_silent_update(self):
+        """结束一次静默更新调用；仅当计数归零时恢复 valuesChanged。"""
+        try:
+            cnt = getattr(self, "_silent_update_count", 0) - 1
+            self._silent_update_count = cnt if cnt > 0 else 0
+        except Exception:
+            self._silent_update_count = 0
 
     @staticmethod
     def _get_float(widget, default: float = 0.0) -> float:
@@ -300,13 +320,21 @@ class CoordinateSystemPanel(QGroupBox):
     def set_coord_data(self, data: dict):
         """设置坐标系数据"""
         row_keys = ["Orig", "X", "Y", "Z", "MomentCenter"]
-        for row, key in enumerate(row_keys):
-            if key in data:
-                values = data[key]
-                for col in range(min(3, len(values))):
-                    self.coord_table.setItem(
-                        row, col, QTableWidgetItem(str(values[col]))
-                    )
+        # 使用静默更新以避免程序化设置时触发 valuesChanged
+        try:
+            self.begin_silent_update()
+            for row, key in enumerate(row_keys):
+                if key in data:
+                    values = data[key]
+                    for col in range(min(3, len(values))):
+                        self.coord_table.setItem(
+                            row, col, QTableWidgetItem(str(values[col]))
+                        )
+        finally:
+            try:
+                self.end_silent_update()
+            except Exception:
+                pass
 
     def get_reference_values(self) -> dict:
         """获取参考量"""
@@ -335,10 +363,18 @@ class CoordinateSystemPanel(QGroupBox):
 
     def set_reference_values(self, cref: float, bref: float, sref: float, q: float):
         """设置参考量"""
-        self.cref_input.setText(str(cref))
-        self.bref_input.setText(str(bref))
-        self.sref_input.setText(str(sref))
-        self.q_input.setText(str(q))
+        # 使用静默更新以避免程序化设置时触发 valuesChanged
+        try:
+            self.begin_silent_update()
+            self.cref_input.setText(str(cref))
+            self.bref_input.setText(str(bref))
+            self.sref_input.setText(str(sref))
+            self.q_input.setText(str(q))
+        finally:
+            try:
+                self.end_silent_update()
+            except Exception:
+                pass
 
     def apply_variant_payload(self, payload: dict):
         """将 Variant 字典数据填充到面板。"""
@@ -369,8 +405,7 @@ class CoordinateSystemPanel(QGroupBox):
             "MomentCenter": mc if mc is not None else [0.0, 0.0, 0.0],
         }
         logger.debug("%s apply_variant_payload: coord_data=%s", self.prefix, coord_data)
-        self.set_coord_data(coord_data)
-
+        # 参考量
         cref = payload.get("Cref", payload.get("C_ref", 1.0))
         bref = payload.get("Bref", payload.get("B_ref", 1.0))
         sref = payload.get("Sref", payload.get("S_ref", 10.0))
@@ -378,7 +413,17 @@ class CoordinateSystemPanel(QGroupBox):
         logger.debug(
             f"{self.prefix} apply_variant_payload: cref={cref}, bref={bref}, sref={sref}, q={q_val}"
         )
-        self.set_reference_values(cref, bref, sref, q_val)
+
+        # 在批量填充时使用静默更新，避免触发 valuesChanged
+        try:
+            self.begin_silent_update()
+            self.set_coord_data(coord_data)
+            self.set_reference_values(cref, bref, sref, q_val)
+        finally:
+            try:
+                self.end_silent_update()
+            except Exception:
+                pass
 
     def to_variant_payload(self, override_part_name: str = None) -> dict:
         """从面板生成 Variant 字典数据。"""
