@@ -21,6 +21,9 @@ class FileSelectionManager:
 
     def __init__(self, parent: QWidget):
         self.parent = parent
+        # 内部锁计数：允许嵌套的锁请求（例如批处理启动/子流程），
+        # 仅当计数为0->1时真正禁用控件，计数回退到0时恢复控件。
+        self._lock_count = 0
         # 特殊格式映射：{str(file): {source_part: target_part}}
         self.special_part_mapping_by_file: Dict[str, Dict[str, str]] = {}
         # 特殊格式选中行：{str(file): {source_part: set(row_idx)}}
@@ -765,8 +768,30 @@ class UIStateManager:
             return
 
     def set_controls_locked(self, locked: bool) -> None:
-        # 直接实现控件锁定/解锁行为，避免再次委托到父对象导致递归。
+        # 支持嵌套锁定：使用计数器来避免竞态或重复释放导致的状态不一致
         try:
+            if bool(locked):
+                # 增加锁计数，只有由0->1时才真正禁用控件
+                try:
+                    prev = getattr(self, "_lock_count", 0)
+                    self._lock_count = prev + 1
+                except Exception:
+                    self._lock_count = 1
+                if self._lock_count > 1:
+                    # 已经被锁定，不需要重复应用
+                    return
+            else:
+                # 解除锁：减少计数但不低于0；只有计数回退到0时才恢复控件
+                try:
+                    prev = getattr(self, "_lock_count", 0)
+                    self._lock_count = max(0, prev - 1)
+                except Exception:
+                    self._lock_count = 0
+                if self._lock_count > 0:
+                    # 仍有内层锁请求，不恢复控件
+                    return
+
+            # 实际应用启用/禁用到控件（当需要时）
             widgets = [
                 getattr(self.parent, "btn_load", None),
                 getattr(self.parent, "btn_save", None),
@@ -776,14 +801,14 @@ class UIStateManager:
             for w in widgets:
                 try:
                     if w is not None:
-                        w.setEnabled(not bool(locked))
+                        w.setEnabled(not bool(self._lock_count))
                 except Exception:
                     pass
 
             # 取消按钮在锁定时应保持可见/可用
             try:
                 if hasattr(self.parent, "btn_cancel"):
-                    if locked:
+                    if self._lock_count > 0:
                         self.parent.btn_cancel.setVisible(True)
                         self.parent.btn_cancel.setEnabled(True)
                     else:
@@ -811,16 +836,56 @@ class UIStateManager:
             parent = self.parent
             # Start 按钮：仅在已加载数据且已加载配置时启用
             start_enabled = bool(getattr(parent, "data_loaded", False) and getattr(parent, "config_loaded", False))
+
+            # 检查配置是否被修改，用于展示 tooltip 和文件列表上的未保存指示
+            config_modified = False
+            try:
+                cfg_mgr = getattr(parent, "config_manager", None)
+                if cfg_mgr is not None and hasattr(cfg_mgr, "is_config_modified"):
+                    try:
+                        config_modified = bool(cfg_mgr.is_config_modified())
+                    except Exception:
+                        import logging
+
+                        logging.getLogger(__name__).debug("检测配置是否修改失败（非致命）", exc_info=True)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("访问 config_manager 失败（非致命）", exc_info=True)
+
+            base_tooltip = "开始批量处理（Ctrl+R）"
             for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
                 try:
                     btn = getattr(parent, name, None)
                     if btn is not None:
                         btn.setEnabled(bool(start_enabled))
+                        try:
+                            tt = base_tooltip
+                            if config_modified:
+                                tt = f"{tt}（检测到未保存配置 — 开始将提示保存）"
+                            btn.setToolTip(tt)
+                        except Exception:
+                            # 忽略 tooltip 设置失败
+                            pass
                 except Exception:
                     # 非致命，记录到日志而不是抛出
                     import logging
 
-                    logging.getLogger(__name__).debug("设置启动按钮状态失败（非致命）", exc_info=True)
+                    logging.getLogger(__name__).debug("设置启动按钮状态或 tooltip 失败（非致命）", exc_info=True)
+
+            # 将未保存配置的可视指示同步到 BatchPanel（文件列表上方）
+            try:
+                if hasattr(parent, "batch_panel") and parent.batch_panel is not None:
+                    try:
+                        parent.batch_panel.set_unsaved_indicator(config_modified)
+                    except Exception:
+                        import logging
+
+                        logging.getLogger(__name__).debug("设置 batch_panel 未保存指示器失败（非致命）", exc_info=True)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("访问 parent.batch_panel 失败（非致命）", exc_info=True)
 
             # 数据管理选项卡：在没有加载数据时禁用
             try:

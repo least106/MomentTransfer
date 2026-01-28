@@ -16,6 +16,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Optional
+import traceback
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -411,6 +412,18 @@ class IntegratedAeroGUI(QMainWindow):
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""
         try:
+            # 保护性检查：确保关键管理器已初始化，避免在初始化期间触发批处理
+            if not getattr(self, "batch_manager", None) or not getattr(self, "config_manager", None):
+                try:
+                    QMessageBox.information(
+                        self,
+                        "功能暂不可用",
+                        "系统尚未就绪（正在初始化或管理器未启动），请稍候再试。",
+                    )
+                except Exception:
+                    logger.debug("显示未就绪提示失败（非致命）", exc_info=True)
+                return
+
             # 检查配置是否被修改
             if self.config_manager and self.config_manager.is_config_modified():
                 reply = QMessageBox.question(
@@ -429,18 +442,51 @@ class IntegratedAeroGUI(QMainWindow):
                         logger.error("保存配置时发生异常: %s", e, exc_info=True)
                         saved = False
 
+                    # 如果保存失败，允许用户重试、继续（不保存）或取消操作
                     if not saved:
                         try:
-                            QMessageBox.critical(
-                                self,
-                                "保存失败",
-                                "配置保存失败，已取消批处理。",
-                            )
-                        except Exception:
-                            logger.debug("无法显示保存失败对话框", exc_info=True)
-                        return
+                            while True:
+                                mb = QMessageBox(self)
+                                mb.setWindowTitle("保存失败")
+                                mb.setText("配置保存失败。请选择操作：")
+                                mb.setInformativeText(
+                                    "可以重试保存、继续（不保存）或取消批处理启动。"
+                                )
+                                btn_retry = mb.addButton("重试", QMessageBox.AcceptRole)
+                                btn_continue = mb.addButton(
+                                    "继续（不保存）", QMessageBox.DestructiveRole
+                                )
+                                btn_cancel = mb.addButton("取消", QMessageBox.RejectRole)
+                                mb.setDefaultButton(btn_retry)
+                                mb.exec()
 
-                    logger.debug("配置已保存，继续执行批处理")
+                                clicked = mb.clickedButton()
+                                if clicked == btn_retry:
+                                    try:
+                                        saved = self.config_manager.save_config()
+                                    except Exception as e:
+                                        logger.error(
+                                            "重试保存时发生异常: %s", e, exc_info=True
+                                        )
+                                        saved = False
+                                    if saved:
+                                        logger.debug("重试保存成功，继续执行批处理")
+                                        break
+                                    # 否则循环继续，允许再次重试/选择其他操作
+                                elif clicked == btn_continue:
+                                    logger.warning(
+                                        "用户选择继续而不保存配置，批处理将使用未保存的配置运行"
+                                    )
+                                    break
+                                else:
+                                    logger.debug("用户取消了批处理启动（保存失败后）")
+                                    return
+                        except Exception:
+                            logger.debug("保存失败处理对话异常，已取消批处理", exc_info=True)
+                            return
+
+                    else:
+                        logger.debug("配置已保存，继续执行批处理")
 
                 # 用户选择取消：中断批处理
                 elif reply == QMessageBox.Cancel:
@@ -465,92 +511,58 @@ class IntegratedAeroGUI(QMainWindow):
 
     def on_batch_error(self, error_msg):
         """批处理出错 - 委托给 BatchManager"""
+        handled = False
         try:
-            self.batch_manager.on_batch_error(error_msg)
-        except AttributeError:
-            logger.warning("BatchManager 未初始化")
-        except Exception as e:
-            logger.error("处理批处理错误事件失败: %s", e)
-            try:
-                if hasattr(self, "btn_cancel"):
-                    self.btn_cancel.setVisible(False)
-                    self.btn_cancel.setEnabled(False)
-            except Exception:
-                logger.debug(
-                    "Failed to hide/disable cancel button after error",
-                    exc_info=True,
-                )
+            if self.batch_manager:
+                try:
+                    # 如果 BatchManager 在内部已经展示了错误（modal/非modal），
+                    # 则它应返回 True，表示主窗口无需重复提示。
+                    handled = bool(self.batch_manager.on_batch_error(error_msg))
+                except Exception as e:
+                    logger.error("处理批处理错误事件失败: %s", e)
+                    try:
+                        if hasattr(self, "btn_cancel"):
+                            self.btn_cancel.setVisible(False)
+                            self.btn_cancel.setEnabled(False)
+                    except Exception:
+                        logger.debug(
+                            "Failed to hide/disable cancel button after error",
+                            exc_info=True,
+                        )
+            else:
+                logger.warning("BatchManager 未初始化")
+        except Exception:
+            logger.debug("on_batch_error top-level delegation failed", exc_info=True)
 
-        # 友好的错误提示，包含可行建议
+        # 如果 manager 已经处理错误，则不再由主窗口重复展示提示
+        if handled:
+            return
+
+        # 友好的错误提示，包含可行建议（主窗口退回的展示）
         try:
-            dlg = QMessageBox(self)
-            dlg.setIcon(QMessageBox.Critical)
-            dlg.setWindowTitle("处理失败")
-            dlg.setText(
-                "批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。"
+            # 使用统一的模态通知（严重错误需用户确认）
+            self.notify_modal(
+                title="处理失败",
+                message="批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。",
+                informative=(
+                    "建议：检查 per-file 格式定义（<文件名>.format.json / 同目录 format.json / registry），"
+                    "以及 Target 配置中的 MomentCenter/Q/S。"
+                ),
+                detailed=str(error_msg),
+                icon=QMessageBox.Critical,
             )
-            dlg.setInformativeText(
-                "建议：检查 per-file 格式定义（<文件名>.format.json / 同目录 format.json / registry），"
-                "以及 Target 配置中的 MomentCenter/Q/S。"
-            )
-            dlg.setDetailedText(str(error_msg))
-            # 保留模态对话框以确保用户注意到严重错误
-            dlg.exec()
         except Exception:
             logger.debug("无法显示错误对话框（非致命）", exc_info=True)
 
         # 非阻塞通知：在状态栏添加“查看详情”按钮，点击打开非模态详情对话框
         try:
-            # 移除旧的按钮（如果存在）
-            try:
-                old_btn = getattr(self, "_batch_error_btn", None)
-                if old_btn is not None:
-                    try:
-                        self.statusBar().removeWidget(old_btn)
-                    except Exception:
-                        old_btn.setVisible(False)
-            except Exception:
-                pass
-
-            btn = QPushButton("查看详情", self)
-            btn.setToolTip("在非模态窗口中查看错误详情，并可复制或打开日志文件")
-            btn.clicked.connect(lambda: self._show_non_modal_error_details(str(error_msg)))
-            self._batch_error_btn = btn
-            try:
-                self.statusBar().addPermanentWidget(btn)
-            except Exception:
-                # 若不支持 addPermanentWidget，回退到简短消息
-                self.statusBar().showMessage("发生错误，查看日志以获取更多信息")
-
-            # 在 2 分钟后自动移除该按钮以避免长期占用状态栏
-            def _remove_btn():
-                try:
-                    b = getattr(self, "_batch_error_btn", None)
-                    if b is not None:
-                        try:
-                            self.statusBar().removeWidget(b)
-                        except Exception:
-                            b.setVisible(False)
-                        try:
-                            del self._batch_error_btn
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.debug("清除状态栏错误按钮失败（非致命）", exc_info=True)
-
-            try:
-                timer = QTimer(self)
-                timer.setSingleShot(True)
-                timer.timeout.connect(_remove_btn)
-                timer.start(120000)
-            except Exception:
-                pass
-
-            try:
-                self.statusBar().showMessage("批处理出错 — 点击 '查看详情' 获取更多信息")
-            except Exception:
-                logger.debug("无法在状态栏显示消息（非致命）", exc_info=True)
-
+            # 使用统一的非模态通知（信息性/可稍后查看）
+            self.notify_nonmodal(
+                summary="批处理出错 — 点击 '查看详情' 获取更多信息",
+                details=str(error_msg),
+                duration_ms=120000,
+                button_text="查看详情",
+            )
         except Exception:
             logger.debug("设置非阻塞错误通知失败（非致命）", exc_info=True)
 
@@ -589,11 +601,30 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     from pathlib import Path
 
-                    log_file = Path.home() / ".momenttransfer" / "momenttransfer.log"
+                    # 优先通过 LoggingManager 获取日志路径（若可用）
+                    try:
+                        from gui.log_manager import LoggingManager
+
+                        lm = LoggingManager(self)
+                        log_file = lm.get_log_file_path() or (Path.home() / ".momenttransfer" / "momenttransfer.log")
+                    except Exception:
+                        log_file = Path.home() / ".momenttransfer" / "momenttransfer.log"
+
+                    log_dir = log_file.parent
                     if log_file.exists():
                         QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_file)))
+                    elif log_dir.exists():
+                        # 若日志文件不存在但目录存在，打开目录以便用户查看或收集日志
+                        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir)))
                     else:
-                        QMessageBox.information(dlg, "日志未找到", f"未找到日志文件: {log_file}")
+                        try:
+                            QMessageBox.information(
+                                dlg,
+                                "日志未找到",
+                                f"未找到日志文件: {log_file}\n日志目录: {log_dir}",
+                            )
+                        except Exception:
+                            logger.debug("无法显示日志未找到提示（非致命）", exc_info=True)
                 except Exception:
                     logger.debug("打开日志文件失败（非致命）", exc_info=True)
 
@@ -605,6 +636,85 @@ class IntegratedAeroGUI(QMainWindow):
             dlg.show()
         except Exception:
             logger.debug("显示非模态错误详情失败（非致命）", exc_info=True)
+
+    def notify_modal(self, title: str, message: str, informative: str = None, detailed: str = None, icon=QMessageBox.Information) -> None:
+        """统一的模态通知接口：用于致命或需要用户立刻决定的场景。"""
+        try:
+            dlg = QMessageBox(self)
+            dlg.setIcon(icon)
+            dlg.setWindowTitle(title)
+            dlg.setText(message)
+            if informative:
+                dlg.setInformativeText(informative)
+            if detailed:
+                dlg.setDetailedText(detailed)
+            dlg.exec()
+        except Exception:
+            logger.debug("notify_modal failed (non-fatal)", exc_info=True)
+
+    def notify_nonmodal(self, summary: str, details: str = None, duration_ms: int = 120000, button_text: str = "查看详情") -> None:
+        """统一的非模态通知：在状态栏显示 summary，并提供查看 details 的非模态入口。"""
+        try:
+            # 清理旧按钮
+            try:
+                old = getattr(self, "_notification_btn", None)
+                if old is not None:
+                    try:
+                        self.statusBar().removeWidget(old)
+                    except Exception:
+                        old.setVisible(False)
+            except Exception:
+                pass
+
+            if details is None:
+                try:
+                    self.statusBar().showMessage(summary)
+                    return
+                except Exception:
+                    logger.debug("statusBar showMessage failed (non-fatal)", exc_info=True)
+
+            btn = QPushButton(button_text, self)
+            btn.setToolTip(summary)
+            btn.clicked.connect(lambda: self._show_non_modal_error_details(details))
+            self._notification_btn = btn
+            try:
+                self.statusBar().addPermanentWidget(btn)
+            except Exception:
+                try:
+                    self.statusBar().showMessage(summary)
+                except Exception:
+                    logger.debug("statusBar fallback failed (non-fatal)", exc_info=True)
+
+            # 自动移除按钮
+            def _remove():
+                try:
+                    b = getattr(self, "_notification_btn", None)
+                    if b is not None:
+                        try:
+                            self.statusBar().removeWidget(b)
+                        except Exception:
+                            b.setVisible(False)
+                        try:
+                            del self._notification_btn
+                        except Exception:
+                            pass
+                except Exception:
+                    logger.debug("清除非模态通知按钮失败（非致命）", exc_info=True)
+
+            try:
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(_remove)
+                timer.start(duration_ms)
+            except Exception:
+                logger.debug("notification timer creation failed (non-fatal)", exc_info=True)
+
+            try:
+                self.statusBar().showMessage(summary)
+            except Exception:
+                logger.debug("statusBar showMessage failed after adding button (non-fatal)", exc_info=True)
+        except Exception:
+            logger.debug("notify_nonmodal failed (non-fatal)", exc_info=True)
 
     BUTTON_LAYOUT_THRESHOLD = 720
 
@@ -747,9 +857,24 @@ def _initialize_exception_hook():
 
         # 如果主窗口正在初始化，记录异常但不显示弹窗
         if main_window and getattr(main_window, "_is_initializing", False):
-            logger.debug(
-                f"初始化期间捕获异常（被抑制）: {exc_type.__name__}: {exc_value}"
-            )
+            # 记录完整 traceback 到日志
+            try:
+                tb_text = "".join(traceback.format_exception(exc_type, exc_value, traceback_obj))
+            except Exception:
+                tb_text = f"{exc_type.__name__}: {exc_value}"
+            logger.debug("初始化期间捕获异常（被抑制）: %s", tb_text)
+
+            # 使用统一的非模态通知入口展示初始化错误
+            try:
+                main_window.notify_nonmodal(
+                    summary="初始化异常，查看详情",
+                    details=tb_text,
+                    duration_ms=300000,
+                    button_text="查看初始化错误",
+                )
+            except Exception:
+                logger.debug("在状态栏显示初始化错误入口失败（非致命）", exc_info=True)
+
             return
 
         # 否则使用原始钩子显示异常

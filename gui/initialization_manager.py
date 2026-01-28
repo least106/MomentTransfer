@@ -430,7 +430,9 @@ class InitializationManager:
 
             btn_start = QPushButton("开始处理")
             btn_start.setMaximumWidth(80)
-            btn_start.setToolTip("开始批量处理（Ctrl+R）")
+            # 初始化期间默认禁用开始按钮，避免在管理器未就绪时触发批处理
+            btn_start.setEnabled(False)
+            btn_start.setToolTip("正在初始化，功能暂不可用 — 稍后将自动启用或刷新")
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
 
