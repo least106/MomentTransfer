@@ -149,6 +149,22 @@ class LayoutManager:
             finally:
                 self._is_updating_layout = False
 
+        def needs_button_layout_update(self, threshold=None) -> bool:
+            """判断是否需要更新按钮布局（用于避免不必要的刷新调用）。
+
+            返回 True 表示当前窗口宽度与已记录的按钮方向不一致，需调用
+            `update_button_layout()` 进行调整。
+            """
+            try:
+                if threshold is None:
+                    threshold = self._current_threshold
+                w = self.gui.width() if hasattr(self.gui, "width") else threshold
+                desired = "horizontal" if w >= threshold else "vertical"
+                return getattr(self, "_btn_orientation", None) != desired
+            except Exception:
+                # 保守起见：当判断失败时不触发额外更新
+                return False
+
     def on_resize_event(self, event):
         """窗口大小改变事件"""
         try:
