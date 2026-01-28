@@ -48,6 +48,16 @@ class ProjectManager:
             except Exception:
                 logger.debug("reset config failed", exc_info=True)
 
+            # 标记为用户已修改，以便启用保存按钮和相关 UI 控件
+            try:
+                if hasattr(self.gui, "mark_user_modified") and callable(self.gui.mark_user_modified):
+                    try:
+                        self.gui.mark_user_modified()
+                    except Exception:
+                        logger.debug("mark_user_modified 调用失败（非致命）", exc_info=True)
+            except Exception:
+                pass
+
             logger.info("新项目已创建")
             return True
         except Exception as e:
