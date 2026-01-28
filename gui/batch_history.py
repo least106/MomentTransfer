@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
 )
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class BatchHistoryStore:
     """管理批处理历史的简单持久化存储。"""
 
@@ -38,6 +43,7 @@ class BatchHistoryStore:
                 if isinstance(data, list):
                     self.records = data
         except Exception:
+            logger.debug("加载批处理历史失败，使用空记录", exc_info=True)
             self.records = []
 
     def save(self) -> None:
@@ -47,7 +53,7 @@ class BatchHistoryStore:
                 encoding="utf-8",
             )
         except Exception:
-            pass
+            logger.exception("保存批处理历史到 %s 失败", self.store_path)
 
     def add_record(
         self,
