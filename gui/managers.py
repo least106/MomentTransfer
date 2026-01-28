@@ -21,6 +21,11 @@ class FileSelectionManager:
 
     def __init__(self, parent: QWidget):
         self.parent = parent
+        # 将 UI 级别状态迁移到此管理器内部（single source of truth）
+        # 同时在设置时尝试同步回 parent 属性以兼容可能直接访问 parent 属性的旧代码。
+        self._data_loaded = False
+        self._config_loaded = False
+        self._operation_performed = False
         # 内部锁计数：允许嵌套的锁请求（例如批处理启动/子流程），
         # 仅当计数为0->1时真正禁用控件，计数回退到0时恢复控件。
         self._lock_count = 0
@@ -835,7 +840,7 @@ class UIStateManager:
         try:
             parent = self.parent
             # Start 按钮：仅在已加载数据且已加载配置时启用
-            start_enabled = bool(getattr(parent, "data_loaded", False) and getattr(parent, "config_loaded", False))
+            start_enabled = bool(self.is_data_loaded() and self.is_config_loaded())
 
             # 检查配置是否被修改，用于展示 tooltip 和文件列表上的未保存指示
             config_modified = False
@@ -873,6 +878,25 @@ class UIStateManager:
 
                     logging.getLogger(__name__).debug("设置启动按钮状态或 tooltip 失败（非致命）", exc_info=True)
 
+            # 更新状态栏右侧的永久提示标签：当可以开始时提示用户开始批处理
+            try:
+                from PySide6.QtWidgets import QLabel
+
+                lbl = parent.statusBar().findChild(QLabel, "statusMessage")
+                if lbl is not None:
+                    try:
+                        if bool(start_enabled):
+                            lbl.setText("准备开始处理：点击开始处理")
+                        else:
+                            # 若尚未加载数据，回到步骤1提示；否则保持原有文本不覆盖（避免误改）
+                            if not bool(self.is_data_loaded()):
+                                lbl.setText("步骤1：选择文件或目录")
+                    except Exception:
+                        pass
+            except Exception:
+                # 忽略对状态栏永久标签更新失败
+                pass
+
             # 将未保存配置的可视指示同步到 BatchPanel（文件列表上方）
             try:
                 if hasattr(parent, "batch_panel") and parent.batch_panel is not None:
@@ -897,7 +921,7 @@ class UIStateManager:
                     except Exception:
                         idx = -1
                     if idx is not None and idx >= 0:
-                        tab.setTabEnabled(idx, bool(getattr(parent, "data_loaded", False)))
+                        tab.setTabEnabled(idx, bool(self.is_data_loaded()))
             except Exception:
                 import logging
 
@@ -914,19 +938,24 @@ class UIStateManager:
                         except Exception:
                             cidx = -1
                         if cidx is not None and cidx >= 0:
-                            tab.setTabEnabled(cidx, bool(getattr(parent, "data_loaded", False) or getattr(parent, "config_loaded", False)))
+                            tab.setTabEnabled(cidx, bool(self.is_data_loaded() or self.is_config_loaded()))
             except Exception:
                 import logging
 
                 logging.getLogger(__name__).debug("设置参考系管理选项卡状态失败（非致命）", exc_info=True)
 
             # 保存按钮：在没有任何操作前禁用
-            save_enabled = bool(getattr(parent, "operation_performed", False))
+            save_enabled = bool(self.is_operation_performed())
+            # 如果主窗口标记为临时禁用 project 按钮，则保持禁用状态
+            project_buttons_disabled = bool(getattr(parent, "_project_buttons_temporarily_disabled", False))
             for name in ("btn_save_project_toolbar",):
                 try:
                     btn = getattr(parent, name, None)
                     if btn is not None:
-                        btn.setEnabled(bool(save_enabled))
+                        if project_buttons_disabled:
+                            btn.setEnabled(False)
+                        else:
+                            btn.setEnabled(bool(save_enabled))
                 except Exception:
                     import logging
 
@@ -935,7 +964,11 @@ class UIStateManager:
             try:
                 if hasattr(parent, "batch_panel"):
                     try:
-                        parent.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
+                        # 同上：若临时禁用，则保持禁用
+                        if project_buttons_disabled:
+                            parent.batch_panel.btn_save_project.setEnabled(False)
+                        else:
+                            parent.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
                     except Exception:
                         import logging
 
@@ -963,3 +996,73 @@ class UIStateManager:
             import logging
 
             logging.getLogger(__name__).debug("refresh_controls_state 失败（非致命）", exc_info=True)
+
+    # 状态设置辅助方法，鼓励通过 UIStateManager 管理窗口级状态
+    def set_data_loaded(self, loaded: bool) -> None:
+        """设置数据已加载标志并刷新控件状态。"""
+        try:
+            self._data_loaded = bool(loaded)
+            try:
+                setattr(self.parent, "data_loaded", bool(loaded))
+            except Exception:
+                pass
+            self.refresh_controls_state()
+        except Exception:
+            return
+
+    def set_config_loaded(self, loaded: bool) -> None:
+        """设置配置已加载标志并刷新控件状态。"""
+        try:
+            self._config_loaded = bool(loaded)
+            try:
+                setattr(self.parent, "config_loaded", bool(loaded))
+            except Exception:
+                pass
+            self.refresh_controls_state()
+        except Exception:
+            return
+
+    def set_operation_performed(self, performed: bool) -> None:
+        """设置用户已执行操作标志（用于启用保存按钮）。"""
+        try:
+            self._operation_performed = bool(performed)
+            try:
+                setattr(self.parent, "operation_performed", bool(performed))
+            except Exception:
+                pass
+            self.refresh_controls_state()
+        except Exception:
+            return
+
+    def mark_user_modified(self) -> None:
+        """快捷方法：标记为用户已修改并刷新状态。"""
+        try:
+            self.set_operation_performed(True)
+        except Exception:
+            pass
+
+    def clear_user_modified(self) -> None:
+        """快捷方法：清除用户修改标志并刷新状态。"""
+        try:
+            self.set_operation_performed(False)
+        except Exception:
+            pass
+
+    # 状态查询方法，封装对 parent 属性的读取
+    def is_data_loaded(self) -> bool:
+        try:
+            return bool(getattr(self, "_data_loaded", False))
+        except Exception:
+            return False
+
+    def is_config_loaded(self) -> bool:
+        try:
+            return bool(getattr(self, "_config_loaded", False))
+        except Exception:
+            return False
+
+    def is_operation_performed(self) -> bool:
+        try:
+            return bool(getattr(self, "_operation_performed", False))
+        except Exception:
+            return False
