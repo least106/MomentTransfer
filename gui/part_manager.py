@@ -41,22 +41,54 @@ class PartManager:
         except Exception:
             logger.debug("连接 Part 请求信号失败", exc_info=True)
 
+    def _get_model_manager(self):
+        """返回可用的 ModelManager 实例：
+        - 优先使用 `self.model_manager` 或 `self.gui.model_manager`。
+        - 若不存在，尝试按需导入并创建一个实例以保证向后兼容。
+        - 若无法获得，记录警告并返回 None（调用方应对 None 做显式回退处理）。
+        """
+        try:
+            mm = self.model_manager or getattr(self.gui, "model_manager", None)
+            if mm:
+                return mm
+            # 按需导入并尝试创建实例以保持兼容
+            from gui.managers import ModelManager
+
+            mm = ModelManager(self.gui)
+            # 缓存以便后续使用
+            self.model_manager = mm
+            return mm
+        except Exception:
+            logger.warning("无法获取 ModelManager 实例，某些操作将回退或失败", exc_info=True)
+            return None
+
+    def _inform_model_manager_missing(self, operation: str = "操作"):
+        """在 ModelManager 缺失时记录并向用户提示，避免沉默失败。"""
+        msg = f"{operation} 需要 ModelManager，但未找到可用的 model_manager 实例。某些功能将不可用。"
+        logger.warning(msg)
+        try:
+            QMessageBox.warning(self.gui, "缺失依赖: ModelManager", msg)
+        except Exception:
+            # 在非 GUI 环境或测试中，弹窗可能失败；已经记录日志即可。
+            logger.debug("无法弹出 QMessageBox 提示 (可能在测试/无界面环境)", exc_info=True)
+
     # ===== 辅助方法 =====
     def _ensure_project_model(self) -> bool:
         """确保 gui 持有 ProjectConfigModel，必要时创建空模型。"""
         try:
-            mm = self.model_manager or getattr(self.gui, "model_manager", None)
+            mm = self._get_model_manager()
             if mm and hasattr(mm, "_ensure_project_model"):
                 return bool(mm._ensure_project_model())
-            logger.warning("ModelManager 缺失，无法保证项目模型存在")
+            self._inform_model_manager_missing("保证项目模型")
         except Exception:
             logger.debug("委托 _ensure_project_model 失败", exc_info=True)
         return False
 
     def _unique_name(self, base: str, existing: set) -> str:
         try:
-            if self.model_manager and hasattr(self.model_manager, "_unique_name"):
-                return self.model_manager._unique_name(base, existing)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "_unique_name"):
+                return mm._unique_name(base, existing)
         except (AttributeError, TypeError):
             logger.debug("delegated _unique_name failed", exc_info=True)
         name = base or "Part"
@@ -70,14 +102,13 @@ class PartManager:
     def _get_variants(self, part_name: str, is_source: bool):
         """优先从 ProjectConfigModel 读取变体，缺失时回退到 legacy ProjectData。"""
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(
-                self.gui.model_manager, "_get_variants"
-            ):
-                return self.gui.model_manager._get_variants(part_name, is_source)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "_get_variants"):
+                return mm._get_variants(part_name, is_source)
         except Exception:
             logger.debug("delegated _get_variants failed", exc_info=True)
         variants = []
-        mm = self.model_manager or getattr(self.gui, "model_manager", None)
+        mm = self._get_model_manager()
         if mm and hasattr(mm, "project_model"):
             if self._ensure_project_model():
                 parts = (
@@ -110,10 +141,9 @@ class PartManager:
         - legacy：src.data_loader.FrameConfiguration
         """
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(
-                self.gui.model_manager, "_read_variant_fields"
-            ):
-                return self.gui.model_manager._read_variant_fields(variant)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "_read_variant_fields"):
+                return mm._read_variant_fields(variant)
         except Exception:
             logger.debug("delegated _read_variant_fields failed", exc_info=True)
         if variant is None:
@@ -163,7 +193,7 @@ class PartManager:
 
     def _rename_part(self, new_name: str, is_source: bool):
         try:
-            mm = self.model_manager or getattr(self.gui, "model_manager", None)
+            mm = self._get_model_manager()
             if mm and hasattr(mm, "_rename_part"):
                 return mm._rename_part(new_name, is_source)
         except Exception:
@@ -228,10 +258,37 @@ class PartManager:
 
             if selector:
                 try:
-                    idx = selector.findText(current_name)
-                    if idx >= 0:
-                        selector.setItemText(idx, new_name)
-                    selector.setCurrentText(new_name)
+                    # 在更新选择器项时阻断其信号，避免触发递归或重复保存/验证回调
+                    block_fn = getattr(selector, "blockSignals", None)
+                    should_unblock = False
+                    if callable(block_fn):
+                        try:
+                            block_fn(True)
+                            should_unblock = True
+                        except Exception:
+                            should_unblock = False
+
+                    try:
+                        idx = selector.findText(current_name)
+                        if idx >= 0:
+                            selector.setItemText(idx, new_name)
+                        # 优先使用 setCurrentText 保持行为一致；若不可用，尝试通过索引设置
+                        try:
+                            selector.setCurrentText(new_name)
+                        except Exception:
+                            new_idx = selector.findText(new_name)
+                            if new_idx >= 0 and hasattr(selector, "setCurrentIndex"):
+                                try:
+                                    selector.setCurrentIndex(new_idx)
+                                except Exception:
+                                    # 忽略单次失败，已记录在外层
+                                    pass
+                    finally:
+                        if should_unblock and callable(block_fn):
+                            try:
+                                block_fn(False)
+                            except Exception:
+                                logger.debug("恢复 selector 信号失败", exc_info=True)
                 except Exception:
                     logger.debug("更新选择器名称失败", exc_info=True)
         except Exception:
@@ -241,24 +298,22 @@ class PartManager:
     def add_source_part(self, suggested_name: str = None):
         """添加新的 Source Part（使用 ProjectConfigModel）"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.add_source_part(suggested_name)
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.add_source_part(suggested_name)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "add_source_part"):
+                return mm.add_source_part(suggested_name)
+            self._inform_model_manager_missing("添加 Source Part")
+            return None
         except Exception:
             logger.exception("委托给 model_manager.add_source_part 失败")
 
     def remove_source_part(self, name_hint: str = None):
         """删除当前 Source Part（使用 ProjectConfigModel）"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.remove_source_part(name_hint)
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.remove_source_part(name_hint)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "remove_source_part"):
+                return mm.remove_source_part(name_hint)
+            self._inform_model_manager_missing("删除 Source Part")
+            return None
         except Exception:
             logger.exception("委托给 model_manager.remove_source_part 失败")
 
@@ -270,24 +325,22 @@ class PartManager:
         行为与 `add_source_part` 保持一致。
         """
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.add_target_part(suggested_name)
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.add_target_part(suggested_name)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "add_target_part"):
+                return mm.add_target_part(suggested_name)
+            self._inform_model_manager_missing("添加 Target Part")
+            return None
         except Exception:
             logger.exception("委托给 model_manager.add_target_part 失败")
 
     def remove_target_part(self):
         """删除当前 Target Part（使用 ProjectConfigModel）"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.remove_target_part()
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.remove_target_part()
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "remove_target_part"):
+                return mm.remove_target_part()
+            self._inform_model_manager_missing("删除 Target Part")
+            return None
         except Exception:
             logger.exception("委托给 model_manager.remove_target_part 失败")
 
@@ -295,24 +348,22 @@ class PartManager:
     def on_source_variant_changed(self, idx: int):
         """Source 变体索引变化事件：根据索引更新 UI。"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.on_source_variant_changed(idx)
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.on_source_variant_changed(idx)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "on_source_variant_changed"):
+                return mm.on_source_variant_changed(idx)
+            self._inform_model_manager_missing("Source 变体切换")
+            return None
         except Exception:
             logger.exception("委托给 model_manager.on_source_variant_changed 失败")
 
     def on_target_variant_changed(self, idx: int):
         """Target 变体索引变化事件：根据索引更新 UI。"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.on_target_variant_changed(idx)
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.on_target_variant_changed(idx)
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "on_target_variant_changed"):
+                return mm.on_target_variant_changed(idx)
+            self._inform_model_manager_missing("Target 变体切换")
+            return None
         except Exception:
             logger.exception("委托给 model_manager.on_target_variant_changed 失败")
 
@@ -340,7 +391,8 @@ class PartManager:
             if side_l in ("source", "src"):
                 self.add_source_part(suggested_name=name)
             elif side_l in ("target", "tgt"):
-                self.add_target_part()
+                # 传递建议名称以保持与 source 分支一致的 UX
+                self.add_target_part(suggested_name=name)
         except Exception:
             logger.debug("处理 partAddRequested 失败", exc_info=True)
 
@@ -358,25 +410,22 @@ class PartManager:
     def save_current_source_part(self):
         """将当前 Source 表单保存到新模型（使用强类型接口）"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.save_current_source_part()
-            # 临时使用 ModelManager 实现以保证向后兼容
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.save_current_source_part()
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "save_current_source_part"):
+                return mm.save_current_source_part()
+            self._inform_model_manager_missing("保存当前 Source Part")
+            return None
         except Exception:
             logger.exception("save_current_source_part delegation failed")
 
     def save_current_target_part(self):
         """将当前 Target 表单保存到新模型（使用强类型接口）"""
         try:
-            if hasattr(self.gui, "model_manager"):
-                return self.gui.model_manager.save_current_target_part()
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.save_current_target_part()
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "save_current_target_part"):
+                return mm.save_current_target_part()
+            self._inform_model_manager_missing("保存当前 Target Part")
+            return None
         except Exception:
             logger.exception("save_current_target_part delegation failed")
 
@@ -384,27 +433,21 @@ class PartManager:
     def on_source_part_changed(self):
         """Source Part 选择变化时的处理"""
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(
-                self.gui.model_manager, "on_source_part_changed"
-            ):
-                return self.gui.model_manager.on_source_part_changed()
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.on_source_part_changed()
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "on_source_part_changed"):
+                return mm.on_source_part_changed()
+            self._inform_model_manager_missing("Source Part 切换")
+            return None
         except Exception:
             logger.exception("on_source_part_changed delegation failed")
 
     def on_target_part_changed(self):
         """Target Part 选择变化时的处理"""
         try:
-            if hasattr(self.gui, "model_manager") and hasattr(
-                self.gui.model_manager, "on_target_part_changed"
-            ):
-                return self.gui.model_manager.on_target_part_changed()
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            return mm.on_target_part_changed()
+            mm = self._get_model_manager()
+            if mm and hasattr(mm, "on_target_part_changed"):
+                return mm.on_target_part_changed()
+            self._inform_model_manager_missing("Target Part 切换")
+            return None
         except Exception:
             logger.exception("on_target_part_changed delegation failed")
