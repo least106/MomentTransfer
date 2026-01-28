@@ -91,6 +91,16 @@ class QuickSelectDialog(QDialog):
             self._restore_state_from_gui()
         except Exception:
             logger.debug("恢复快速选择状态失败", exc_info=True)
+        # 监听特殊格式解析完成以便刷新预览
+        try:
+            sb = getattr(self.gui, "signal_bus", None)
+            if sb is not None:
+                try:
+                    sb.specialDataParsed.connect(self._on_special_data_parsed)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # ---------- 数据与勾选 ----------
     def _iter_files(self) -> List[Path]:
@@ -256,6 +266,19 @@ class QuickSelectDialog(QDialog):
         lines = self._render_rows(fp_str, part, rows)
         if lines:
             preview.setPlainText("\n".join(lines))
+
+    def _on_special_data_parsed(self, fp_str: str) -> None:
+        """收到特殊格式解析完成后的通知，刷新当前显示的相关预览条目。"""
+        try:
+            for entry in list(self._entry_widgets or []):
+                try:
+                    key = entry.get("key")
+                    if key and str(key[0]) == str(fp_str):
+                        self._update_entry_preview(entry)
+                except Exception:
+                    pass
+        except Exception:
+            logger.debug("QuickSelectDialog 刷新特殊格式预览失败", exc_info=True)
 
     def _render_rows(
         self, fp_str: str, part: Optional[str], rows: List[int]
