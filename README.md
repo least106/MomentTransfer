@@ -60,8 +60,8 @@ cd MomentTransfer
 
 2. **创建并激活 Conda 环境**（推荐）
 ```bash
-conda create -n mt python=3.8
-conda activate mt
+conda create -n MomentTransfer python=3.8
+conda activate MomentTransfer
 ```
 
 3. **安装依赖**
@@ -91,7 +91,7 @@ python cli.py
 
 ```bash
 # 启动图形界面（需要 PySide6）
-python gui.py
+python gui_main.py
 ```
 
 提供直观的图形界面，支持实时预览和交互式配置。
@@ -267,8 +267,8 @@ pytest tests/test_cli_click.py::test_cli_structure -v
 ### 环境配置
 ```bash
 # 使用 Anaconda 创建开发环境
-conda create -n mt python=3.8
-conda activate mt
+conda create -n MomentTransfer python=3.8
+conda activate MomentTransfer
 pip install -r requirements.txt
 
 # 安装开发依赖
