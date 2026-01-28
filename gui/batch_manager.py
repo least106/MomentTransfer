@@ -197,6 +197,17 @@ class BatchManager:
         self._connect_signal_bus_events()
         self._connect_quick_filter()
         self._connect_ui_signals()
+        # 监听特殊格式解析完成事件以刷新预览
+        try:
+            from gui.signal_bus import SignalBus
+
+            bus = getattr(self.gui, "signal_bus", None) or SignalBus.instance()
+            try:
+                bus.specialDataParsed.connect(lambda fp: self._on_special_data_parsed(fp))
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def attach_history(
         self, store: BatchHistoryStore, panel: Optional[BatchHistoryPanel]
@@ -336,14 +347,85 @@ class BatchManager:
         if cached and cached.get("mtime") == mtime and cached.get("data") is not None:
             return cached.get("data")
 
+        # 若未缓存或已过期，则异步解析以避免阻塞主线程；先返回空字典占位
         try:
-            data_dict = parse_special_format_file(file_path)
-        except Exception:
-            logger.debug("解析特殊格式文件失败", exc_info=True)
-            data_dict = {}
+            from PySide6.QtCore import QThread
+            from gui.background_worker import BackgroundWorker
+            from functools import partial
+            from gui.signal_bus import SignalBus
 
-        self._special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
-        return data_dict
+            # 安全幂等：如果已有后台解析正在进行，则不重复提交
+            in_progress_key = f"_parsing:{fp_str}"
+            if getattr(self, in_progress_key, False):
+                return {}
+            setattr(self, in_progress_key, True)
+
+            def _do_parse(path: Path):
+                # 调用同步解析函数（在工作线程中运行）
+                return parse_special_format_file(path)
+
+            thread = QThread()
+            worker = BackgroundWorker(partial(_do_parse, file_path))
+            worker.moveToThread(thread)
+
+            def _on_finished(result):
+                try:
+                    data_dict = result or {}
+                    try:
+                        self._special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
+                    except Exception:
+                        pass
+                    try:
+                        # 发出信号通知相关 UI 刷新
+                        SignalBus.instance().specialDataParsed.emit(fp_str)
+                    except Exception:
+                        pass
+                finally:
+                    try:
+                        setattr(self, in_progress_key, False)
+                    except Exception:
+                        pass
+                    try:
+                        worker.deleteLater()
+                    except Exception:
+                        pass
+                    try:
+                        thread.quit()
+                        thread.wait(1000)
+                    except Exception:
+                        pass
+
+            def _on_error(tb_str):
+                logger.error("后台解析特殊格式失败: %s", tb_str)
+                try:
+                    setattr(self, in_progress_key, False)
+                except Exception:
+                    pass
+                try:
+                    worker.deleteLater()
+                except Exception:
+                    pass
+                try:
+                    thread.quit()
+                    thread.wait(1000)
+                except Exception:
+                    pass
+
+            worker.finished.connect(_on_finished)
+            worker.error.connect(_on_error)
+            thread.started.connect(worker.run)
+            thread.start()
+        except Exception:
+            # 若无法在后台启动，退回到同步解析（以保证功能性）
+            try:
+                data_dict = parse_special_format_file(file_path)
+                self._special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
+                return data_dict
+            except Exception:
+                logger.debug("解析特殊格式文件失败（同步回退）", exc_info=True)
+                self._special_data_cache[fp_str] = {"mtime": mtime, "data": {}}
+
+        return {}
 
     def _format_preview_value(self, v):
         """将单元格值格式化为便于显示的字符串（处理 None/NaN 和异常）。"""
@@ -980,6 +1062,20 @@ class BatchManager:
 
             if not files:
                 try:
+                    # 恢复到步骤1 提示（右侧永久标签可能存在）
+                    try:
+                        from PySide6.QtWidgets import QLabel
+
+                        lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
+                        if lbl is not None:
+                            lbl.setText("步骤1：选择文件或目录")
+                    except Exception:
+                        # 如果找不到永久标签，回退到 showMessage
+                        try:
+                            self.gui.statusBar().showMessage("步骤1：选择文件或目录")
+                        except Exception:
+                            pass
+
                     self.gui.file_list_widget.setVisible(False)
                 except Exception:
                     pass
@@ -1012,7 +1108,22 @@ class BatchManager:
         except Exception:
             pass
         try:
-            self.gui.statusBar().showMessage("步骤2：在文件列表选择数据文件")
+            # 更新左侧临时消息
+            try:
+                self.gui.statusBar().showMessage("步骤2：在文件列表选择数据文件")
+            except Exception:
+                pass
+
+            # 同步更新状态栏右侧的永久标签（如果存在）
+            try:
+                from PySide6.QtWidgets import QLabel
+
+                lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
+                if lbl is not None:
+                    lbl.setText("步骤2：在文件列表选择数据文件")
+            except Exception:
+                # 忽略获取/设置永久标签的失败
+                pass
         except Exception:
             pass
 
@@ -1740,6 +1851,18 @@ class BatchManager:
             self._record_batch_history(status="completed")
             # 恢复 GUI 状态并提示完成
             self._restore_gui_after_batch(enable_undo=True)
+            try:
+                # 完成后将步骤恢复到步骤1：选择文件或目录
+                from PySide6.QtWidgets import QLabel
+
+                lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
+                if lbl is not None:
+                    lbl.setText("步骤1：选择文件或目录")
+            except Exception:
+                try:
+                    self.gui.statusBar().showMessage("步骤1：选择文件或目录")
+                except Exception:
+                    pass
             QMessageBox.information(self.gui, "完成", message)
         except Exception as e:
             logger.error(f"处理完成事件失败: {e}")
@@ -1816,6 +1939,26 @@ class BatchManager:
         except Exception:
             logger.debug("记录批处理历史失败", exc_info=True)
 
+    def _on_special_data_parsed(self, fp_str: str) -> None:
+        """当特殊格式解析完成后，刷新相关的预览表与快速选择预览。"""
+        try:
+            # 刷新在内存中已注册的特殊预览表
+            for key, table in list((self._special_preview_tables or {}).items()):
+                try:
+                    file_key = key[0] if isinstance(key, tuple) else key
+                    if str(file_key) == str(fp_str) or str(file_key) == str(Path(fp_str)):
+                        if hasattr(table, "_rebuild_page"):
+                            try:
+                                table._rebuild_page()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+            # 若存在 QuickSelectDialog（或其他面板）会监听 SignalBus 并自行刷新
+        except Exception:
+            logger.debug("特殊格式解析完成后刷新预览失败", exc_info=True)
+
     def undo_history_record(self, record_id: str) -> None:
         """撤销指定历史记录（删除新生成的输出文件）。"""
         try:
@@ -1864,7 +2007,102 @@ class BatchManager:
 
     # 对外提供与 gui.py 同名的委托入口（供 GUI 壳方法调用）
     def scan_and_populate_files(self, chosen_path: Path):
-        return self._scan_and_populate_files(chosen_path)
+        """非阻塞：将文件收集放到后台线程，然后在主线程更新 UI。"""
+        try:
+            from PySide6.QtCore import QThread
+            from gui.background_worker import BackgroundWorker
+            from functools import partial
+
+            def _collect_io(path: Path):
+                # 仅做文件系统扫描，不触及 GUI
+                files = []
+                base_path = path
+                try:
+                    if path.is_file():
+                        files = [path]
+                        base_path = path.parent
+                    elif path.is_dir():
+                        pattern_text = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
+                        patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
+                        for file_path in path.rglob("*"):
+                            try:
+                                if not file_path.is_file():
+                                    continue
+                                if any(__import__('fnmatch').fnmatch(file_path.name, pat) for pat in patterns):
+                                    files.append(file_path)
+                            except Exception:
+                                pass
+                        files = sorted(set(files))
+                        base_path = path
+                except Exception:
+                    logger.debug("后台收集文件失败", exc_info=True)
+                return (files, base_path)
+
+            thread = QThread()
+            worker = BackgroundWorker(partial(_collect_io, chosen_path))
+            worker.moveToThread(thread)
+
+            def _on_finished(result):
+                try:
+                    files, base_path = result or ([], chosen_path)
+                    # 由主线程调用填充 UI
+                    try:
+                        if not files:
+                            # 恢复到步骤1 文本
+                            try:
+                                from PySide6.QtWidgets import QLabel
+
+                                lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
+                                if lbl is not None:
+                                    lbl.setText("步骤1：选择文件或目录")
+                            except Exception:
+                                try:
+                                    self.gui.statusBar().showMessage("步骤1：选择文件或目录")
+                                except Exception:
+                                    pass
+                        else:
+                            # 填充文件树并进入 step2
+                            try:
+                                self._populate_file_tree_from_files(files, base_path, chosen_path)
+                            except Exception:
+                                logger.debug("填充文件树失败（主线程回调）", exc_info=True)
+                    except Exception:
+                        logger.debug("文件填充主线程处理失败", exc_info=True)
+                finally:
+                    try:
+                        worker.deleteLater()
+                    except Exception:
+                        pass
+                    try:
+                        thread.quit()
+                        thread.wait(1000)
+                    except Exception:
+                        pass
+
+            def _on_error(tb_str):
+                logger.error("后台扫描失败: %s", tb_str)
+                try:
+                    QMessageBox.critical(self.gui, "错误", f"扫描失败: {tb_str}")
+                except Exception:
+                    pass
+                try:
+                    worker.deleteLater()
+                except Exception:
+                    pass
+                try:
+                    thread.quit()
+                    thread.wait(1000)
+                except Exception:
+                    pass
+
+            worker.finished.connect(_on_finished)
+            worker.error.connect(_on_error)
+            thread.started.connect(worker.run)
+            thread.start()
+            return None
+        except Exception:
+            # 回退到原同步实现（确保兼容）
+            return self._scan_and_populate_files(chosen_path)
 
     # refresh_format_labels 已移除
 
