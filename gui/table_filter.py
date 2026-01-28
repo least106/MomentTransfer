@@ -165,10 +165,16 @@ class TableFilterWidget(QWidget):
         lbl_col = QLabel("列:")
         self.cmb_column = QComboBox()
         try:
-            headers = [
-                self.table.horizontalHeaderItem(c).text()
-                for c in range(self.table.columnCount())
-            ]
+            # 若表头为显示用的带序号/换行格式（如 "1\nColName"），则取最后一行作为真实列名
+            headers = []
+            for c in range(self.table.columnCount()):
+                try:
+                    raw = self.table.horizontalHeaderItem(c).text()
+                    # 取最后一行以移除序号或额外注释
+                    clean = raw.splitlines()[-1] if raw else raw
+                    headers.append(clean)
+                except Exception:
+                    headers.append("")
         except Exception:
             headers = [str(c) for c in range(self.table.columnCount())]
         self.cmb_column.addItems(headers)

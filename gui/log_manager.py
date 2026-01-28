@@ -187,6 +187,35 @@ class LoggingManager:
 
             # 获取或创建对应该 text_widget 的 GUILogHandler（幂等且可复用）
             gui_handler = self._get_handler_for_widget(text_widget)
+
+            # 如果当前 LoggingManager 实例尚未记录到 handler，尝试在已有 logger 的 handlers 中查找
+            # 已绑定到相同 text_widget 的 GUILogHandler（跨实例幂等）。
+            if gui_handler is None:
+                try:
+                    for log in [
+                        logging.getLogger("src.special_format_parser"),
+                        logging.getLogger("src.data_loader"),
+                        logging.getLogger("src.physics"),
+                        logging.getLogger("src.batch_process"),
+                        logging.getLogger("gui_main"),
+                    ]:
+                        for h in getattr(log, "handlers", [])[:]:
+                            try:
+                                if isinstance(h, GUILogHandler) and getattr(h, "text_widget", None) is text_widget:
+                                    gui_handler = h
+                                    # 在本实例中注册以便后续复用
+                                    try:
+                                        self._register_handler_for_widget(text_widget, gui_handler)
+                                    except Exception:
+                                        logging.getLogger(__name__).debug("注册已有 GUILogHandler 失败（非致命）", exc_info=True)
+                                    break
+                            except Exception:
+                                continue
+                        if gui_handler is not None:
+                            break
+                except Exception:
+                    logging.getLogger(__name__).debug("跨实例查找现有 GUILogHandler 失败（非致命）", exc_info=True)
+
             if gui_handler is None:
                 gui_handler = GUILogHandler(text_widget)
                 self._register_handler_for_widget(text_widget, gui_handler)
@@ -273,6 +302,19 @@ class LoggingManager:
         except Exception:
             # 最后保底：不要抛出异常
             logging.getLogger(__name__).debug("设置回退日志处理器失败（非致命）", exc_info=True)
+
+    def get_log_file_path(self):
+        """返回当前默认日志文件的 Path 对象（可能不存在）。
+
+        该方法对外暴露以便其他模块（例如 UI 的错误详情）能够定位日志文件或其目录。
+        返回值: `pathlib.Path` 或 `None`（发生异常时）。
+        """
+        try:
+            log_dir = Path.home() / ".momenttransfer"
+            return log_dir / "momenttransfer.log"
+        except Exception:
+            logging.getLogger(__name__).debug("获取日志路径失败（非致命）", exc_info=True)
+            return None
 
 
 class _Invoker(QObject):

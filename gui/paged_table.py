@@ -44,6 +44,14 @@ class PagedTableWidget(QWidget):
         self._match_pages: Optional[List[bool]] = None  # 每页是否有匹配
 
         self.table = QTableWidget(self)
+        # 保留原始列名供导出/筛选等逻辑使用（不受 UI 展示标签影响）
+        try:
+            self._all_column_names = list(df.columns)
+        except Exception:
+            self._all_column_names = []
+        # 当前页面使用的纯列名（不含序号/换行）以及显示用表头（可能包含序号/换行）
+        self._column_names: List[str] = []
+        self._display_headers: List[str] = []
         self.lbl_page = QLabel(self)
         self.btn_prev = QPushButton("上一页", self)
         self.btn_next = QPushButton("下一页", self)
@@ -185,13 +193,21 @@ class PagedTableWidget(QWidget):
         self.table.setRowCount(rows)
         self.table.setColumnCount(cols + 1)
         try:
-            # 在列名前加上序号，便于用户识别列索引（从1开始）
-            headers = ["选中"] + [
-                f"{i+1}\n{str(c)}" for i, c in enumerate(list(self.df.columns)[:cols])
+            # 当前页使用的纯列名列表（便于筛选/导出使用）
+            self._column_names = list(self._all_column_names[:cols])
+            # 构造显示用表头（在列名前加上序号，便于用户识别列索引）
+            self._display_headers = ["选中"] + [
+                f"{i+1}\n{str(c)}" for i, c in enumerate(self._column_names)
             ]
-            self.table.setHorizontalHeaderLabels(headers)
+            self.table.setHorizontalHeaderLabels(self._display_headers)
         except Exception:
-            pass
+            # 在异常情况下依然尝试设置一个简单的头
+            try:
+                self._column_names = [str(c) for c in self._all_column_names[:cols]]
+                self._display_headers = ["选中"] + self._column_names
+                self.table.setHorizontalHeaderLabels(self._display_headers)
+            except Exception:
+                pass
 
         for i in range(rows):
             real_row = start + i
@@ -228,6 +244,14 @@ class PagedTableWidget(QWidget):
 
     def _update_page_label(self) -> None:
         self.lbl_page.setText(f"第 {self._current_page + 1}/{self._page_count()} 页")
+
+    def get_column_names(self) -> List[str]:
+        """返回当前表格（当前页）对应的纯列名列表（不含 UI 序号/换行）。"""
+        return list(self._column_names)
+
+    def get_display_headers(self) -> List[str]:
+        """返回当前表格显示用的表头文本列表（可能包含序号/换行）。"""
+        return list(self._display_headers)
 
     # 批量更新可视页上的复选框（供“快速选择”后刷新当前页显示）
     def uncheck_rows_if_visible(self, rows: Iterable[int]) -> None:
