@@ -260,11 +260,10 @@ class InitializationManager:
 
                             p = Path(text)
                             if p.exists():
-                                # 委托给 BatchManager 统一处理扫描与 UI 状态
+                                # 委托给 BatchManager 的对外方法（非阻塞）统一处理扫描与 UI 状态
                                 try:
-                                    self.main_window.batch_manager._scan_and_populate_files(
-                                        p
-                                    )
+                                    # 使用非下划线方法以便 BatchManager 可选择在后台执行
+                                    self.main_window.batch_manager.scan_and_populate_files(p)
                                 except Exception:
                                     logger.debug("扫描文件失败", exc_info=True)
                         except Exception:
@@ -383,18 +382,31 @@ class InitializationManager:
             btn_new_project.setMaximumWidth(90)
             btn_new_project.setToolTip("新建 Project（Ctrl+N）")
             btn_new_project.clicked.connect(self.main_window._new_project)
+            # 临时将 Project 相关按钮禁用，避免用户在此阶段误操作
+            try:
+                btn_new_project.setEnabled(False)
+            except Exception:
+                pass
             toolbar.addWidget(btn_new_project)
 
             btn_open_project = QPushButton("打开Project")
             btn_open_project.setMaximumWidth(90)
             btn_open_project.setToolTip("打开 Project（Ctrl+O）")
             btn_open_project.clicked.connect(self.main_window._open_project)
+            try:
+                btn_open_project.setEnabled(False)
+            except Exception:
+                pass
             toolbar.addWidget(btn_open_project)
 
             btn_save_project = QPushButton("保存Project")
             btn_save_project.setMaximumWidth(90)
             btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
             btn_save_project.clicked.connect(self.main_window._on_save_project)
+            try:
+                btn_save_project.setEnabled(False)
+            except Exception:
+                pass
             toolbar.addWidget(btn_save_project)
 
             toolbar.addSeparator()
@@ -446,6 +458,11 @@ class InitializationManager:
             self.main_window.btn_new_project = btn_new_project
             self.main_window.btn_open_project = btn_open_project
             self.main_window.btn_save_project_toolbar = btn_save_project
+            # 标记为临时禁用 project 按钮，供 UIStateManager 等处判断
+            try:
+                self.main_window._project_buttons_temporarily_disabled = True
+            except Exception:
+                pass
             self.main_window.btn_browse_menu = btn_browse
             self.main_window.btn_load_config_menu = btn_load_config
             self.main_window.btn_start_menu = btn_start
