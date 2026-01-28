@@ -113,22 +113,22 @@ class BatchPanel(QWidget):
         # 调整表单标签对齐为右侧垂直居中，确保标签与输入控件垂直对齐
         try:
             self.file_form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置表单标签对齐失败（非致命）: %s", e, exc_info=True)
         # 保留属性以兼容旧代码，但在首页不显示输入框
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
         try:
             # 隐藏旧输入框，避免在首页展示
             self.inp_batch_input.setVisible(False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("隐藏旧输入框失败（非致命）: %s", e, exc_info=True)
         self.btn_browse_input = QPushButton("浏览文件")
         try:
             self.btn_browse_input.setObjectName("smallButton")
             self.btn_browse_input.setToolTip("选择输入文件或目录")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 btn_browse_input 属性失败（非致命）: %s", e, exc_info=True)
         self.btn_browse_input.clicked.connect(self.browseRequested.emit)
         # 保持输入框与按钮高度一致以使其与表单标签对齐
         try:
@@ -139,7 +139,7 @@ class BatchPanel(QWidget):
             try:
                 self.btn_browse_input.setMinimumWidth(80)
             except Exception:
-                pass
+                logger.debug("设置 btn_browse_input 最小宽度失败（非致命）", exc_info=True)
         except Exception:
             pass
 
@@ -154,8 +154,8 @@ class BatchPanel(QWidget):
             self.btn_load_config.setToolTip(
                 "加载配置文件（JSON），用于提供 Source/Target part 定义"
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 btn_load_config 属性失败（非致命）: %s", e, exc_info=True)
         try:
             self.btn_load_config.clicked.connect(self._on_load_config_clicked)
         except Exception:
@@ -165,8 +165,8 @@ class BatchPanel(QWidget):
         try:
             self.btn_batch_in_toolbar.setMaximumWidth(80)
             self.btn_batch_in_toolbar.setToolTip("开始批量处理（Ctrl+R）")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 btn_batch_in_toolbar 属性失败（非致命）: %s", e, exc_info=True)
         try:
             self.btn_batch_in_toolbar.clicked.connect(self.batchStartRequested.emit)
         except Exception:
@@ -176,8 +176,8 @@ class BatchPanel(QWidget):
         try:
             self.btn_save_project.setMaximumWidth(90)
             self.btn_save_project.setToolTip("保存当前项目配置和状态")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("设置 btn_save_project 属性失败（非致命）: %s", e, exc_info=True)
         try:
             self.btn_save_project.clicked.connect(self.saveProjectRequested.emit)
         except Exception:
@@ -218,11 +218,11 @@ class BatchPanel(QWidget):
                 if label is not None:
                     label.setVisible(visible)
             except Exception:
-                pass
+                logger.debug("尝试获取并设置表单标签可见性失败（非致命）", exc_info=True)
             try:
                 field_widget.setVisible(visible)
             except Exception:
-                pass
+                logger.debug("设置字段可见性失败（非致命）", exc_info=True)
 
         # init：只保留操作按钮
         if step in ("init", "step1"):
@@ -245,7 +245,7 @@ class BatchPanel(QWidget):
                         # 兼容性回退：直接设置属性并刷新（若方法不存在）
                         if win is not None:
                             win.data_loaded = True
-                            win.operation_performed = True
+                            # 不再把加载标记视为用户修改：仅刷新状态
                             if hasattr(win, "_refresh_controls_state"):
                                 try:
                                     win._refresh_controls_state()
@@ -468,8 +468,8 @@ class BatchPanel(QWidget):
                         # 若未显示，先显示候选
                         try:
                             if (
-                                popup is None
-                                or not getattr(popup, "isVisible", lambda: False)()
+                                    popup is None
+                                    or not getattr(popup, "isVisible", lambda: False)()
                             ):
                                 if comp is not None:
                                     comp.complete()

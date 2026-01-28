@@ -97,7 +97,6 @@ class IntegratedAeroGUI(QMainWindow):
         """标记已加载数据文件并刷新控件状态"""
         try:
             self.data_loaded = True
-            self.operation_performed = True
             self._refresh_controls_state()
         except Exception:
             logger.debug("mark_data_loaded failed", exc_info=True)
@@ -106,10 +105,20 @@ class IntegratedAeroGUI(QMainWindow):
         """标记已加载配置并刷新控件状态"""
         try:
             self.config_loaded = True
-            self.operation_performed = True
             self._refresh_controls_state()
         except Exception:
             logger.debug("mark_config_loaded failed", exc_info=True)
+
+    def mark_user_modified(self) -> None:
+        """标记为用户已修改（用于启用保存按钮）。
+
+        与 data_loaded/config_loaded 区分，避免仅加载即启用保存。
+        """
+        try:
+            self.operation_performed = True
+            self._refresh_controls_state()
+        except Exception:
+            logger.debug("mark_user_modified failed", exc_info=True)
 
     def _refresh_controls_state(self) -> None:
         """根据当前状态标志启用/禁用按钮与选项卡。"""
@@ -121,8 +130,8 @@ class IntegratedAeroGUI(QMainWindow):
                     btn = getattr(self, name, None)
                     if btn is not None:
                         btn.setEnabled(bool(start_enabled))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("设置启动按钮状态失败（非致命）: %s", e, exc_info=True)
 
             # 数据管理选项卡：在没有加载数据时禁用
             try:
@@ -135,8 +144,8 @@ class IntegratedAeroGUI(QMainWindow):
                         idx = -1
                     if idx is not None and idx >= 0:
                         tab.setTabEnabled(idx, bool(self.data_loaded))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("设置数据管理选项卡状态失败（非致命）: %s", e, exc_info=True)
 
             # 参考系管理（配置）选项卡：使用实际插入的 ConfigPanel 来定位并在没有加载数据文件时禁止切换
             try:
@@ -151,8 +160,8 @@ class IntegratedAeroGUI(QMainWindow):
                         if cidx is not None and cidx >= 0:
                             # 在加载数据或加载配置后均允许进入参考系管理
                             tab.setTabEnabled(cidx, bool(self.data_loaded or self.config_loaded))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("设置参考系管理选项卡状态失败（非致命）: %s", e, exc_info=True)
 
             # 保存按钮：在没有任何操作前禁用
             save_enabled = bool(self.operation_performed)
@@ -161,25 +170,25 @@ class IntegratedAeroGUI(QMainWindow):
                     btn = getattr(self, name, None)
                     if btn is not None:
                         btn.setEnabled(bool(save_enabled))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("设置保存按钮状态失败（非致命）: %s", e, exc_info=True)
 
             try:
                 if hasattr(self, "batch_panel"):
                     try:
                         self.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as e:
+                        logger.debug("设置 batch_panel 保存按钮状态失败（非致命）: %s", e, exc_info=True)
+            except Exception as e:
+                logger.debug("访问 batch_panel 失败（非致命）: %s", e, exc_info=True)
             try:
                 if hasattr(self, "config_panel"):
                     try:
                         self.config_panel.btn_save.setEnabled(bool(save_enabled))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("设置 config_panel 保存按钮失败（非致命）: %s", e, exc_info=True)
             except Exception:
-                pass
+                logger.debug("访问 config_panel 失败（非致命）", exc_info=True)
         except Exception:
             logger.debug("_refresh_controls_state failed", exc_info=True)
 
@@ -299,20 +308,33 @@ class IntegratedAeroGUI(QMainWindow):
         """应用当前配置到计算器 - 委托给 ConfigManager"""
         try:
             self.config_manager.apply_config()
-            # 应用配置后自动切换到文件列表
+            # 应用配置后：提示用户是否切换到文件列表（避免打断当前任务）
             try:
-                if hasattr(self, "tab_main"):
-                    tab = self.tab_main
-                    idx = -1
-                    try:
-                        idx = tab.indexOf(getattr(self, "file_list_widget", None))
-                    except Exception:
+                reply = QMessageBox.question(
+                    self,
+                    "配置已应用",
+                    "配置已应用。是否切换到文件列表以查看文件？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+            except Exception as e:
+                logger.debug("显示切换提示对话框失败（将不切换）: %s", e, exc_info=True)
+                reply = QMessageBox.No
+
+            if reply == QMessageBox.Yes:
+                try:
+                    if hasattr(self, "tab_main"):
+                        tab = self.tab_main
                         idx = -1
-                    if idx is None or idx == -1:
-                        idx = 0
-                    tab.setCurrentIndex(idx)
-            except Exception:
-                pass
+                        try:
+                            idx = tab.indexOf(getattr(self, "file_list_widget", None))
+                        except Exception:
+                            idx = -1
+                        if idx is None or idx == -1:
+                            idx = 0
+                        tab.setCurrentIndex(idx)
+                except Exception as e:
+                    logger.debug("切换到文件列表失败（非致命）: %s", e, exc_info=True)
         except AttributeError:
             # 如果管理器未初始化，记录警告
             logger.warning("配置Manager 未初始化，无法应用配置")
@@ -330,8 +352,12 @@ class IntegratedAeroGUI(QMainWindow):
                 "请为每类数据文件提供 format.json（同目录）或 <文件名>.format.json（侧车），"
                 "或使用 registry 进行格式匹配。",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("显示数据格式提示对话框失败: %s", e)
+            try:
+                QMessageBox.critical(self, "错误", f"无法显示提示对话框: {e}")
+            except Exception:
+                logger.debug("无法显示消息框（非致命）", exc_info=True)
 
     def browse_batch_input(self):
         """选择输入文件或目录 - 委托给 BatchManager"""
@@ -354,7 +380,6 @@ class IntegratedAeroGUI(QMainWindow):
     def _on_save_project(self):
         """保存Project（打开选择文件对话框）"""
         try:
-            from pathlib import Path
 
             from PySide6.QtWidgets import QFileDialog
 
@@ -369,18 +394,18 @@ class IntegratedAeroGUI(QMainWindow):
             if file_path:
                 if self.project_manager:
                     self.project_manager.save_project(Path(file_path))
-                    try:
-                        QMessageBox.information(
-                            self, "成功", f"项目已保存到: {file_path}"
-                        )
-                    except Exception:
-                        pass
+                try:
+                    QMessageBox.information(
+                        self, "成功", f"项目已保存到: {file_path}"
+                    )
+                except Exception as e:
+                    logger.debug("无法显示保存成功提示: %s", e, exc_info=True)
         except Exception as e:
             logger.error("保存Project失败: %s", e)
             try:
                 QMessageBox.critical(self, "错误", f"保存Project失败: {e}")
             except Exception:
-                pass
+                logger.debug("无法显示保存失败对话框（非致命）", exc_info=True)
 
     def _new_project(self):
         """创建新Project"""
@@ -389,8 +414,8 @@ class IntegratedAeroGUI(QMainWindow):
                 if self.project_manager.create_new_project():
                     try:
                         QMessageBox.information(self, "成功", "新项目已创建")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("无法显示新项目提示: %s", e, exc_info=True)
         except Exception as e:
             logger.error("创建新Project失败: %s", e)
 
@@ -415,13 +440,13 @@ class IntegratedAeroGUI(QMainWindow):
                             QMessageBox.information(
                                 self, "成功", f"项目已加载: {file_path}"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("无法显示加载成功提示: %s", e, exc_info=True)
                     else:
                         try:
                             QMessageBox.critical(self, "错误", "项目加载失败")
                         except Exception:
-                            pass
+                            logger.debug("无法显示加载失败对话框（非致命）", exc_info=True)
         except Exception as e:
             logger.error("打开Project失败: %s", e)
 
@@ -437,13 +462,34 @@ class IntegratedAeroGUI(QMainWindow):
                     QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
                     QMessageBox.Save,
                 )
-                if reply == QMessageBox.Cancel:
-                    return
-                elif reply == QMessageBox.Save:
-                    self.config_manager.save_config()
-                    return
-                # 如果选择 Discard，继续处理
 
+                # 用户选择保存：尝试保存并仅在成功后继续
+                if reply == QMessageBox.Save:
+                    try:
+                        saved = self.config_manager.save_config()
+                    except Exception as e:
+                        logger.error("保存配置时发生异常: %s", e, exc_info=True)
+                        saved = False
+
+                    if not saved:
+                        try:
+                            QMessageBox.critical(
+                                self,
+                                "保存失败",
+                                "配置保存失败，已取消批处理。",
+                            )
+                        except Exception:
+                            logger.debug("无法显示保存失败对话框", exc_info=True)
+                        return
+
+                    logger.debug("配置已保存，继续执行批处理")
+
+                # 用户选择取消：中断批处理
+                elif reply == QMessageBox.Cancel:
+                    logger.debug("用户取消批处理启动（选择取消保存）")
+                    return
+
+            # 运行批处理（配置未修改或用户选择丢弃/已保存）
             self.batch_manager.run_batch_processing()
         except AttributeError:
             logger.warning("BatchManager 未初始化")
@@ -658,7 +704,7 @@ def main():
 
         app.setFont(QFont("Segoe UI", 10))
     except Exception:
-        pass
+        logger.debug("设置应用字体失败（非致命）", exc_info=True)
     # 按系统主题自动加载明/暗样式
     try:
 
@@ -716,7 +762,7 @@ def main():
         try:
             app.quit()
         except Exception:
-            pass
+            logger.debug("尝试退出应用时关闭失败（非致命）", exc_info=True)
         sys.exit(0)
 
 

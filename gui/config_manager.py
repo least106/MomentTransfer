@@ -354,7 +354,7 @@ class ConfigManager:
 
                     # 重置修改标志
                     self._config_modified = False
-                    return
+                    return True
             except Exception:
                 logger.debug("直接覆盖失败，使用另存为", exc_info=True)
 
@@ -363,7 +363,8 @@ class ConfigManager:
                 self.gui, "保存配置", "config.json", "JSON Files (*.json)"
             )
             if not fname:
-                return
+                # 用户取消保存
+                return False
 
             with open(fname, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -379,11 +380,16 @@ class ConfigManager:
 
             # 重置修改标志
             self._config_modified = False
+            return True
 
         except ValueError as e:
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
+            return False
         except Exception as e:
             QMessageBox.critical(self.gui, "保存失败", str(e))
+            return False
+        # 默认返回 False（若未显式返回 True 则视为未保存成功）
+        return False
 
     def apply_config(self):
         """应用当前配置到计算器"""

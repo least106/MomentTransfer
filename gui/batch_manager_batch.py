@@ -58,7 +58,7 @@ def run_batch_processing(manager):
                 "output_dir": str(output_path),
             }
         except Exception:
-            pass
+            logger.debug("设置当前批处理上下文失败（非致命）", exc_info=True)
 
         data_config = None
 
@@ -88,7 +88,7 @@ def attach_batch_thread_signals(manager):
         try:
             manager.batch_thread.progress.connect(manager.gui.progress_bar.setValue)
         except Exception:
-            pass
+            logger.debug("连接 progress 信号失败（非致命）", exc_info=True)
 
         try:
 
@@ -96,20 +96,20 @@ def attach_batch_thread_signals(manager):
                 try:
                     manager.gui.txt_batch_log.append(f"[{_now_str(manager)}] {msg}")
                 except Exception:
-                    pass
+                    logger.debug("追加线程日志到 txt_batch_log 失败（非致命）", exc_info=True)
 
             manager.batch_thread.log_message.connect(_on_thread_log)
         except Exception:
-            pass
+            logger.debug("连接 log_message 信号失败（非致命）", exc_info=True)
 
         try:
             manager.batch_thread.finished.connect(manager.on_batch_finished)
         except Exception:
-            pass
+            logger.debug("连接 finished 信号失败（非致命）", exc_info=True)
         try:
             manager.batch_thread.error.connect(manager.on_batch_error)
         except Exception:
-            pass
+            logger.debug("连接 error 信号失败（非致命）", exc_info=True)
     except Exception:
         logger.debug("连接 batch_thread 信号失败", exc_info=True)
 
@@ -127,7 +127,7 @@ def prepare_gui_for_batch(manager):
                 manager.gui._set_controls_locked(True)
                 # pylint: enable=protected-access
         except Exception:
-            pass
+            logger.debug("设置控件锁定失败（非致命）", exc_info=True)
 
         try:
             if hasattr(manager.gui, "btn_batch"):
@@ -183,7 +183,7 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
                 manager.gui._set_controls_locked(False)
                 # pylint: enable=protected-access
         except Exception:
-            pass
+            logger.debug("恢复控件锁定失败（非致命）", exc_info=True)
 
         try:
             if hasattr(manager.gui, "btn_batch"):

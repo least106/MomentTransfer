@@ -33,7 +33,7 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 manager.gui.output_dir = p.parent
             except Exception:
-                pass
+                logger.debug("设置 manager.gui.output_dir 失败（非致命）", exc_info=True)
             base_path = p.parent
         elif p.is_dir():
             # 使用默认的文件匹配模式（支持所有常见格式）
@@ -53,7 +53,7 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 manager.gui.output_dir = p
             except Exception:
-                pass
+                logger.debug("设置 manager.gui.output_dir 为目录失败（非致命）", exc_info=True)
 
             base_path = p
 
@@ -72,12 +72,12 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
     try:
         manager.gui.file_tree.expandAll()
     except Exception:
-        pass
+        logger.debug("展开文件树失败（非致命）", exc_info=True)
 
     try:
         manager.gui.file_list_widget.setVisible(True)
     except Exception:
-        pass
+        logger.debug("设置 file_list_widget 可见性失败（非致命）", exc_info=True)
 
     logger.info(f"已扫描到 {len(files)} 个文件")
 

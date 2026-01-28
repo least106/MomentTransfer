@@ -215,8 +215,8 @@ class LoggingManager:
                 # 禁止向上级传播，避免被 root handler 重复输出
                 try:
                     log.propagate = False
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger(__name__).debug("无法设置 logger.propagate（非致命）: %s", e, exc_info=True)
                 log.setLevel(logging.DEBUG)
 
             # 确保 root logger 有文件和控制台回退，以便在 GUI 崩溃或不可用时仍能记录日志

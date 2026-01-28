@@ -85,10 +85,17 @@ class InitializationManager:
     def __init__(self, main_window):
         self.main_window = main_window
         self._is_initializing = True
+        self._init_overlay = None
 
     def setup_ui(self):
         """初始化 UI 组件"""
         try:
+            # 在开始初始化时显示一个遮罩，提示用户程序正在初始化
+            try:
+                self._show_initializing_overlay()
+            except Exception:
+                logger.debug("显示初始化遮罩失败（非致命）", exc_info=True)
+
             # 创建菜单栏
             self._setup_menu_bar()
 
@@ -341,6 +348,10 @@ class InitializationManager:
         def _finalize():
             self._is_initializing = False
             self.main_window._is_initializing = False
+            try:
+                self._hide_initializing_overlay()
+            except Exception:
+                logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
             logger.debug("初始化完成")
 
         # 延迟完成标志，避免 showEvent 期间的弹窗
@@ -398,6 +409,8 @@ class InitializationManager:
             chk_bottom_bar = QCheckBox("展开批处理记录")
             chk_bottom_bar.setToolTip("在底部显示批处理历史记录与配置编辑器")
             chk_bottom_bar.setChecked(False)
+
+            # 将复选框添加到工具栏并添加右侧的操作按钮
             toolbar.addWidget(chk_bottom_bar)
 
             btn_browse = QPushButton("浏览文件")
@@ -438,6 +451,56 @@ class InitializationManager:
             logger.info("工具栏已创建")
         except Exception as e:
             logger.error("创建工具栏失败: %s", e)
+
+    def _show_initializing_overlay(self):
+        """在主窗口上显示半透明遮罩，提示正在初始化。"""
+        try:
+            from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout
+
+            if self._init_overlay is not None:
+                return
+            w = QWidget(self.main_window)
+            w.setObjectName("initOverlay")
+            w.setAttribute(Qt.WA_StyledBackground, True)
+            w.setStyleSheet("background: rgba(0,0,0,0.45);")
+            layout = QVBoxLayout(w)
+            layout.setContentsMargins(20, 20, 20, 20)
+            layout.setSpacing(10)
+            lbl = QLabel("正在初始化，请稍候...", w)
+            lbl.setStyleSheet("color: white; font-size: 14pt;")
+            lbl.setAlignment(Qt.AlignCenter)
+            pb = QProgressBar(w)
+            pb.setRange(0, 0)  # 不确定进度（忙碌态）
+            layout.addStretch(1)
+            layout.addWidget(lbl)
+            layout.addWidget(pb)
+            layout.addStretch(2)
+            # 覆盖整个主窗口区域
+            try:
+                geom = self.main_window.rect()
+                w.setGeometry(geom)
+            except Exception as e:
+                logger.debug("设置初始化遮罩几何信息失败（非致命）: %s", e, exc_info=True)
+            w.setVisible(True)
+            w.raise_()
+            self._init_overlay = w
+        except Exception:
+            logger.debug("构建初始化遮罩失败（非致命）", exc_info=True)
+
+    def _hide_initializing_overlay(self):
+        """隐藏并删除初始化遮罩。"""
+        try:
+            if self._init_overlay is None:
+                return
+            try:
+                self._init_overlay.setVisible(False)
+                self._init_overlay.setParent(None)
+            except Exception:
+                logger.debug("移除初始化遮罩失败（非致命）", exc_info=True)
+            self._init_overlay = None
+        except Exception:
+            logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
+        
 
     def trigger_initial_layout_update(self):
         """触发初始布局更新"""
