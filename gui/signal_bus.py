@@ -36,6 +36,8 @@ class SignalBus(QObject):
     batchProgress = Signal(int, str)
     batchFinished = Signal(str)
     batchError = Signal(str)
+    # 特殊格式解析完成（文件路径字符串）
+    specialDataParsed = Signal(str)
 
     # UI 控制
     controlsLocked = Signal(bool)
