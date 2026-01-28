@@ -27,6 +27,58 @@ LAYOUT_MARGIN = 12
 LAYOUT_SPACING = 8
 
 
+class BottomDock:
+    """底部栏兼容包装：提供 `toggle_panel`/`show_panel`/`hide_panel`/`is_expanded`。
+
+    将此类放在模块级便于单元测试和复用（而不是在 `setup_ui` 中定义局部类）。
+    """
+
+    def __init__(self, widget, bar: QWidget):
+        self._widget = widget
+        self._bar = bar
+
+    def toggle_panel(self) -> None:
+        if self.is_expanded():
+            self.hide_panel()
+        else:
+            self.show_panel()
+
+    def show_panel(self) -> None:
+        try:
+            self._widget.setVisible(True)
+            self._bar.setVisible(True)
+        except Exception:
+            logger.debug("显示底部面板失败（非致命）", exc_info=True)
+
+    def hide_panel(self) -> None:
+        try:
+            self._widget.setVisible(False)
+            # 如果所有子控件都不可见，则隐藏底部栏
+            any_visible = False
+            try:
+                layout = self._bar.layout()
+                if layout is not None:
+                    for i in range(layout.count()):
+                        w = layout.itemAt(i).widget()
+                        if w is not None and w.isVisible():
+                            any_visible = True
+                            break
+            except Exception:
+                # 若查询子控件失败，则保守地不隐藏 bar
+                logger.debug("检查底部栏子控件可见性失败（非致命）", exc_info=True)
+                any_visible = True
+            if not any_visible:
+                self._bar.setVisible(False)
+        except Exception:
+            logger.debug("隐藏底部面板失败（非致命）", exc_info=True)
+
+    def is_expanded(self) -> bool:
+        try:
+            return self._widget.isVisible() and self._bar.isVisible()
+        except Exception:
+            return False
+
+
 class InitializationManager:
     """管理主窗口的初始化流程"""
 
@@ -84,45 +136,7 @@ class InitializationManager:
             except Exception:
                 logger.debug("设置分割器初始大小失败（可忽略）", exc_info=True)
 
-            # 简单包装以兼容旧的侧边栏 API（提供 toggle_panel/is_expanded）
-            class BottomDock:
-                def __init__(self, widget, bar: QWidget):
-                    self._widget = widget
-                    self._bar = bar
-
-                def toggle_panel(self) -> None:
-                    if self.is_expanded():
-                        self.hide_panel()
-                    else:
-                        self.show_panel()
-
-                def show_panel(self) -> None:
-                    try:
-                        self._widget.setVisible(True)
-                        self._bar.setVisible(True)
-                    except Exception:
-                        logger.debug("显示底部面板失败（非致命）", exc_info=True)
-
-                def hide_panel(self) -> None:
-                    try:
-                        self._widget.setVisible(False)
-                        # 如果所有子控件都不可见，则隐藏底部栏
-                        any_visible = False
-                        for i in range(self._bar.layout().count()):
-                            w = self._bar.layout().itemAt(i).widget()
-                            if w is not None and w.isVisible():
-                                any_visible = True
-                                break
-                        if not any_visible:
-                            self._bar.setVisible(False)
-                    except Exception:
-                        logger.debug("隐藏底部面板失败（非致命）", exc_info=True)
-
-                def is_expanded(self) -> bool:
-                    try:
-                        return self._widget.isVisible() and self._bar.isVisible()
-                    except Exception:
-                        return False
+            # 使用模块级的 BottomDock 类作为兼容包装（在文件底部定义）
 
             # 兼容旧属性：指向包装对象
             config_sidebar = BottomDock(config_panel, bottom_bar)
@@ -205,7 +219,7 @@ class InitializationManager:
             # 将 ConfigPanel 替换到 Tab 的"参考系管理"位置
             try:
                 if hasattr(self.main_window, "tab_main") and hasattr(
-                    self.main_window, "config_tab_placeholder"
+                        self.main_window, "config_tab_placeholder"
                 ):
                     tab_main = self.main_window.tab_main
                     config_panel = self.main_window.config_panel
@@ -312,14 +326,14 @@ class InitializationManager:
             logger.debug("绑定 configLoaded 失败", exc_info=True)
 
         # 初始刷新一次控件状态（确保开始/保存/选项卡按需禁用）
+        try:
+            if hasattr(self.main_window, "_refresh_controls_state"):
                 try:
-                    if hasattr(self.main_window, "_refresh_controls_state"):
-                        try:
-                            self.main_window._refresh_controls_state()
-                        except Exception:
-                            logger.debug("刷新控件状态失败（非致命）", exc_info=True)
+                    self.main_window._refresh_controls_state()
                 except Exception:
-                    logger.debug("调度刷新控件状态失败（非致命）", exc_info=True)
+                    logger.debug("刷新控件状态失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("调度刷新控件状态失败（非致命）", exc_info=True)
 
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
