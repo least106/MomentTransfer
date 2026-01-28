@@ -180,6 +180,69 @@ class BatchHistoryPanel(QWidget):
         return btn
 
     def _on_undo(self, record_id: Optional[str]) -> None:
-        if record_id and callable(self._on_undo_cb):
+        try:
+            if not record_id or not callable(self._on_undo_cb):
+                return
+
+            # 查找记录以便显示提示信息
+            record = None
+            for rec in self.store.get_records():
+                if rec.get("id") == record_id:
+                    record = rec
+                    break
+
+            # 基本确认：显示输出目录与新文件数量
+            try:
+                from PySide6.QtWidgets import QMessageBox
+
+                if record is not None:
+                    out_dir = record.get("output_dir", "")
+                    new_files = record.get("new_files") or []
+                    count = len(new_files)
+                else:
+                    out_dir = ""
+                    count = 0
+
+                msg = f"确认撤销此批处理记录吗？\n将删除 {count} 个由该批处理生成的新文件\n输出目录: {out_dir}"
+                resp = QMessageBox.question(self, "确认撤销", msg, QMessageBox.Yes | QMessageBox.No)
+                if resp != QMessageBox.Yes:
+                    return
+            except Exception:
+                # 若无法弹出确认对话，则直接返回
+                return
+
+            # 如果记录执行时间过早（超过 24 小时），进行二次确认并提示可能的风险
+            try:
+                ts = None
+                if record is not None:
+                    ts_str = record.get("timestamp")
+                    if ts_str:
+                        try:
+                            ts = datetime.fromisoformat(ts_str)
+                        except Exception:
+                            ts = None
+                if ts is not None:
+                    from datetime import datetime as _dt, timedelta
+
+                    age = _dt.now() - ts
+                    if age > timedelta(days=1):
+                        warn = (
+                            f"该记录创建于 {ts.isoformat()}，距今已超过 24 小时。\n"
+                            "在此期间源文件或输出目录可能已被移动、修改或删除。\n"
+                            "继续撤销可能会失败或删除非预期文件。是否仍要继续？"
+                        )
+                        resp2 = QMessageBox.question(self, "可能的风险", warn, QMessageBox.Yes | QMessageBox.No)
+                        if resp2 != QMessageBox.Yes:
+                            return
+            except Exception:
+                # 忽略时间解析或对话失败，继续执行撤销
+                pass
+
+            # 最终调用回调并刷新面板
             self._on_undo_cb(record_id)
-            self.refresh()
+            try:
+                self.refresh()
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("撤销操作触发失败", exc_info=True)
