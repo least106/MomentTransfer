@@ -46,6 +46,18 @@ class ConfigPanel(QWidget):
             pass
         main_layout.addWidget(title)
 
+        # 未保存提示：黄色背景的显著标签，默认隐藏
+        try:
+            self.lbl_unsaved = QLabel("配置已被修改，需要及时保存")
+            self.lbl_unsaved.setObjectName("unsavedNotice")
+            self.lbl_unsaved.setStyleSheet(
+                "background-color: #fff3cd; color: #856404; padding:6px; border-radius:4px;"
+            )
+            self.lbl_unsaved.setVisible(False)
+            main_layout.addWidget(self.lbl_unsaved)
+        except Exception:
+            self.lbl_unsaved = None
+
         # 面板组件
         self.source_panel = SourcePanel(self)
         self.target_panel = TargetPanel(self)
@@ -100,3 +112,120 @@ class ConfigPanel(QWidget):
 
         main_layout.addWidget(scroll_area)
         main_layout.addWidget(btn_widget)
+
+        # 绑定面板变更以显示未保存提示并设置 ConfigManager 标志
+        try:
+            def _on_panel_changed():
+                try:
+                    win = self.window()
+                    # 当前面板数据
+                    try:
+                        cur_src = self.source_panel.to_variant_payload()
+                    except Exception:
+                        cur_src = None
+                    try:
+                        cur_tgt = self.target_panel.to_variant_payload()
+                    except Exception:
+                        cur_tgt = None
+
+                    # 若有 ConfigManager，尝试与加载时的快照比较，决定是否标记为已修改
+                    marked = False
+                    if win is not None and hasattr(win, "config_manager") and win.config_manager is not None:
+                        try:
+                            snap = win.config_manager.get_simple_payload_snapshot()
+                        except Exception:
+                            snap = None
+
+                        # 规范化为保存时使用的结构进行比较
+                        def _make_simple(src, tgt):
+                            s_part = {"PartName": (src or {}).get("PartName", "Global"), "Variants": [src]} if src else {"PartName": "Global", "Variants": []}
+                            t_part = {"PartName": (tgt or {}).get("PartName", "Target"), "Variants": [tgt]} if tgt else {"PartName": "Target", "Variants": []}
+                            return {"Source": {"Parts": [s_part]}, "Target": {"Parts": [t_part]}}
+
+                        cur_simple = _make_simple(cur_src, cur_tgt)
+                        try:
+                            if snap is None:
+                                # 无加载快照，任何用户操作视为修改
+                                marked = True
+                            else:
+                                # 若与快照一致，则视为未修改，否则为已修改
+                                marked = cur_simple != snap
+                        except Exception:
+                            marked = True
+
+                        try:
+                            win.config_manager.set_config_modified(bool(marked))
+                        except Exception:
+                            pass
+
+                    # UI 层：显示/隐藏未保存提示并启用保存按钮（通过 mark_user_modified）
+                    if getattr(self, "lbl_unsaved", None) is not None:
+                        try:
+                            self.lbl_unsaved.setVisible(bool(marked))
+                        except Exception:
+                            pass
+
+                    try:
+                        # 仅当为用户修改（marked True）时标记为已操作，以启用保存按钮
+                        if win is not None and hasattr(win, "mark_user_modified"):
+                            if marked:
+                                win.mark_user_modified()
+                            else:
+                                # 清除用户修改标记并刷新状态（优先通过 UIStateManager）
+                                try:
+                                    if hasattr(win, "ui_state_manager") and getattr(win, "ui_state_manager"):
+                                        try:
+                                            win.ui_state_manager.clear_user_modified()
+                                        except Exception:
+                                            pass
+                                    else:
+                                        win.operation_performed = False
+                                        try:
+                                            win._refresh_controls_state()
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                except Exception:
+                    logger.debug("处理面板修改回调失败", exc_info=True)
+
+            try:
+                self.source_panel.valuesChanged.connect(_on_panel_changed)
+            except Exception:
+                pass
+            try:
+                self.target_panel.valuesChanged.connect(_on_panel_changed)
+            except Exception:
+                pass
+            # 也监听 Part 名称变更（用户直接修改 Part 名应被视为配置修改）
+            try:
+                self.source_panel.partNameChanged.connect(_on_panel_changed)
+            except Exception:
+                pass
+            try:
+                self.target_panel.partNameChanged.connect(_on_panel_changed)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("连接 panel valuesChanged/partNameChanged 失败", exc_info=True)
+
+        # 监听保存完成信号以隐藏未保存提示
+        try:
+            from gui.signal_bus import SignalBus
+
+            sb = getattr(self.window(), "signal_bus", None) or SignalBus.instance()
+            try:
+                sb.configSaved.connect(lambda _p=None: self._on_config_saved())
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("连接 configSaved 信号失败（非致命）", exc_info=True)
+
+    def _on_config_saved(self) -> None:
+        try:
+            if getattr(self, "lbl_unsaved", None) is not None:
+                self.lbl_unsaved.setVisible(False)
+        except Exception:
+            pass
