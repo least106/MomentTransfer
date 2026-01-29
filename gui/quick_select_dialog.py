@@ -25,6 +25,46 @@ from PySide6.QtWidgets import (
 
 logger = logging.getLogger(__name__)
 
+try:
+    from gui.managers import normalize_path_key
+except Exception:
+    def normalize_path_key(p):
+        try:
+            return str(Path(p).resolve()) if p is not None else None
+        except Exception:
+            try:
+                return str(p)
+            except Exception:
+                return None
+
+
+def make_qs_key(fp_str: str, part: Optional[str]) -> str:
+    """生成 QuickSelect 的确定性键：{resolved_path}:::{part_or_empty}
+
+    使用规范化的路径以便跨会话一致，part 为空用空字符串占位。
+    """
+    try:
+        p_norm = normalize_path_key(fp_str) or str(fp_str)
+    except Exception:
+        p_norm = str(fp_str)
+    part_str = part or ""
+    return f"{p_norm}:::{part_str}"
+
+
+def parse_qs_key(kstr: str) -> (str, Optional[str]):
+    """从键解析出 (resolved_path, part_or_None)。"""
+    try:
+        if kstr is None:
+            return (None, None)
+        parts = kstr.split(":::")
+        if len(parts) >= 2:
+            p = parts[0]
+            part = parts[1] if parts[1] != "" else None
+            return (p, part)
+        return (kstr, None)
+    except Exception:
+        return (kstr, None)
+
 
 class QuickSelectDialog(QDialog):
     """快速选择对话框（按文件/part 分组输入跳过行并即时预览）。"""
@@ -75,11 +115,17 @@ class QuickSelectDialog(QDialog):
         lay.addWidget(self.info_area, 2)
 
         btn_row = QHBoxLayout()
+        btn_restore_all = QPushButton("全部恢复", self)
+        btn_skip_all = QPushButton("全部跳过", self)
+        btn_restore_all.clicked.connect(self._on_restore_all_clicked)
+        btn_skip_all.clicked.connect(self._on_skip_all_clicked)
         btn_ok = QPushButton("确定", self)
         btn_cancel = QPushButton("取消", self)
         btn_ok.clicked.connect(self.accept)
         btn_cancel.clicked.connect(self.reject)
         btn_row.addStretch(1)
+        btn_row.addWidget(btn_restore_all)
+        btn_row.addWidget(btn_skip_all)
         btn_row.addWidget(btn_ok)
         btn_row.addWidget(btn_cancel)
         lay.addLayout(btn_row)
@@ -125,12 +171,14 @@ class QuickSelectDialog(QDialog):
                         for part in get_part_names(fp) or []:
                             it = QTreeWidgetItem([fp.name, str(part)])
                             it.setCheckState(0, Qt.Unchecked)
-                            it.setData(0, Qt.UserRole, (str(fp), str(part)))
+                            k = make_qs_key(str(fp), str(part))
+                            it.setData(0, Qt.UserRole, k)
                             self.tree.addTopLevelItem(it)
                     else:
                         it = QTreeWidgetItem([fp.name, ""])
                         it.setCheckState(0, Qt.Unchecked)
-                        it.setData(0, Qt.UserRole, (str(fp), None))
+                        k = make_qs_key(str(fp), None)
+                        it.setData(0, Qt.UserRole, k)
                         self.tree.addTopLevelItem(it)
                 except Exception:
                     logger.debug("快速选择行构建失败", exc_info=True)
@@ -184,11 +232,12 @@ class QuickSelectDialog(QDialog):
             return
 
         for it in selected_items:
-            fp_str, part = it.data(0, Qt.UserRole)
-            self._add_entry(fp_str, part)
+            kstr = it.data(0, Qt.UserRole)
+            fp_str, part = parse_qs_key(kstr)
+            self._add_entry(fp_str, part, kstr)
         self.info_layout.addStretch(1)
 
-    def _add_entry(self, fp_str: str, part: Optional[str]) -> None:
+    def _add_entry(self, fp_str: str, part: Optional[str], kstr: Optional[str] = None) -> None:
         container = QWidget(self.info_widget)
         v = QVBoxLayout(container)
         # 减小每个 entry 的内边距与间距
@@ -215,7 +264,7 @@ class QuickSelectDialog(QDialog):
         preview.setMinimumHeight(64)
         v.addWidget(preview)
 
-        entry = {"key": (fp_str, part), "input": inp, "preview": preview}
+        entry = {"key": (fp_str, part), "kstr": kstr or make_qs_key(fp_str, part), "input": inp, "preview": preview}
         self._entry_widgets.append(entry)
         inp.textChanged.connect(
             lambda _t, e=entry: self._update_entry_preview(e)
@@ -223,8 +272,8 @@ class QuickSelectDialog(QDialog):
         # 如果之前保存了输入文本，恢复到输入框
         try:
             state = getattr(self.gui, "_quick_select_state", {}) or {}
-            key = (fp_str, part)
-            saved = state.get(str(key))
+            lookup_key = entry.get("kstr")
+            saved = state.get(lookup_key)
             if saved is not None:
                 txt = saved.get("rows_text")
                 if txt:
@@ -238,6 +287,10 @@ class QuickSelectDialog(QDialog):
 
     def _parse_rows(self, text: str) -> List[int]:
         txt = (text or "").strip()
+        # 特殊标记："ALL" 表示显式请求全部恢复（与空输入不同）
+        if txt.upper() == "ALL":
+            return None  # None 用于表示全部恢复（select all）
+        # 空文本表示不做任何变更
         if not txt:
             return []
         rows: List[int] = []
@@ -276,14 +329,54 @@ class QuickSelectDialog(QDialog):
         if lines:
             preview.setPlainText("\n".join(lines))
 
+    def _on_restore_all_clicked(self) -> None:
+        """将所选条目的输入设置为显式 ALL 标记，表示用户请求全部恢复"""
+        try:
+            for e in self._entry_widgets:
+                try:
+                    e.get("input").setText("ALL")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _on_skip_all_clicked(self) -> None:
+        """将所选条目的输入设置为 1..N 的序列，表示跳过所有行"""
+        try:
+            for e in self._entry_widgets:
+                try:
+                    fp_str, part = e.get("key")
+                    fp = Path(fp_str)
+                    if part is None:
+                        df = self.batch._get_table_df_preview(fp, max_rows=200)
+                        row_count = len(df) if df is not None else 0
+                    else:
+                        data = self.batch._get_special_data_dict(fp)
+                        df = (data or {}).get(str(part))
+                        row_count = len(df) if df is not None else 0
+                    if row_count > 0:
+                        txt = ",".join(str(i) for i in range(1, row_count + 1))
+                        e.get("input").setText(txt)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def _on_special_data_parsed(self, fp_str: str) -> None:
         """收到特殊格式解析完成后的通知，刷新当前显示的相关预览条目。"""
         try:
             for entry in list(self._entry_widgets or []):
                 try:
                     key = entry.get("key")
-                    if key and str(key[0]) == str(fp_str):
-                        self._update_entry_preview(entry)
+                    if key:
+                        # 比较规范化路径
+                        try:
+                            entry_fp = key[0]
+                            if normalize_path_key(fp_str) == normalize_path_key(entry_fp):
+                                self._update_entry_preview(entry)
+                        except Exception:
+                            if str(key[0]) == str(fp_str):
+                                self._update_entry_preview(entry)
                 except Exception:
                     pass
         except Exception:
@@ -327,6 +420,13 @@ class QuickSelectDialog(QDialog):
 
     # ---------- 应用勾选 ----------
     def apply_changes(self) -> None:
+        """Apply the quick-select inputs to the GUI selection state.
+
+        Semantics:
+        - Input text empty (""): no change.
+        - Input text equal to "ALL" (case-insensitive): explicit request to restore/select all rows.
+        - Otherwise a comma-separated list of 1-based indices indicates rows to skip.
+        """
         if not self._entry_widgets:
             return
         gui = getattr(self, "gui", None)
@@ -339,25 +439,18 @@ class QuickSelectDialog(QDialog):
                 fp_str, part = entry["key"]
                 fp = Path(fp_str)
 
-                if not rows:
-                    # 空输入：视为“取消跳过”，恢复为全选
+                # 特殊标记 None 表示显式的 ALL -> 恢复为全选
+                if rows is None:
                     if part is None:
                         df = self.batch._get_table_df_preview(fp, max_rows=200)
                         row_count = len(df) if df is not None else 0
-                        by_file = (
-                            getattr(
-                                self.gui, "table_row_selection_by_file", {}
-                            )
-                            or {}
-                        )
+                        by_file = (getattr(gui, "table_row_selection_by_file", {}) or {})
                         by_file[str(fp)] = set(range(row_count))
                         try:
-                            self.gui.table_row_selection_by_file = by_file
+                            gui.table_row_selection_by_file = by_file
                         except Exception:
                             pass
-                        table = (self.batch._table_preview_tables or {}).get(
-                            str(fp)
-                        )
+                        table = (self.batch._table_preview_tables or {}).get(str(fp))
                         if table is not None:
                             try:
                                 table.selected_set = set(range(row_count))
@@ -368,25 +461,14 @@ class QuickSelectDialog(QDialog):
                         data = self.batch._get_special_data_dict(fp)
                         df = (data or {}).get(str(part))
                         row_count = len(df) if df is not None else 0
-                        by_file = (
-                            getattr(
-                                self.gui,
-                                "special_part_row_selection_by_file",
-                                {},
-                            )
-                            or {}
-                        )
+                        by_file = (getattr(gui, "special_part_row_selection_by_file", {}) or {})
                         by_part = by_file.setdefault(str(fp), {})
                         by_part[str(part)] = set(range(row_count))
                         try:
-                            self.gui.special_part_row_selection_by_file = (
-                                by_file
-                            )
+                            gui.special_part_row_selection_by_file = by_file
                         except Exception:
                             pass
-                        table = (self.batch._special_preview_tables or {}).get(
-                            (str(fp), str(part))
-                        )
+                        table = (self.batch._special_preview_tables or {}).get((str(fp), str(part)))
                         if table is not None:
                             try:
                                 table.selected_set = set(range(row_count))
@@ -395,43 +477,32 @@ class QuickSelectDialog(QDialog):
                                 pass
                     continue
 
+                # 空文本表示无变更
+                if rows == []:
+                    continue
+
+                # 否则 rows 为具体索引列表 -> 视为跳过指定行（移除选中）
                 if part is None:
-                    # 普通表格：移除指定行（视为跳过）
                     max_need = max(rows) + 1
-                    df = self.batch._get_table_df_preview(
-                        fp, max_rows=max(max_need, 200)
-                    )
+                    df = self.batch._get_table_df_preview(fp, max_rows=max(max_need, 200))
                     row_count = len(df) if df is not None else max_need
-                    by_file = (
-                        getattr(self.gui, "table_row_selection_by_file", {})
-                        or {}
-                    )
+                    by_file = (getattr(gui, "table_row_selection_by_file", {}) or {})
                     cur = by_file.get(str(fp)) or set(range(row_count))
                     by_file[str(fp)] = cur
                     for r in rows:
                         cur.discard(int(r))
                     try:
-                        self.gui.table_row_selection_by_file = by_file
+                        gui.table_row_selection_by_file = by_file
                     except Exception:
                         pass
-                    table = (self.batch._table_preview_tables or {}).get(
-                        str(fp)
-                    )
-                    if table is not None and hasattr(
-                        table, "uncheck_rows_if_visible"
-                    ):
+                    table = (self.batch._table_preview_tables or {}).get(str(fp))
+                    if table is not None and hasattr(table, "uncheck_rows_if_visible"):
                         table.uncheck_rows_if_visible(rows)
                 else:
-                    # 特殊格式：移除指定行（视为跳过）
                     data = self.batch._get_special_data_dict(fp)
                     df = (data or {}).get(str(part))
                     row_count = len(df) if df is not None else (max(rows) + 1)
-                    by_file = (
-                        getattr(
-                            self.gui, "special_part_row_selection_by_file", {}
-                        )
-                        or {}
-                    )
+                    by_file = (getattr(gui, "special_part_row_selection_by_file", {}) or {})
                     by_part = by_file.setdefault(str(fp), {})
                     sel = by_part.get(str(part))
                     if sel is None:
@@ -440,15 +511,11 @@ class QuickSelectDialog(QDialog):
                     for r in rows:
                         sel.discard(int(r))
                     try:
-                        self.gui.special_part_row_selection_by_file = by_file
+                        gui.special_part_row_selection_by_file = by_file
                     except Exception:
                         pass
-                    table = (self.batch._special_preview_tables or {}).get(
-                        (str(fp), str(part))
-                    )
-                    if table is not None and hasattr(
-                        table, "uncheck_rows_if_visible"
-                    ):
+                    table = (self.batch._special_preview_tables or {}).get((str(fp), str(part)))
+                    if table is not None and hasattr(table, "uncheck_rows_if_visible"):
                         table.uncheck_rows_if_visible(rows)
 
             # 保存对话框的状态以便下次打开恢复
@@ -490,13 +557,13 @@ class QuickSelectDialog(QDialog):
                 key = it.data(0, Qt.UserRole)
                 if key is None:
                     continue
-                kstr = str(key)
+                kstr = key
                 cur = state.get(kstr, {})
                 cur["checked"] = it.checkState(0) == Qt.Checked
-                # 若存在输入条目，保存文本
+                # 若存在输入条目，保存文本（按 kstr 匹配）
                 txt = ""
                 for e in self._entry_widgets:
-                    if e.get("key") == key:
+                    if e.get("kstr") == kstr:
                         try:
                             txt = e.get("input").text() or ""
                         except Exception:
@@ -523,25 +590,24 @@ class QuickSelectDialog(QDialog):
                 it = self.tree.topLevelItem(i)
                 if not it:
                     continue
-                key = it.data(0, Qt.UserRole)
-                if key is None:
+                kstr = it.data(0, Qt.UserRole)
+                if kstr is None:
                     continue
-                fp_str, part = key
+                fp_str, part = parse_qs_key(kstr)
                 # 优先使用显式保存的状态，但如果 GUI 上存在实时的行选中集合
                 # 则以 GUI 的实时选择为准（避免主界面变更后快速选择仍使用过时的保存状态）
-                cur = state.get(str(key))
+                cur = state.get(kstr)
                 # 检查 GUI 上是否有实时的选中信息
                 try:
                     live_checked = None
+                    fp_norm = normalize_path_key(fp_str) or fp_str
                     if part is None:
                         by_file = (
-                            getattr(
-                                self.gui, "table_row_selection_by_file", {}
-                            )
+                            getattr(self.gui, "table_row_selection_by_file", {})
                             or {}
                         )
-                        sel = by_file.get(str(fp_str))
-                        if sel is not None:
+                        sel = by_file.get(fp_norm) or by_file.get(str(fp_str))
+                        if sel:
                             live_checked = True
                     else:
                         by_file = (
@@ -552,13 +618,11 @@ class QuickSelectDialog(QDialog):
                             )
                             or {}
                         )
-                        by_part = (
-                            by_file.get(str(fp_str), {}) if by_file else None
-                        )
+                        by_part = by_file.get(fp_norm) or by_file.get(str(fp_str))
                         sel = None
                         if by_part:
-                            sel = by_part.get(str(part))
-                        if sel is not None:
+                            sel = by_part.get(str(part)) or by_part.get(part)
+                        if sel:
                             live_checked = True
                 except Exception:
                     live_checked = None
@@ -577,19 +641,18 @@ class QuickSelectDialog(QDialog):
                     continue
                 # 否则尝试从 gui 的表格选中集合同步
                 try:
+                    fp_norm = normalize_path_key(fp_str) or fp_str
                     if part is None:
                         by_file = (
-                            getattr(
-                                self.gui, "table_row_selection_by_file", {}
-                            )
+                            getattr(self.gui, "table_row_selection_by_file", {})
                             or {}
                         )
-                        sel = by_file.get(str(fp_str))
+                        sel = by_file.get(fp_norm) or by_file.get(str(fp_str))
                         if sel is not None:
                             it.setCheckState(0, Qt.Checked)
                             # 计算跳过行文本（全量减去选中）
                             df = self.batch._get_table_df_preview(
-                                Path(fp_str), max_rows=200
+                                Path(fp_norm), max_rows=200
                             )
                             row_count = len(df) if df is not None else 0
                             skipped = []
@@ -598,12 +661,12 @@ class QuickSelectDialog(QDialog):
                                     skipped.append(str(r + 1))
                             # 保存到临时 state（在 entries构建后恢复到输入框）
                             if skipped:
-                                state[str(key)] = {
+                                state[kstr] = {
                                     "checked": True,
                                     "rows_text": ",".join(skipped),
                                 }
                             else:
-                                state[str(key)] = {
+                                state[kstr] = {
                                     "checked": True,
                                     "rows_text": "",
                                 }
@@ -616,16 +679,14 @@ class QuickSelectDialog(QDialog):
                             )
                             or {}
                         )
-                        by_part = (
-                            by_file.get(str(fp_str), {}) if by_file else None
-                        )
+                        by_part = by_file.get(fp_norm) or by_file.get(str(fp_str))
                         sel = None
                         if by_part:
-                            sel = by_part.get(str(part))
+                            sel = by_part.get(str(part)) or by_part.get(part)
                         if sel is not None:
                             it.setCheckState(0, Qt.Checked)
                             data = self.batch._get_special_data_dict(
-                                Path(fp_str)
+                                Path(fp_norm)
                             )
                             df = (data or {}).get(str(part))
                             row_count = len(df) if df is not None else 0
@@ -634,12 +695,12 @@ class QuickSelectDialog(QDialog):
                                 if r not in sel:
                                     skipped.append(str(r + 1))
                             if skipped:
-                                state[str(key)] = {
+                                state[kstr] = {
                                     "checked": True,
                                     "rows_text": ",".join(skipped),
                                 }
                             else:
-                                state[str(key)] = {
+                                state[kstr] = {
                                     "checked": True,
                                     "rows_text": "",
                                 }
@@ -649,8 +710,8 @@ class QuickSelectDialog(QDialog):
             self._rebuild_entries()
             try:
                 for e in self._entry_widgets:
-                    k = e.get("key")
-                    saved = state.get(str(k))
+                    lookup = e.get("kstr")
+                    saved = state.get(lookup)
                     if saved is not None:
                         txt = saved.get("rows_text", "") or ""
                         if txt:
@@ -674,19 +735,18 @@ class QuickSelectDialog(QDialog):
                 it = self.tree.topLevelItem(i)
                 if not it:
                     continue
-                key = it.data(0, Qt.UserRole)
-                if not key:
+                kstr = it.data(0, Qt.UserRole)
+                if not kstr:
                     continue
-                fp_str, part = key
+                fp_str, part = parse_qs_key(kstr)
                 try:
+                    fp_norm = normalize_path_key(fp_str) or fp_str
                     if part is None:
                         by_file = (
-                            getattr(
-                                self.gui, "table_row_selection_by_file", {}
-                            )
+                            getattr(self.gui, "table_row_selection_by_file", {})
                             or {}
                         )
-                        if str(fp_str) in by_file:
+                        if fp_norm in by_file or str(fp_str) in by_file:
                             it.setCheckState(0, Qt.Checked)
                     else:
                         by_file = (
@@ -697,9 +757,8 @@ class QuickSelectDialog(QDialog):
                             )
                             or {}
                         )
-                        if str(fp_str) in by_file and str(part) in (
-                            by_file.get(str(fp_str)) or {}
-                        ):
+                        by_part = by_file.get(fp_norm) or by_file.get(str(fp_str))
+                        if by_part and (str(part) in by_part or part in by_part):
                             it.setCheckState(0, Qt.Checked)
                 except Exception:
                     pass

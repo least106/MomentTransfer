@@ -136,17 +136,17 @@ class ConfigPanel(QWidget):
                         and hasattr(win, "config_manager")
                         and win.config_manager is not None
                     ):
+                        try:
+                            # 优先使用 ConfigManager 在加载时保存的基线快照（若存在），
+                            # 否则回退到即时生成的快照。这样可以避免加载后面板与
+                            # 管理器内部模型之间的微小差异导致误判。
+                            snap = None
                             try:
-                                # 优先使用 ConfigManager 在加载时保存的基线快照（若存在），
-                                # 否则回退到即时生成的快照。这样可以避免加载后面板与
-                                # 管理器内部模型之间的微小差异导致误判。
+                                snap = getattr(win.config_manager, "_loaded_snapshot", None)
+                            except Exception:
                                 snap = None
-                                try:
-                                    snap = getattr(win.config_manager, "_loaded_snapshot", None)
-                                except Exception:
-                                    snap = None
-                                if snap is None:
-                                    snap = win.config_manager.get_simple_payload_snapshot()
+                            if snap is None:
+                                snap = win.config_manager.get_simple_payload_snapshot()
                         except Exception:
                             snap = None
 
