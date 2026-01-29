@@ -32,15 +32,15 @@ class DefaultTransformationPlugin(TransformationPlugin):
         # 力的旋转（假设每行是一个向量）
         forces_t = np.asarray(forces)
         moments_t = np.asarray(moments)
-        R = np.asarray(rotation_matrix)
+        rot_matrix = np.asarray(rotation_matrix)
 
         if forces_t.ndim == 1:
             forces_t = forces_t.reshape(1, 3)
         if moments_t.ndim == 1:
             moments_t = moments_t.reshape(1, 3)
 
-        forces_rot = forces_t @ R.T
-        moments_rot = moments_t @ R.T
+        forces_rot = forces_t @ rot_matrix.T
+        moments_rot = moments_t @ rot_matrix.T
 
         # 扩展 moment_arm 到与 forces_rot 相同的批量形状
         r = np.asarray(moment_arm).reshape(1, 3)
