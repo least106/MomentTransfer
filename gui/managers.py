@@ -13,6 +13,21 @@ from typing import Dict, Optional
 from PySide6.QtWidgets import QWidget
 
 
+def normalize_path_key(p):
+    """规范化路径键为绝对解析字符串（兼容 Path / str）。"""
+    try:
+        if p is None:
+            return None
+        # 如果已经是 Path，直接解析；否则尝试构造 Path
+        kp = p if isinstance(p, Path) else Path(str(p))
+        return str(kp.resolve())
+    except Exception:
+        try:
+            return str(p)
+        except Exception:
+            return None
+
+
 class FileSelectionManager:
     """管理与文件选择相关的状态与映射。
 
@@ -37,6 +52,69 @@ class FileSelectionManager:
         self.file_part_selection_by_file: Dict[str, Dict[str, str]] = {}
         # 常规文件的行选择：{str(file): set(row_idx)} or None
         self.table_row_selection_by_file: Dict[str, Optional[set]] = {}
+        # 被用户标记为跳过的行：{str(file): set(row_idx)}
+        # 用于在处理时忽略特定行（可序列化到 Project 文件）
+        self.skipped_rows_by_file: Dict[str, Optional[set]] = {}
+
+    # ---- skipped rows API ----
+    def mark_skipped_rows(self, file_path: Path, rows) -> None:
+        """标记指定文件的多行为跳过（rows 可以是可迭代的索引）。"""
+        try:
+            key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+        except Exception:
+            key = str(file_path)
+        try:
+            existing = self.skipped_rows_by_file.get(key) or set()
+            existing = set(existing)
+            existing.update(set(rows or []))
+            self.skipped_rows_by_file[key] = existing
+            try:
+                setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def clear_skipped_rows(self, file_path: Path, rows=None) -> None:
+        """清除指定文件的跳过行；若 rows 为 None 则清空所有跳过行。"""
+        try:
+            key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+        except Exception:
+            key = str(file_path)
+        try:
+            if rows is None:
+                self.skipped_rows_by_file.pop(key, None)
+            else:
+                existing = self.skipped_rows_by_file.get(key) or set()
+                existing = set(existing)
+                for r in rows:
+                    existing.discard(r)
+                if existing:
+                    self.skipped_rows_by_file[key] = existing
+                else:
+                    self.skipped_rows_by_file.pop(key, None)
+            try:
+                setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def get_skipped_rows(self, file_path: Path):
+        """返回指定文件的跳过行集合（set）或 None。"""
+        try:
+            key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+        except Exception:
+            key = str(file_path)
+        try:
+            s = self.skipped_rows_by_file.get(key)
+            try:
+                setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
+            except Exception:
+                pass
+            return set(s) if s is not None else None
+        except Exception:
+            return None
 
     def ensure_special_row_selection_storage(
         self, file_path: Path, part_names: list
@@ -47,11 +125,25 @@ class FileSelectionManager:
         """
         try:
             by_file = self.special_part_row_selection_by_file or {}
-            by_file.setdefault(str(file_path), {})
-            by_part = by_file[str(file_path)]
+            key = None
+            try:
+                key = normalize_path_key(file_path)
+            except Exception:
+                try:
+                    key = str(file_path)
+                except Exception:
+                    key = None
+            if key is None:
+                return {}
+            by_file.setdefault(key, {})
+            by_part = by_file[key]
             for pn in part_names:
                 by_part.setdefault(str(pn), None)
             self.special_part_row_selection_by_file = by_file
+            try:
+                setattr(self.parent, "special_part_row_selection_by_file", self.special_part_row_selection_by_file)
+            except Exception:
+                pass
             return by_part
         except Exception:
             return {}
@@ -1166,3 +1258,71 @@ class UIStateManager:
             return bool(getattr(self, "_operation_performed", False))
         except Exception:
             return False
+
+    # ---- UI 恢复辅助 API ----
+    def set_tab_index(self, index: int) -> None:
+        """设置主选项卡索引（若主窗口存在 tab_main）。"""
+        try:
+            tab = getattr(self.parent, "tab_main", None)
+            if tab is not None and hasattr(tab, "setCurrentIndex"):
+                try:
+                    tab.setCurrentIndex(int(index))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def restore_window_geometry(self, geom: dict) -> None:
+        """恢复窗口几何：期望 geom 为 {"x":int,"y":int,"w":int,"h":int}。"""
+        try:
+            if not geom:
+                return
+            win = self.parent
+            try:
+                x = int(geom.get("x", 0))
+                y = int(geom.get("y", 0))
+                w = int(geom.get("w", win.width() if hasattr(win, "width") else 800))
+                h = int(geom.get("h", win.height() if hasattr(win, "height") else 600))
+                try:
+                    win.setGeometry(x, y, w, h)
+                except Exception:
+                    # 回退到 resize/move
+                    try:
+                        win.resize(w, h)
+                        win.move(x, y)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def set_selected_files(self, file_list: list) -> None:
+        """设置当前选中文件列表到 FileSelectionManager（尽量安全）。"""
+        try:
+            if not file_list:
+                return
+            fsm = getattr(self.parent, "file_selection_manager", None)
+            if fsm is None:
+                return
+            try:
+                # 规范化为绝对字符串键
+                by_file = {}
+                for p in file_list:
+                    try:
+                        key = str(Path(p).resolve()) if p is not None else str(p)
+                    except Exception:
+                        key = str(p)
+                    by_file[key] = by_file.get(key, set())
+                # 将选择写入 parent 的表格选择结构（兼容旧代码）
+                try:
+                    fsm.table_row_selection_by_file = getattr(fsm, "table_row_selection_by_file", {}) or {}
+                    # 保留现有结构，不覆盖其他 keys
+                    for k in by_file.keys():
+                        fsm.table_row_selection_by_file.setdefault(k, None)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass

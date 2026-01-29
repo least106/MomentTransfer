@@ -40,144 +40,100 @@ class ProjectManager:
     def create_new_project(self) -> bool:
         """创建新项目（清除当前工作状态）"""
         try:
-            # 清除当前项目文件路径
+            # 清除当前项目路径/状态
             self.current_project_file = None
             self.last_saved_state = None
 
-            # 重置工作流程到 Step 1
+            # 重置工作流程到初始步骤（若有 BatchManager）
             try:
-                if (
-                    hasattr(self.gui, "batch_manager")
-                    and self.gui.batch_manager
-                ):
-                    self.gui.batch_manager._set_workflow_step("init")
-            except Exception:
-                logger.debug("reset workflow step failed", exc_info=True)
-
-            try:
-                # 在加载成功后设置 UI 状态：标记为已加载。
-                # 对于加载的来源，区分是否为项目文件：
-                # - 若是明确的 project 文件（.mtproject），则清除用户修改标志（视为还原到已保存状态）；
-                # - 否则（例如加载数据文件或外部配置），将其视为用户产生的变更，标记为已修改以启用保存按钮。
-                try:
-                    if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
-                        try:
-                            self.gui.ui_state_manager.set_data_loaded(True)
-                        except Exception:
-                            pass
-                        try:
-                            self.gui.ui_state_manager.set_config_loaded(True)
-                        except Exception:
-                            pass
-
-                        try:
-                            is_project_file = False
-                            try:
-                                if file_path is not None:
-                                    suf = str(file_path).lower()
-                                    if suf.endswith(".mtproject"):
-                                        is_project_file = True
-                            except Exception:
-                                is_project_file = False
-
-                            if is_project_file:
-                                # 从项目文件加载：视为与已保存状态一致
-                                self.gui.ui_state_manager.clear_user_modified()
-                            else:
-                                # 加载数据/配置等视为用户引入的更改，启用保存
-                                try:
-                                    if hasattr(self.gui, "mark_user_modified"):
-                                        self.gui.mark_user_modified()
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                if hasattr(self.gui, "batch_manager") and self.gui.batch_manager:
                     try:
+                        self.gui.batch_manager._set_workflow_step("init")
+                    except Exception:
+                        logger.debug("batch_manager _set_workflow_step failed", exc_info=True)
+            except Exception:
+                logger.debug("检查 batch_manager 失败（非致命）", exc_info=True)
+
+            # 清理 FileSelectionManager 的缓存与状态（向后兼容）
+            try:
+                fsm = getattr(self.gui, "file_selection_manager", None)
+                if fsm is not None:
+                    try:
+                        fsm.special_part_mapping_by_file = {}
                         fsm.special_part_row_selection_by_file = {}
-                    except Exception:
-                        pass
-                    try:
                         fsm.file_part_selection_by_file = {}
-                    except Exception:
-                        pass
-                    try:
                         fsm.table_row_selection_by_file = {}
-                    except Exception:
-                        pass
-                    try:
                         fsm._data_loaded = False
                         fsm._config_loaded = False
                         fsm._operation_performed = False
                     except Exception:
-                        pass
+                        logger.debug("重置 file_selection_manager 映射失败（非致命）", exc_info=True)
+            except Exception:
+                logger.debug("访问 file_selection_manager 失败（非致命）", exc_info=True)
 
-                # 兼容旧代码：在主窗口上清空旧的属性引用
-                try:
-                    for attr in [
-                        "special_part_mapping_by_file",
-                        "special_part_row_selection_by_file",
-                        "file_part_selection_by_file",
-                        "table_row_selection_by_file",
-                    ]:
-                        try:
-                            setattr(self.gui, attr, {})
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-                # 清空 GUI 的文件树与缓存项
-                try:
-                    if hasattr(self.gui, "file_tree") and getattr(
-                        self.gui, "file_tree"
-                    ) is not None:
-                        try:
-                            self.gui.file_tree.clear()
-                        except Exception:
-                            pass
+            # 清理主窗口上旧的属性与文件树、列表缓存
+            try:
+                for attr in (
+                    "special_part_mapping_by_file",
+                    "special_part_row_selection_by_file",
+                    "file_part_selection_by_file",
+                    "table_row_selection_by_file",
+                ):
                     try:
-                        setattr(self.gui, "_file_tree_items", {})
+                        setattr(self.gui, attr, {})
                     except Exception:
                         pass
-                except Exception:
-                    pass
+            except Exception:
+                pass
 
-                # 尝试清理文件列表区域的子控件（若存在）
+            try:
+                if hasattr(self.gui, "file_tree") and getattr(self.gui, "file_tree") is not None:
+                    try:
+                        self.gui.file_tree.clear()
+                    except Exception:
+                        pass
                 try:
-                    flw = getattr(self.gui, "file_list_widget", None)
-                    if flw is not None:
-                        try:
-                            layout = flw.layout()
-                            if layout is not None:
-                                while layout.count():
-                                    item = layout.takeAt(0)
-                                    w = item.widget()
-                                    if w is not None:
-                                        try:
-                                            w.setParent(None)
-                                        except Exception:
-                                            pass
-                        except Exception:
-                            pass
+                    setattr(self.gui, "_file_tree_items", {})
                 except Exception:
                     pass
             except Exception:
-                logger.debug("清除文件选择缓存或 UI 失败（非致命）", exc_info=True)
+                pass
 
-            # 标记为用户已修改，以便启用保存按钮和相关 UI 控件
             try:
-                if hasattr(self.gui, "mark_user_modified") and callable(
-                    self.gui.mark_user_modified
-                ):
+                flw = getattr(self.gui, "file_list_widget", None)
+                if flw is not None:
                     try:
-                        self.gui.mark_user_modified()
+                        layout = flw.layout()
+                        if layout is not None:
+                            while layout.count():
+                                item = layout.takeAt(0)
+                                w = item.widget()
+                                if w is not None:
+                                    try:
+                                        w.setParent(None)
+                                    except Exception:
+                                        pass
                     except Exception:
-                        logger.debug(
-                            "mark_user_modified 调用失败（非致命）",
-                            exc_info=True,
-                        )
+                        pass
+            except Exception:
+                pass
+
+            # 标记为用户已修改以启用保存（与 UIStateManager 协同）
+            try:
+                if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                    try:
+                        # 新建项目通常视为需要保存（用户需确认/命名），标记为已修改
+                        self.gui.ui_state_manager.set_data_loaded(True)
+                        self.gui.ui_state_manager.set_config_loaded(True)
+                        self.gui.ui_state_manager.clear_user_modified()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        if hasattr(self.gui, "mark_user_modified") and callable(self.gui.mark_user_modified):
+                            self.gui.mark_user_modified()
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
