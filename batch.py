@@ -30,6 +30,13 @@ except ImportError:
     portalocker = None
 
 
+# 进程级缓存：worker 进程中可能会重用的全局变量（在子进程入口处按需初始化）
+# 在模块级预先定义可以避免 pylint 报告 "使用变量前赋值" 的错误
+_WORKER_CALCULATOR = None
+_WORKER_PROJECT_PATH = None
+_WORKER_PROJECT_DATA = None
+
+
 from src.cli_helpers import (
     BatchConfig,
     configure_logging,
@@ -820,7 +827,7 @@ def _worker_process(args):
         config_dict = args.get("config_dict")
         project_config_path = args.get("project_config_path")
         output_dir_str = args.get("output_dir")
-        registry_db = args.get("registry_db", None)
+        _registry_db = args.get("registry_db", None)
         strict = bool(args.get("strict", False))
 
         if not all(
@@ -842,13 +849,16 @@ def _worker_process(args):
         # 若调用方传入序列化的计算器（calculator_pickle），优先使用并缓存
         # 否则：若当前进程已缓存相同 project_config_path 的计算器，则重用
         # 否则按需加载一次并缓存
-        global _WORKER_CALCULATOR, _WORKER_PROJECT_PATH, _WORKER_PROJECT_DATA
-        try:
-            _WORKER_CALCULATOR
-        except NameError:
-            _WORKER_CALCULATOR = None
-            _WORKER_PROJECT_PATH = None
-            _WORKER_PROJECT_DATA = None
+        _gw = globals()
+        # 确保模块级缓存键存在并获得快照，避免使用 `global` 语句
+        if "_WORKER_CALCULATOR" not in _gw:
+            _gw["_WORKER_CALCULATOR"] = None
+            _gw["_WORKER_PROJECT_PATH"] = None
+            _gw["_WORKER_PROJECT_DATA"] = None
+
+        worker_calc = _gw.get("_WORKER_CALCULATOR")
+        worker_proj = _gw.get("_WORKER_PROJECT_PATH")
+        worker_data = _gw.get("_WORKER_PROJECT_DATA")
 
         project_data = None
         calculator = None
@@ -858,9 +868,10 @@ def _worker_process(args):
         if calc_pickle:
             try:
                 project_data, calculator = pickle.loads(calc_pickle)
-                _WORKER_CALCULATOR = calculator
-                _WORKER_PROJECT_PATH = project_config_path
-                _WORKER_PROJECT_DATA = project_data
+                # 更新模块级缓存
+                _gw["_WORKER_CALCULATOR"] = calculator
+                _gw["_WORKER_PROJECT_PATH"] = project_config_path
+                _gw["_WORKER_PROJECT_DATA"] = project_data
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.warning(
@@ -868,19 +879,16 @@ def _worker_process(args):
                 )
 
         if calculator is None:
-            if (
-                _WORKER_CALCULATOR is not None
-                and project_config_path == _WORKER_PROJECT_PATH
-            ):
-                # 重用已缓存的计算器
-                calculator = _WORKER_CALCULATOR
-                project_data = _WORKER_PROJECT_DATA
+            if worker_calc is not None and project_config_path == worker_proj:
+                # 重用已缓存的计算器（使用快照值）
+                calculator = worker_calc
+                project_data = worker_data
             else:
-                # 仅在必要时加载一次并缓存到进程全局变量
+                # 仅在必要时加载一次并缓存到进程模块级缓存
                 project_data, calculator = load_project_calculator(project_config_path)
-                _WORKER_CALCULATOR = calculator
-                _WORKER_PROJECT_PATH = project_config_path
-                _WORKER_PROJECT_DATA = project_data
+                _gw["_WORKER_CALCULATOR"] = calculator
+                _gw["_WORKER_PROJECT_PATH"] = project_config_path
+                _gw["_WORKER_PROJECT_DATA"] = project_data
 
         # 构造 BatchConfig
         cfg = BatchConfig()
@@ -895,8 +903,7 @@ def _worker_process(args):
 
         # 使用全局配置处理每个文件（不再支持 per-file 覆盖）
         try:
-            from src.cli_helpers import resolve_file_format
-
+            # `resolve_file_format` 已在模块顶层导入，直接调用以避免重复导入警告
             cfg = resolve_file_format(str(file_path), cfg)
         except Exception as e:
             logger = logging.getLogger(__name__)
@@ -975,6 +982,8 @@ def run_batch_processing(
     files_to_process = []
 
     # 若提供了 data_config 且同时提供了 registry_db，则视为非交互自动模式，避免使用 input() 阶段
+    # 预初始化 output_dir，避免在后续条件分支中被可能未赋值后使用
+    output_dir = input_path
 
     if input_path.is_file():
         logger.info("  模式: 单文件处理")
