@@ -79,6 +79,183 @@ REPLACE_RETRY_BACKOFFS = WRITE_RETRY_BACKOFF_SECONDS
 DEFAULT_SAMPLE_ROWS = 5
 
 
+def _finalize_and_replace(
+    temp_out_path: Path, out_path: Path, partial_flag: Path, complete_flag: Path, logger
+) -> None:
+    """将临时输出文件原子替换到目标路径，并写入完成标记。
+
+    该函数封装了重试/退避策略以及 partial/complete 标记的清理与写入逻辑，
+    用于简化 `process_single_file` 中的主要流程。
+    """
+    replace_attempts = SHARED_RETRY_ATTEMPTS
+    replace_backoffs = REPLACE_RETRY_BACKOFFS
+    replaced = False
+    replace_err = None
+    for ri in range(1, replace_attempts + 1):
+        try:
+            os.replace(str(temp_out_path), str(out_path))
+            replaced = True
+            break
+        except Exception as e:
+            replace_err = e
+            if isinstance(e, PermissionError):
+                logger.warning(
+                    "os.replace 被拒绝（PermissionError）: %s -> %s（%d/%d），将重试：%s",
+                    temp_out_path.name,
+                    out_path.name,
+                    ri,
+                    replace_attempts,
+                    e,
+                    exc_info=True,
+                )
+            else:
+                logger.warning(
+                    "尝试用 os.replace 替换 %s -> %s 失败（%d/%d）：%s",
+                    temp_out_path.name,
+                    out_path.name,
+                    ri,
+                    replace_attempts,
+                    e,
+                )
+            if ri < replace_attempts:
+                time.sleep(replace_backoffs[min(ri - 1, len(replace_backoffs) - 1)])
+
+    if not replaced:
+        if replace_err is None:
+            raise RuntimeError(
+                f"os.replace 替换失败: {temp_out_path} -> {out_path}（无异常信息）"
+            )
+        raise replace_err
+
+    try:
+        if partial_flag.exists():
+            partial_flag.unlink()
+    except Exception:
+        pass
+    try:
+        complete_flag.write_text(datetime.now().isoformat())
+    except Exception:
+        pass
+
+
+def _prepare_calculator_for_file(
+    file_path: Path,
+    base_calculator: AeroCalculator,
+    project_data,
+    source_part: str,
+    target_part: str,
+    logger,
+):
+    """为单个文件准备合适的计算器实例。
+
+    若提供了 project_data 且存在 file 级 source/target 覆盖，则为该文件创建独立的 `AeroCalculator`。
+    否则返回传入的 `base_calculator`。
+    在无法推断 source/target 时抛出 ValueError 并由调用者处理。
+    """
+    calculator_to_use = base_calculator
+    if project_data is not None and (source_part is not None or target_part is not None):
+        try:
+            source_names = list((getattr(project_data, "source_parts", {}) or {}).keys())
+            target_names = list((getattr(project_data, "target_parts", {}) or {}).keys())
+
+            actual_source = source_part
+            actual_target = target_part
+
+            if not actual_source and len(source_names) == 1:
+                actual_source = str(source_names[0])
+            if not actual_target and len(target_names) == 1:
+                actual_target = str(target_names[0])
+
+            if not actual_source or not actual_target:
+                raise ValueError(
+                    f"文件 {file_path.name} 未指定 source/target part，且无法唯一推断"
+                )
+
+            calculator_to_use = AeroCalculator(
+                project_data, source_part=actual_source, target_part=actual_target
+            )
+            logger.debug(
+                f"为文件 {file_path.name} 创建独立计算器: source={actual_source}, target={actual_target}"
+            )
+        except Exception as e:
+            logger.error("为文件 %s 创建计算器失败: %s", file_path.name, e)
+            raise
+    return calculator_to_use
+
+
+def _handle_special_format_file(
+    file_path: Path, project_data, output_dir: Path, config: BatchConfig, logger
+) -> bool:
+    """处理特殊格式文件的封装函数：识别、调用 processor 并记录日志，返回是否成功。"""
+    try:
+        outputs = process_special_format_file(
+            file_path,
+            project_data,
+            output_dir,
+            timestamp_format=config.timestamp_format,
+            overwrite=config.overwrite,
+        )
+        if not outputs:
+            logger.warning(
+                "特殊格式文件 %s 未产生输出，可能因缺少匹配的 Target part 或列缺失",
+                file_path.name,
+            )
+            return False
+        logger.info(
+            "特殊格式文件 %s 已处理，生成 %d 个 part 输出",
+            file_path.name,
+            len(outputs),
+        )
+        return True
+    except Exception as exc:
+        logger.error(
+            "处理特殊格式文件 %s 失败: %s",
+            file_path.name,
+            exc,
+            exc_info=True,
+        )
+        return False
+
+
+def _read_and_select_df(
+    file_path: Path, config: BatchConfig, selected_rows: set = None
+) -> pd.DataFrame:
+    """读取文件为 DataFrame 并应用可选的行选择过滤。
+
+    返回读取后的 DataFrame（已重置索引）。此函数封装了 CSV/Excel 的读取细节。
+    """
+    df = read_data_with_config(file_path, config)
+    if selected_rows is not None and len(selected_rows) > 0:
+        selected_rows_sorted = sorted(int(x) for x in set(selected_rows))
+        df = df.iloc[selected_rows_sorted].reset_index(drop=True)
+    else:
+        df = df.reset_index(drop=True)
+    return df
+
+
+def _create_temp_and_flags(out_path: Path):
+    """为给定目标输出路径创建临时输出文件与 partial/complete 标记路径，返回三元组。
+
+    该函数仅负责文件创建与路径构造；会创建一个临时空文件并返回其路径。
+    """
+    temp_fd, temp_name = tempfile.mkstemp(
+        prefix=out_path.name + ".", dir=str(out_path.parent), text=True
+    )
+    os.close(temp_fd)
+    temp_out_path = Path(temp_name)
+
+    partial_flag = out_path.with_name(out_path.name + ".partial")
+    complete_flag = out_path.with_name(out_path.name + ".complete")
+
+    try:
+        partial_flag.write_text(datetime.now().isoformat())
+    except Exception:
+        pass
+
+    return temp_out_path, partial_flag, complete_flag
+
+
+
 def generate_output_path(
     file_path: Path,
     output_dir: Path,
@@ -190,6 +367,152 @@ def generate_output_path(
     return candidate
 
 
+def _write_out_df(
+    out_df: pd.DataFrame,
+    out_path: Path,
+    header: bool,
+    mode: str,
+    open_mode: str,
+    logger,
+    mask_array,
+):
+    """写入 DataFrame 到目标文件，处理 append/write 模式、文件锁和重试策略。
+
+    保留原有行为：优先使用 portalocker，回退到 lockfile 或无锁写入；在写入失败时重试。
+    """
+    last_exc = None
+    if mode == "a":
+        csv_bytes = out_df.to_csv(index=False, header=header, encoding="utf-8").encode("utf-8")
+        for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
+            try:
+                if portalocker:
+                    with open(out_path, "ab") as f:
+                        try:
+                            try:
+                                portalocker.lock(f, portalocker.LOCK_EX)
+                            except Exception as le:
+                                logger.debug("portalocker.lock 失败，继续以无锁追加写入：%s", le)
+                        except Exception:
+                            logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
+
+                        try:
+                            f.write(csv_bytes)
+                            f.flush()
+                            try:
+                                os.fsync(f.fileno())
+                            except Exception:
+                                pass
+                        finally:
+                            try:
+                                portalocker.unlock(f)
+                            except Exception:
+                                logger.debug("portalocker.unlock 失败（忽略）")
+                else:
+                    lock_path = out_path.with_suffix(out_path.suffix + ".lock")
+                    lock_acquired = False
+                    lock_fd = None
+                    try:
+                        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                        lock_acquired = True
+                    except FileExistsError:
+                        waited = 0.0
+                        while waited < WRITE_RETRY_BACKOFF_SECONDS[-1]:
+                            time.sleep(0.01)
+                            waited += 0.01
+                            try:
+                                lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                                lock_acquired = True
+                                break
+                            except FileExistsError:
+                                continue
+
+                    if not lock_acquired:
+                        with open(out_path, "ab") as f:
+                            f.write(csv_bytes)
+                            f.flush()
+                            try:
+                                os.fsync(f.fileno())
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            with open(out_path, "ab") as f:
+                                f.write(csv_bytes)
+                                f.flush()
+                                try:
+                                    os.fsync(f.fileno())
+                                except Exception:
+                                    pass
+                        finally:
+                            try:
+                                os.close(lock_fd)
+                            except Exception:
+                                pass
+                            try:
+                                if lock_path.exists():
+                                    lock_path.unlink()
+                            except Exception:
+                                logger.debug("无法删除 lockfile：%s（忽略）", lock_path)
+
+                last_exc = None
+                break
+            except Exception as e:
+                last_exc = e
+                logger.warning("追加写入 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+                if attempt < SHARED_RETRY_ATTEMPTS:
+                    time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(WRITE_RETRY_BACKOFF_SECONDS) - 1)])
+                else:
+                    logger.exception("追加写入失败，达到最大重试次数")
+
+        if last_exc is not None:
+            raise last_exc
+    else:
+        for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
+            try:
+                with open(out_path, open_mode, encoding="utf-8", newline="") as f:
+                    try:
+                        if portalocker:
+                            try:
+                                portalocker.lock(f, portalocker.LOCK_EX)
+                            except Exception as le:
+                                logger.debug("portalocker.lock 失败，继续以无锁模式写入：%s", le)
+                        else:
+                            logger.debug("portalocker 不可用，跳过文件锁（best-effort 写入）: %s", out_path)
+                    except Exception:
+                        logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
+
+                    try:
+                        out_df.to_csv(f, index=False, header=header, encoding="utf-8")
+                        f.flush()
+                        try:
+                            os.fsync(f.fileno())
+                        except Exception:
+                            pass
+                        last_exc = None
+                        break
+                    finally:
+                        if portalocker:
+                            try:
+                                portalocker.unlock(f)
+                            except Exception:
+                                logger.debug("portalocker.unlock 失败（忽略）")
+
+            except Exception as e:
+                last_exc = e
+                if isinstance(e, PermissionError):
+                    logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e, exc_info=True)
+                else:
+                    logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+
+                if attempt < SHARED_RETRY_ATTEMPTS:
+                    time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(WRITE_RETRY_BACKOFF_SECONDS) - 1)])
+                else:
+                    logger.exception("写入失败，达到最大重试次数")
+
+        if last_exc is not None:
+            raise last_exc
+
+
 def process_df_chunk(
     chunk_df: pd.DataFrame,
     calculator: AeroCalculator,
@@ -202,82 +525,104 @@ def process_df_chunk(
 
     返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
     """
+    # 数值准备与掩码逻辑函数定义（放在此处以便靠近使用处）
+    def _prepare_for_batch_processing(
+        chunk_df: pd.DataFrame, calculator: AeroCalculator, cfg: BatchConfig
+    ):
+        col_map = {str(c).strip().lower(): c for c in chunk_df.columns}
+
+        has_dimensional = all(
+            k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"]
+        )
+        coeff_normal_key = (
+            "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
+        )
+        has_coeff = coeff_normal_key is not None and all(
+            k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"]
+        )
+
+        if not has_dimensional and not has_coeff:
+            raise ValueError(
+                "输入表缺少必要列，至少需要 Fx/Fy/Fz/Mx/My/Mz 或 Cx/Cy/Cz(CM)/CMx/CMy/CMz"
+            )
+
+        alpha_col_name = col_map.get("alpha")
+
+        if has_dimensional:
+            cols = [
+                col_map["fx"],
+                col_map["fy"],
+                col_map["fz"],
+                col_map["mx"],
+                col_map["my"],
+                col_map["mz"],
+            ]
+            numeric_df = chunk_df[cols].apply(pd.to_numeric, errors="coerce")
+            forces_df = numeric_df.iloc[:, :3]
+            moments_df = numeric_df.iloc[:, 3:]
+        else:
+            cols = [
+                col_map["cx"],
+                col_map["cy"],
+                col_map[coeff_normal_key],
+                col_map["cmx"],
+                col_map["cmy"],
+                col_map["cmz"],
+            ]
+            numeric_df = chunk_df[cols].apply(pd.to_numeric, errors="coerce")
+            coeff_force_df = numeric_df.iloc[:, :3]
+            coeff_moment_df = numeric_df.iloc[:, 3:]
+
+            try:
+                q = calculator.target_frame.q
+                s_ref = calculator.target_frame.s_ref
+                c_ref = calculator.target_frame.c_ref
+                b_ref = calculator.target_frame.b_ref
+            except Exception as e:  # pragma: no cover - 防御性日志
+                raise ValueError(f"无法从计算器获取参考值: {e}") from e
+
+            forces_df = coeff_force_df * (q * s_ref)
+            moments_df = pd.DataFrame(
+                {
+                    "mx": coeff_moment_df.iloc[:, 0] * (q * s_ref * b_ref),
+                    "my": coeff_moment_df.iloc[:, 1] * (q * s_ref * c_ref),
+                    "mz": coeff_moment_df.iloc[:, 2] * (q * s_ref * b_ref),
+                }
+            )
+
+        mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(axis=1)
+        mask_array = mask_non_numeric.to_numpy()
+        n_non = int(mask_non_numeric.sum())
+
+        # 根据配置处理非数值行，返回 forces/moments/data_df 供后续计算使用
+        if cfg.treat_non_numeric == "drop":
+            valid_idx = ~mask_non_numeric
+            if valid_idx.sum() == 0:
+                # 全部丢弃
+                return None, None, chunk_df, n_non, mask_array, alpha_col_name
+            forces = forces_df.loc[valid_idx].to_numpy(dtype=float)
+            moments = moments_df.loc[valid_idx].to_numpy(dtype=float)
+            data_df = chunk_df.loc[valid_idx].reset_index(drop=True)
+        elif cfg.treat_non_numeric == "nan":
+            forces = forces_df.to_numpy(dtype=float)
+            moments = moments_df.to_numpy(dtype=float)
+            data_df = chunk_df.reset_index(drop=True)
+        else:
+            forces = forces_df.fillna(0.0).to_numpy(dtype=float)
+            moments = moments_df.fillna(0.0).to_numpy(dtype=float)
+            data_df = chunk_df.reset_index(drop=True)
+
+        return forces, moments, data_df, n_non, mask_array, alpha_col_name
     # 统一列名（忽略大小写和前后空格）
-    col_map = {str(c).strip().lower(): c for c in chunk_df.columns}
-
-    has_dimensional = all(
-        k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"]
+    # 将数值准备与非数值掩码逻辑抽取为独立函数以降低复杂度
+    forces, moments, data_df, n_non, mask_array, alpha_col_name = _prepare_for_batch_processing(
+        chunk_df, calculator, cfg
     )
-    coeff_normal_key = (
-        "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
-    )
-    has_coeff = coeff_normal_key is not None and all(
-        k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"]
-    )
-
-    if not has_dimensional and not has_coeff:
-        raise ValueError(
-            "输入表缺少必要列，至少需要 Fx/Fy/Fz/Mx/My/Mz 或 Cx/Cy/Cz(CM)/CMx/CMy/CMz"
-        )
-
-    alpha_col_name = col_map.get("alpha")
-
-    # 统一转换为浮点并检测非数值
-    if has_dimensional:
-        cols = [
-            col_map["fx"],
-            col_map["fy"],
-            col_map["fz"],
-            col_map["mx"],
-            col_map["my"],
-            col_map["mz"],
-        ]
-        numeric_df = chunk_df[cols].apply(pd.to_numeric, errors="coerce")
-        forces_df = numeric_df.iloc[:, :3]
-        moments_df = numeric_df.iloc[:, 3:]
-    else:
-        cols = [
-            col_map["cx"],
-            col_map["cy"],
-            col_map[coeff_normal_key],
-            col_map["cmx"],
-            col_map["cmy"],
-            col_map["cmz"],
-        ]
-        numeric_df = chunk_df[cols].apply(pd.to_numeric, errors="coerce")
-        coeff_force_df = numeric_df.iloc[:, :3]
-        coeff_moment_df = numeric_df.iloc[:, 3:]
-
-        try:
-            q = calculator.target_frame.q
-            s_ref = calculator.target_frame.s_ref
-            c_ref = calculator.target_frame.c_ref
-            b_ref = calculator.target_frame.b_ref
-        except Exception as e:  # pragma: no cover - 防御性日志
-            raise ValueError(f"无法从计算器获取参考值: {e}") from e
-
-        forces_df = coeff_force_df * (q * s_ref)
-        moments_df = pd.DataFrame(
-            {
-                "mx": coeff_moment_df.iloc[:, 0] * (q * s_ref * b_ref),
-                "my": coeff_moment_df.iloc[:, 1] * (q * s_ref * c_ref),
-                "mz": coeff_moment_df.iloc[:, 2] * (q * s_ref * b_ref),
-            }
-        )
-
-    mask_non_numeric = forces_df.isna().any(axis=1) | moments_df.isna().any(
-        axis=1
-    )
-    mask_array = mask_non_numeric.to_numpy()
-    n_non = int(mask_non_numeric.sum())
     dropped = 0
 
     if n_non:
-        # 记录示例行用于诊断
         sample_rows_val = (
-            cfg.sample_rows
-            if cfg.sample_rows is not None
-            else DEFAULT_SAMPLE_ROWS
+            cfg.sample_rows if cfg.sample_rows is not None else DEFAULT_SAMPLE_ROWS
         )
         samp_n = min(int(sample_rows_val), n_non)
         if samp_n > 0:
@@ -298,27 +643,6 @@ def process_df_chunk(
                     n_non,
                     examples,
                 )
-
-    # 根据配置处理非数值行
-    if cfg.treat_non_numeric == "drop":
-        valid_idx = ~mask_non_numeric
-        if valid_idx.sum() == 0:
-            # 全部丢弃
-            dropped = len(chunk_df)
-            return 0, dropped, n_non, first_chunk
-        forces = forces_df.loc[valid_idx].to_numpy(dtype=float)
-        moments = moments_df.loc[valid_idx].to_numpy(dtype=float)
-        data_df = chunk_df.loc[valid_idx].reset_index(drop=True)
-    elif cfg.treat_non_numeric == "nan":
-        # 保留 NaN，让后续计算和结果中体现为 NaN
-        forces = forces_df.to_numpy(dtype=float)
-        moments = moments_df.to_numpy(dtype=float)
-        data_df = chunk_df.reset_index(drop=True)
-    else:
-        # 默认或 'zero' 策略：将非数值按 0 处理
-        forces = forces_df.fillna(0.0).to_numpy(dtype=float)
-        moments = moments_df.fillna(0.0).to_numpy(dtype=float)
-        data_df = chunk_df.reset_index(drop=True)
 
     logger.info("  执行坐标变换... 行数=%d", len(forces))
     results = calculator.process_batch(forces, moments)
@@ -381,205 +705,8 @@ def process_df_chunk(
 
     # 写入重试参数（使用模块级常量）
     last_exc = None
-
-    # 对于 append 模式，直接在目标文件上以二进制追加写入（减少替换竞争）
-    if mode == "a":
-        csv_bytes = out_df.to_csv(
-            index=False, header=header, encoding="utf-8"
-        ).encode("utf-8")
-        for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
-            try:
-                # 以二进制追加打开并尝试加锁写入（首选 portalocker；若不可用，回退到 lockfile 方案）
-                if portalocker:
-                    with open(out_path, "ab") as f:
-                        try:
-                            try:
-                                portalocker.lock(f, portalocker.LOCK_EX)
-                            except Exception as le:
-                                logger.debug(
-                                    "portalocker.lock 失败，继续以无锁追加写入：%s",
-                                    le,
-                                )
-                        except Exception:
-                            logger.exception(
-                                "尝试加锁时发生意外异常（忽略并继续写入）"
-                            )
-
-                        try:
-                            f.write(csv_bytes)
-                            f.flush()
-                            try:
-                                os.fsync(f.fileno())
-                            except Exception:
-                                pass
-                        finally:
-                            try:
-                                portalocker.unlock(f)
-                            except Exception:
-                                logger.debug("portalocker.unlock 失败（忽略）")
-                else:
-                    # 回退：使用一个简单的 lockfile 来序列化对目标文件的 append 操作
-                    lock_path = out_path.with_suffix(out_path.suffix + ".lock")
-                    lock_acquired = False
-                    lock_fd = None
-                    try:
-                        # 尝试创建 lockfile（O_EXCL 确保原子性）
-                        lock_fd = os.open(
-                            str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR
-                        )
-                        lock_acquired = True
-                    except FileExistsError:
-                        # 竞争中无法立即获取锁，等待并重试
-                        waited = 0.0
-                        while waited < WRITE_RETRY_BACKOFF_SECONDS[-1]:
-                            time.sleep(0.01)
-                            waited += 0.01
-                            try:
-                                lock_fd = os.open(
-                                    str(lock_path),
-                                    os.O_CREAT | os.O_EXCL | os.O_RDWR,
-                                )
-                                lock_acquired = True
-                                break
-                            except FileExistsError:
-                                continue
-
-                    if not lock_acquired:
-                        # 最后一搏：在无锁的情况下直接追加（best-effort）
-                        with open(out_path, "ab") as f:
-                            f.write(csv_bytes)
-                            f.flush()
-                            try:
-                                os.fsync(f.fileno())
-                            except Exception:
-                                pass
-                    else:
-                        try:
-                            with open(out_path, "ab") as f:
-                                f.write(csv_bytes)
-                                f.flush()
-                                try:
-                                    os.fsync(f.fileno())
-                                except Exception:
-                                    pass
-                        finally:
-                            try:
-                                os.close(lock_fd)
-                            except Exception:
-                                pass
-                            try:
-                                if lock_path.exists():
-                                    lock_path.unlink()
-                            except Exception:
-                                logger.debug(
-                                    "无法删除 lockfile：%s（忽略）", lock_path
-                                )
-                # 成功写入
-                last_exc = None
-                break
-            except Exception as e:
-                last_exc = e
-                logger.warning(
-                    "追加写入 %s 失败（尝试 %d/%d）：%s",
-                    out_path.name,
-                    attempt,
-                    SHARED_RETRY_ATTEMPTS,
-                    e,
-                )
-                if attempt < SHARED_RETRY_ATTEMPTS:
-                    time.sleep(
-                        WRITE_RETRY_BACKOFF_SECONDS[
-                            min(
-                                attempt - 1,
-                                len(WRITE_RETRY_BACKOFF_SECONDS) - 1,
-                            )
-                        ]
-                    )
-                else:
-                    logger.exception("追加写入失败，达到最大重试次数")
-
-        if last_exc is not None:
-            raise last_exc
-
-    else:
-        # 使用临时文件并替换以实现原子写入（用于首次写入或覆盖）
-        for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
-            try:
-                with open(
-                    out_path, open_mode, encoding="utf-8", newline=""
-                ) as f:
-                    try:
-                        if portalocker:
-                            try:
-                                portalocker.lock(f, portalocker.LOCK_EX)
-                            except Exception as le:
-                                logger.debug(
-                                    "portalocker.lock 失败，继续以无锁模式写入：%s",
-                                    le,
-                                )
-                        else:
-                            logger.debug(
-                                "portalocker 不可用，跳过文件锁（best-effort 写入）: %s",
-                                out_path,
-                            )
-                    except Exception:
-                        logger.exception(
-                            "尝试加锁时发生意外异常（忽略并继续写入）"
-                        )
-
-                    try:
-                        out_df.to_csv(
-                            f, index=False, header=header, encoding="utf-8"
-                        )
-                        f.flush()
-                        try:
-                            os.fsync(f.fileno())
-                        except Exception:
-                            pass
-
-                        last_exc = None
-                        break
-                    finally:
-                        if portalocker:
-                            try:
-                                portalocker.unlock(f)
-                            except Exception:
-                                logger.debug("portalocker.unlock 失败（忽略）")
-
-            except Exception as e:
-                last_exc = e
-                if isinstance(e, PermissionError):
-                    logger.warning(
-                        "写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s",
-                        out_path.name,
-                        attempt,
-                        SHARED_RETRY_ATTEMPTS,
-                        e,
-                        exc_info=True,
-                    )
-                else:
-                    logger.error(
-                        "写入临时文件 %s 失败（尝试 %d/%d）：%s",
-                        out_path.name,
-                        attempt,
-                        SHARED_RETRY_ATTEMPTS,
-                        e,
-                    )
-
-                if attempt < SHARED_RETRY_ATTEMPTS:
-                    time.sleep(
-                        WRITE_RETRY_BACKOFF_SECONDS[
-                            min(
-                                attempt - 1,
-                                len(WRITE_RETRY_BACKOFF_SECONDS) - 1,
-                            )
-                        ]
-                    )
-                else:
-                    logger.exception("写入失败，达到最大重试次数")
-
-        if last_exc is not None:
-            raise last_exc
+    # 将写入与锁定逻辑抽出为独立函数以便测试和复用
+    _write_out_df(out_df, out_path, header, mode, open_mode, logger, mask_array if 'mask_array' in locals() else None)
 
     processed = len(out_df)
     first_chunk = False
@@ -652,100 +779,22 @@ def process_single_file(
     """
     logger = logging.getLogger("batch")
 
-    # 若提供了 project_data 和文件级的 source/target，创建独立的计算器
-    calculator_to_use = calculator
-    if project_data is not None and (
-        source_part is not None or target_part is not None
-    ):
-        try:
-            # 如果未指定则使用唯一的 part（若存在）或抛出错误
-            source_names = list(
-                (getattr(project_data, "source_parts", {}) or {}).keys()
-            )
-            target_names = list(
-                (getattr(project_data, "target_parts", {}) or {}).keys()
-            )
-
-            actual_source = source_part
-            actual_target = target_part
-
-            # 允许唯一 part 自动推断
-            if not actual_source and len(source_names) == 1:
-                actual_source = str(source_names[0])
-            if not actual_target and len(target_names) == 1:
-                actual_target = str(target_names[0])
-
-            if not actual_source or not actual_target:
-                raise ValueError(
-                    f"文件 {file_path.name} 未指定 source/target part，且无法唯一推断"
-                )
-
-            # 为此文件创建独立的计算器
-            calculator_to_use = AeroCalculator(
-                project_data,
-                source_part=actual_source,
-                target_part=actual_target,
-            )
-            logger.debug(
-                f"为文件 {file_path.name} 创建独立计算器: source={actual_source}, target={actual_target}"
-            )
-        except Exception as e:
-            logger.error("为文件 %s 创建计算器失败: %s", file_path.name, e)
-            raise
+    # 为此文件准备合适的计算器（可能为基准计算器或为该文件创建独立计算器）
+    calculator_to_use = _prepare_calculator_for_file(
+        file_path, calculator, project_data, source_part, target_part, logger
+    )
 
     # 特殊格式路径：直接用专用解析器处理并按 part 输出
     if project_data is not None and looks_like_special_format(file_path):
-        try:
-            outputs = process_special_format_file(
-                file_path,
-                project_data,
-                output_dir,
-                timestamp_format=config.timestamp_format,
-                overwrite=config.overwrite,
-            )
-            if not outputs:
-                logger.warning(
-                    "特殊格式文件 %s 未产生输出，可能因缺少匹配的 Target part 或列缺失",
-                    file_path.name,
-                )
-                return False
-            logger.info(
-                "特殊格式文件 %s 已处理，生成 %d 个 part 输出",
-                file_path.name,
-                len(outputs),
-            )
-            return True
-        except Exception as exc:
-            logger.error(
-                "处理特殊格式文件 %s 失败: %s",
-                file_path.name,
-                exc,
-                exc_info=True,
-            )
-            return False
+        return _handle_special_format_file(file_path, project_data, output_dir, config, logger)
 
-    # 非流式：读取整表并可选行选择
-    df = read_data_with_config(file_path, config)
-
-    # 若提供了行选择，则应用过滤
+    # 非流式：读取整表并可选行选择（已封装为辅助函数）
+    df = _read_and_select_df(file_path, config, selected_rows)
     if selected_rows is not None and len(selected_rows) > 0:
-        selected_rows_sorted = sorted(int(x) for x in set(selected_rows))
-        df = df.iloc[selected_rows_sorted].reset_index(drop=True)
-        logger.debug("按行选择过滤: %d 行", len(selected_rows_sorted))
+        logger.debug("按行选择过滤: %d 行", len(selected_rows))
 
     out_path = generate_output_path(file_path, output_dir, config)
-    temp_fd, temp_name = tempfile.mkstemp(
-        prefix=out_path.name + ".", dir=str(out_path.parent), text=True
-    )
-    os.close(temp_fd)
-    temp_out_path = Path(temp_name)
-
-    partial_flag = out_path.with_name(out_path.name + ".partial")
-    complete_flag = out_path.with_name(out_path.name + ".complete")
-    try:
-        partial_flag.write_text(datetime.now().isoformat())
-    except Exception:
-        pass
+    temp_out_path, partial_flag, complete_flag = _create_temp_and_flags(out_path)
 
     first_chunk = True
     total_processed = 0
@@ -765,60 +814,8 @@ def process_single_file(
         total_dropped += dropped
         total_non_numeric += non_num
 
-        # 完成后使用 os.replace 做原子替换（跨平台），并提供重试/退避策略以应对并发场景
-        replace_attempts = SHARED_RETRY_ATTEMPTS
-        replace_backoffs = REPLACE_RETRY_BACKOFFS
-        replaced = False
-        replace_err = None
-        for ri in range(1, replace_attempts + 1):
-            try:
-                os.replace(str(temp_out_path), str(out_path))
-                replaced = True
-                break
-            except Exception as e:
-                replace_err = e
-                if isinstance(e, PermissionError):
-                    logger.warning(
-                        "os.replace 被拒绝（PermissionError）: %s -> %s（%d/%d），将重试：%s",
-                        temp_out_path.name,
-                        out_path.name,
-                        ri,
-                        replace_attempts,
-                        e,
-                        exc_info=True,
-                    )
-                else:
-                    logger.warning(
-                        "尝试用 os.replace 替换 %s -> %s 失败（%d/%d）：%s",
-                        temp_out_path.name,
-                        out_path.name,
-                        ri,
-                        replace_attempts,
-                        e,
-                    )
-                if ri < replace_attempts:
-                    time.sleep(
-                        replace_backoffs[
-                            min(ri - 1, len(replace_backoffs) - 1)
-                        ]
-                    )
-        if not replaced:
-            # 若替换失败，抛出并由外层 except 捕获以进行清理和记录
-            if replace_err is None:
-                raise RuntimeError(
-                    f"os.replace 替换失败: {temp_out_path} -> {out_path}（无异常信息）"
-                )
-            raise replace_err
-
-        try:
-            if partial_flag.exists():
-                partial_flag.unlink()
-        except Exception:
-            pass
-        try:
-            complete_flag.write_text(datetime.now().isoformat())
-        except Exception:
-            pass
+        # 完成后使用封装的替换工具完成原子替换与标记写入（见 _finalize_and_replace）
+        _finalize_and_replace(temp_out_path, out_path, partial_flag, complete_flag, logger)
 
         logger.info(
             f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行"
