@@ -5,10 +5,8 @@
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
 
 logger = logging.getLogger(__name__)
 

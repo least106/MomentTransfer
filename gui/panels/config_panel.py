@@ -115,6 +115,7 @@ class ConfigPanel(QWidget):
 
         # 绑定面板变更以显示未保存提示并设置 ConfigManager 标志
         try:
+
             def _on_panel_changed():
                 try:
                     win = self.window()
@@ -130,7 +131,11 @@ class ConfigPanel(QWidget):
 
                     # 若有 ConfigManager，尝试与加载时的快照比较，决定是否标记为已修改
                     marked = False
-                    if win is not None and hasattr(win, "config_manager") and win.config_manager is not None:
+                    if (
+                        win is not None
+                        and hasattr(win, "config_manager")
+                        and win.config_manager is not None
+                    ):
                         try:
                             snap = win.config_manager.get_simple_payload_snapshot()
                         except Exception:
@@ -138,9 +143,26 @@ class ConfigPanel(QWidget):
 
                         # 规范化为保存时使用的结构进行比较
                         def _make_simple(src, tgt):
-                            s_part = {"PartName": (src or {}).get("PartName", "Global"), "Variants": [src]} if src else {"PartName": "Global", "Variants": []}
-                            t_part = {"PartName": (tgt or {}).get("PartName", "Target"), "Variants": [tgt]} if tgt else {"PartName": "Target", "Variants": []}
-                            return {"Source": {"Parts": [s_part]}, "Target": {"Parts": [t_part]}}
+                            s_part = (
+                                {
+                                    "PartName": (src or {}).get("PartName", "Global"),
+                                    "Variants": [src],
+                                }
+                                if src
+                                else {"PartName": "Global", "Variants": []}
+                            )
+                            t_part = (
+                                {
+                                    "PartName": (tgt or {}).get("PartName", "Target"),
+                                    "Variants": [tgt],
+                                }
+                                if tgt
+                                else {"PartName": "Target", "Variants": []}
+                            )
+                            return {
+                                "Source": {"Parts": [s_part]},
+                                "Target": {"Parts": [t_part]},
+                            }
 
                         cur_simple = _make_simple(cur_src, cur_tgt)
                         try:
@@ -173,7 +195,9 @@ class ConfigPanel(QWidget):
                             else:
                                 # 清除用户修改标记并刷新状态（优先通过 UIStateManager）
                                 try:
-                                    if hasattr(win, "ui_state_manager") and getattr(win, "ui_state_manager"):
+                                    if hasattr(win, "ui_state_manager") and getattr(
+                                        win, "ui_state_manager"
+                                    ):
                                         try:
                                             win.ui_state_manager.clear_user_modified()
                                         except Exception:

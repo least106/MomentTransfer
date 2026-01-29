@@ -6,13 +6,12 @@
 # pylint: disable=import-outside-toplevel
 
 import logging
-
-from PySide6.QtWidgets import QTextEdit
-from PySide6.QtCore import QObject, QMetaObject, Qt, Slot
-from pathlib import Path
-import os
 import threading
 import weakref
+from pathlib import Path
+
+from PySide6.QtCore import QMetaObject, QObject, Qt, Slot
+from PySide6.QtWidgets import QTextEdit
 
 
 class GUILogHandler(logging.Handler):
@@ -43,7 +42,9 @@ class GUILogHandler(logging.Handler):
                     # 使用 QMetaObject.invokeMethod 调度到主线程（QueuedConnection），比 QTimer 更稳健
                     if self._invoker is not None:
                         try:
-                            QMetaObject.invokeMethod(self._invoker, "do_flush", Qt.QueuedConnection)
+                            QMetaObject.invokeMethod(
+                                self._invoker, "do_flush", Qt.QueuedConnection
+                            )
                         except Exception:
                             # 回退到 QTimer 单次调度（兼容性）
                             from PySide6.QtCore import QTimer
@@ -84,7 +85,9 @@ class GUILogHandler(logging.Handler):
                             "无法将日志视图滚动到末尾（非致命）", exc_info=True
                         )
         except Exception:
-            logging.getLogger(__name__).debug("追加 GUI 日志失败（非致命）", exc_info=True)
+            logging.getLogger(__name__).debug(
+                "追加 GUI 日志失败（非致命）", exc_info=True
+            )
 
     def _flush_pending(self):
         """将缓冲的日志一次性刷新到 GUI（在主线程执行）。"""
@@ -101,7 +104,9 @@ class GUILogHandler(logging.Handler):
             combined = "\n".join(msgs)
             self._append_text(combined)
         except Exception:
-            logging.getLogger(__name__).debug("刷新 GUI 日志缓冲失败（非致命）", exc_info=True)
+            logging.getLogger(__name__).debug(
+                "刷新 GUI 日志缓冲失败（非致命）", exc_info=True
+            )
         return
 
 
@@ -180,7 +185,8 @@ class LoggingManager:
             # 校验控件类型，确保是 QTextEdit，否则可能行为异常
             if not isinstance(text_widget, QTextEdit):
                 logging.getLogger(__name__).debug(
-                    "txt_batch_log 不是 QTextEdit（类型=%s），跳过 GUI 绑定", type(text_widget)
+                    "txt_batch_log 不是 QTextEdit（类型=%s），跳过 GUI 绑定",
+                    type(text_widget),
                 )
                 self._ensure_fallback_handlers()
                 return
@@ -201,20 +207,30 @@ class LoggingManager:
                     ]:
                         for h in getattr(log, "handlers", [])[:]:
                             try:
-                                if isinstance(h, GUILogHandler) and getattr(h, "text_widget", None) is text_widget:
+                                if (
+                                    isinstance(h, GUILogHandler)
+                                    and getattr(h, "text_widget", None) is text_widget
+                                ):
                                     gui_handler = h
                                     # 在本实例中注册以便后续复用
                                     try:
-                                        self._register_handler_for_widget(text_widget, gui_handler)
+                                        self._register_handler_for_widget(
+                                            text_widget, gui_handler
+                                        )
                                     except Exception:
-                                        logging.getLogger(__name__).debug("注册已有 GUILogHandler 失败（非致命）", exc_info=True)
+                                        logging.getLogger(__name__).debug(
+                                            "注册已有 GUILogHandler 失败（非致命）",
+                                            exc_info=True,
+                                        )
                                     break
                             except Exception:
                                 continue
                         if gui_handler is not None:
                             break
                 except Exception:
-                    logging.getLogger(__name__).debug("跨实例查找现有 GUILogHandler 失败（非致命）", exc_info=True)
+                    logging.getLogger(__name__).debug(
+                        "跨实例查找现有 GUILogHandler 失败（非致命）", exc_info=True
+                    )
 
             if gui_handler is None:
                 gui_handler = GUILogHandler(text_widget)
@@ -235,7 +251,7 @@ class LoggingManager:
                 # 清除之前的 StreamHandler（控制台处理器）
                 for handler in log.handlers[:]:
                     if isinstance(handler, logging.StreamHandler) and not isinstance(
-                            handler, logging.FileHandler
+                        handler, logging.FileHandler
                     ):
                         log.removeHandler(handler)
                 # 如果已经存在相同的 GUI 处理器则跳过，保证幂等性
@@ -245,7 +261,9 @@ class LoggingManager:
                 try:
                     log.propagate = False
                 except Exception as e:
-                    logging.getLogger(__name__).debug("无法设置 logger.propagate（非致命）: %s", e, exc_info=True)
+                    logging.getLogger(__name__).debug(
+                        "无法设置 logger.propagate（非致命）: %s", e, exc_info=True
+                    )
                 log.setLevel(logging.DEBUG)
 
             # 确保 root logger 有文件和控制台回退，以便在 GUI 崩溃或不可用时仍能记录日志
@@ -278,21 +296,32 @@ class LoggingManager:
                 log_file = str(log_dir / "momenttransfer.log")
                 has_file = False
                 for h in root.handlers:
-                    if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == log_file:
+                    if (
+                        isinstance(h, logging.FileHandler)
+                        and getattr(h, "baseFilename", None) == log_file
+                    ):
                         has_file = True
                         break
                 if not has_file:
                     try:
                         fh = logging.FileHandler(log_file, encoding="utf-8")
                         fh.setLevel(logging.DEBUG)
-                        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+                        fh.setFormatter(
+                            logging.Formatter(
+                                "%(asctime)s %(levelname)s %(name)s: %(message)s"
+                            )
+                        )
                         root.addHandler(fh)
                     except Exception:
                         # 无法创建文件处理器时，记录到控制台即可
-                        logging.getLogger(__name__).debug("无法创建文件日志处理器（非致命）", exc_info=True)
+                        logging.getLogger(__name__).debug(
+                            "无法创建文件日志处理器（非致命）", exc_info=True
+                        )
 
             # 添加控制台处理器（stderr）如果不存在
-            has_stream = any(isinstance(h, logging.StreamHandler) for h in root.handlers)
+            has_stream = any(
+                isinstance(h, logging.StreamHandler) for h in root.handlers
+            )
             if not has_stream:
                 sh = logging.StreamHandler()
                 sh.setLevel(logging.INFO)
@@ -301,7 +330,9 @@ class LoggingManager:
 
         except Exception:
             # 最后保底：不要抛出异常
-            logging.getLogger(__name__).debug("设置回退日志处理器失败（非致命）", exc_info=True)
+            logging.getLogger(__name__).debug(
+                "设置回退日志处理器失败（非致命）", exc_info=True
+            )
 
     def get_log_file_path(self):
         """返回当前默认日志文件的 Path 对象（可能不存在）。
@@ -313,7 +344,9 @@ class LoggingManager:
             log_dir = Path.home() / ".momenttransfer"
             return log_dir / "momenttransfer.log"
         except Exception:
-            logging.getLogger(__name__).debug("获取日志路径失败（非致命）", exc_info=True)
+            logging.getLogger(__name__).debug(
+                "获取日志路径失败（非致命）", exc_info=True
+            )
             return None
 
 
@@ -336,5 +369,6 @@ class _Invoker(QObject):
         try:
             handler._flush_pending()
         except Exception:
-            logging.getLogger(__name__).debug("通过 invoker 调度刷新失败（非致命）", exc_info=True)
-
+            logging.getLogger(__name__).debug(
+                "通过 invoker 调度刷新失败（非致命）", exc_info=True
+            )

@@ -5,9 +5,7 @@
 # 之后可以逐步移除或替换为局部禁用。
 # pylint: disable=too-many-arguments,line-too-long
 
-import fnmatch
 import logging
-import math
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -18,13 +16,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
     QMessageBox,
-    QTableWidget,
-    QTableWidgetItem,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
 )
@@ -102,22 +97,13 @@ from gui.batch_manager_preview import (
 from gui.batch_manager_preview import (
     _build_row_preview_text as _build_row_preview_text_impl,
 )
-from gui.batch_manager_preview import (
-    _build_table_row_preview_text as _build_table_row_preview_text_impl,
-)
 from gui.batch_manager_preview import _clear_preview_group as _clear_preview_group_impl
 from gui.batch_manager_preview import (
     _create_preview_table as _create_preview_table_impl,
 )
 from gui.batch_manager_preview import _embed_preview_table as _embed_preview_table_impl
 from gui.batch_manager_preview import (
-    _ensure_table_row_selection_storage as _ensure_table_row_selection_storage_impl,
-)
-from gui.batch_manager_preview import (
     _format_preview_value as _format_preview_value_impl,
-)
-from gui.batch_manager_preview import (
-    _get_table_df_preview as _get_table_df_preview_impl,
 )
 from gui.batch_manager_preview import (
     _make_preview_toggle_callback as _make_preview_toggle_callback_impl,
@@ -136,8 +122,6 @@ from gui.batch_manager_ui import connect_ui_signals as _connect_ui_signals_impl
 from gui.batch_manager_ui import (
     safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
 )
-from gui.batch_thread import BatchProcessThread
-from gui.paged_table import PagedTableWidget
 from gui.quick_select_dialog import QuickSelectDialog
 from src.cli_helpers import BatchConfig, resolve_file_format
 from src.file_cache import get_file_cache
@@ -203,7 +187,9 @@ class BatchManager:
 
             bus = getattr(self.gui, "signal_bus", None) or SignalBus.instance()
             try:
-                bus.specialDataParsed.connect(lambda fp: self._on_special_data_parsed(fp))
+                bus.specialDataParsed.connect(
+                    lambda fp: self._on_special_data_parsed(fp)
+                )
             except Exception:
                 pass
         except Exception:
@@ -349,9 +335,11 @@ class BatchManager:
 
         # 若未缓存或已过期，则异步解析以避免阻塞主线程；先返回空字典占位
         try:
-            from PySide6.QtCore import QThread
-            from gui.background_worker import BackgroundWorker
             from functools import partial
+
+            from PySide6.QtCore import QThread
+
+            from gui.background_worker import BackgroundWorker
             from gui.signal_bus import SignalBus
 
             # 安全幂等：如果已有后台解析正在进行，则不重复提交
@@ -372,7 +360,10 @@ class BatchManager:
                 try:
                     data_dict = result or {}
                     try:
-                        self._special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
+                        self._special_data_cache[fp_str] = {
+                            "mtime": mtime,
+                            "data": data_dict,
+                        }
                     except Exception:
                         pass
                     try:
@@ -1946,7 +1937,9 @@ class BatchManager:
             for key, table in list((self._special_preview_tables or {}).items()):
                 try:
                     file_key = key[0] if isinstance(key, tuple) else key
-                    if str(file_key) == str(fp_str) or str(file_key) == str(Path(fp_str)):
+                    if str(file_key) == str(fp_str) or str(file_key) == str(
+                        Path(fp_str)
+                    ):
                         if hasattr(table, "_rebuild_page"):
                             try:
                                 table._rebuild_page()
@@ -2009,9 +2002,11 @@ class BatchManager:
     def scan_and_populate_files(self, chosen_path: Path):
         """非阻塞：将文件收集放到后台线程，然后在主线程更新 UI。"""
         try:
-            from PySide6.QtCore import QThread
-            from gui.background_worker import BackgroundWorker
             from functools import partial
+
+            from PySide6.QtCore import QThread
+
+            from gui.background_worker import BackgroundWorker
 
             def _collect_io(path: Path):
                 # 仅做文件系统扫描，不触及 GUI
@@ -2023,12 +2018,17 @@ class BatchManager:
                         base_path = path.parent
                     elif path.is_dir():
                         pattern_text = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
-                        patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
+                        patterns = [
+                            x.strip() for x in pattern_text.split(";") if x.strip()
+                        ]
                         for file_path in path.rglob("*"):
                             try:
                                 if not file_path.is_file():
                                     continue
-                                if any(__import__('fnmatch').fnmatch(file_path.name, pat) for pat in patterns):
+                                if any(
+                                    __import__("fnmatch").fnmatch(file_path.name, pat)
+                                    for pat in patterns
+                                ):
                                     files.append(file_path)
                             except Exception:
                                 pass
@@ -2052,20 +2052,28 @@ class BatchManager:
                             try:
                                 from PySide6.QtWidgets import QLabel
 
-                                lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
+                                lbl = self.gui.statusBar().findChild(
+                                    QLabel, "statusMessage"
+                                )
                                 if lbl is not None:
                                     lbl.setText("步骤1：选择文件或目录")
                             except Exception:
                                 try:
-                                    self.gui.statusBar().showMessage("步骤1：选择文件或目录")
+                                    self.gui.statusBar().showMessage(
+                                        "步骤1：选择文件或目录"
+                                    )
                                 except Exception:
                                     pass
                         else:
                             # 填充文件树并进入 step2
                             try:
-                                self._populate_file_tree_from_files(files, base_path, chosen_path)
+                                self._populate_file_tree_from_files(
+                                    files, base_path, chosen_path
+                                )
                             except Exception:
-                                logger.debug("填充文件树失败（主线程回调）", exc_info=True)
+                                logger.debug(
+                                    "填充文件树失败（主线程回调）", exc_info=True
+                                )
                     except Exception:
                         logger.debug("文件填充主线程处理失败", exc_info=True)
                 finally:

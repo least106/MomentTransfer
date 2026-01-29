@@ -14,22 +14,21 @@ MomentTransfer GUI 主窗口模块
 
 import logging
 import sys
-from pathlib import Path
-from typing import Optional
 import traceback
+from pathlib import Path
 
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
+    QHBoxLayout,
     QMainWindow,
     QMessageBox,
-    QDialog,
-    QVBoxLayout,
     QPlainTextEdit,
     QPushButton,
-    QHBoxLayout,
+    QVBoxLayout,
 )
-from PySide6.QtCore import QUrl, Qt, QTimer
-from PySide6.QtGui import QDesktopServices
 
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
@@ -115,7 +114,10 @@ class IntegratedAeroGUI(QMainWindow):
                     self.ui_state_manager.set_data_loaded(True)
                     return
                 except Exception:
-                    logger.debug("ui_state_manager.set_data_loaded 调用失败，回退到直接设置", exc_info=True)
+                    logger.debug(
+                        "ui_state_manager.set_data_loaded 调用失败，回退到直接设置",
+                        exc_info=True,
+                    )
 
             self.data_loaded = True
             self._refresh_controls_state()
@@ -130,7 +132,10 @@ class IntegratedAeroGUI(QMainWindow):
                     self.ui_state_manager.set_config_loaded(True)
                     return
                 except Exception:
-                    logger.debug("ui_state_manager.set_config_loaded 调用失败，回退到直接设置", exc_info=True)
+                    logger.debug(
+                        "ui_state_manager.set_config_loaded 调用失败，回退到直接设置",
+                        exc_info=True,
+                    )
 
             self.config_loaded = True
             self._refresh_controls_state()
@@ -148,7 +153,10 @@ class IntegratedAeroGUI(QMainWindow):
                     self.ui_state_manager.mark_user_modified()
                     return
                 except Exception:
-                    logger.debug("ui_state_manager.mark_user_modified 调用失败，回退到直接设置", exc_info=True)
+                    logger.debug(
+                        "ui_state_manager.mark_user_modified 调用失败，回退到直接设置",
+                        exc_info=True,
+                    )
 
             self.operation_performed = True
             self._refresh_controls_state()
@@ -326,9 +334,7 @@ class IntegratedAeroGUI(QMainWindow):
                 if self.project_manager:
                     self.project_manager.save_project(Path(file_path))
                 try:
-                    QMessageBox.information(
-                        self, "成功", f"项目已保存到: {file_path}"
-                    )
+                    QMessageBox.information(self, "成功", f"项目已保存到: {file_path}")
                 except Exception as e:
                     logger.debug("无法显示保存成功提示: %s", e, exc_info=True)
         except Exception as e:
@@ -377,7 +383,9 @@ class IntegratedAeroGUI(QMainWindow):
                         try:
                             QMessageBox.critical(self, "错误", "项目加载失败")
                         except Exception:
-                            logger.debug("无法显示加载失败对话框（非致命）", exc_info=True)
+                            logger.debug(
+                                "无法显示加载失败对话框（非致命）", exc_info=True
+                            )
         except Exception as e:
             logger.error("打开Project失败: %s", e)
 
@@ -385,7 +393,9 @@ class IntegratedAeroGUI(QMainWindow):
         """运行批处理 - 委托给 BatchManager"""
         try:
             # 保护性检查：确保关键管理器已初始化，避免在初始化期间触发批处理
-            if not getattr(self, "batch_manager", None) or not getattr(self, "config_manager", None):
+            if not getattr(self, "batch_manager", None) or not getattr(
+                self, "config_manager", None
+            ):
                 try:
                     QMessageBox.information(
                         self,
@@ -428,7 +438,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 btn_continue = mb.addButton(
                                     "继续（不保存）", QMessageBox.DestructiveRole
                                 )
-                                btn_cancel = mb.addButton("取消", QMessageBox.RejectRole)
+                                btn_cancel = mb.addButton(
+                                    "取消", QMessageBox.RejectRole
+                                )
                                 mb.setDefaultButton(btn_retry)
                                 mb.exec()
 
@@ -454,7 +466,9 @@ class IntegratedAeroGUI(QMainWindow):
                                     logger.debug("用户取消了批处理启动（保存失败后）")
                                     return
                         except Exception:
-                            logger.debug("保存失败处理对话异常，已取消批处理", exc_info=True)
+                            logger.debug(
+                                "保存失败处理对话异常，已取消批处理", exc_info=True
+                            )
                             return
 
                     else:
@@ -578,9 +592,13 @@ class IntegratedAeroGUI(QMainWindow):
                         from gui.log_manager import LoggingManager
 
                         lm = LoggingManager(self)
-                        log_file = lm.get_log_file_path() or (Path.home() / ".momenttransfer" / "momenttransfer.log")
+                        log_file = lm.get_log_file_path() or (
+                            Path.home() / ".momenttransfer" / "momenttransfer.log"
+                        )
                     except Exception:
-                        log_file = Path.home() / ".momenttransfer" / "momenttransfer.log"
+                        log_file = (
+                            Path.home() / ".momenttransfer" / "momenttransfer.log"
+                        )
 
                     log_dir = log_file.parent
                     if log_file.exists():
@@ -596,7 +614,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 f"未找到日志文件: {log_file}\n日志目录: {log_dir}",
                             )
                         except Exception:
-                            logger.debug("无法显示日志未找到提示（非致命）", exc_info=True)
+                            logger.debug(
+                                "无法显示日志未找到提示（非致命）", exc_info=True
+                            )
                 except Exception:
                     logger.debug("打开日志文件失败（非致命）", exc_info=True)
 
@@ -609,7 +629,14 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("显示非模态错误详情失败（非致命）", exc_info=True)
 
-    def notify_modal(self, title: str, message: str, informative: str = None, detailed: str = None, icon=QMessageBox.Information) -> None:
+    def notify_modal(
+        self,
+        title: str,
+        message: str,
+        informative: str = None,
+        detailed: str = None,
+        icon=QMessageBox.Information,
+    ) -> None:
         """统一的模态通知接口：用于致命或需要用户立刻决定的场景。"""
         try:
             dlg = QMessageBox(self)
@@ -624,7 +651,13 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("notify_modal failed (non-fatal)", exc_info=True)
 
-    def notify_nonmodal(self, summary: str, details: str = None, duration_ms: int = 120000, button_text: str = "查看详情") -> None:
+    def notify_nonmodal(
+        self,
+        summary: str,
+        details: str = None,
+        duration_ms: int = 120000,
+        button_text: str = "查看详情",
+    ) -> None:
         """统一的非模态通知：在状态栏显示 summary，并提供查看 details 的非模态入口。"""
         try:
             # 清理旧按钮
@@ -643,7 +676,9 @@ class IntegratedAeroGUI(QMainWindow):
                     self.statusBar().showMessage(summary)
                     return
                 except Exception:
-                    logger.debug("statusBar showMessage failed (non-fatal)", exc_info=True)
+                    logger.debug(
+                        "statusBar showMessage failed (non-fatal)", exc_info=True
+                    )
 
             btn = QPushButton(button_text, self)
             btn.setToolTip(summary)
@@ -679,12 +714,17 @@ class IntegratedAeroGUI(QMainWindow):
                 timer.timeout.connect(_remove)
                 timer.start(duration_ms)
             except Exception:
-                logger.debug("notification timer creation failed (non-fatal)", exc_info=True)
+                logger.debug(
+                    "notification timer creation failed (non-fatal)", exc_info=True
+                )
 
             try:
                 self.statusBar().showMessage(summary)
             except Exception:
-                logger.debug("statusBar showMessage failed after adding button (non-fatal)", exc_info=True)
+                logger.debug(
+                    "statusBar showMessage failed after adding button (non-fatal)",
+                    exc_info=True,
+                )
         except Exception:
             logger.debug("notify_nonmodal failed (non-fatal)", exc_info=True)
 
@@ -831,7 +871,9 @@ def _initialize_exception_hook():
         if main_window and getattr(main_window, "_is_initializing", False):
             # 记录完整 traceback 到日志
             try:
-                tb_text = "".join(traceback.format_exception(exc_type, exc_value, traceback_obj))
+                tb_text = "".join(
+                    traceback.format_exception(exc_type, exc_value, traceback_obj)
+                )
             except Exception:
                 tb_text = f"{exc_type.__name__}: {exc_value}"
             logger.debug("初始化期间捕获异常（被抑制）: %s", tb_text)

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Signal
 import traceback
+
+from PySide6.QtCore import QObject, Signal
 
 
 class BackgroundWorker(QObject):
@@ -25,6 +26,6 @@ class BackgroundWorker(QObject):
             # func 可能会调用进度回调（通过传入 progress 参数），但我们不强制要求
             result = self._func(*self._args, **self._kwargs)
             self.finished.emit(result)
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception:  # pylint: disable=broad-except
             tb = traceback.format_exc()
             self.error.emit(str(tb))

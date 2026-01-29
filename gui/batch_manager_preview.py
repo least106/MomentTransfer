@@ -118,7 +118,9 @@ def _make_simple_preview_table(
     try:
         # 在列名前加上序号，便于用户识别列索引（从1开始）
         col_names = list(df.columns)[:cols]
-        display_headers = ["选中"] + [f"{i+1}\n{str(c)}" for i, c in enumerate(col_names)]
+        display_headers = ["选中"] + [
+            f"{i+1}\n{str(c)}" for i, c in enumerate(col_names)
+        ]
         table._column_names = list(col_names)
         table._display_headers = list(display_headers)
         table.setHorizontalHeaderLabels(display_headers)

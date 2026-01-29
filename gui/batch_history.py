@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
@@ -19,9 +19,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +201,9 @@ class BatchHistoryPanel(QWidget):
                     count = 0
 
                 msg = f"确认撤销此批处理记录吗？\n将删除 {count} 个由该批处理生成的新文件\n输出目录: {out_dir}"
-                resp = QMessageBox.question(self, "确认撤销", msg, QMessageBox.Yes | QMessageBox.No)
+                resp = QMessageBox.question(
+                    self, "确认撤销", msg, QMessageBox.Yes | QMessageBox.No
+                )
                 if resp != QMessageBox.Yes:
                     return
             except Exception:
@@ -222,7 +221,8 @@ class BatchHistoryPanel(QWidget):
                         except Exception:
                             ts = None
                 if ts is not None:
-                    from datetime import datetime as _dt, timedelta
+                    from datetime import datetime as _dt
+                    from datetime import timedelta
 
                     age = _dt.now() - ts
                     if age > timedelta(days=1):
@@ -231,7 +231,9 @@ class BatchHistoryPanel(QWidget):
                             "在此期间源文件或输出目录可能已被移动、修改或删除。\n"
                             "继续撤销可能会失败或删除非预期文件。是否仍要继续？"
                         )
-                        resp2 = QMessageBox.question(self, "可能的风险", warn, QMessageBox.Yes | QMessageBox.No)
+                        resp2 = QMessageBox.question(
+                            self, "可能的风险", warn, QMessageBox.Yes | QMessageBox.No
+                        )
                         if resp2 != QMessageBox.Yes:
                             return
             except Exception:

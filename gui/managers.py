@@ -852,11 +852,15 @@ class UIStateManager:
                     except Exception:
                         import logging
 
-                        logging.getLogger(__name__).debug("检测配置是否修改失败（非致命）", exc_info=True)
+                        logging.getLogger(__name__).debug(
+                            "检测配置是否修改失败（非致命）", exc_info=True
+                        )
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug("访问 config_manager 失败（非致命）", exc_info=True)
+                logging.getLogger(__name__).debug(
+                    "访问 config_manager 失败（非致命）", exc_info=True
+                )
 
             base_tooltip = "开始批量处理（Ctrl+R）"
             for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
@@ -876,7 +880,9 @@ class UIStateManager:
                     # 非致命，记录到日志而不是抛出
                     import logging
 
-                    logging.getLogger(__name__).debug("设置启动按钮状态或 tooltip 失败（非致命）", exc_info=True)
+                    logging.getLogger(__name__).debug(
+                        "设置启动按钮状态或 tooltip 失败（非致命）", exc_info=True
+                    )
 
             # 更新状态栏右侧的永久提示标签：当可以开始时提示用户开始批处理
             try:
@@ -905,11 +911,15 @@ class UIStateManager:
                     except Exception:
                         import logging
 
-                        logging.getLogger(__name__).debug("设置 batch_panel 未保存指示器失败（非致命）", exc_info=True)
+                        logging.getLogger(__name__).debug(
+                            "设置 batch_panel 未保存指示器失败（非致命）", exc_info=True
+                        )
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug("访问 parent.batch_panel 失败（非致命）", exc_info=True)
+                logging.getLogger(__name__).debug(
+                    "访问 parent.batch_panel 失败（非致命）", exc_info=True
+                )
 
             # 数据管理选项卡：在没有加载数据时禁用
             try:
@@ -925,7 +935,9 @@ class UIStateManager:
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug("设置数据管理选项卡状态失败（非致命）", exc_info=True)
+                logging.getLogger(__name__).debug(
+                    "设置数据管理选项卡状态失败（非致命）", exc_info=True
+                )
 
             # 参考系管理（配置）选项卡
             try:
@@ -938,16 +950,23 @@ class UIStateManager:
                         except Exception:
                             cidx = -1
                         if cidx is not None and cidx >= 0:
-                            tab.setTabEnabled(cidx, bool(self.is_data_loaded() or self.is_config_loaded()))
+                            tab.setTabEnabled(
+                                cidx,
+                                bool(self.is_data_loaded() or self.is_config_loaded()),
+                            )
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug("设置参考系管理选项卡状态失败（非致命）", exc_info=True)
+                logging.getLogger(__name__).debug(
+                    "设置参考系管理选项卡状态失败（非致命）", exc_info=True
+                )
 
             # 保存按钮：在没有任何操作前禁用
             save_enabled = bool(self.is_operation_performed())
             # 如果主窗口标记为临时禁用 project 按钮，则保持禁用状态
-            project_buttons_disabled = bool(getattr(parent, "_project_buttons_temporarily_disabled", False))
+            project_buttons_disabled = bool(
+                getattr(parent, "_project_buttons_temporarily_disabled", False)
+            )
             for name in ("btn_save_project_toolbar",):
                 try:
                     btn = getattr(parent, name, None)
@@ -959,7 +978,9 @@ class UIStateManager:
                 except Exception:
                     import logging
 
-                    logging.getLogger(__name__).debug("设置保存按钮状态失败（非致命）", exc_info=True)
+                    logging.getLogger(__name__).debug(
+                        "设置保存按钮状态失败（非致命）", exc_info=True
+                    )
 
             try:
                 if hasattr(parent, "batch_panel"):
@@ -968,15 +989,21 @@ class UIStateManager:
                         if project_buttons_disabled:
                             parent.batch_panel.btn_save_project.setEnabled(False)
                         else:
-                            parent.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
+                            parent.batch_panel.btn_save_project.setEnabled(
+                                bool(save_enabled)
+                            )
                     except Exception:
                         import logging
 
-                        logging.getLogger(__name__).debug("设置 batch_panel 保存按钮状态失败（非致命）", exc_info=True)
+                        logging.getLogger(__name__).debug(
+                            "设置 batch_panel 保存按钮状态失败（非致命）", exc_info=True
+                        )
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug("访问 batch_panel 失败（非致命）", exc_info=True)
+                logging.getLogger(__name__).debug(
+                    "访问 batch_panel 失败（非致命）", exc_info=True
+                )
 
             try:
                 if hasattr(parent, "config_panel"):
@@ -985,17 +1012,23 @@ class UIStateManager:
                     except Exception:
                         import logging
 
-                        logging.getLogger(__name__).debug("设置 config_panel 保存按钮失败（非致命）", exc_info=True)
+                        logging.getLogger(__name__).debug(
+                            "设置 config_panel 保存按钮失败（非致命）", exc_info=True
+                        )
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug("访问 config_panel 失败（非致命）", exc_info=True)
+                logging.getLogger(__name__).debug(
+                    "访问 config_panel 失败（非致命）", exc_info=True
+                )
 
         except Exception:
             # 最后兜底：记录错误但不抛出，避免在 UI 更新时中断
             import logging
 
-            logging.getLogger(__name__).debug("refresh_controls_state 失败（非致命）", exc_info=True)
+            logging.getLogger(__name__).debug(
+                "refresh_controls_state 失败（非致命）", exc_info=True
+            )
 
     # 状态设置辅助方法，鼓励通过 UIStateManager 管理窗口级状态
     def set_data_loaded(self, loaded: bool) -> None:

@@ -6,7 +6,7 @@ Part 管理模块 - 处理 Part 的添加、删除和切换
 # pylint: disable=import-outside-toplevel
 
 import logging
-from typing import Optional
+from typing import Optional, Callable, cast
 
 # 引入 QMessageBox 以便测试对其进行 monkeypatch，且供模块内部使用
 from PySide6.QtWidgets import QMessageBox
@@ -16,9 +16,9 @@ from gui.signal_bus import SignalBus
 # 尝试提前导入 ModelManager，避免函数内多次局部导入带来的 pylint 噪音；
 # 若因循环导入失败则保留为 None，函数内按需回退本地导入。
 try:
-    from gui.managers import ModelManager
+    from gui.managers import ModelManager as _model_manager_cls
 except Exception:
-    ModelManager = None
+    _model_manager_cls = None  # pylint: disable=invalid-name
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,16 @@ class PartManager:
             mm = self.model_manager or getattr(self.gui, "model_manager", None)
             if mm:
                 return mm
-            # 按需导入并尝试创建实例以保持兼容
+            # 优先使用顶层已导入的类（若可用），避免再次局部导入
+            if _model_manager_cls is not None:
+                try:
+                    mm = _model_manager_cls(self.gui)
+                    self.model_manager = mm
+                    return mm
+                except Exception:
+                    # 若构造失败，继续尝试按需局部导入
+                    pass
+            # 按需局部导入并尝试创建实例以保持兼容
             from gui.managers import ModelManager
 
             mm = ModelManager(self.gui)
@@ -59,7 +68,9 @@ class PartManager:
             self.model_manager = mm
             return mm
         except Exception:
-            logger.warning("无法获取 ModelManager 实例，某些操作将回退或失败", exc_info=True)
+            logger.warning(
+                "无法获取 ModelManager 实例，某些操作将回退或失败", exc_info=True
+            )
             return None
 
     def _inform_model_manager_missing(self, operation: str = "操作"):
@@ -70,7 +81,9 @@ class PartManager:
             QMessageBox.warning(self.gui, "缺失依赖: ModelManager", msg)
         except Exception:
             # 在非 GUI 环境或测试中，弹窗可能失败；已经记录日志即可。
-            logger.debug("无法弹出 QMessageBox 提示 (可能在测试/无界面环境)", exc_info=True)
+            logger.debug(
+                "无法弹出 QMessageBox 提示 (可能在测试/无界面环境)", exc_info=True
+            )
 
     # ===== 辅助方法 =====
     def _ensure_project_model(self) -> bool:
@@ -191,7 +204,7 @@ class PartManager:
         except (TypeError, ValueError):
             return 0.0
 
-    def _rename_part(self, new_name: str, is_source: bool):
+    def _rename_part(self, new_name: str, is_source: bool):  # pylint: disable=inconsistent-return-statements,too-many-branches,too-many-statements
         try:
             mm = self._get_model_manager()
             if mm and hasattr(mm, "_rename_part"):
@@ -202,10 +215,10 @@ class PartManager:
         try:
             mm = self.model_manager or getattr(self.gui, "model_manager", None)
             if mm is None or not self._ensure_project_model():
-                return
+                return None
             new_name = (new_name or "").strip()
             if not new_name:
-                return
+                return None
 
             parts = (
                 mm.project_model.source_parts
@@ -231,11 +244,11 @@ class PartManager:
                 current_name = None
 
             if not current_name:
-                return
+                return None
 
             part_obj = parts.pop(current_name, None)
             if part_obj is None:
-                return
+                return None
 
             if new_name in parts:
                 new_name = self._unique_name(new_name, set(parts.keys()))
@@ -259,11 +272,14 @@ class PartManager:
             if selector:
                 try:
                     # 在更新选择器项时阻断其信号，避免触发递归或重复保存/验证回调
-                    block_fn = getattr(selector, "blockSignals", None)
+                    block_fn = cast(Optional[Callable[[bool], None]],
+                                     getattr(selector, "blockSignals", None))
                     should_unblock = False
-                    if callable(block_fn):
+                    call_block = None
+                    if block_fn is not None:
                         try:
-                            block_fn(True)
+                            call_block = cast(Callable[[bool], None], block_fn)
+                            call_block(True)
                             should_unblock = True
                         except Exception:
                             should_unblock = False
@@ -284,15 +300,16 @@ class PartManager:
                                     # 忽略单次失败，已记录在外层
                                     pass
                     finally:
-                        if should_unblock and callable(block_fn):
+                        if should_unblock and call_block is not None:
                             try:
-                                block_fn(False)
+                                call_block(False)
                             except Exception:
                                 logger.debug("恢复 selector 信号失败", exc_info=True)
                 except Exception:
                     logger.debug("更新选择器名称失败", exc_info=True)
         except Exception:
             logger.debug("重命名 Part 失败", exc_info=True)
+            return None
 
     # ===== Source 管理 =====
     def add_source_part(self, suggested_name: str = None):
@@ -305,6 +322,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("委托给 model_manager.add_source_part 失败")
+            return None
 
     def remove_source_part(self, name_hint: str = None):
         """删除当前 Source Part（使用 ProjectConfigModel）"""
@@ -316,6 +334,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("委托给 model_manager.remove_source_part 失败")
+            return None
 
     # ===== Target 管理 =====
     def add_target_part(self, suggested_name: str = None):
@@ -332,6 +351,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("委托给 model_manager.add_target_part 失败")
+            return None
 
     def remove_target_part(self):
         """删除当前 Target Part（使用 ProjectConfigModel）"""
@@ -343,6 +363,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("委托给 model_manager.remove_target_part 失败")
+            return None
 
     # ===== 切换事件 =====
     def on_source_variant_changed(self, idx: int):
@@ -355,6 +376,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("委托给 model_manager.on_source_variant_changed 失败")
+            return None
 
     def on_target_variant_changed(self, idx: int):
         """Target 变体索引变化事件：根据索引更新 UI。"""
@@ -366,6 +388,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("委托给 model_manager.on_target_variant_changed 失败")
+            return None
 
     # ===== 名称变更事件 =====
     def on_source_part_name_changed(self, new_text: str):
@@ -417,6 +440,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("save_current_source_part delegation failed")
+            return None
 
     def save_current_target_part(self):
         """将当前 Target 表单保存到新模型（使用强类型接口）"""
@@ -428,6 +452,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("save_current_target_part delegation failed")
+            return None
 
     # ===== Part 变更事件处理（从 main_window 迁移）=====
     def on_source_part_changed(self):
@@ -440,6 +465,7 @@ class PartManager:
             return None
         except Exception:
             logger.exception("on_source_part_changed delegation failed")
+            return None
 
     def on_target_part_changed(self):
         """Target Part 选择变化时的处理"""
@@ -451,3 +477,4 @@ class PartManager:
             return None
         except Exception:
             logger.exception("on_target_part_changed delegation failed")
+            return None

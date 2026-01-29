@@ -408,7 +408,11 @@ class ConfigManager:
             tgt_payload = None
             try:
                 # 若为 ProjectData，使用 get_source_part/get_target_part
-                src_names = list(project.source_parts.keys()) if hasattr(project, "source_parts") else []
+                src_names = (
+                    list(project.source_parts.keys())
+                    if hasattr(project, "source_parts")
+                    else []
+                )
                 if src_names:
                     frame = project.get_source_part(src_names[0], 0)
                 else:
@@ -419,7 +423,11 @@ class ConfigManager:
                 src_payload = None
 
             try:
-                tgt_names = list(project.target_parts.keys()) if hasattr(project, "target_parts") else []
+                tgt_names = (
+                    list(project.target_parts.keys())
+                    if hasattr(project, "target_parts")
+                    else []
+                )
                 if tgt_names:
                     frame = project.get_target_part(tgt_names[0], 0)
                 else:
@@ -432,8 +440,22 @@ class ConfigManager:
             if src_payload is None and tgt_payload is None:
                 return None
 
-            src_part = {"PartName": src_payload.get("PartName", "Global"), "Variants": [src_payload]} if src_payload else {"PartName": "Global", "Variants": []}
-            tgt_part = {"PartName": tgt_payload.get("PartName", "Target"), "Variants": [tgt_payload]} if tgt_payload else {"PartName": "Target", "Variants": []}
+            src_part = (
+                {
+                    "PartName": src_payload.get("PartName", "Global"),
+                    "Variants": [src_payload],
+                }
+                if src_payload
+                else {"PartName": "Global", "Variants": []}
+            )
+            tgt_part = (
+                {
+                    "PartName": tgt_payload.get("PartName", "Target"),
+                    "Variants": [tgt_payload],
+                }
+                if tgt_payload
+                else {"PartName": "Target", "Variants": []}
+            )
 
             return {"Source": {"Parts": [src_part]}, "Target": {"Parts": [tgt_part]}}
         except Exception:

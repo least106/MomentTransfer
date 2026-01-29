@@ -9,7 +9,7 @@
 import logging
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QSplitter
+from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 from gui.batch_manager import BatchManager
@@ -168,16 +168,24 @@ class InitializationManager:
                             try:
                                 splitter.setSizes([800, 200])
                             except Exception:
-                                logger.debug("展开底部栏时调整分割器大小失败（非致命）", exc_info=True)
+                                logger.debug(
+                                    "展开底部栏时调整分割器大小失败（非致命）",
+                                    exc_info=True,
+                                )
                         else:
                             try:
                                 splitter.setSizes([1000, 0])
                             except Exception:
-                                logger.debug("折叠底部栏时调整分割器大小失败（非致命）", exc_info=True)
+                                logger.debug(
+                                    "折叠底部栏时调整分割器大小失败（非致命）",
+                                    exc_info=True,
+                                )
                     except Exception:
                         logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
 
-                self.main_window.chk_bottom_bar_toolbar.toggled.connect(_toggle_bottom_bar)
+                self.main_window.chk_bottom_bar_toolbar.toggled.connect(
+                    _toggle_bottom_bar
+                )
             except Exception:
                 logger.debug("连接底部栏切换信号失败", exc_info=True)
 
@@ -226,7 +234,7 @@ class InitializationManager:
             # 将 ConfigPanel 替换到 Tab 的"参考系管理"位置
             try:
                 if hasattr(self.main_window, "tab_main") and hasattr(
-                        self.main_window, "config_tab_placeholder"
+                    self.main_window, "config_tab_placeholder"
                 ):
                     tab_main = self.main_window.tab_main
                     config_panel = self.main_window.config_panel
@@ -263,17 +271,25 @@ class InitializationManager:
                                 # 委托给 BatchManager 的对外方法（非阻塞）统一处理扫描与 UI 状态
                                 try:
                                     # 使用非下划线方法以便 BatchManager 可选择在后台执行
-                                    self.main_window.batch_manager.scan_and_populate_files(p)
+                                    self.main_window.batch_manager.scan_and_populate_files(
+                                        p
+                                    )
                                 except Exception:
                                     logger.debug("扫描文件失败", exc_info=True)
                         except Exception:
-                            logger.debug("处理 inp_batch_input 编辑完成回调失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "处理 inp_batch_input 编辑完成回调失败（非致命）",
+                                exc_info=True,
+                            )
 
                     try:
                         bp.editingFinished.connect(_on_input_edit_finished)
                     except Exception:
                         # 有些 Qt 版本或组件可能不支持该信号，记录并忽略绑定失败
-                        logger.debug("绑定 inp_batch_input.editingFinished 失败（兼容性问题）", exc_info=True)
+                        logger.debug(
+                            "绑定 inp_batch_input.editingFinished 失败（兼容性问题）",
+                            exc_info=True,
+                        )
             except Exception:
                 logger.debug("绑定 inp_batch_input 编辑完成信号失败", exc_info=True)
         except Exception as e:
@@ -499,7 +515,9 @@ class InitializationManager:
                 geom = self.main_window.rect()
                 w.setGeometry(geom)
             except Exception as e:
-                logger.debug("设置初始化遮罩几何信息失败（非致命）: %s", e, exc_info=True)
+                logger.debug(
+                    "设置初始化遮罩几何信息失败（非致命）: %s", e, exc_info=True
+                )
             w.setVisible(True)
             w.raise_()
             self._init_overlay = w
@@ -519,7 +537,6 @@ class InitializationManager:
             self._init_overlay = None
         except Exception:
             logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
-        
 
     def trigger_initial_layout_update(self):
         """触发初始布局更新"""
@@ -531,12 +548,16 @@ class InitializationManager:
                     if lm:
                         try:
                             # 仅在确实需要调整按钮布局时才执行更新与强制刷新，避免重复昂贵操作
-                            if getattr(lm, "needs_button_layout_update", lambda: False)():
+                            if getattr(
+                                lm, "needs_button_layout_update", lambda: False
+                            )():
                                 lm.update_button_layout()
                                 try:
                                     lm.force_layout_refresh()
                                 except Exception:
-                                    logger.debug("强制刷新布局失败（非致命）", exc_info=True)
+                                    logger.debug(
+                                        "强制刷新布局失败（非致命）", exc_info=True
+                                    )
                         except Exception:
                             logger.debug("更新初始布局失败（非致命）", exc_info=True)
                 except Exception:

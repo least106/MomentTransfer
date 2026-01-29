@@ -33,7 +33,9 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 manager.gui.output_dir = p.parent
             except Exception:
-                logger.debug("设置 manager.gui.output_dir 失败（非致命）", exc_info=True)
+                logger.debug(
+                    "设置 manager.gui.output_dir 失败（非致命）", exc_info=True
+                )
             base_path = p.parent
         elif p.is_dir():
             # 使用默认的文件匹配模式（支持所有常见格式）
@@ -53,7 +55,9 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 manager.gui.output_dir = p
             except Exception:
-                logger.debug("设置 manager.gui.output_dir 为目录失败（非致命）", exc_info=True)
+                logger.debug(
+                    "设置 manager.gui.output_dir 为目录失败（非致命）", exc_info=True
+                )
 
             base_path = p
 

@@ -281,6 +281,14 @@ class CoordinateSystemPanel(QGroupBox):
 
         # 连接值变化信号
         table.itemChanged.connect(self._emit_values_changed)
+        # 兼容回退：若 valuesChanged 未能最终触发修改提示，
+        # 直接在用户编辑表格时标记为已修改（仅在非静默更新时）。
+        try:
+            table.itemChanged.connect(lambda *a, **k: self._on_table_edited())
+        except Exception:
+            logger.debug(
+                "连接 table.itemChanged 到 _on_table_edited 失败", exc_info=True
+            )
 
         try:
             table.setObjectName(f"{self.prefix}_coord_table")
@@ -299,6 +307,45 @@ class CoordinateSystemPanel(QGroupBox):
         """选择了不同的Part时触发"""
         if part_name:
             self.partSelected.emit(part_name)
+
+    def _on_table_edited(self):
+        """表格被用户编辑时的回退处理：在非静默模式下标记为用户已修改。"""
+        try:
+            if getattr(self, "_silent_update_count", 0) > 0:
+                return
+            win = self.window()
+            if win is None:
+                return
+            # 优先使用 UIStateManager API（若存在）
+            try:
+                if hasattr(win, "ui_state_manager") and getattr(
+                    win, "ui_state_manager"
+                ):
+                    try:
+                        win.ui_state_manager.mark_user_modified()
+                        return
+                    except Exception:
+                        pass
+                # 向后兼容：调用主窗口的 mark_user_modified
+                if hasattr(win, "mark_user_modified"):
+                    try:
+                        win.mark_user_modified()
+                        return
+                    except Exception:
+                        pass
+                # 作为最后手段设置 operation_performed 并刷新控件状态
+                try:
+                    win.operation_performed = True
+                    try:
+                        win._refresh_controls_state()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("_on_table_edited 回退处理失败", exc_info=True)
 
     def get_coord_data(self) -> dict:
         """获取坐标系数据"""
