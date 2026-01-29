@@ -29,7 +29,10 @@ def test_instantiate_returns_non_plugin(tmp_path):
     p = tmp_path / "mod_returns_nonplugin.py"
     write(
         p,
-        "def create_plugin():\n    return {'not':'a plugin'}\n",
+        """
+def create_plugin():
+    return {'not':'a plugin'}
+""",
     )
     loader = PluginLoader(PluginRegistry())
     mod = loader._dynamic_import_module(p)
@@ -41,7 +44,10 @@ def test_instantiate_create_raises(tmp_path):
     p = tmp_path / "mod_create_raises.py"
     write(
         p,
-        "def create_plugin():\n    raise TypeError('fail')\n",
+        """
+def create_plugin():
+    raise TypeError('fail')
+""",
     )
     loader = PluginLoader(PluginRegistry())
     mod = loader._dynamic_import_module(p)
@@ -53,7 +59,19 @@ def test_instantiate_register_raises(tmp_path, monkeypatch):
     p = tmp_path / "mod_good.py"
     write(
         p,
-        "from src.plugin import BasePlugin, PluginMetadata\nclass Good(BasePlugin):\n    @property\n    def metadata(self):\n        return PluginMetadata(name='g', version='1', author='', description='', plugin_type='output')\ndef create_plugin():\n    return Good()\n",
+        """
+from src.plugin import BasePlugin, PluginMetadata
+
+class Good(BasePlugin):
+    @property
+    def metadata(self):
+        return PluginMetadata(
+            name='g', version='1', author='', description='', plugin_type='output'
+        )
+
+def create_plugin():
+    return Good()
+""",
     )
     registry = PluginRegistry()
     loader = PluginLoader(registry)
