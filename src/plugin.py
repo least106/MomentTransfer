@@ -310,7 +310,7 @@ else:
         except (OSError, ImportError, AttributeError, SyntaxError) as exc:
             logger.error("加载模块 %s 失败: %s", filepath, exc, exc_info=True)
             return None
-        except Exception as exc:  # pragma: no cover - 防御性捕获
+        except Exception:  # pragma: no cover - 防御性捕获
             logger.exception("在动态导入 %s 时发生内部错误", filepath)
             return None
 

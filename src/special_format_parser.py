@@ -21,20 +21,17 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from typing import Any, Dict, List, Optional, Tuple  # noqa: E402
+from typing import Dict, List, Optional, Tuple  # noqa: E402
 
 import pandas as pd  # noqa: E402
 
 from src.special_format_detector import (  # noqa: E402
-    RECOMMENDED_EXT,
-    SUPPORTED_EXTS,
     _read_text_file_lines,
     _tokens_looks_like_header,
     is_data_line,
     is_metadata_line,
     is_part_name_line,
     is_summary_line,
-    looks_like_special_format,
 )
 
 logger = logging.getLogger(__name__)
