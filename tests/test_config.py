@@ -1,6 +1,5 @@
 import json
 
-
 from src.config import (
     SystemConfig,
     get_config,

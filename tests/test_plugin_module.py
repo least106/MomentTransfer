@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 from src import plugin as plugin_mod
 
 

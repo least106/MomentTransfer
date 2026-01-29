@@ -52,7 +52,7 @@ def test_rotate_and_transfer_moments_and_compute_coeffs():
     calc.r_target = np.array([0.0, 0.0, 0.0])
 
     forces = np.array([[1.0, 0.0, 0.0]])
-    moments = np.array([[0.0, 0.0, 0.0]])
+    np.array([[0.0, 0.0, 0.0]])
 
     F_rot = calc._rotate_vectors(forces)
     assert np.allclose(F_rot, forces)

@@ -88,12 +88,9 @@ def test_process_special_format_file_delegates(monkeypatch):
         del sys.modules["src.special_format_processor"]
 
 
-from src import special_format_parser as sfp
-
-
-def test_normalize_column_mapping_variants():
+def test_normalize_column_mapping_variants_variant2():
     cols = [" Cx ", "cz_fn", "CMx", "alpha", "unknown"]
-    mapping = sfp._normalize_column_mapping(cols)
+    mapping = parser._normalize_column_mapping(cols)
     assert mapping[" Cx "] == "Cx"
     assert mapping["cz_fn"] == "Cz/FN"
     assert mapping["CMx"] == "CMx"
@@ -114,8 +111,8 @@ def test_parse_special_format_file_basic_and_mismatch(monkeypatch, tmp_path):
         "7 8 9\n",
     ]
 
-    monkeypatch.setattr(sfp, "_read_text_file_lines", lambda p: lines)
-    result = sfp.parse_special_format_file(Path("dummy"))
+    monkeypatch.setattr(parser, "_read_text_file_lines", lambda p: lines)
+    result = parser.parse_special_format_file(Path("dummy"))
     assert "PartA" in result and "PartB" in result
     assert isinstance(result["PartA"], pd.DataFrame)
     assert result["PartA"].shape[0] == 1  # second line skipped
@@ -133,8 +130,8 @@ def test_get_part_names_ignores_metadata(monkeypatch):
         "Alpha CL CD\n",
         "5 6 7\n",
     ]
-    monkeypatch.setattr(sfp, "_read_text_file_lines", lambda p: lines)
-    parts = sfp.get_part_names(Path("dummy2"))
+    monkeypatch.setattr(parser, "_read_text_file_lines", lambda p: lines)
+    parts = parser.get_part_names(Path("dummy2"))
     assert parts == ["PartX", "PartY"]
 
 
@@ -142,7 +139,7 @@ def test_finalize_part_coerce_numeric(monkeypatch):
     result = {}
     header = ["Alpha", "CL"]
     data = [["1", "bad"], ["2", "3"]]
-    sfp._finalize_part("P", header, data, result)
+    parser._finalize_part("P", header, data, result)
     df = result.get("P")
     assert df is not None
     # CL column: first row coerced to NaN

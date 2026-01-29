@@ -4,10 +4,7 @@ import logging
 import pytest
 
 from src.logging_config import configure_logging
-from src.logging_system import (
-    LoggerFactory,
-    log_operation_context,
-)
+from src.logging_system import LoggerFactory, log_operation_context
 
 
 def _parse_json_lines(s: str):
@@ -66,7 +63,7 @@ def test_log_operation_context_exception_path(capsys):
     LoggerFactory.configure(log_level="INFO", json_output=True)
 
     with pytest.raises(RuntimeError):
-        with log_operation_context("opX", "ctxX") as logger:
+        with log_operation_context("opX", "ctxX"):
             raise RuntimeError("err")
 
     out = capsys.readouterr().out

@@ -51,7 +51,7 @@ def test_decorator_records_metric():
     assert fast_fn(1) == 2
     mon = get_performance_monitor()
     name = f"{fast_fn.__module__}.{fast_fn.__name__}"
-    stats = mon.get_stats(name)
+    mon.get_stats(name)
     # 可能 durations 为0（太快），此时 get_stats 返回 {}，但 metrics 应存在
     all_stats = mon.get_all_stats()
     assert name in all_stats
