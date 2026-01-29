@@ -169,19 +169,29 @@ class BatchProcessThread(QThread):
                 part = r.get("part")
                 if status == "success":
                     msg = (
-                        f"part '{part}' 处理成功，输出: "
-                        f"{r.get('out_path', '')}"
+                        "part '"
+                        + str(part)
+                        + "' 处理成功，输出: "
+                        + str(r.get("out_path", ""))
                     )
                 elif status == "skipped":
                     reason = r.get("reason")
                     msg = (
-                        f"part '{part}' 被跳过: {reason} - "
-                        f"{r.get('message','') }"
+                        "part '"
+                        + str(part)
+                        + "' 被跳过: "
+                        + str(reason)
+                        + " - "
+                        + str(r.get("message", ""))
                     )
                 else:
                     msg = (
-                        f"part '{part}' 处理失败: {r.get('reason')} - "
-                        f"{r.get('message','') }"
+                        "part '"
+                        + str(part)
+                        + "' 处理失败: "
+                        + str(r.get("reason"))
+                        + " - "
+                        + str(r.get("message", ""))
                     )
                 self._emit_log(msg)
         except Exception:
@@ -367,7 +377,8 @@ class BatchProcessThread(QThread):
 
             if not has_dimensional and not has_coeff:
                 raise ValueError(
-                    "缺少必要列，需包含 Fx/Fy/Fz/Mx/My/Mz 或 Cx/Cy/Cz(CM)/CMx/CMy/CMz"
+                    "缺少必要列，需包含 Fx/Fy/Fz/Mx/My/Mz 或 "
+                    "Cx/Cy/Cz(CM)/CMx/CMy/CMz"
                 )
 
             if has_dimensional:
@@ -494,8 +505,9 @@ class BatchProcessThread(QThread):
     ):
         """将输入的 DataFrame 转为有量纲的 numpy 数组（forces_dimensional, moments_dimensional）。"""
         if has_dimensional:
-            return forces_df.to_numpy(dtype=float), moments_df.to_numpy(
-                dtype=float
+            return (
+                forces_df.to_numpy(dtype=float),
+                moments_df.to_numpy(dtype=float),
             )
 
         try:
