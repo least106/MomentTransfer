@@ -23,7 +23,8 @@ venv/
 data/
 tools/
 .coverage
-pylint*
+*pylint*
+*flake8*
 
 # Packaging / build artifacts
 build/
