@@ -58,6 +58,7 @@ from gui.batch_manager_files import (
 from gui.batch_manager_files import (
     _ensure_file_part_selection_storage as _ensure_file_part_selection_storage_impl,
 )
+from src.utils import csv_has_header
 from gui.batch_manager_files import (
     _ensure_regular_file_selector_rows as _ensure_regular_file_selector_rows_impl,
 )
@@ -748,7 +749,7 @@ class BatchManager:
 
             # 预览统一使用“原始表格内容”（不依赖列映射）
             if file_path.suffix.lower() == ".csv":
-                header_opt = 0 if _csv_has_header(file_path) else None
+                header_opt = 0 if csv_has_header(file_path) else None
                 df = pd.read_csv(file_path, header=header_opt, nrows=int(max_rows))
             else:
                 # Excel 默认按原始内容预览，不强制表头

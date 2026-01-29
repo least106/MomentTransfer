@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem, QTreeWidgetItem
 
 from gui.paged_table import PagedTableWidget
+from src.utils import csv_has_header
 
 logger = logging.getLogger(__name__)
 
@@ -561,34 +562,8 @@ def _get_table_df_preview(manager, file_path: Path, *, max_rows: int = 200):
 
     try:
 
-        def _csv_has_header(path: Path) -> bool:
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    first_line = fh.readline()
-                if not first_line:
-                    return False
-                if "," in first_line:
-                    tokens = [t.strip() for t in first_line.split(",")]
-                elif "\t" in first_line:
-                    tokens = [t.strip() for t in first_line.split("\t")]
-                else:
-                    tokens = first_line.split()
-                non_numeric = 0
-                total = 0
-                for t in tokens:
-                    if not t:
-                        continue
-                    total += 1
-                    try:
-                        float(t)
-                    except Exception:
-                        non_numeric += 1
-                return total > 0 and non_numeric >= max(1, total // 2)
-            except Exception:
-                return False
-
         if file_path.suffix.lower() == ".csv":
-            header_opt = 0 if _csv_has_header(file_path) else None
+            header_opt = 0 if csv_has_header(file_path) else None
             df = pd.read_csv(file_path, header=header_opt, nrows=int(max_rows))
         else:
             df = pd.read_excel(file_path, header=None)
