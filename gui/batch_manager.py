@@ -92,6 +92,9 @@ from gui.batch_manager_preview import (
     _apply_quick_filter_special_iter as _apply_quick_filter_special_iter_impl,
 )
 from gui.batch_manager_preview import (
+    _apply_quick_filter_table_iter as _apply_quick_filter_table_iter_impl,
+)
+from gui.batch_manager_preview import (
     _apply_quick_filter_to_special_table as _apply_quick_filter_to_special_table_impl,
 )
 from gui.batch_manager_preview import (
@@ -537,27 +540,31 @@ class BatchManager:
 
     def _apply_quick_filter_table_iter(self, table, df, operator: str) -> None:
         """迭代表格行并基于筛选结果调整颜色显示。"""
-        gray_color = QColor(220, 220, 220)
-        text_color = QColor(160, 160, 160)
+        try:
+            return _apply_quick_filter_table_iter_impl(self, table, df, operator)
+        except Exception:
+            # 回退到本地实现（保守策略）
+            gray_color = QColor(220, 220, 220)
+            text_color = QColor(160, 160, 160)
 
-        for r in range(min(table.rowCount(), len(df))):
-            try:
-                row_value = df.iloc[r][self._quick_filter_column]
-                matches = self._evaluate_filter(
-                    row_value, operator, self._quick_filter_value
-                )
+            for r in range(min(table.rowCount(), len(df))):
+                try:
+                    row_value = df.iloc[r][self._quick_filter_column]
+                    matches = self._evaluate_filter(
+                        row_value, operator, self._quick_filter_value
+                    )
 
-                for c in range(1, table.columnCount()):  # 跳过勾选列
-                    item = self._get_table_item(table, r, c)
-                    if item:
-                        if matches:
-                            item.setBackground(QColor(255, 255, 255))
-                            item.setForeground(QColor(0, 0, 0))
-                        else:
-                            item.setBackground(gray_color)
-                            item.setForeground(text_color)
-            except Exception:
-                pass
+                    for c in range(1, table.columnCount()):  # 跳过勾选列
+                        item = self._get_table_item(table, r, c)
+                        if item:
+                            if matches:
+                                item.setBackground(QColor(255, 255, 255))
+                                item.setForeground(QColor(0, 0, 0))
+                            else:
+                                item.setBackground(gray_color)
+                                item.setForeground(text_color)
+                except Exception:
+                    pass
 
     def _apply_quick_filter_with_paged_table(
         self, table, df, operator: str
@@ -710,26 +717,15 @@ class BatchManager:
     def _build_table_row_preview_text(self, row_index: int, row_series) -> str:
         """构造表格（CSV/Excel）数据行预览文本。"""
         try:
-            values = []
-            try:
-                # 只显示前 6 列，避免树节点过长
-                for v in list(row_series.values)[:6]:
-                    s = ""
-                    try:
-                        if v is None:
-                            s = ""
-                        else:
-                            s = str(v)
-                    except Exception:
-                        s = ""
-                    values.append(s)
-            except Exception:
-                values = []
-            if values:
-                return f"第{row_index + 1}行：" + " | ".join(values)
+            from src.utils import build_table_row_preview_text
+
+            return build_table_row_preview_text(row_index, row_series)
         except Exception:
-            pass
-        return f"第{row_index + 1}行"
+            try:
+                # 回退到简单的安全输出
+                return f"第{row_index + 1}行"
+            except Exception:
+                return ""
 
     def _get_table_df_preview(self, file_path: Path, *, max_rows: int = 200):
         """读取 CSV/Excel 的预览数据（带 mtime 缓存）。"""
@@ -749,49 +745,9 @@ class BatchManager:
             return cached.get("df")
 
         try:
+            from src.utils import read_table_preview
 
-            def _csv_has_header(path: Path) -> bool:
-                """简单探测：首行含非数值token则视为表头。"""
-                try:
-                    with open(path, "r", encoding="utf-8") as fh:
-                        first_line = fh.readline()
-                    if not first_line:
-                        return False
-                    # 逗号/制表符分隔
-                    if "," in first_line:
-                        tokens = [t.strip() for t in first_line.split(",")]
-                    elif "\t" in first_line:
-                        tokens = [t.strip() for t in first_line.split("\t")]
-                    else:
-                        tokens = first_line.split()
-                    non_numeric = 0
-                    total = 0
-                    for t in tokens:
-                        if not t:
-                            continue
-                        total += 1
-                        try:
-                            float(t)
-                        except Exception:
-                            non_numeric += 1
-                    # 至少半数非数值，认为是表头
-                    return total > 0 and non_numeric >= max(1, total // 2)
-                except Exception:
-                    return False
-
-            # 预览统一使用“原始表格内容”（不依赖列映射）
-            if file_path.suffix.lower() == ".csv":
-                header_opt = 0 if csv_has_header(file_path) else None
-                df = pd.read_csv(
-                    file_path, header=header_opt, nrows=int(max_rows)
-                )
-            else:
-                # Excel 默认按原始内容预览，不强制表头
-                df = pd.read_excel(file_path, header=None)
-                try:
-                    df = df.head(int(max_rows))
-                except Exception:
-                    pass
+            df = read_table_preview(file_path, int(max_rows))
         except Exception:
             logger.debug("读取表格预览失败", exc_info=True)
             df = None

@@ -533,25 +533,14 @@ def _apply_quick_filter_special_iter_obj(
 
 def _build_table_row_preview_text(manager, row_index: int, row_series) -> str:
     try:
-        values = []
-        try:
-            for v in list(row_series.values)[:6]:
-                s = ""
-                try:
-                    if v is None:
-                        s = ""
-                    else:
-                        s = str(v)
-                except Exception:
-                    s = ""
-                values.append(s)
-        except Exception:
-            values = []
-        if values:
-            return f"第{row_index + 1}行：" + " | ".join(values)
+        from src.utils import build_table_row_preview_text
+
+        return build_table_row_preview_text(row_index, row_series)
     except Exception:
-        pass
-    return f"第{row_index + 1}行"
+        try:
+            return f"第{row_index + 1}行"
+        except Exception:
+            return ""
 
 
 def _get_table_df_preview(manager, file_path: Path, *, max_rows: int = 200):
@@ -571,16 +560,9 @@ def _get_table_df_preview(manager, file_path: Path, *, max_rows: int = 200):
         return cached.get("df")
 
     try:
+        from src.utils import read_table_preview
 
-        if file_path.suffix.lower() == ".csv":
-            header_opt = 0 if csv_has_header(file_path) else None
-            df = pd.read_csv(file_path, header=header_opt, nrows=int(max_rows))
-        else:
-            df = pd.read_excel(file_path, header=None)
-            try:
-                df = df.head(int(max_rows))
-            except Exception:
-                pass
+        df = read_table_preview(file_path, int(max_rows))
     except Exception:
         logger.debug("读取表格预览失败", exc_info=True)
         df = None

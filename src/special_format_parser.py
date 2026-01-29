@@ -31,6 +31,7 @@ from src.special_format_detector import (  # noqa: E402
     is_data_line,
     is_metadata_line,
     is_part_name_line,
+    looks_like_special_format,
     is_summary_line,
 )
 
