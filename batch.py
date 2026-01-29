@@ -30,13 +30,6 @@ except ImportError:
     portalocker = None
 
 
-# 进程级缓存：worker 进程中可能会重用的全局变量（在子进程入口处按需初始化）
-# 在模块级预先定义可以避免 pylint 报告 "使用变量前赋值" 的错误
-_WORKER_CALCULATOR = None
-_WORKER_PROJECT_PATH = None
-_WORKER_PROJECT_DATA = None
-
-
 from src.cli_helpers import (
     BatchConfig,
     configure_logging,
@@ -46,6 +39,12 @@ from src.cli_helpers import (
 from src.physics import AeroCalculator
 from src.special_format_detector import looks_like_special_format
 from src.special_format_processor import process_special_format_file
+
+# 进程级缓存：worker 进程中可能会重用的全局变量（在子进程入口处按需初始化）
+# 在模块级预先定义可以避免 pylint 报告 "使用变量前赋值" 的错误
+_WORKER_CALCULATOR = None
+_WORKER_PROJECT_PATH = None
+_WORKER_PROJECT_DATA = None
 
 
 def _error_exit_json(message: str, code: int = 2, hint: str = None):
