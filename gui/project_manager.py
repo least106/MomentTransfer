@@ -37,6 +37,33 @@ class ProjectManager:
         # 后台任务引用（防止被GC），支持同时保留多个并在完成后清理
         self._background_workers = []
 
+    def _notify_user_error(self, title: str, message: str, details: Optional[str] = None) -> None:
+        """在 GUI 环境中向用户展示错误对话框；在无 GUI 时记录日志。
+
+        只用于关键路径的用户可见提示，内部细节应记录到日志。
+        """
+        try:
+            from PySide6.QtWidgets import QMessageBox
+
+            try:
+                msg = QMessageBox(self.gui)
+                msg.setWindowTitle(title)
+                msg.setText(message)
+                if details:
+                    msg.setDetailedText(details)
+                msg.exec()
+                return
+            except Exception:
+                logger.debug("显示错误对话框失败", exc_info=True)
+        except Exception:
+            # 无 Qt 环境或导入失败，回退为日志记录
+            pass
+
+        if details:
+            logger.error("%s: %s\n%s", title, message, details)
+        else:
+            logger.error("%s: %s", title, message)
+
     def create_new_project(self) -> bool:
         """创建新项目（清除当前工作状态）"""
         try:
@@ -140,7 +167,9 @@ class ProjectManager:
             logger.info("新项目已创建")
             return True
         except Exception as e:
-            logger.error("创建新项目失败: %s", e)
+            # 关键错误通知并记录堆栈，便于用户知晓原因
+            tb = traceback.format_exc()
+            self._notify_user_error("创建新项目失败", str(e), tb)
             return False
 
     def save_project(self, file_path: Optional[Path] = None) -> bool:
@@ -183,7 +212,7 @@ class ProjectManager:
                 # 原子替换（Windows/Unix 可用）
                 try:
                     os.replace(tmp_path, file_path)
-                except Exception as e:
+                except Exception:
                     # 若替换失败，尝试删除临时文件并抛出
                     try:
                         if tmp_path.exists():
@@ -221,6 +250,13 @@ class ProjectManager:
                 except Exception:
                     # 非GUI环境：仅记录日志
                     logger.debug("无法导入 QMessageBox 以显示错误", exc_info=True)
+
+                # 在关键失败处也向用户展示更详细的错误（带堆栈）
+                try:
+                    self._notify_user_error("保存项目失败", str(e), traceback.format_exc())
+                except Exception:
+                    logger.debug("通知用户保存失败时出错", exc_info=True)
+
                 return False
         except Exception as e:
             logger.error("保存项目失败: %s", e)
@@ -538,7 +574,12 @@ class ProjectManager:
             logger.info(f"项目已加载: {file_path}")
             return True
         except Exception as e:
+            tb = traceback.format_exc()
             logger.error("加载项目失败: %s", e, exc_info=True)
+            try:
+                self._notify_user_error("加载项目失败", str(e), tb)
+            except Exception:
+                logger.debug("通知用户加载失败时出错", exc_info=True)
             return False
 
     def load_project_async(self, file_path: Path, on_finished=None):
@@ -669,6 +710,64 @@ class ProjectManager:
         try:
             if hasattr(self.gui, "output_dir"):
                 project_data["output_dir"] = str(self.gui.output_dir)
+        except Exception:
+            pass
+
+        # 保存一些最小的 UI 状态以便恢复用户工作上下文
+        try:
+            ui_state = {}
+            try:
+                tab = getattr(self.gui, "tab_main", None)
+                if tab is not None and hasattr(tab, "currentIndex"):
+                    ui_state["tab_index"] = int(tab.currentIndex())
+            except Exception:
+                pass
+
+            try:
+                geom_saved = None
+                try:
+                    if hasattr(self.gui, "saveGeometry") and callable(getattr(self.gui, "saveGeometry")):
+                        raw = self.gui.saveGeometry()
+                        if raw is not None:
+                            try:
+                                raw_bytes = bytes(raw) if not isinstance(raw, (bytes, bytearray)) else bytes(raw)
+                            except Exception:
+                                try:
+                                    raw_bytes = raw.data() if hasattr(raw, "data") else bytes(raw)
+                                except Exception:
+                                    raw_bytes = None
+                            if raw_bytes:
+                                geom_saved = base64.b64encode(raw_bytes).decode("ascii")
+                except Exception:
+                    geom_saved = None
+
+                try:
+                    g = getattr(self.gui, "geometry", None)
+                    if callable(g):
+                        r = self.gui.geometry()
+                        ui_state["window_geometry"] = {"x": r.x(), "y": r.y(), "w": r.width(), "h": r.height()}
+                except Exception:
+                    pass
+
+                if geom_saved:
+                    ui_state["geometry_b64"] = geom_saved
+            except Exception:
+                pass
+
+            try:
+                fsm = getattr(self.gui, "file_selection_manager", None)
+                if fsm is not None:
+                    try:
+                        sel = list((getattr(fsm, "table_row_selection_by_file", {}) or {}).keys())
+                        if sel:
+                            ui_state["selected_files"] = sel
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            if ui_state:
+                project_data["ui_state"] = ui_state
         except Exception:
             pass
 
