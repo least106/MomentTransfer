@@ -1,9 +1,10 @@
 import sys
-import textwrap
 from pathlib import Path
 
-# 确保在导入 src 包之前将项目根目录加入 sys.path
+# 确保在导入 src 包之前将项目根目录加入 sys.path（放在最顶层）
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import textwrap
 
 from src import plugin as pl
 

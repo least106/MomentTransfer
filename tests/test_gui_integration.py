@@ -1,15 +1,16 @@
 import pytest
 
+# 如果缺少 PySide6 则跳过整个模块
 pytest.importorskip("PySide6")
-
-from PySide6.QtWidgets import QApplication
-
-from gui import BatchProcessThread
-from src.cli_helpers import load_project_calculator
 
 
 def test_gui_background_thread_processing(tmp_path, qtbot=None):
     # 创建 QApplication（若测试运行环境中尚未创建）
+    from PySide6.QtWidgets import QApplication
+
+    from gui import BatchProcessThread
+    from src.cli_helpers import load_project_calculator
+
     QApplication.instance() or QApplication([])
 
     # 使用项目自带的配置加载计算器

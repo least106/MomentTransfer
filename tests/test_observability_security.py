@@ -6,10 +6,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
-# 添加项目根目录到 Python 路径
+# 添加项目根目录到 Python 路径（放在顶层导入之前以避免 E402）
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pytest
 
 import numpy as np
 import pandas as pd
