@@ -8,6 +8,7 @@ MomentTransfer CLI - 单帧坐标变换工具
 
 import json
 import sys
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,6 @@ def _make_serializable(v: Any) -> Any:
 def cli(verbose):
     """MomentTransfer 命令行工具"""
     if verbose:
-        import logging
-
         logging.basicConfig(level=logging.DEBUG)
 
 
@@ -144,4 +143,4 @@ def run(config_path, output_path, force, moment, target_part, target_variant):
 
 
 if __name__ == "__main__":
-    cli()
+    cli()  # pylint: disable=no-value-for-parameter
