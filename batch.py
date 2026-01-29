@@ -827,6 +827,8 @@ def _worker_process(args):
         project_config_path = args.get("project_config_path")
         output_dir_str = args.get("output_dir")
         _registry_db = args.get("registry_db", None)
+        # 标记已读取但可选的参数，避免 lint 报告未使用变量
+        _ = _registry_db
         strict = bool(args.get("strict", False))
 
         if not all(
