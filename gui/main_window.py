@@ -438,9 +438,7 @@ class IntegratedAeroGUI(QMainWindow):
                                 btn_continue = mb.addButton(
                                     "继续（不保存）", QMessageBox.DestructiveRole
                                 )
-                                btn_cancel = mb.addButton(
-                                    "取消", QMessageBox.RejectRole
-                                )
+                                mb.addButton("取消", QMessageBox.RejectRole)
                                 mb.setDefaultButton(btn_retry)
                                 mb.exec()
 

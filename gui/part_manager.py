@@ -6,7 +6,7 @@ Part 管理模块 - 处理 Part 的添加、删除和切换
 # pylint: disable=import-outside-toplevel
 
 import logging
-from typing import Optional, Callable, cast
+from typing import Callable, Optional, cast
 
 # 引入 QMessageBox 以便测试对其进行 monkeypatch，且供模块内部使用
 from PySide6.QtWidgets import QMessageBox
@@ -204,7 +204,9 @@ class PartManager:
         except (TypeError, ValueError):
             return 0.0
 
-    def _rename_part(self, new_name: str, is_source: bool):  # pylint: disable=inconsistent-return-statements,too-many-branches,too-many-statements
+    def _rename_part(
+        self, new_name: str, is_source: bool
+    ):  # pylint: disable=inconsistent-return-statements,too-many-branches,too-many-statements
         try:
             mm = self._get_model_manager()
             if mm and hasattr(mm, "_rename_part"):
@@ -272,8 +274,10 @@ class PartManager:
             if selector:
                 try:
                     # 在更新选择器项时阻断其信号，避免触发递归或重复保存/验证回调
-                    block_fn = cast(Optional[Callable[[bool], None]],
-                                     getattr(selector, "blockSignals", None))
+                    block_fn = cast(
+                        Optional[Callable[[bool], None]],
+                        getattr(selector, "blockSignals", None),
+                    )
                     should_unblock = False
                     call_block = None
                     if block_fn is not None:
