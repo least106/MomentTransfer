@@ -36,7 +36,9 @@ class ConfigManager:
         self.project_config_model: Optional[ProjectConfigModel] = None
         self._config_modified = False  # 追踪配置是否被修改
         try:
-            self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
+            self.signal_bus = getattr(
+                gui_instance, "signal_bus", SignalBus.instance()
+            )
         except Exception:
             self.signal_bus = SignalBus.instance()
 
@@ -49,7 +51,9 @@ class ConfigManager:
                 # 配置的“应用”语义已变更为直接保存/更新模型并由批处理按需创建计算器。
                 logger.debug("ConfigManager 已连接 ConfigPanel 请求信号")
             except Exception as e:
-                logger.warning("ConfigManager 连接 ConfigPanel 信号失败: %s", e)
+                logger.warning(
+                    "ConfigManager 连接 ConfigPanel 信号失败: %s", e
+                )
 
     def _frame_to_payload(self, frame):
         """将 ProjectData 帧转换为面板可用的 payload。"""
@@ -101,12 +105,20 @@ class ConfigManager:
 
     def _sync_payload_to_legacy(self, payload: dict, side: str):
         """同步必要字段到面板输入（旧隐藏控件已移除）。"""
-        prefix = "src" if side == "source" or side == "src" else "tgt"
+        prefix = "src" if side in ("source", "src") else "tgt"
         try:
-            getattr(self.gui, f"{prefix}_cref").setText(str(payload.get("Cref", 1.0)))
-            getattr(self.gui, f"{prefix}_bref").setText(str(payload.get("Bref", 1.0)))
-            getattr(self.gui, f"{prefix}_sref").setText(str(payload.get("Sref", 10.0)))
-            getattr(self.gui, f"{prefix}_q").setText(str(payload.get("Q", 1000.0)))
+            getattr(self.gui, f"{prefix}_cref").setText(
+                str(payload.get("Cref", 1.0))
+            )
+            getattr(self.gui, f"{prefix}_bref").setText(
+                str(payload.get("Bref", 1.0))
+            )
+            getattr(self.gui, f"{prefix}_sref").setText(
+                str(payload.get("Sref", 10.0))
+            )
+            getattr(self.gui, f"{prefix}_q").setText(
+                str(payload.get("Q", 1000.0))
+            )
         except Exception:
             pass
 
@@ -127,7 +139,9 @@ class ConfigManager:
             try:
                 self.gui._raw_project_dict = data
             except Exception:
-                logger.debug("同步 _raw_project_dict 到 gui 失败", exc_info=True)
+                logger.debug(
+                    "同步 _raw_project_dict 到 gui 失败", exc_info=True
+                )
 
             # 解析为 ProjectData 与 ProjectConfigModel
             mm = getattr(self.gui, "model_manager", None)
@@ -150,7 +164,9 @@ class ConfigManager:
                 try:
                     self.gui.project_model = model
                 except Exception:
-                    logger.debug("同步 project_model 到 gui 失败", exc_info=True)
+                    logger.debug(
+                        "同步 project_model 到 gui 失败", exc_info=True
+                    )
                 try:
                     self.signal_bus.configLoaded.emit(model)
                 except Exception:
@@ -169,7 +185,9 @@ class ConfigManager:
             try:
                 self.gui.target_panel.update_part_list(target_part_names)
             except Exception:
-                logger.debug("target_panel.update_part_list 失败", exc_info=True)
+                logger.debug(
+                    "target_panel.update_part_list 失败", exc_info=True
+                )
 
             if self.gui.target_panel.part_selector.count() > 0:
                 self.gui.target_panel.part_selector.setVisible(True)
@@ -200,7 +218,9 @@ class ConfigManager:
                 try:
                     self.gui.source_panel.update_part_list(source_part_names)
                 except Exception:
-                    logger.debug("source_panel.update_part_list 失败", exc_info=True)
+                    logger.debug(
+                        "source_panel.update_part_list 失败", exc_info=True
+                    )
 
                 if self.gui.source_panel.part_selector.count() > 0:
                     self.gui.source_panel.part_selector.setVisible(True)
@@ -215,10 +235,14 @@ class ConfigManager:
                     # 同步面板当前选择
                     try:
                         self.gui.source_panel.part_selector.blockSignals(True)
-                        self.gui.source_panel.part_selector.setCurrentText(firsts)
+                        self.gui.source_panel.part_selector.setCurrentText(
+                            firsts
+                        )
                     finally:
                         try:
-                            self.gui.source_panel.part_selector.blockSignals(False)
+                            self.gui.source_panel.part_selector.blockSignals(
+                                False
+                            )
                         except Exception:
                             pass
             except Exception:
@@ -250,7 +274,9 @@ class ConfigManager:
             # 重置修改标志
             self._config_modified = False
         except Exception as e:
-            QMessageBox.critical(self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}")
+            QMessageBox.critical(
+                self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}"
+            )
 
     def _populate_target_form(self, project: ProjectData):
         """填充 Target 坐标系表单"""
@@ -325,12 +351,16 @@ class ConfigManager:
             try:
                 mm = getattr(self.gui, "model_manager", None)
                 if mm is None:
-                    logger.warning("ModelManager 缺失，无法同步 ProjectConfigModel")
+                    logger.warning(
+                        "ModelManager 缺失，无法同步 ProjectConfigModel"
+                    )
                 else:
                     model = ProjectConfigModel.from_dict(data)
                     mm.project_model = model
             except Exception:
-                logger.debug("保存前 ProjectConfigModel 同步失败", exc_info=True)
+                logger.debug(
+                    "保存前 ProjectConfigModel 同步失败", exc_info=True
+                )
 
             # 优先覆盖上次加载的文件
             try:
@@ -348,7 +378,9 @@ class ConfigManager:
                         f"已保存: {self._last_loaded_config_path}"
                     )
                     try:
-                        self.signal_bus.configSaved.emit(self._last_loaded_config_path)
+                        self.signal_bus.configSaved.emit(
+                            self._last_loaded_config_path
+                        )
                     except Exception:
                         logger.debug("发射 configSaved 失败", exc_info=True)
 
@@ -383,7 +415,9 @@ class ConfigManager:
             return True
 
         except ValueError as e:
-            QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
+            QMessageBox.warning(
+                self.gui, "输入错误", f"请检查数值输入:\n{str(e)}"
+            )
             return False
         except Exception as e:
             QMessageBox.critical(self.gui, "保存失败", str(e))
@@ -457,7 +491,10 @@ class ConfigManager:
                 else {"PartName": "Target", "Variants": []}
             )
 
-            return {"Source": {"Parts": [src_part]}, "Target": {"Parts": [tgt_part]}}
+            return {
+                "Source": {"Parts": [src_part]},
+                "Target": {"Parts": [tgt_part]},
+            }
         except Exception:
             logger.debug("生成配置快照失败", exc_info=True)
             return None

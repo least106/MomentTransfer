@@ -112,7 +112,9 @@ def _extract_parts_from_lines(
 
     返回字典: part_name -> (header_tokens, list_of_rows)
     """
-    extracted_parts: Dict[str, Tuple[Optional[List[str]], List[List[str]]]] = {}
+    extracted_parts: Dict[str, Tuple[Optional[List[str]], List[List[str]]]] = (
+        {}
+    )
     current_part = None
     current_header = None
     current_data: List[List[str]] = []

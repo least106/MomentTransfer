@@ -113,10 +113,16 @@ class BatchHistoryPanel(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["时间", "摘要", "状态", "操作"])
         self.tree.header().setStretchLastSection(False)
-        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
         self.tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents
+        )
+        self.tree.header().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
+        )
         lay.addWidget(self.tree)
 
         self.refresh()
@@ -173,7 +179,9 @@ class BatchHistoryPanel(QWidget):
             return None
         btn = QPushButton("撤销")
         btn.setProperty("class", "ghost")
-        btn.clicked.connect(lambda _=False, rid=rec.get("id"): self._on_undo(rid))
+        btn.clicked.connect(
+            lambda _=False, rid=rec.get("id"): self._on_undo(rid)
+        )
         return btn
 
     def _on_undo(self, record_id: Optional[str]) -> None:
@@ -232,7 +240,10 @@ class BatchHistoryPanel(QWidget):
                             "继续撤销可能会失败或删除非预期文件。是否仍要继续？"
                         )
                         resp2 = QMessageBox.question(
-                            self, "可能的风险", warn, QMessageBox.Yes | QMessageBox.No
+                            self,
+                            "可能的风险",
+                            warn,
+                            QMessageBox.Yes | QMessageBox.No,
                         )
                         if resp2 != QMessageBox.Yes:
                             return

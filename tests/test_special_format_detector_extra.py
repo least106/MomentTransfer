@@ -33,7 +33,9 @@ def test_is_part_name_line_and_header_relation():
     # 数据行不视为 part 名
     assert sfd.is_part_name_line("1.0 2.0") is False
     # 长中文不视为 part 名
-    long_cn = "这是一个超过二十个字符的中文描述，应该被视为说明文本而非部件名称"
+    long_cn = (
+        "这是一个超过二十个字符的中文描述，应该被视为说明文本而非部件名称"
+    )
     assert sfd.is_part_name_line(long_cn, next_line="Alpha CL CD") is False
 
 

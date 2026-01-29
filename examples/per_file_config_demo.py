@@ -67,7 +67,9 @@ def main():
     data_dir = Path(args.data_dir)
     for fp in sorted(data_dir.glob("*.csv")):
         print(f"Processing {fp.name}")
-        cfg = resolve_file_format_demo(str(fp), base_cfg, registry_db=args.registry)
+        cfg = resolve_file_format_demo(
+            str(fp), base_cfg, registry_db=args.registry
+        )
         print(f"  -> sample_rows: {cfg.sample_rows}\n")
 
 

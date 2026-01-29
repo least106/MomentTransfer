@@ -59,7 +59,9 @@ class CoordSystemPlugin(BasePlugin):
     """坐标系定义插件"""
 
     @abstractmethod
-    def get_coordinate_system(self, name: str) -> Optional[Dict[str, List[float]]]:
+    def get_coordinate_system(
+        self, name: str
+    ) -> Optional[Dict[str, List[float]]]:
         """
         获取命名的坐标系定义
 
@@ -109,7 +111,9 @@ class OutputPlugin(BasePlugin):
     """自定义输出格式插件"""
 
     @abstractmethod
-    def write(self, data: Dict[str, np.ndarray], output_path: Path, **kwargs) -> None:
+    def write(
+        self, data: Dict[str, np.ndarray], output_path: Path, **kwargs
+    ) -> None:
         """
         以自定义格式写入数据
 
@@ -176,11 +180,15 @@ class PluginRegistry:
         """获取指定的插件"""
         return self.plugins.get(name)
 
-    def get_coord_system_plugin(self, name: str) -> Optional[CoordSystemPlugin]:
+    def get_coord_system_plugin(
+        self, name: str
+    ) -> Optional[CoordSystemPlugin]:
         """获取坐标系插件"""
         return self.coord_system_plugins.get(name)
 
-    def get_transformation_plugin(self, name: str) -> Optional[TransformationPlugin]:
+    def get_transformation_plugin(
+        self, name: str
+    ) -> Optional[TransformationPlugin]:
         """获取转换插件"""
         return self.transformation_plugins.get(name)
 
@@ -242,7 +250,9 @@ class PluginLoader:
         plugin = self._instantiate_and_register(module, filepath)
         return plugin
 
-    def _validate_plugin_file_subprocess(self, filepath: Path, timeout: int = 5):
+    def _validate_plugin_file_subprocess(
+        self, filepath: Path, timeout: int = 5
+    ):
         """在子进程中运行轻量验证脚本，返回 subprocess.CompletedProcess 或 None。
 
         该 helper 将子进程执行抽离，便于主函数更清晰。
@@ -290,7 +300,9 @@ else:
             )
             return proc
         except subprocess.TimeoutExpired:
-            logger.error("插件文件 %s 验证超时（>%ss），已跳过", filepath, timeout)
+            logger.error(
+                "插件文件 %s 验证超时（>%ss），已跳过", filepath, timeout
+            )
             return None
         except Exception:
             logger.exception("在验证插件 %s 时发生内部错误", filepath)
@@ -299,7 +311,9 @@ else:
     def _dynamic_import_module(self, filepath: Path) -> Optional[Any]:
         """动态从文件导入模块并返回 module 对象，失败时返回 None。"""
         try:
-            spec = importlib.util.spec_from_file_location(filepath.stem, filepath)
+            spec = importlib.util.spec_from_file_location(
+                filepath.stem, filepath
+            )
             if spec is None or spec.loader is None:
                 logger.error("无法加载模块: %s", filepath)
                 return None
@@ -323,7 +337,9 @@ else:
         if not hasattr(module, "create_plugin") or not callable(
             getattr(module, "create_plugin")
         ):
-            logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
+            logger.error(
+                "插件 %s 不包含可调用的 create_plugin() 函数", filepath
+            )
             return None
 
         try:
@@ -403,7 +419,9 @@ class PluginManager:
                     self._registry.unregister(name)
                 except (RuntimeError, TypeError, ValueError) as exc:
                     # 忽略注销时的插件错误，但记录调试信息
-                    logger.debug("注销插件 %s 时发生异常: %s", name, exc, exc_info=True)
+                    logger.debug(
+                        "注销插件 %s 时发生异常: %s", name, exc, exc_info=True
+                    )
             self._registry = None
 
 

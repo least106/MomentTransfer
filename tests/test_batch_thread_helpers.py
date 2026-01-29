@@ -32,7 +32,12 @@ def test_handle_special_report_emits_logs(tmp_path):
 
     report = [
         {"status": "success", "part": "P1", "out_path": "f1.csv"},
-        {"status": "skipped", "part": "P2", "reason": "no target", "message": ""},
+        {
+            "status": "skipped",
+            "part": "P2",
+            "reason": "no target",
+            "message": "",
+        },
         {"status": "error", "part": "P3", "reason": "fail", "message": "bad"},
     ]
 

@@ -37,7 +37,11 @@ def test_process_single_part_source_missing(tmp_path):
     df = make_df()
     PD = type("P", (), {"source_parts": {}, "target_parts": {"p": {}}})
     out, report = proc_mod._process_single_part(
-        "p", df, file_path=Path("f.mtfmt"), project_data=PD(), output_dir=tmp_path
+        "p",
+        df,
+        file_path=Path("f.mtfmt"),
+        project_data=PD(),
+        output_dir=tmp_path,
     )
     assert out is None
     assert report["reason"] == "source_missing"
@@ -74,7 +78,11 @@ def test_process_single_part_target_missing_explicit_and_not_mapped(tmp_path):
 def test_process_single_part_no_project_data(tmp_path):
     df = make_df()
     out, report = proc_mod._process_single_part(
-        "p", df, file_path=Path("f.mtfmt"), project_data=None, output_dir=tmp_path
+        "p",
+        df,
+        file_path=Path("f.mtfmt"),
+        project_data=None,
+        output_dir=tmp_path,
     )
     assert out is None
     assert report["reason"] == "no_project_data"
@@ -90,10 +98,16 @@ def test_process_single_part_processing_failed(monkeypatch, tmp_path):
 
     df = make_df()
     PD = type(
-        "P", (), {"source_parts": {"p": {}}, "target_parts": {"p": {"variants": []}}}
+        "P",
+        (),
+        {"source_parts": {"p": {}}, "target_parts": {"p": {"variants": []}}},
     )
     out, report = proc_mod._process_single_part(
-        "p", df, file_path=Path("f.mtfmt"), project_data=PD(), output_dir=tmp_path
+        "p",
+        df,
+        file_path=Path("f.mtfmt"),
+        project_data=PD(),
+        output_dir=tmp_path,
     )
     assert out is None
     assert report["status"] == "failed"

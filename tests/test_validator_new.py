@@ -28,7 +28,9 @@ def test_validate_coordinate_success_and_errors():
 
 
 def test_validate_numeric_range_cases():
-    assert DataValidator.validate_numeric_range(3, min_val=0, max_val=10) == 3.0
+    assert (
+        DataValidator.validate_numeric_range(3, min_val=0, max_val=10) == 3.0
+    )
 
     with pytest.raises(ValidationError):
         DataValidator.validate_numeric_range("not-a-number")
@@ -47,7 +49,9 @@ def test_validate_file_path_traversal_and_nonexist(tmp_path):
 
     # 不存在的文件
     with pytest.raises(ValidationError):
-        DataValidator.validate_file_path(str(tmp_path / "nope.txt"), must_exist=True)
+        DataValidator.validate_file_path(
+            str(tmp_path / "nope.txt"), must_exist=True
+        )
 
 
 def test_validate_csv_safety_size(tmp_path):

@@ -35,7 +35,11 @@ def run_batch_processing(manager):
         if callable(collect_fn):
             files_to_process, output_dir, error_msg = collect_fn(input_path)
         else:
-            files_to_process, output_dir, error_msg = ([], None, "无法收集待处理文件")
+            files_to_process, output_dir, error_msg = (
+                [],
+                None,
+                "无法收集待处理文件",
+            )
         if error_msg:
             QMessageBox.warning(manager.gui, "提示", error_msg)
             return
@@ -45,7 +49,9 @@ def run_batch_processing(manager):
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        existing_files = set(str(f) for f in output_path.glob("*") if f.is_file())
+        existing_files = set(
+            str(f) for f in output_path.glob("*") if f.is_file()
+        )
         # pylint: disable=protected-access
         manager.gui._batch_output_dir = output_path
         manager.gui._batch_existing_files = existing_files
@@ -86,7 +92,9 @@ def attach_batch_thread_signals(manager):
         if getattr(manager, "batch_thread", None) is None:
             return
         try:
-            manager.batch_thread.progress.connect(manager.gui.progress_bar.setValue)
+            manager.batch_thread.progress.connect(
+                manager.gui.progress_bar.setValue
+            )
         except Exception:
             logger.debug("连接 progress 信号失败（非致命）", exc_info=True)
 
@@ -94,10 +102,13 @@ def attach_batch_thread_signals(manager):
 
             def _on_thread_log(msg):
                 try:
-                    manager.gui.txt_batch_log.append(f"[{_now_str(manager)}] {msg}")
+                    manager.gui.txt_batch_log.append(
+                        f"[{_now_str(manager)}] {msg}"
+                    )
                 except Exception:
                     logger.debug(
-                        "追加线程日志到 txt_batch_log 失败（非致命）", exc_info=True
+                        "追加线程日志到 txt_batch_log 失败（非致命）",
+                        exc_info=True,
                     )
 
             manager.batch_thread.log_message.connect(_on_thread_log)
@@ -293,7 +304,8 @@ def request_cancel_batch(manager):
             batch_thread.request_stop()
         except Exception:
             logger.debug(
-                "batch_thread.request_stop 调用失败（可能已结束）", exc_info=True
+                "batch_thread.request_stop 调用失败（可能已结束）",
+                exc_info=True,
             )
 
         # 禁用取消按钮以避免重复请求
@@ -332,7 +344,9 @@ def undo_batch_processing(manager):
             return
 
         try:
-            deleted_count = delete_new_output_files(manager, output_dir, existing_files)
+            deleted_count = delete_new_output_files(
+                manager, output_dir, existing_files
+            )
             QMessageBox.information(
                 manager.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件"
             )
@@ -385,7 +399,10 @@ def delete_new_output_files(manager, output_dir, existing_files):
                     file_path_str = str(file.resolve())
                 except Exception:
                     continue
-                if file.is_file() and file_path_str not in existing_files_resolved:
+                if (
+                    file.is_file()
+                    and file_path_str not in existing_files_resolved
+                ):
                     try:
                         file.unlink()
                         deleted_count += 1

@@ -275,7 +275,9 @@ class TestProjectConfigModel:
 
         # 验证一致性
         assert "Part1" in restored.source_parts
-        assert restored.source_parts["Part1"].variants[0].coord_system.origin == [
+        assert restored.source_parts["Part1"].variants[
+            0
+        ].coord_system.origin == [
             1.0,
             2.0,
             3.0,

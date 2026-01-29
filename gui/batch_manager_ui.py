@@ -18,7 +18,9 @@ def connect_ui_signals(manager: Any) -> None:
         gui = manager.gui
         if hasattr(gui, "file_tree") and gui.file_tree is not None:
 
-            def _connect_file_tree(signal_name: str, handler_name: str) -> None:
+            def _connect_file_tree(
+                signal_name: str, handler_name: str
+            ) -> None:
                 try:
                     bm = getattr(gui, "batch_manager", None) or manager
                     handler = getattr(bm, handler_name, None)
@@ -34,12 +36,16 @@ def connect_ui_signals(manager: Any) -> None:
                             f"连接 file_tree.{signal_name} 失败", exc_info=True
                         )
                 except Exception:
-                    logger.debug(f"连接 file_tree {signal_name} 失败", exc_info=True)
+                    logger.debug(
+                        f"连接 file_tree {signal_name} 失败", exc_info=True
+                    )
 
             # 同时连接单击与双击：部分平台/样式可能只触发单击或双击事件之一
             # 但在处理器内部已有旧 selector 清理逻辑以避免重复创建控件
             _connect_file_tree("itemClicked", "_on_file_tree_item_clicked")
-            _connect_file_tree("itemDoubleClicked", "_on_file_tree_item_clicked")
+            _connect_file_tree(
+                "itemDoubleClicked", "_on_file_tree_item_clicked"
+            )
             _connect_file_tree("itemChanged", "_on_file_tree_item_changed")
         try:
             setattr(manager, "_ui_signals_connected", True)

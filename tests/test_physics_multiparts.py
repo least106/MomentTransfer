@@ -26,7 +26,9 @@ def test_aerocalc_warns_on_multiple_target_parts():
     # 构造包含两个 target part 的 ProjectData 字典
     data = {
         "Source": {
-            "Parts": [{"PartName": "src", "Variants": [{**_make_frame_dict("src")}]}]
+            "Parts": [
+                {"PartName": "src", "Variants": [{**_make_frame_dict("src")}]}
+            ]
         },
         "Target": {
             "Parts": [
@@ -43,11 +45,15 @@ def test_aerocalc_warns_on_multiple_target_parts():
         AeroCalculator(pd)
 
 
-def test_load_project_calculator_logs_warning_for_multiple_targets(tmp_path, caplog):
+def test_load_project_calculator_logs_warning_for_multiple_targets(
+    tmp_path, caplog
+):
     # 将上面相同的数据写入临时文件并调用 load_project_calculator，检查日志
     data = {
         "Source": {
-            "Parts": [{"PartName": "src", "Variants": [{**_make_frame_dict("src")}]}]
+            "Parts": [
+                {"PartName": "src", "Variants": [{**_make_frame_dict("src")}]}
+            ]
         },
         "Target": {
             "Parts": [

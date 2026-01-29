@@ -70,7 +70,11 @@ def test_attempt_load_project_data_strict_and_non_strict(monkeypatch):
     monkeypatch.setattr(
         cf,
         "try_load_project_data",
-        lambda p, strict=True: (False, None, {"message": "m", "suggestion": "s"}),
+        lambda p, strict=True: (
+            False,
+            None,
+            {"message": "m", "suggestion": "s"},
+        ),
     )
     with pytest.raises(ValueError):
         cf.attempt_load_project_data("x", strict=True)

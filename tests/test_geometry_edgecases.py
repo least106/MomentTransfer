@@ -30,4 +30,6 @@ def test_construct_basis_non_orthogonal_warns_and_strict_raises():
 
     # 严格模式应抛出异常
     with pytest.raises(ValueError):
-        geometry.construct_basis_matrix(x, y2, z, strict=True, orthogonalize=False)
+        geometry.construct_basis_matrix(
+            x, y2, z, strict=True, orthogonalize=False
+        )

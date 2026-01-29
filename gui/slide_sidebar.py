@@ -64,7 +64,9 @@ class SlideSidebar(QWidget):
         self._container = QWidget(self)
         self._container.setObjectName("SidebarContainer")
         self._container.setCursor(Qt.ArrowCursor)
-        self._container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._container.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         container_lay = QVBoxLayout(self._container)
         container_lay.setContentsMargins(0, 0, 0, 0)
         container_lay.setSpacing(0)
@@ -182,7 +184,8 @@ class SlideSidebar(QWidget):
 
     def _set_sidebar_width(self, value: int) -> None:
         self._sidebar_width = max(
-            self._button_width, min(value, self._button_width + self._expanded_width)
+            self._button_width,
+            min(value, self._button_width + self._expanded_width),
         )
         self._update_layout()
 
@@ -222,7 +225,9 @@ class SlideSidebar(QWidget):
 
             # 容器鼠标穿透（收起时）
             is_collapsed = container_width <= 0
-            self._container.setAttribute(Qt.WA_TransparentForMouseEvents, is_collapsed)
+            self._container.setAttribute(
+                Qt.WA_TransparentForMouseEvents, is_collapsed
+            )
 
             # 更新按钮文本
             is_expanded = self._sidebar_width > self._button_width
@@ -274,22 +279,34 @@ class SlideSidebar(QWidget):
                     else container_width
                 )
                 self._container.setGeometry(0, 0, container_width, h)
-                self._toggle_btn.setGeometry(btn_x, button_y, self._button_width, 80)
+                self._toggle_btn.setGeometry(
+                    btn_x, button_y, self._button_width, 80
+                )
                 try:
                     self._toggle_btn.raise_()
-                    self._toggle_btn.setAttribute(Qt.WA_TranslucentBackground, True)
+                    self._toggle_btn.setAttribute(
+                        Qt.WA_TranslucentBackground, True
+                    )
                     self._toggle_btn.setAutoFillBackground(False)
                 except Exception:
                     pass
             else:  # right
                 # 右侧：按钮在左，容器在按钮右侧
                 # 按钮初始在屏幕右边外，通过 _button_x_offset 从右滑入
-                btn_x = self._button_x_offset if self._button_x_offset <= 0 else 0
-                self._toggle_btn.setGeometry(btn_x, button_y, self._button_width, 80)
-                self._container.setGeometry(self._button_width, 0, container_width, h)
+                btn_x = (
+                    self._button_x_offset if self._button_x_offset <= 0 else 0
+                )
+                self._toggle_btn.setGeometry(
+                    btn_x, button_y, self._button_width, 80
+                )
+                self._container.setGeometry(
+                    self._button_width, 0, container_width, h
+                )
                 try:
                     self._toggle_btn.raise_()
-                    self._toggle_btn.setAttribute(Qt.WA_TranslucentBackground, True)
+                    self._toggle_btn.setAttribute(
+                        Qt.WA_TranslucentBackground, True
+                    )
                     self._toggle_btn.setAutoFillBackground(False)
                 except Exception:
                     pass
@@ -312,7 +329,9 @@ class SlideSidebar(QWidget):
         # 在展开时确保按钮可见且可交互
         try:
             self._toggle_btn.setEnabled(True)
-            self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+            self._toggle_btn.setAttribute(
+                Qt.WA_TransparentForMouseEvents, False
+            )
             # 立即将按钮移到可见位置，避免快速点击时按钮仍在屏外
             self._button_x_offset = 0
             self._btn_opacity_effect.setOpacity(1.0)
@@ -475,12 +494,16 @@ class SlideSidebar(QWidget):
             # 确保按钮可交互
             try:
                 self._toggle_btn.setEnabled(True)
-                self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+                self._toggle_btn.setAttribute(
+                    Qt.WA_TransparentForMouseEvents, False
+                )
             except Exception:
                 pass
 
             # 透明度动画
-            self._button_opacity_anim.setStartValue(self._btn_opacity_effect.opacity())
+            self._button_opacity_anim.setStartValue(
+                self._btn_opacity_effect.opacity()
+            )
             self._button_opacity_anim.setEndValue(1.0)
 
             # 位置动画（从边缘滑入）
@@ -507,7 +530,9 @@ class SlideSidebar(QWidget):
             # 在隐藏时禁止按钮交互，避免透明但仍可点击
             try:
                 self._toggle_btn.setEnabled(False)
-                self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self._toggle_btn.setAttribute(
+                    Qt.WA_TransparentForMouseEvents, True
+                )
             except Exception:
                 pass
 
@@ -516,13 +541,17 @@ class SlideSidebar(QWidget):
             self._button_pos_anim.stop()
 
             # 透明度动画
-            self._button_opacity_anim.setStartValue(self._btn_opacity_effect.opacity())
+            self._button_opacity_anim.setStartValue(
+                self._btn_opacity_effect.opacity()
+            )
             self._button_opacity_anim.setEndValue(0.0)
 
             # 位置动画（滑出屏幕边缘）
             self._button_pos_anim.setStartValue(self._button_x_offset)
             target_offset = (
-                -self._button_width if self._side == "left" else self._button_width
+                -self._button_width
+                if self._side == "left"
+                else self._button_width
             )
             self._button_pos_anim.setEndValue(target_offset)
 
@@ -582,7 +611,9 @@ class SlideSidebar(QWidget):
 
             try:
                 root.installEventFilter(self)
-                _logger.debug("SlideSidebar: 已在父窗口安装事件过滤器: %s", root)
+                _logger.debug(
+                    "SlideSidebar: 已在父窗口安装事件过滤器: %s", root
+                )
             except Exception:
                 pass
         except Exception:

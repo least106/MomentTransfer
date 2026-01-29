@@ -11,7 +11,9 @@ def test_process_special_format_branch(monkeypatch, tmp_path):
     thread.config.project_data = object()
 
     # 强制 looks_like_special_format 返回 True
-    monkeypatch.setattr("gui.batch_thread.looks_like_special_format", lambda fp: True)
+    monkeypatch.setattr(
+        "gui.batch_thread.looks_like_special_format", lambda fp: True
+    )
 
     # 模拟 process_special_format_file 返回 outputs 和 report
     def fake_proc(fp, project_data, output_dir, **kwargs):
@@ -20,7 +22,9 @@ def test_process_special_format_branch(monkeypatch, tmp_path):
             [{"status": "success", "part": "P1", "out_path": "out1.csv"}],
         )
 
-    monkeypatch.setattr("gui.batch_thread.process_special_format_file", fake_proc)
+    monkeypatch.setattr(
+        "gui.batch_thread.process_special_format_file", fake_proc
+    )
 
     # 捕获日志消息
     msgs = []

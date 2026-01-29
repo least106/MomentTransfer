@@ -49,7 +49,9 @@ def _process_single_part(
     # 推断source part：优先使用part_source_mapping，否则默认=part_name
     source_part = part_name
     try:
-        if isinstance(part_source_mapping, dict) and part_source_mapping.get(part_name):
+        if isinstance(part_source_mapping, dict) and part_source_mapping.get(
+            part_name
+        ):
             source_part = part_source_mapping.get(part_name)
     except (TypeError, AttributeError):
         pass
@@ -84,7 +86,9 @@ def _process_single_part(
     target_part = None
     explicit_mapping_used = False
     try:
-        if isinstance(part_target_mapping, dict) and part_target_mapping.get(part_name):
+        if isinstance(part_target_mapping, dict) and part_target_mapping.get(
+            part_name
+        ):
             target_part = part_target_mapping.get(part_name)
             explicit_mapping_used = True
         else:
@@ -100,8 +104,12 @@ def _process_single_part(
 
     if project_data is not None:
         if hasattr(project_data, "source_parts"):
-            if source_part not in (getattr(project_data, "source_parts", {}) or {}):
-                msg = f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
+            if source_part not in (
+                getattr(project_data, "source_parts", {}) or {}
+            ):
+                msg = (
+                    f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
+                )
                 logger.warning(msg)
                 return None, {
                     "part": part_name,
@@ -215,7 +223,8 @@ def _process_single_part(
         suffix = 1
         while True:
             candidate = (
-                output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+                output_dir
+                / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
             )
             if not candidate.exists():
                 out_path = candidate
@@ -367,7 +376,11 @@ def process_special_format_file(
         overwrite=overwrite,
     )
     return _process_special_format_file_core(
-        file_path, project_data, output_dir, options, return_report=return_report
+        file_path,
+        project_data,
+        output_dir,
+        options,
+        return_report=return_report,
     )
 
 

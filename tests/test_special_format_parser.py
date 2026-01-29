@@ -34,9 +34,7 @@ def test_is_part_name_line_long_or_multi_token_with_header():
     assert sfp.is_part_name_line("Wing A", "Some summary") is True
 
     # 中文长描述（超过20）应被视为非 part
-    long_chinese = (
-        "这是一个非常非常长的描述文本，用来测试是否超过二十个字符并被判定为描述"
-    )
+    long_chinese = "这是一个非常非常长的描述文本，用来测试是否超过二十个字符并被判定为描述"
     assert sfp.is_part_name_line(long_chinese, "Alpha CL") is False
 
 
@@ -107,7 +105,9 @@ def test__process_single_part_writes_output(tmp_path, monkeypatch):
                 "coeff_moment": zero3,
             }
 
-    monkeypatch.setattr("src.special_format_processor.AeroCalculator", DummyCalc)
+    monkeypatch.setattr(
+        "src.special_format_processor.AeroCalculator", DummyCalc
+    )
 
     out_path, report = _process_single_part(
         part_name,

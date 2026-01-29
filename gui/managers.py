@@ -112,8 +112,12 @@ class ModelManager:
             )
             if hasattr(self.parent, "source_panel"):
                 # 使用面板提供的强类型模型接口
-                cs_model = self.parent.source_panel.get_coordinate_system_model()
-                refs_model = self.parent.source_panel.get_reference_values_model()
+                cs_model = (
+                    self.parent.source_panel.get_coordinate_system_model()
+                )
+                refs_model = (
+                    self.parent.source_panel.get_reference_values_model()
+                )
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
@@ -138,8 +142,12 @@ class ModelManager:
                 else "Target"
             )
             if hasattr(self.parent, "target_panel"):
-                cs_model = self.parent.target_panel.get_coordinate_system_model()
-                refs_model = self.parent.target_panel.get_reference_values_model()
+                cs_model = (
+                    self.parent.target_panel.get_coordinate_system_model()
+                )
+                refs_model = (
+                    self.parent.target_panel.get_reference_values_model()
+                )
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
@@ -202,7 +210,10 @@ class ModelManager:
             part_name = getattr(variant, "part_name", "") or ""
 
             mc = None
-            if cs is not None and getattr(cs, "moment_center", None) is not None:
+            if (
+                cs is not None
+                and getattr(cs, "moment_center", None) is not None
+            ):
                 mc = list(getattr(cs, "moment_center"))
             if mc is None:
                 mc = getattr(variant, "moment_center", None)
@@ -274,7 +285,9 @@ class ModelManager:
 
             try:
                 panel = (
-                    self.parent.source_panel if is_source else self.parent.target_panel
+                    self.parent.source_panel
+                    if is_source
+                    else self.parent.target_panel
                 )
                 current_name = getattr(panel, "_current_part_name", None)
                 if not current_name and selector:
@@ -330,15 +343,21 @@ class ModelManager:
             base_name = (suggested_name or "").strip()
             if not base_name:
                 try:
-                    base_name = self.parent.source_panel.part_name_input.text().strip()
+                    base_name = (
+                        self.parent.source_panel.part_name_input.text().strip()
+                    )
                 except Exception:
                     base_name = "NewSourcePart"
             existing = set(self.parent.project_model.source_parts.keys())
             name = self._unique_name(base_name, existing)
 
             try:
-                cs_model = self.parent.source_panel.get_coordinate_system_model()
-                refs_model = self.parent.source_panel.get_reference_values_model()
+                cs_model = (
+                    self.parent.source_panel.get_coordinate_system_model()
+                )
+                refs_model = (
+                    self.parent.source_panel.get_reference_values_model()
+                )
             except Exception:
                 logger.debug("读取 Source 面板强类型数据失败", exc_info=True)
                 cs_model = None
@@ -348,7 +367,9 @@ class ModelManager:
             from src.models.project_model import Part as PMPart
             from src.models.project_model import PartVariant as PMVariant
 
-            variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
+            variant = PMVariant(
+                part_name=name, coord_system=cs_model, refs=refs_model
+            )
             self.parent.project_model.source_parts[name] = PMPart(
                 part_name=name, variants=[variant]
             )
@@ -393,7 +414,9 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.warning(self.parent, "提示", "没有可删除的 Source Part")
+                QMessageBox.warning(
+                    self.parent, "提示", "没有可删除的 Source Part"
+                )
             except Exception:
                 pass
             return
@@ -432,14 +455,20 @@ class ModelManager:
             base_name = (suggested_name or "").strip()
             if not base_name:
                 try:
-                    base_name = self.parent.target_panel.part_name_input.text().strip()
+                    base_name = (
+                        self.parent.target_panel.part_name_input.text().strip()
+                    )
                 except Exception:
                     base_name = "NewTargetPart"
             existing = set(self.parent.project_model.target_parts.keys())
             name = self._unique_name(base_name, existing)
             try:
-                cs_model = self.parent.target_panel.get_coordinate_system_model()
-                refs_model = self.parent.target_panel.get_reference_values_model()
+                cs_model = (
+                    self.parent.target_panel.get_coordinate_system_model()
+                )
+                refs_model = (
+                    self.parent.target_panel.get_reference_values_model()
+                )
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
@@ -490,7 +519,9 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.warning(self.parent, "提示", "当前没有可删除的 Target Part")
+                QMessageBox.warning(
+                    self.parent, "提示", "当前没有可删除的 Target Part"
+                )
             except Exception:
                 pass
             return
@@ -550,7 +581,9 @@ class ModelManager:
                 self.parent.source_panel.part_name_input.setText(part_name)
             finally:
                 try:
-                    self.parent.source_panel.part_name_input.blockSignals(False)
+                    self.parent.source_panel.part_name_input.blockSignals(
+                        False
+                    )
                 except Exception:
                     pass
             try:
@@ -594,7 +627,9 @@ class ModelManager:
                 self.parent.target_panel.part_name_input.setText(part_name)
             finally:
                 try:
-                    self.parent.target_panel.part_name_input.blockSignals(False)
+                    self.parent.target_panel.part_name_input.blockSignals(
+                        False
+                    )
                 except Exception:
                     pass
             try:
@@ -623,7 +658,9 @@ class ModelManager:
             if not part_name:
                 logger.debug("part_name 为空")
                 return
-            old_name = getattr(self.parent.source_panel, "_current_part_name", None)
+            old_name = getattr(
+                self.parent.source_panel, "_current_part_name", None
+            )
             logger.debug(f"旧的 Source Part: {old_name}")
             if old_name and old_name != part_name:
                 logger.debug(f"保存旧 Part: {old_name}")
@@ -675,7 +712,9 @@ class ModelManager:
             if not part_name:
                 logger.debug("part_name 为空")
                 return
-            old_name = getattr(self.parent.target_panel, "_current_part_name", None)
+            old_name = getattr(
+                self.parent.target_panel, "_current_part_name", None
+            )
             logger.debug(f"旧的 Target Part: {old_name}")
             if old_name and old_name != part_name:
                 logger.debug(f"保存旧 Part: {old_name}")
@@ -840,13 +879,17 @@ class UIStateManager:
         try:
             parent = self.parent
             # Start 按钮：仅在已加载数据且已加载配置时启用
-            start_enabled = bool(self.is_data_loaded() and self.is_config_loaded())
+            start_enabled = bool(
+                self.is_data_loaded() and self.is_config_loaded()
+            )
 
             # 检查配置是否被修改，用于展示 tooltip 和文件列表上的未保存指示
             config_modified = False
             try:
                 cfg_mgr = getattr(parent, "config_manager", None)
-                if cfg_mgr is not None and hasattr(cfg_mgr, "is_config_modified"):
+                if cfg_mgr is not None and hasattr(
+                    cfg_mgr, "is_config_modified"
+                ):
                     try:
                         config_modified = bool(cfg_mgr.is_config_modified())
                     except Exception:
@@ -863,7 +906,11 @@ class UIStateManager:
                 )
 
             base_tooltip = "开始批量处理（Ctrl+R）"
-            for name in ("btn_start_menu", "btn_batch", "btn_batch_in_toolbar"):
+            for name in (
+                "btn_start_menu",
+                "btn_batch",
+                "btn_batch_in_toolbar",
+            ):
                 try:
                     btn = getattr(parent, name, None)
                     if btn is not None:
@@ -881,7 +928,8 @@ class UIStateManager:
                     import logging
 
                     logging.getLogger(__name__).debug(
-                        "设置启动按钮状态或 tooltip 失败（非致命）", exc_info=True
+                        "设置启动按钮状态或 tooltip 失败（非致命）",
+                        exc_info=True,
                     )
 
             # 更新状态栏右侧的永久提示标签：当可以开始时提示用户开始批处理
@@ -905,14 +953,20 @@ class UIStateManager:
 
             # 将未保存配置的可视指示同步到 BatchPanel（文件列表上方）
             try:
-                if hasattr(parent, "batch_panel") and parent.batch_panel is not None:
+                if (
+                    hasattr(parent, "batch_panel")
+                    and parent.batch_panel is not None
+                ):
                     try:
-                        parent.batch_panel.set_unsaved_indicator(config_modified)
+                        parent.batch_panel.set_unsaved_indicator(
+                            config_modified
+                        )
                     except Exception:
                         import logging
 
                         logging.getLogger(__name__).debug(
-                            "设置 batch_panel 未保存指示器失败（非致命）", exc_info=True
+                            "设置 batch_panel 未保存指示器失败（非致命）",
+                            exc_info=True,
                         )
             except Exception:
                 import logging
@@ -923,11 +977,15 @@ class UIStateManager:
 
             # 数据管理选项卡：在没有加载数据时禁用
             try:
-                if hasattr(parent, "tab_main") and hasattr(parent, "file_list_widget"):
+                if hasattr(parent, "tab_main") and hasattr(
+                    parent, "file_list_widget"
+                ):
                     tab = parent.tab_main
                     idx = -1
                     try:
-                        idx = tab.indexOf(getattr(parent, "file_list_widget", None))
+                        idx = tab.indexOf(
+                            getattr(parent, "file_list_widget", None)
+                        )
                     except Exception:
                         idx = -1
                     if idx is not None and idx >= 0:
@@ -952,7 +1010,10 @@ class UIStateManager:
                         if cidx is not None and cidx >= 0:
                             tab.setTabEnabled(
                                 cidx,
-                                bool(self.is_data_loaded() or self.is_config_loaded()),
+                                bool(
+                                    self.is_data_loaded()
+                                    or self.is_config_loaded()
+                                ),
                             )
             except Exception:
                 import logging
@@ -987,7 +1048,9 @@ class UIStateManager:
                     try:
                         # 同上：若临时禁用，则保持禁用
                         if project_buttons_disabled:
-                            parent.batch_panel.btn_save_project.setEnabled(False)
+                            parent.batch_panel.btn_save_project.setEnabled(
+                                False
+                            )
                         else:
                             parent.batch_panel.btn_save_project.setEnabled(
                                 bool(save_enabled)
@@ -996,7 +1059,8 @@ class UIStateManager:
                         import logging
 
                         logging.getLogger(__name__).debug(
-                            "设置 batch_panel 保存按钮状态失败（非致命）", exc_info=True
+                            "设置 batch_panel 保存按钮状态失败（非致命）",
+                            exc_info=True,
                         )
             except Exception:
                 import logging
@@ -1008,12 +1072,15 @@ class UIStateManager:
             try:
                 if hasattr(parent, "config_panel"):
                     try:
-                        parent.config_panel.btn_save.setEnabled(bool(save_enabled))
+                        parent.config_panel.btn_save.setEnabled(
+                            bool(save_enabled)
+                        )
                     except Exception:
                         import logging
 
                         logging.getLogger(__name__).debug(
-                            "设置 config_panel 保存按钮失败（非致命）", exc_info=True
+                            "设置 config_panel 保存按钮失败（非致命）",
+                            exc_info=True,
                         )
             except Exception:
                 import logging
@@ -1041,7 +1108,7 @@ class UIStateManager:
                 pass
             self.refresh_controls_state()
         except Exception:
-            return
+            pass
 
     def set_config_loaded(self, loaded: bool) -> None:
         """设置配置已加载标志并刷新控件状态。"""
@@ -1053,7 +1120,7 @@ class UIStateManager:
                 pass
             self.refresh_controls_state()
         except Exception:
-            return
+            pass
 
     def set_operation_performed(self, performed: bool) -> None:
         """设置用户已执行操作标志（用于启用保存按钮）。"""
@@ -1065,7 +1132,7 @@ class UIStateManager:
                 pass
             self.refresh_controls_state()
         except Exception:
-            return
+            pass
 
     def mark_user_modified(self) -> None:
         """快捷方法：标记为用户已修改并刷新状态。"""

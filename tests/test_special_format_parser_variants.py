@@ -36,7 +36,9 @@ def test_header_variants_czfn_and_cmx(tmp_path):
     write_file(p, content)
 
     frame = make_frame_for_part("WingV")
-    proj = ProjectData(source_parts={"WingV": [frame]}, target_parts={"WingV": [frame]})
+    proj = ProjectData(
+        source_parts={"WingV": [frame]}, target_parts={"WingV": [frame]}
+    )
 
     outputs, report = sfp.process_special_format_file(
         p, proj, tmp_path, return_report=True
@@ -58,7 +60,9 @@ def test_lowercase_and_underscore_variants(tmp_path):
     write_file(p, content)
 
     frame = make_frame_for_part("PartL")
-    proj = ProjectData(source_parts={"PartL": [frame]}, target_parts={"PartL": [frame]})
+    proj = ProjectData(
+        source_parts={"PartL": [frame]}, target_parts={"PartL": [frame]}
+    )
 
     outputs, report = sfp.process_special_format_file(
         p, proj, tmp_path, return_report=True

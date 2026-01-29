@@ -334,7 +334,9 @@ class IntegratedAeroGUI(QMainWindow):
                 if self.project_manager:
                     self.project_manager.save_project(Path(file_path))
                 try:
-                    QMessageBox.information(self, "成功", f"项目已保存到: {file_path}")
+                    QMessageBox.information(
+                        self, "成功", f"项目已保存到: {file_path}"
+                    )
                 except Exception as e:
                     logger.debug("无法显示保存成功提示: %s", e, exc_info=True)
         except Exception as e:
@@ -352,7 +354,9 @@ class IntegratedAeroGUI(QMainWindow):
                     try:
                         QMessageBox.information(self, "成功", "新项目已创建")
                     except Exception as e:
-                        logger.debug("无法显示新项目提示: %s", e, exc_info=True)
+                        logger.debug(
+                            "无法显示新项目提示: %s", e, exc_info=True
+                        )
         except Exception as e:
             logger.error("创建新Project失败: %s", e)
 
@@ -378,13 +382,16 @@ class IntegratedAeroGUI(QMainWindow):
                                 self, "成功", f"项目已加载: {file_path}"
                             )
                         except Exception as e:
-                            logger.debug("无法显示加载成功提示: %s", e, exc_info=True)
+                            logger.debug(
+                                "无法显示加载成功提示: %s", e, exc_info=True
+                            )
                     else:
                         try:
                             QMessageBox.critical(self, "错误", "项目加载失败")
                         except Exception:
                             logger.debug(
-                                "无法显示加载失败对话框（非致命）", exc_info=True
+                                "无法显示加载失败对话框（非致命）",
+                                exc_info=True,
                             )
         except Exception as e:
             logger.error("打开Project失败: %s", e)
@@ -407,12 +414,17 @@ class IntegratedAeroGUI(QMainWindow):
                 return
 
             # 检查配置是否被修改
-            if self.config_manager and self.config_manager.is_config_modified():
+            if (
+                self.config_manager
+                and self.config_manager.is_config_modified()
+            ):
                 reply = QMessageBox.question(
                     self,
                     "配置已修改",
                     "检测到配置已修改但未保存。\n\n是否要保存修改的配置后再进行批处理？",
-                    QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                    QMessageBox.Save
+                    | QMessageBox.Discard
+                    | QMessageBox.Cancel,
                     QMessageBox.Save,
                 )
 
@@ -421,7 +433,9 @@ class IntegratedAeroGUI(QMainWindow):
                     try:
                         saved = self.config_manager.save_config()
                     except Exception as e:
-                        logger.error("保存配置时发生异常: %s", e, exc_info=True)
+                        logger.error(
+                            "保存配置时发生异常: %s", e, exc_info=True
+                        )
                         saved = False
 
                     # 如果保存失败，允许用户重试、继续（不保存）或取消操作
@@ -434,9 +448,12 @@ class IntegratedAeroGUI(QMainWindow):
                                 mb.setInformativeText(
                                     "可以重试保存、继续（不保存）或取消批处理启动。"
                                 )
-                                btn_retry = mb.addButton("重试", QMessageBox.AcceptRole)
+                                btn_retry = mb.addButton(
+                                    "重试", QMessageBox.AcceptRole
+                                )
                                 btn_continue = mb.addButton(
-                                    "继续（不保存）", QMessageBox.DestructiveRole
+                                    "继续（不保存）",
+                                    QMessageBox.DestructiveRole,
                                 )
                                 mb.addButton("取消", QMessageBox.RejectRole)
                                 mb.setDefaultButton(btn_retry)
@@ -445,14 +462,20 @@ class IntegratedAeroGUI(QMainWindow):
                                 clicked = mb.clickedButton()
                                 if clicked == btn_retry:
                                     try:
-                                        saved = self.config_manager.save_config()
+                                        saved = (
+                                            self.config_manager.save_config()
+                                        )
                                     except Exception as e:
                                         logger.error(
-                                            "重试保存时发生异常: %s", e, exc_info=True
+                                            "重试保存时发生异常: %s",
+                                            e,
+                                            exc_info=True,
                                         )
                                         saved = False
                                     if saved:
-                                        logger.debug("重试保存成功，继续执行批处理")
+                                        logger.debug(
+                                            "重试保存成功，继续执行批处理"
+                                        )
                                         break
                                     # 否则循环继续，允许再次重试/选择其他操作
                                 elif clicked == btn_continue:
@@ -461,11 +484,14 @@ class IntegratedAeroGUI(QMainWindow):
                                     )
                                     break
                                 else:
-                                    logger.debug("用户取消了批处理启动（保存失败后）")
+                                    logger.debug(
+                                        "用户取消了批处理启动（保存失败后）"
+                                    )
                                     return
                         except Exception:
                             logger.debug(
-                                "保存失败处理对话异常，已取消批处理", exc_info=True
+                                "保存失败处理对话异常，已取消批处理",
+                                exc_info=True,
                             )
                             return
 
@@ -501,7 +527,9 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     # 如果 BatchManager 在内部已经展示了错误（modal/非modal），
                     # 则它应返回 True，表示主窗口无需重复提示。
-                    handled = bool(self.batch_manager.on_batch_error(error_msg))
+                    handled = bool(
+                        self.batch_manager.on_batch_error(error_msg)
+                    )
                 except Exception as e:
                     logger.error("处理批处理错误事件失败: %s", e)
                     try:
@@ -516,7 +544,9 @@ class IntegratedAeroGUI(QMainWindow):
             else:
                 logger.warning("BatchManager 未初始化")
         except Exception:
-            logger.debug("on_batch_error top-level delegation failed", exc_info=True)
+            logger.debug(
+                "on_batch_error top-level delegation failed", exc_info=True
+            )
 
         # 如果 manager 已经处理错误，则不再由主窗口重复展示提示
         if handled:
@@ -579,7 +609,9 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     QApplication.clipboard().setText(str(error_msg))
                 except Exception:
-                    logger.debug("复制错误到剪贴板失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "复制错误到剪贴板失败（非致命）", exc_info=True
+                    )
 
             def _open_log():
                 try:
@@ -591,19 +623,27 @@ class IntegratedAeroGUI(QMainWindow):
 
                         lm = LoggingManager(self)
                         log_file = lm.get_log_file_path() or (
-                            Path.home() / ".momenttransfer" / "momenttransfer.log"
+                            Path.home()
+                            / ".momenttransfer"
+                            / "momenttransfer.log"
                         )
                     except Exception:
                         log_file = (
-                            Path.home() / ".momenttransfer" / "momenttransfer.log"
+                            Path.home()
+                            / ".momenttransfer"
+                            / "momenttransfer.log"
                         )
 
                     log_dir = log_file.parent
                     if log_file.exists():
-                        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_file)))
+                        QDesktopServices.openUrl(
+                            QUrl.fromLocalFile(str(log_file))
+                        )
                     elif log_dir.exists():
                         # 若日志文件不存在但目录存在，打开目录以便用户查看或收集日志
-                        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir)))
+                        QDesktopServices.openUrl(
+                            QUrl.fromLocalFile(str(log_dir))
+                        )
                     else:
                         try:
                             QMessageBox.information(
@@ -613,7 +653,8 @@ class IntegratedAeroGUI(QMainWindow):
                             )
                         except Exception:
                             logger.debug(
-                                "无法显示日志未找到提示（非致命）", exc_info=True
+                                "无法显示日志未找到提示（非致命）",
+                                exc_info=True,
                             )
                 except Exception:
                     logger.debug("打开日志文件失败（非致命）", exc_info=True)
@@ -675,12 +716,15 @@ class IntegratedAeroGUI(QMainWindow):
                     return
                 except Exception:
                     logger.debug(
-                        "statusBar showMessage failed (non-fatal)", exc_info=True
+                        "statusBar showMessage failed (non-fatal)",
+                        exc_info=True,
                     )
 
             btn = QPushButton(button_text, self)
             btn.setToolTip(summary)
-            btn.clicked.connect(lambda: self._show_non_modal_error_details(details))
+            btn.clicked.connect(
+                lambda: self._show_non_modal_error_details(details)
+            )
             self._notification_btn = btn
             try:
                 self.statusBar().addPermanentWidget(btn)
@@ -688,7 +732,9 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     self.statusBar().showMessage(summary)
                 except Exception:
-                    logger.debug("statusBar fallback failed (non-fatal)", exc_info=True)
+                    logger.debug(
+                        "statusBar fallback failed (non-fatal)", exc_info=True
+                    )
 
             # 自动移除按钮
             def _remove():
@@ -704,7 +750,9 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             pass
                 except Exception:
-                    logger.debug("清除非模态通知按钮失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "清除非模态通知按钮失败（非致命）", exc_info=True
+                    )
 
             try:
                 timer = QTimer(self)
@@ -713,7 +761,8 @@ class IntegratedAeroGUI(QMainWindow):
                 timer.start(duration_ms)
             except Exception:
                 logger.debug(
-                    "notification timer creation failed (non-fatal)", exc_info=True
+                    "notification timer creation failed (non-fatal)",
+                    exc_info=True,
                 )
 
             try:
@@ -762,7 +811,9 @@ class IntegratedAeroGUI(QMainWindow):
             if hasattr(self, "layout_manager") and self.layout_manager:
                 self.layout_manager.force_layout_refresh()
         except Exception:
-            logger.debug("_force_layout_refresh delegated call failed", exc_info=True)
+            logger.debug(
+                "_force_layout_refresh delegated call failed", exc_info=True
+            )
 
     def _refresh_layouts(self):
         """委托给 LayoutManager 刷新布局与按钮布局"""
@@ -773,7 +824,9 @@ class IntegratedAeroGUI(QMainWindow):
                 finally:
                     self.layout_manager.update_button_layout()
         except Exception:
-            logger.debug("_refresh_layouts delegated call failed", exc_info=True)
+            logger.debug(
+                "_refresh_layouts delegated call failed", exc_info=True
+            )
 
     # ----- 辅助方法：配置预览已委托给 ConfigManager -----
 
@@ -838,7 +891,9 @@ class IntegratedAeroGUI(QMainWindow):
             logging_manager = LoggingManager(self)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)
+            logger.debug(
+                "GUI logging setup failed (non-fatal): %s", e, exc_info=True
+            )
 
     def _set_controls_locked(self, locked: bool):
         """锁定或解锁与配置相关的控件，防止用户在批处理运行期间修改配置。
@@ -849,7 +904,9 @@ class IntegratedAeroGUI(QMainWindow):
             if hasattr(self, "ui_state_manager") and self.ui_state_manager:
                 self.ui_state_manager.set_controls_locked(locked)
         except Exception:
-            logger.debug("_set_controls_locked delegation failed", exc_info=True)
+            logger.debug(
+                "_set_controls_locked delegation failed", exc_info=True
+            )
 
 
 def _initialize_exception_hook():
@@ -870,7 +927,9 @@ def _initialize_exception_hook():
             # 记录完整 traceback 到日志
             try:
                 tb_text = "".join(
-                    traceback.format_exception(exc_type, exc_value, traceback_obj)
+                    traceback.format_exception(
+                        exc_type, exc_value, traceback_obj
+                    )
                 )
             except Exception:
                 tb_text = f"{exc_type.__name__}: {exc_value}"
@@ -885,7 +944,9 @@ def _initialize_exception_hook():
                     button_text="查看初始化错误",
                 )
             except Exception:
-                logger.debug("在状态栏显示初始化错误入口失败（非致命）", exc_info=True)
+                logger.debug(
+                    "在状态栏显示初始化错误入口失败（非致命）", exc_info=True
+                )
 
             return
 
@@ -919,9 +980,7 @@ def main():
                     return False
                 import winreg
 
-                key_path = (
-                    r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
-                )
+                key_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
                     # 0 表示暗色，1 表示浅色
                     val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")

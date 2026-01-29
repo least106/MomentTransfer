@@ -31,13 +31,19 @@ class PartManager:
         self.gui = gui_instance
         self.model_manager = getattr(gui_instance, "model_manager", None)
         try:
-            self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
+            self.signal_bus = getattr(
+                gui_instance, "signal_bus", SignalBus.instance()
+            )
         except Exception:
             self.signal_bus = SignalBus.instance()
         # 连接总线请求信号
         try:
-            self.signal_bus.partAddRequested.connect(self._on_part_add_requested)
-            self.signal_bus.partRemoveRequested.connect(self._on_part_remove_requested)
+            self.signal_bus.partAddRequested.connect(
+                self._on_part_add_requested
+            )
+            self.signal_bus.partRemoveRequested.connect(
+                self._on_part_remove_requested
+            )
         except Exception:
             logger.debug("连接 Part 请求信号失败", exc_info=True)
 
@@ -69,7 +75,8 @@ class PartManager:
             return mm
         except Exception:
             logger.warning(
-                "无法获取 ModelManager 实例，某些操作将回退或失败", exc_info=True
+                "无法获取 ModelManager 实例，某些操作将回退或失败",
+                exc_info=True,
             )
             return None
 
@@ -82,7 +89,8 @@ class PartManager:
         except Exception:
             # 在非 GUI 环境或测试中，弹窗可能失败；已经记录日志即可。
             logger.debug(
-                "无法弹出 QMessageBox 提示 (可能在测试/无界面环境)", exc_info=True
+                "无法弹出 QMessageBox 提示 (可能在测试/无界面环境)",
+                exc_info=True,
             )
 
     # ===== 辅助方法 =====
@@ -158,7 +166,9 @@ class PartManager:
             if mm and hasattr(mm, "_read_variant_fields"):
                 return mm._read_variant_fields(variant)
         except Exception:
-            logger.debug("delegated _read_variant_fields failed", exc_info=True)
+            logger.debug(
+                "delegated _read_variant_fields failed", exc_info=True
+            )
         if variant is None:
             return None, None, None, 0.0, 0.0, 0.0, 0.0
 
@@ -238,7 +248,11 @@ class PartManager:
                 selector = None
 
             try:
-                panel = self.gui.source_panel if is_source else self.gui.target_panel
+                panel = (
+                    self.gui.source_panel
+                    if is_source
+                    else self.gui.target_panel
+                )
                 current_name = getattr(panel, "_current_part_name", None)
                 if not current_name and selector:
                     current_name = selector.currentText()
@@ -297,7 +311,9 @@ class PartManager:
                             selector.setCurrentText(new_name)
                         except Exception:
                             new_idx = selector.findText(new_name)
-                            if new_idx >= 0 and hasattr(selector, "setCurrentIndex"):
+                            if new_idx >= 0 and hasattr(
+                                selector, "setCurrentIndex"
+                            ):
                                 try:
                                     selector.setCurrentIndex(new_idx)
                                 except Exception:
@@ -308,7 +324,9 @@ class PartManager:
                             try:
                                 call_block(False)
                             except Exception:
-                                logger.debug("恢复 selector 信号失败", exc_info=True)
+                                logger.debug(
+                                    "恢复 selector 信号失败", exc_info=True
+                                )
                 except Exception:
                     logger.debug("更新选择器名称失败", exc_info=True)
         except Exception:
@@ -379,7 +397,9 @@ class PartManager:
             self._inform_model_manager_missing("Source 变体切换")
             return None
         except Exception:
-            logger.exception("委托给 model_manager.on_source_variant_changed 失败")
+            logger.exception(
+                "委托给 model_manager.on_source_variant_changed 失败"
+            )
             return None
 
     def on_target_variant_changed(self, idx: int):
@@ -391,7 +411,9 @@ class PartManager:
             self._inform_model_manager_missing("Target 变体切换")
             return None
         except Exception:
-            logger.exception("委托给 model_manager.on_target_variant_changed 失败")
+            logger.exception(
+                "委托给 model_manager.on_target_variant_changed 失败"
+            )
             return None
 
     # ===== 名称变更事件 =====

@@ -189,10 +189,14 @@ class GlobalFilterPanel(QWidget):
             condition_widget.set_available_columns(self._columns)
         except Exception:
             pass
-        self.conditions_layout.insertWidget(len(self.conditions), condition_widget)
+        self.conditions_layout.insertWidget(
+            len(self.conditions), condition_widget
+        )
 
         # 暂时存储空条件（稍后在编辑时更新）
-        self.conditions.append(FilterCondition("", FilterOperator.EQUALS, "", logic))
+        self.conditions.append(
+            FilterCondition("", FilterOperator.EQUALS, "", logic)
+        )
 
         self.filtersChanged.emit()
 

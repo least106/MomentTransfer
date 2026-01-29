@@ -157,7 +157,11 @@ class LayoutManager:
             try:
                 if threshold is None:
                     threshold = self._current_threshold
-                w = self.gui.width() if hasattr(self.gui, "width") else threshold
+                w = (
+                    self.gui.width()
+                    if hasattr(self.gui, "width")
+                    else threshold
+                )
                 desired = "horizontal" if w >= threshold else "vertical"
                 return getattr(self, "_btn_orientation", None) != desired
             except Exception:

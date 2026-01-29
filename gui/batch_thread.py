@@ -73,8 +73,10 @@ class BatchProcessThread(QThread):
             config = BatchThreadConfig(
                 project_data=project_data,
                 timestamp_format=timestamp_format,
-                special_part_mapping_by_file=special_part_mapping_by_file or {},
-                special_row_selection_by_file=special_row_selection_by_file or {},
+                special_part_mapping_by_file=special_part_mapping_by_file
+                or {},
+                special_row_selection_by_file=special_row_selection_by_file
+                or {},
                 file_part_selection_by_file=file_part_selection_by_file or {},
                 table_row_selection_by_file=table_row_selection_by_file or {},
             )
@@ -91,7 +93,9 @@ class BatchProcessThread(QThread):
             # 兼容旧：若传入 dict，则用其覆盖 base
             if isinstance(data_config, dict):
                 try:
-                    base.skip_rows = int(data_config.get("skip_rows", base.skip_rows))
+                    base.skip_rows = int(
+                        data_config.get("skip_rows", base.skip_rows)
+                    )
                 except Exception:
                     pass
                 if "overwrite" in data_config:
@@ -164,10 +168,16 @@ class BatchProcessThread(QThread):
                 status = r.get("status")
                 part = r.get("part")
                 if status == "success":
-                    msg = f"part '{part}' 处理成功，输出: " f"{r.get('out_path', '')}"
+                    msg = (
+                        f"part '{part}' 处理成功，输出: "
+                        f"{r.get('out_path', '')}"
+                    )
                 elif status == "skipped":
                     reason = r.get("reason")
-                    msg = f"part '{part}' 被跳过: {reason} - " f"{r.get('message','') }"
+                    msg = (
+                        f"part '{part}' 被跳过: {reason} - "
+                        f"{r.get('message','') }"
+                    )
                 else:
                     msg = (
                         f"part '{part}' 处理失败: {r.get('reason')} - "
@@ -175,9 +185,13 @@ class BatchProcessThread(QThread):
                     )
                 self._emit_log(msg)
         except Exception:
-            logger.debug("处理 special format report 时发生错误", exc_info=True)
+            logger.debug(
+                "处理 special format report 时发生错误", exc_info=True
+            )
 
-    def _atomic_write(self, output_df: pd.DataFrame, output_file: Path) -> None:
+    def _atomic_write(
+        self, output_df: pd.DataFrame, output_file: Path
+    ) -> None:
         """原子写入 DataFrame 到 csv：先写临时文件，再 replace。"""
         tmp_name = f".{output_file.name}.{uuid.uuid4().hex}.tmp"
         tmp_path = output_file.parent / tmp_name
@@ -194,7 +208,9 @@ class BatchProcessThread(QThread):
 
     def _process_special_format_branch(self, file_path: Path):
         """处理特殊格式文件的分支逻辑，成功返回 outputs 列表或其他 truthy 值，否则返回 None。"""
-        if self.config.project_data is None or not looks_like_special_format(file_path):
+        if self.config.project_data is None or not looks_like_special_format(
+            file_path
+        ):
             return None
 
         overwrite_flag = False
@@ -202,15 +218,17 @@ class BatchProcessThread(QThread):
             if isinstance(self.data_config, dict):
                 overwrite_flag = bool(self.data_config.get("overwrite", False))
             else:
-                overwrite_flag = bool(getattr(self.data_config, "overwrite", False))
+                overwrite_flag = bool(
+                    getattr(self.data_config, "overwrite", False)
+                )
         except Exception:
             overwrite_flag = False
 
         part_mapping = None
         try:
-            part_mapping = (self.config.special_part_mapping_by_file or {}).get(
-                str(Path(file_path))
-            )
+            part_mapping = (
+                self.config.special_part_mapping_by_file or {}
+            ).get(str(Path(file_path)))
         except Exception:
             part_mapping = None
 
@@ -235,9 +253,9 @@ class BatchProcessThread(QThread):
 
         row_selection = None
         try:
-            row_selection = (self.config.special_row_selection_by_file or {}).get(
-                str(Path(file_path))
-            )
+            row_selection = (
+                self.config.special_row_selection_by_file or {}
+            ).get(str(Path(file_path)))
         except Exception:
             row_selection = None
 
@@ -266,7 +284,10 @@ class BatchProcessThread(QThread):
                 "special_format 解析未提取到任何 part，回退到常规 CSV/Excel 处理: %s",
                 file_path,
             )
-            msg = "特殊格式解析未提取到 part，回退为常规表格处理: " f"{file_path.name}"
+            msg = (
+                "特殊格式解析未提取到 part，回退为常规表格处理: "
+                f"{file_path.name}"
+            )
             self._emit_log(msg)
             return None
 
@@ -350,20 +371,20 @@ class BatchProcessThread(QThread):
                 )
 
             if has_dimensional:
-                forces_df = df[[col_map["fx"], col_map["fy"], col_map["fz"]]].apply(
-                    pd.to_numeric, errors="coerce"
-                )
-                moments_df = df[[col_map["mx"], col_map["my"], col_map["mz"]]].apply(
-                    pd.to_numeric, errors="coerce"
-                )
+                forces_df = df[
+                    [col_map["fx"], col_map["fy"], col_map["fz"]]
+                ].apply(pd.to_numeric, errors="coerce")
+                moments_df = df[
+                    [col_map["mx"], col_map["my"], col_map["mz"]]
+                ].apply(pd.to_numeric, errors="coerce")
             else:
                 # 保持为无量纲系数，后续在计算器上下文中转换为有量纲
                 forces_df = df[
                     [col_map["cx"], col_map["cy"], col_map[coeff_normal_key]]
                 ].apply(pd.to_numeric, errors="coerce")
-                moments_df = df[[col_map["cmx"], col_map["cmy"], col_map["cmz"]]].apply(
-                    pd.to_numeric, errors="coerce"
-                )
+                moments_df = df[
+                    [col_map["cmx"], col_map["cmy"], col_map["cmz"]]
+                ].apply(pd.to_numeric, errors="coerce")
 
             alpha_col_name = col_map.get("alpha")
             return (
@@ -379,7 +400,9 @@ class BatchProcessThread(QThread):
             try:
                 self._emit_log(f"数据列提取或转换失败: {e}")
             except Exception:
-                logger.debug("无法通过 signal 发送失败消息: %s", e, exc_info=True)
+                logger.debug(
+                    "无法通过 signal 发送失败消息: %s", e, exc_info=True
+                )
             raise
 
     def _build_col_map(self, df: pd.DataFrame):
@@ -410,20 +433,28 @@ class BatchProcessThread(QThread):
             from src.physics import AeroCalculator
 
             fp_str = str(Path(file_path))
-            sel = (self.config.file_part_selection_by_file or {}).get(fp_str) or {}
+            sel = (self.config.file_part_selection_by_file or {}).get(
+                fp_str
+            ) or {}
             source_sel = (sel.get("source") or "").strip()
             target_sel = (sel.get("target") or "").strip()
 
             # 尝试唯一推断
             try:
                 source_names = list(
-                    (getattr(self.config.project_data, "source_parts", {}) or {}).keys()
+                    (
+                        getattr(self.config.project_data, "source_parts", {})
+                        or {}
+                    ).keys()
                 )
             except Exception:
                 source_names = []
             try:
                 target_names = list(
-                    (getattr(self.config.project_data, "target_parts", {}) or {}).keys()
+                    (
+                        getattr(self.config.project_data, "target_parts", {})
+                        or {}
+                    ).keys()
                 )
             except Exception:
                 target_names = []
@@ -434,14 +465,21 @@ class BatchProcessThread(QThread):
                 target_sel = str(target_names[0])
 
             if not source_sel or not target_sel:
-                raise ValueError(f"文件未选择 Source/Target: {Path(file_path).name}")
+                raise ValueError(
+                    f"文件未选择 Source/Target: {Path(file_path).name}"
+                )
 
             return AeroCalculator(
-                self.config.project_data, source_part=source_sel, target_part=target_sel
+                self.config.project_data,
+                source_part=source_sel,
+                target_part=target_sel,
             )
         except Exception as e:
             try:
-                msg = f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: " f"{e}"
+                msg = (
+                    f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: "
+                    f"{e}"
+                )
                 self._emit_log(msg)
             except Exception:
                 logger.debug("无法发送 per-file 计算器失败日志", exc_info=True)
@@ -456,7 +494,9 @@ class BatchProcessThread(QThread):
     ):
         """将输入的 DataFrame 转为有量纲的 numpy 数组（forces_dimensional, moments_dimensional）。"""
         if has_dimensional:
-            return forces_df.to_numpy(dtype=float), moments_df.to_numpy(dtype=float)
+            return forces_df.to_numpy(dtype=float), moments_df.to_numpy(
+                dtype=float
+            )
 
         try:
             q = calc_to_use.target_frame.q
@@ -507,7 +547,10 @@ class BatchProcessThread(QThread):
         if isinstance(output_file, list):
             if len(output_file) > 0:
                 out_names = ", ".join([p.name for p in output_file])
-                return True, f"生成 {len(output_file)} 个 part 输出: {out_names}"
+                return (
+                    True,
+                    f"生成 {len(output_file)} 个 part 输出: {out_names}",
+                )
             return False, "未生成任何 part 输出"
 
         out_names = getattr(output_file, "name", None)
@@ -535,17 +578,26 @@ class BatchProcessThread(QThread):
                 pass
             raise
 
-    def _compute_and_write_output(self, calc_to_use, inputs: ProcessInputs) -> Path:
+    def _compute_and_write_output(
+        self, calc_to_use, inputs: ProcessInputs
+    ) -> Path:
         """将输入转为有量纲数组，调用计算器批量计算并把结果写出为 CSV（原子写入）。"""
-        forces_dimensional, moments_dimensional = self._prepare_dimensional_arrays(
-            calc_to_use, inputs.forces_df, inputs.moments_df, inputs.has_dimensional
+        forces_dimensional, moments_dimensional = (
+            self._prepare_dimensional_arrays(
+                calc_to_use,
+                inputs.forces_df,
+                inputs.moments_df,
+                inputs.has_dimensional,
+            )
         )
 
         # 在调用可能耗时的批量计算前检查停止请求
         if self._stop_requested:
             raise RuntimeError("处理已被请求停止")
 
-        results = calc_to_use.process_batch(forces_dimensional, moments_dimensional)
+        results = calc_to_use.process_batch(
+            forces_dimensional, moments_dimensional
+        )
 
         output_df = self._build_output_dataframe(
             results, inputs.original_df, inputs.alpha_col_name
@@ -572,15 +624,21 @@ class BatchProcessThread(QThread):
         file_start = datetime.now()
         try:
             try:
-                self.log_message.emit(f"处理 [{i+1}/{total}]: {file_path.name}")
+                self.log_message.emit(
+                    f"处理 [{i+1}/{total}]: {file_path.name}"
+                )
             except Exception:
-                logger.debug("无法发出开始处理消息: %s", file_path, exc_info=True)
+                logger.debug(
+                    "无法发出开始处理消息: %s", file_path, exc_info=True
+                )
 
             output_file = self.process_file(file_path)
             file_elapsed = (datetime.now() - file_start).total_seconds()
 
             # 兼容特殊格式返回多个输出文件的情况，并生成 summary
-            success_flag, success_msg = self._format_output_summary(output_file)
+            success_flag, success_msg = self._format_output_summary(
+                output_file
+            )
             try:
                 if success_flag:
                     self.log_message.emit(
@@ -602,7 +660,9 @@ class BatchProcessThread(QThread):
         except (ValueError, IndexError, OSError) as e:
             file_elapsed = (datetime.now() - file_start).total_seconds()
             try:
-                self.log_message.emit(f"  ✗ 失败: {e} (耗时: {file_elapsed:.2f}s)")
+                self.log_message.emit(
+                    f"  ✗ 失败: {e} (耗时: {file_elapsed:.2f}s)"
+                )
             except Exception:
                 logger.debug(
                     "Cannot emit failure message for %s: %s",
@@ -616,10 +676,14 @@ class BatchProcessThread(QThread):
             file_elapsed = (datetime.now() - file_start).total_seconds()
             logger.exception("Unexpected error processing file %s", file_path)
             try:
-                self.log_message.emit(f"  ✗ 未知错误 (耗时: {file_elapsed:.2f}s)")
+                self.log_message.emit(
+                    f"  ✗ 未知错误 (耗时: {file_elapsed:.2f}s)"
+                )
             except Exception:
                 logger.debug(
-                    "Cannot emit unknown error message for %s", file_path, exc_info=True
+                    "Cannot emit unknown error message for %s",
+                    file_path,
+                    exc_info=True,
                 )
             return False, None, file_elapsed, "未知错误"
 
@@ -628,15 +692,19 @@ class BatchProcessThread(QThread):
         try:
             if file_path.suffix.lower() == ".csv":
                 df = pd.read_csv(
-                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
+                    file_path,
+                    skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
                 )
-                logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
+                logger.debug(
+                    "CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1]
+                )
                 self._emit_log(
                     f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列"
                 )
             else:
                 df = pd.read_excel(
-                    file_path, skiprows=int(getattr(cfg_to_use, "skip_rows", 0))
+                    file_path,
+                    skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
                 )
             return df
         except Exception as e:
@@ -658,12 +726,16 @@ class BatchProcessThread(QThread):
                             fn()
                         except Exception:
                             logger.debug(
-                                "调用计算器取消接口 %s 失败", name, exc_info=True
+                                "调用计算器取消接口 %s 失败",
+                                name,
+                                exc_info=True,
                             )
         except Exception:
             logger.debug("请求停止时尝试取消计算器失败", exc_info=True)
 
-    def _emit_eta(self, completed: int, total: int, elapsed_list: list) -> None:
+    def _emit_eta(
+        self, completed: int, total: int, elapsed_list: list
+    ) -> None:
         """计算并发送 ETA/平均耗时消息。"""
         if not elapsed_list:
             return
@@ -677,11 +749,15 @@ class BatchProcessThread(QThread):
         except Exception:
             logger.debug("无法发出 ETA 消息", exc_info=True)
 
-    def _finalize_run(self, success: int, total: int, elapsed_list: list) -> None:
+    def _finalize_run(
+        self, success: int, total: int, elapsed_list: list
+    ) -> None:
         """发送运行完成的汇总消息（成功/取消/无文件等）。"""
         total_elapsed = sum(elapsed_list)
         if success > 0:
-            msg = f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+            msg = (
+                f"成功处理 {success}/{total} 个文件，耗时 {total_elapsed:.2f}s"
+            )
         elif total == 0:
             msg = "没有文件需要处理"
         else:
@@ -706,14 +782,20 @@ class BatchProcessThread(QThread):
                 try:
                     self.log_message.emit("用户取消：正在停止批处理")
                 except Exception:
-                    logger.debug("Cannot emit cancel log message", exc_info=True)
+                    logger.debug(
+                        "Cannot emit cancel log message", exc_info=True
+                    )
                 break
 
             file_start = datetime.now()
             try:
-                self.log_message.emit(f"处理 [{i+1}/{total}]: {file_path.name}")
+                self.log_message.emit(
+                    f"处理 [{i+1}/{total}]: {file_path.name}"
+                )
             except Exception:
-                logger.debug("无法发出开始处理消息: %s", file_path, exc_info=True)
+                logger.debug(
+                    "无法发出开始处理消息: %s", file_path, exc_info=True
+                )
 
             try:
                 res = self._process_single_file(i, file_path, total)
@@ -730,9 +812,13 @@ class BatchProcessThread(QThread):
                 # 保护性捕获：理论上 _process_single_file 会自行处理异常
                 file_elapsed = (datetime.now() - file_start).total_seconds()
                 elapsed_list.append(file_elapsed)
-                logger.exception("Unexpected error processing file %s", file_path)
+                logger.exception(
+                    "Unexpected error processing file %s", file_path
+                )
                 try:
-                    self.log_message.emit(f"  ✗ 未知错误 (耗时: {file_elapsed:.2f}s)")
+                    self.log_message.emit(
+                        f"  ✗ 未知错误 (耗时: {file_elapsed:.2f}s)"
+                    )
                 except Exception:
                     logger.debug(
                         "Cannot emit unknown error message for %s",

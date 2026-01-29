@@ -65,7 +65,9 @@ class BottomDock:
                             break
             except Exception:
                 # 若查询子控件失败，则保守地不隐藏 bar
-                logger.debug("检查底部栏子控件可见性失败（非致命）", exc_info=True)
+                logger.debug(
+                    "检查底部栏子控件可见性失败（非致命）", exc_info=True
+                )
                 any_visible = True
             if not any_visible:
                 self._bar.setVisible(False)
@@ -181,7 +183,9 @@ class InitializationManager:
                                     exc_info=True,
                                 )
                     except Exception:
-                        logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
+                        logger.debug(
+                            "切换底部栏时发生异常（非致命）", exc_info=True
+                        )
 
                 self.main_window.chk_bottom_bar_toolbar.toggled.connect(
                     _toggle_bottom_bar
@@ -202,9 +206,13 @@ class InitializationManager:
             except Exception:
                 # 回退到默认行为
                 try:
-                    self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
+                    self.main_window.statusBar().showMessage(
+                        "步骤1：选择文件或目录"
+                    )
                 except Exception:
-                    logger.debug("回退到状态栏消息显示失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "回退到状态栏消息显示失败（非致命）", exc_info=True
+                    )
 
             logger.info("UI 组件初始化成功")
         except Exception as e:
@@ -291,7 +299,9 @@ class InitializationManager:
                             exc_info=True,
                         )
             except Exception:
-                logger.debug("绑定 inp_batch_input 编辑完成信号失败", exc_info=True)
+                logger.debug(
+                    "绑定 inp_batch_input 编辑完成信号失败", exc_info=True
+                )
         except Exception as e:
             logger.error("管理器初始化失败: %s", e, exc_info=True)
             # 继续运行，即使管理器初始化失败
@@ -302,7 +312,9 @@ class InitializationManager:
             logging_manager = LoggingManager(self.main_window)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)
+            logger.debug(
+                "GUI logging setup failed (non-fatal): %s", e, exc_info=True
+            )
 
     def bind_post_ui_signals(self):
         """绑定主窗口的后置 UI 信号与默认可视状态。"""
@@ -339,7 +351,9 @@ class InitializationManager:
                 try:
                     sb.configLoaded.connect(
                         lambda _model=None: getattr(
-                            self.main_window, "mark_config_loaded", lambda: None
+                            self.main_window,
+                            "mark_config_loaded",
+                            lambda: None,
                         )()
                     )
                 except Exception:
@@ -460,7 +474,9 @@ class InitializationManager:
             btn_start.setMaximumWidth(80)
             # 初始化期间默认禁用开始按钮，避免在管理器未就绪时触发批处理
             btn_start.setEnabled(False)
-            btn_start.setToolTip("正在初始化，功能暂不可用 — 稍后将自动启用或刷新")
+            btn_start.setToolTip(
+                "正在初始化，功能暂不可用 — 稍后将自动启用或刷新"
+            )
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
 
@@ -516,7 +532,9 @@ class InitializationManager:
                 w.setGeometry(geom)
             except Exception as e:
                 logger.debug(
-                    "设置初始化遮罩几何信息失败（非致命）: %s", e, exc_info=True
+                    "设置初始化遮罩几何信息失败（非致命）: %s",
+                    e,
+                    exc_info=True,
                 )
             w.setVisible(True)
             w.raise_()
@@ -556,13 +574,18 @@ class InitializationManager:
                                     lm.force_layout_refresh()
                                 except Exception:
                                     logger.debug(
-                                        "强制刷新布局失败（非致命）", exc_info=True
+                                        "强制刷新布局失败（非致命）",
+                                        exc_info=True,
                                     )
                         except Exception:
-                            logger.debug("更新初始布局失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "更新初始布局失败（非致命）", exc_info=True
+                            )
                 except Exception:
                     logger.debug("调度初始布局更新时发生错误", exc_info=True)
 
             QTimer.singleShot(120, _do_initial_updates)
         except Exception:
-            logger.debug("Initial layout update scheduling failed", exc_info=True)
+            logger.debug(
+                "Initial layout update scheduling failed", exc_info=True
+            )

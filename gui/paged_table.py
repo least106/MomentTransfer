@@ -99,7 +99,11 @@ class PagedTableWidget(QWidget):
         column_name: Optional[str] = None,
     ):
         """根据 evaluator 计算匹配行，并跳转到包含匹配的页。evaluator 接收 df[column_name] 的每个值。"""
-        if evaluator is None or column_name is None or column_name not in df.columns:
+        if (
+            evaluator is None
+            or column_name is None
+            or column_name not in df.columns
+        ):
             self._match_flags = None
             self._match_pages = None
             # 恢复到当前页（不跳转）
@@ -203,7 +207,9 @@ class PagedTableWidget(QWidget):
         except Exception:
             # 在异常情况下依然尝试设置一个简单的头
             try:
-                self._column_names = [str(c) for c in self._all_column_names[:cols]]
+                self._column_names = [
+                    str(c) for c in self._all_column_names[:cols]
+                ]
                 self._display_headers = ["选中"] + self._column_names
                 self.table.setHorizontalHeaderLabels(self._display_headers)
             except Exception:
@@ -213,7 +219,9 @@ class PagedTableWidget(QWidget):
             real_row = start + i
             cb = QCheckBox()
             cb.setChecked(real_row in self.selected_set)
-            cb.stateChanged.connect(lambda st, rr=real_row: self._on_cb(rr, st))
+            cb.stateChanged.connect(
+                lambda st, rr=real_row: self._on_cb(rr, st)
+            )
             self.table.setCellWidget(i, 0, cb)
             for c in range(cols):
                 try:
@@ -243,7 +251,9 @@ class PagedTableWidget(QWidget):
             pass
 
     def _update_page_label(self) -> None:
-        self.lbl_page.setText(f"第 {self._current_page + 1}/{self._page_count()} 页")
+        self.lbl_page.setText(
+            f"第 {self._current_page + 1}/{self._page_count()} 页"
+        )
 
     def get_column_names(self) -> List[str]:
         """返回当前表格（当前页）对应的纯列名列表（不含 UI 序号/换行）。"""

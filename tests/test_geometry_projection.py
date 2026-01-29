@@ -13,7 +13,9 @@ def test_project_vector_identity_basis():
 
 def test_basis_reconstruction_roundtrip():
     # 使用欧拉角生成基，投影再重构应回到原始全局向量
-    basis = geometry.euler_angles_to_basis(roll_deg=10, pitch_deg=20, yaw_deg=30)
+    basis = geometry.euler_angles_to_basis(
+        roll_deg=10, pitch_deg=20, yaw_deg=30
+    )
     v_global = np.array([0.5, -1.2, 2.0])
     # 在目标坐标系下的分量
     v_coords = geometry.project_vector_to_frame(v_global, basis)

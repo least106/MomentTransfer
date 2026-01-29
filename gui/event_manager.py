@@ -22,17 +22,25 @@ class EventManager:
             self._show_event_fired = True
             try:
                 # 触发初始布局更新
-                init_mgr = getattr(self.main_window, "initialization_manager", None)
+                init_mgr = getattr(
+                    self.main_window, "initialization_manager", None
+                )
                 if init_mgr:
                     init_mgr.trigger_initial_layout_update()
                     init_mgr.finalize_initialization()
                 else:
                     # 回退到旧方式
-                    QTimer.singleShot(50, self.main_window.update_button_layout)
-                    QTimer.singleShot(120, self.main_window._force_layout_refresh)
+                    QTimer.singleShot(
+                        50, self.main_window.update_button_layout
+                    )
+                    QTimer.singleShot(
+                        120, self.main_window._force_layout_refresh
+                    )
                     QTimer.singleShot(
                         150,
-                        lambda: setattr(self.main_window, "_is_initializing", False),
+                        lambda: setattr(
+                            self.main_window, "_is_initializing", False
+                        ),
                     )
             except Exception:
                 logger.debug("showEvent scheduling failed", exc_info=True)
@@ -64,7 +72,9 @@ class EventManager:
                         batch_thread.wait(1000)
                     except KeyboardInterrupt:
                         # 在控制台中按 Ctrl+C 时优雅中断等待，继续清理并关闭
-                        logger.info("收到中断信号(Ctrl+C)，正在强制停止批处理线程")
+                        logger.info(
+                            "收到中断信号(Ctrl+C)，正在强制停止批处理线程"
+                        )
                 except Exception:
                     logger.debug("批处理线程停止失败", exc_info=True)
 

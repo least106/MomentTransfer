@@ -42,7 +42,9 @@ class ExampleCoordSystemPlugin(CoordSystemPlugin):
         },
     }
 
-    def get_coordinate_system(self, name: str) -> Optional[Dict[str, List[float]]]:
+    def get_coordinate_system(
+        self, name: str
+    ) -> Optional[Dict[str, List[float]]]:
         return self._COORD_SYSTEMS.get(name)
 
     def list_coordinate_systems(self) -> List[str]:

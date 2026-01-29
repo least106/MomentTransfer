@@ -9,10 +9,9 @@ from pathlib import Path
 # 添加项目根目录到 Python 路径（放在顶层导入之前以避免 E402）
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
-
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.logging_system import (
     LogContext,
@@ -181,7 +180,9 @@ class TestDataValidation:
     def test_validate_file_path_not_exists(self):
         """测试不存在的文件路径"""
         with pytest.raises(ValidationError):
-            DataValidator.validate_file_path("/nonexistent/path.txt", must_exist=True)
+            DataValidator.validate_file_path(
+                "/nonexistent/path.txt", must_exist=True
+            )
 
     def test_validate_path_traversal(self):
         """测试路径遍历防护"""

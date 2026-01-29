@@ -11,7 +11,9 @@ from pathlib import Path
 
 # 定位顶层模块文件 src/config.py
 _root_config_path = Path(__file__).resolve().parent.parent / "config.py"
-spec = importlib.util.spec_from_file_location("src._config_mod", str(_root_config_path))
+spec = importlib.util.spec_from_file_location(
+    "src._config_mod", str(_root_config_path)
+)
 _root_mod = importlib.util.module_from_spec(spec)
 # 将新模块挂到 sys.modules 以便其他导入可以复用
 sys.modules["src._config_mod"] = _root_mod

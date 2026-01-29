@@ -50,7 +50,9 @@ class OperationPanel(QWidget):
             self.batch_panel.browseRequested.connect(on_browse)
             self.batch_panel.selectAllRequested.connect(on_select_all)
             self.batch_panel.selectNoneRequested.connect(on_select_none)
-            self.batch_panel.invertSelectionRequested.connect(on_invert_selection)
+            self.batch_panel.invertSelectionRequested.connect(
+                on_invert_selection
+            )
             self.batch_panel.quickSelectRequested.connect(on_quick_select)
             if on_save_project:
                 self.batch_panel.saveProjectRequested.connect(on_save_project)
@@ -59,7 +61,9 @@ class OperationPanel(QWidget):
                 if app:
                     app.blockSignals(False)
             except Exception:
-                logger.debug("OperationPanel unblockSignals 失败", exc_info=True)
+                logger.debug(
+                    "OperationPanel unblockSignals 失败", exc_info=True
+                )
 
     def attach_legacy_aliases(self, gui_instance: QWidget) -> None:
         """将 BatchPanel 的子控件引用绑定到主窗口以保持兼容。"""
@@ -92,7 +96,9 @@ class OperationPanel(QWidget):
         # 配置数据格式功能已移除；保持属性为 None 以避免外部直接调用导致错误
         gui_instance.btn_config_format = None
         gui_instance.tab_logs_widget = bp.log_tab
-        gui_instance.lbl_format_summary = getattr(bp, "lbl_format_summary", None)
+        gui_instance.lbl_format_summary = getattr(
+            bp, "lbl_format_summary", None
+        )
         gui_instance.lbl_source_part_applied = None
 
 

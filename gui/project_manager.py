@@ -36,14 +36,20 @@ class ProjectManager:
 
             # 重置工作流程到 Step 1
             try:
-                if hasattr(self.gui, "batch_manager") and self.gui.batch_manager:
+                if (
+                    hasattr(self.gui, "batch_manager")
+                    and self.gui.batch_manager
+                ):
                     self.gui.batch_manager._set_workflow_step("init")
             except Exception:
                 logger.debug("reset workflow step failed", exc_info=True)
 
             # 清除配置
             try:
-                if hasattr(self.gui, "config_manager") and self.gui.config_manager:
+                if (
+                    hasattr(self.gui, "config_manager")
+                    and self.gui.config_manager
+                ):
                     self.gui.config_manager.reset_config()
             except Exception:
                 logger.debug("reset config failed", exc_info=True)
@@ -57,7 +63,8 @@ class ProjectManager:
                         self.gui.mark_user_modified()
                     except Exception:
                         logger.debug(
-                            "mark_user_modified 调用失败（非致命）", exc_info=True
+                            "mark_user_modified 调用失败（非致命）",
+                            exc_info=True,
                         )
             except Exception:
                 pass
@@ -161,7 +168,9 @@ class ProjectManager:
             config = None
             if hasattr(self.gui, "project_model") and self.gui.project_model:
                 config = self._serialize_project_model(self.gui.project_model)
-            elif hasattr(self.gui, "current_config") and self.gui.current_config:
+            elif (
+                hasattr(self.gui, "current_config") and self.gui.current_config
+            ):
                 config = self._serialize_config(self.gui.current_config)
 
             if config:
@@ -182,7 +191,9 @@ class ProjectManager:
                 special_mappings = (
                     getattr(fsm, "special_part_mapping_by_file", {}) or {}
                 )
-                table_selection = getattr(fsm, "table_row_selection_by_file", {}) or {}
+                table_selection = (
+                    getattr(fsm, "table_row_selection_by_file", {}) or {}
+                )
 
                 for file_path, mapping in special_mappings.items():
                     row_sel = table_selection.get(file_path)
@@ -202,7 +213,9 @@ class ProjectManager:
         # 保存工作流程步骤
         try:
             if hasattr(self.gui, "batch_manager"):
-                step = getattr(self.gui.batch_manager, "_current_workflow_step", 1)
+                step = getattr(
+                    self.gui.batch_manager, "_current_workflow_step", 1
+                )
                 project_data["workflow_step"] = step
         except Exception:
             project_data["workflow_step"] = 1
@@ -244,7 +257,9 @@ class ProjectManager:
         """恢复数据文件选择和映射"""
         try:
             data_files = project_data.get("data_files", [])
-            if not data_files or not hasattr(self.gui, "file_selection_manager"):
+            if not data_files or not hasattr(
+                self.gui, "file_selection_manager"
+            ):
                 return False
 
             fsm = self.gui.file_selection_manager
@@ -298,11 +313,15 @@ class ProjectManager:
 
             if hasattr(model, "source_parts"):
                 for name, part in (model.source_parts or {}).items():
-                    data["source_parts"][name] = ProjectManager._serialize_part(part)
+                    data["source_parts"][name] = (
+                        ProjectManager._serialize_part(part)
+                    )
 
             if hasattr(model, "target_parts"):
                 for name, part in (model.target_parts or {}).items():
-                    data["target_parts"][name] = ProjectManager._serialize_part(part)
+                    data["target_parts"][name] = (
+                        ProjectManager._serialize_part(part)
+                    )
 
             return data
         except Exception:

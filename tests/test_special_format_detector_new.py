@@ -21,7 +21,10 @@ def test_tokens_and_line_checks():
     # short Chinese single token not metadata
     assert sfd.is_metadata_line("描述") is False
     # longer Chinese considered metadata
-    assert sfd.is_metadata_line("这是一个较长的中文描述行超过二十个字符啊") is True
+    assert (
+        sfd.is_metadata_line("这是一个较长的中文描述行超过二十个字符啊")
+        is True
+    )
 
     # summary lines
     assert sfd.is_summary_line("CLa something") is True
@@ -64,4 +67,6 @@ def test_looks_like_special_format_basic(tmp_path):
     assert sfd.looks_like_special_format(p3) is True
 
     # non-existent file with unknown extension -> False (触发读取异常分支)
-    assert sfd.looks_like_special_format(Path(tmp_path / "nope.unknown")) is False
+    assert (
+        sfd.looks_like_special_format(Path(tmp_path / "nope.unknown")) is False
+    )
