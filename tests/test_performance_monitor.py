@@ -1,6 +1,5 @@
 import time
 
-import pytest
 
 from src import performance as perf
 

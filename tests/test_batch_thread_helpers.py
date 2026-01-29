@@ -1,6 +1,3 @@
-import os
-from pathlib import Path
-
 import pandas as pd
 
 from gui.batch_thread import BatchProcessThread

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.plugin import BasePlugin, PluginLoader, PluginMetadata, PluginRegistry
+from src.plugin import PluginLoader, PluginRegistry
 
 
 def write(p: Path, s: str):

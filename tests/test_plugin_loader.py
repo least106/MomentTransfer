@@ -1,5 +1,4 @@
 import textwrap
-from pathlib import Path
 
 from src.plugin import PluginLoader, PluginRegistry
 

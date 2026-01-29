@@ -1,7 +1,3 @@
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from src import special_format_detector as sfd

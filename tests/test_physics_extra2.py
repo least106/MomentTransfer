@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from src.data_loader import CoordSystemDefinition, FrameConfiguration, ProjectData
-from src.physics import AeroCalculator, AeroConfig
+from src.data_loader import CoordSystemDefinition, FrameConfiguration
+from src.physics import AeroCalculator
 
 
 def make_coord():

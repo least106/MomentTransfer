@@ -3,7 +3,6 @@ import types
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from src import special_format_parser as parser
 
@@ -88,11 +87,6 @@ def test_process_special_format_file_delegates(monkeypatch):
     finally:
         del sys.modules["src.special_format_processor"]
 
-
-from pathlib import Path
-
-import pandas as pd
-import pytest
 
 from src import special_format_parser as sfp
 

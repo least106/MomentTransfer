@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from gui.batch_thread import BatchProcessThread
 
 

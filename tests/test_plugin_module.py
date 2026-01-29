@@ -1,7 +1,5 @@
-import sys
 from pathlib import Path
 
-import pytest
 
 from src import plugin as plugin_mod
 
