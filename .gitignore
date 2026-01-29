@@ -25,6 +25,7 @@ tools/
 .coverage
 *pylint*
 *flake8*
+patches/
 
 # Packaging / build artifacts
 build/
