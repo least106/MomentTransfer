@@ -125,6 +125,18 @@ class InitializationManager:
             splitter = QSplitter(Qt.Vertical)
 
             # 主内容区域放入分割上方
+            # 防御性检查：确保 operation_panel 是 QWidget 实例（某些回归会返回 bool/None）
+            try:
+                if not isinstance(operation_panel, QWidget):
+                    logger.error(
+                        "operation_panel 不是 QWidget，类型=%r，使用占位 QWidget 回退",
+                        type(operation_panel),
+                    )
+                    operation_panel = QWidget()
+            except Exception:
+                # 若 isinstance 检查失败，创建回退 QWidget
+                operation_panel = QWidget()
+
             splitter.addWidget(operation_panel)
 
             # 将原来的左右浮动侧边栏合并到一个底部栏（避免浮动按钮与动画）
@@ -381,6 +393,24 @@ class InitializationManager:
                 self._hide_initializing_overlay()
             except Exception:
                 logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
+            # 初始化完成后启用 `新建`/`打开` 按钮，但让保存按钮继续由 UIStateManager 控制
+            try:
+                setattr(self.main_window, "_project_buttons_temporarily_disabled", False)
+                for btn_name in ("btn_new_project", "btn_open_project"):
+                    btn = getattr(self.main_window, btn_name, None)
+                    if btn is not None:
+                        try:
+                            btn.setEnabled(True)
+                        except Exception:
+                            logger.debug("启用按钮 %s 失败", btn_name, exc_info=True)
+                # 刷新控件状态，让 managers 中的逻辑决定保存按钮是否可用（基于 is_operation_performed()）
+                try:
+                    if hasattr(self.main_window, "_refresh_controls_state"):
+                        self.main_window._refresh_controls_state()
+                except Exception:
+                    logger.debug("刷新控件状态失败（非致命）", exc_info=True)
+            except Exception:
+                logger.debug("初始化完成后启用 project 按钮失败", exc_info=True)
             logger.debug("初始化完成")
 
         # 延迟完成标志，避免 showEvent 期间的弹窗
@@ -466,8 +496,50 @@ class InitializationManager:
             btn_load_config.setToolTip(
                 "加载配置文件（JSON），用于提供 Source/Target part 定义"
             )
-            # 绑定到主窗口的 load_config，以恢复旧的加载配置行为
-            btn_load_config.clicked.connect(self.main_window.load_config)
+            # 绑定到一个安全的回调：若 ConfigManager 已初始化则委托给它，否则弹出文件选择或提示
+            def _on_load_config_clicked():
+                try:
+                    cm = getattr(self.main_window, "config_manager", None)
+                    if cm and hasattr(cm, "load_config"):
+                        try:
+                            cm.load_config()
+                            return
+                        except Exception:
+                            logger.debug("ConfigManager.load_config 调用失败，回退处理", exc_info=True)
+
+                    # 回退：由用户选择配置文件并尝试通过 ConfigManager 或直接提示
+                    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+                    fp, _ = QFileDialog.getOpenFileName(
+                        self.main_window,
+                        "加载配置文件",
+                        "",
+                        "JSON Files (*.json);;All Files (*)",
+                    )
+                    if not fp:
+                        return
+
+                    if cm and hasattr(cm, "load_config_from_file"):
+                        try:
+                            cm.load_config_from_file(fp)
+                        except Exception as e:
+                            try:
+                                QMessageBox.critical(self.main_window, "错误", f"加载配置失败: {e}")
+                            except Exception:
+                                logger.debug("显示加载失败对话失败", exc_info=True)
+                    else:
+                        try:
+                            QMessageBox.information(
+                                self.main_window,
+                                "加载配置",
+                                "配置加载将在管理器初始化后生效。",
+                            )
+                        except Exception:
+                            logger.debug("显示加载提示失败", exc_info=True)
+                except Exception:
+                    logger.debug("加载配置回调处理失败", exc_info=True)
+
+            btn_load_config.clicked.connect(_on_load_config_clicked)
             toolbar.addWidget(btn_load_config)
 
             btn_start = QPushButton("开始处理")
@@ -492,7 +564,9 @@ class InitializationManager:
             self.main_window.btn_save_project_toolbar = btn_save_project
             # 标记为临时禁用 project 按钮，供 UIStateManager 等处判断
             try:
-                self.main_window._project_buttons_temporarily_disabled = True
+                # 不再永久将 project 按钮标记为临时禁用。
+                # 保留属性但默认为 False，避免导致按钮长期不可用。
+                self.main_window._project_buttons_temporarily_disabled = False
             except Exception:
                 pass
             self.main_window.btn_browse_menu = btn_browse

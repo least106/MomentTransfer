@@ -16,8 +16,10 @@ import logging
 import sys
 import traceback
 from pathlib import Path
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QEventLoop
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,6 +30,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
+    QProgressDialog,
 )
 
 from gui.event_manager import EventManager
@@ -185,6 +188,63 @@ class IntegratedAeroGUI(QMainWindow):
 
         return panel
 
+    def _select_all_files(self):
+        """委托给 BatchManager 全选文件（兼容旧接口）。"""
+        try:
+            if self.batch_manager:
+                try:
+                    self.batch_manager.select_all_files()
+                except Exception:
+                    logger.debug("batch_manager.select_all_files 调用失败", exc_info=True)
+        except Exception:
+            logger.debug("_select_all_files failed", exc_info=True)
+
+    def _select_none_files(self):
+        """委托给 BatchManager 全不选文件（兼容旧接口）。"""
+        try:
+            if self.batch_manager:
+                try:
+                    self.batch_manager.select_none_files()
+                except Exception:
+                    logger.debug("batch_manager.select_none_files 调用失败", exc_info=True)
+        except Exception:
+            logger.debug("_select_none_files failed", exc_info=True)
+
+    def _invert_file_selection(self):
+        """委托给 BatchManager 反选文件（兼容旧接口）。"""
+        try:
+            if self.batch_manager:
+                try:
+                    self.batch_manager.invert_file_selection()
+                except Exception:
+                    logger.debug("batch_manager.invert_file_selection 调用失败", exc_info=True)
+        except Exception:
+            logger.debug("_invert_file_selection failed", exc_info=True)
+
+    def _quick_select(self):
+        """打开快速选择对话（兼容旧接口）。"""
+        try:
+            if self.batch_manager:
+                try:
+                    self.batch_manager.open_quick_select_dialog()
+                    return
+                except Exception:
+                    logger.debug("batch_manager.open_quick_select_dialog 调用失败", exc_info=True)
+
+            # 回退：若存在 file_selection_manager，使用其快速选择逻辑
+            try:
+                fsm = getattr(self, "file_selection_manager", None)
+                if fsm and hasattr(fsm, "open_quick_select_dialog"):
+                    try:
+                        fsm.open_quick_select_dialog()
+                        return
+                    except Exception:
+                        logger.debug("file_selection_manager.open_quick_select_dialog 调用失败", exc_info=True)
+            except Exception:
+                logger.debug("快速选择回退调用失败", exc_info=True)
+        except Exception:
+            logger.debug("_quick_select failed", exc_info=True)
+
     def create_operation_panel(self):
         """创建批量处理面板（委托 OperationPanel 组件），并保持旧属性兼容。"""
         panel = OperationPanel(
@@ -204,79 +264,168 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("attach_legacy_aliases 失败", exc_info=True)
 
+        # 返回创建的面板（确保函数以 QWidget 返回，避免包含后续逻辑的早期 return 导致布尔值被返回）
+        try:
+            return panel
+        except Exception:
+            # 极端情况下回退为原始 panel 引用
+            pass
+
         # 将日志处理器连接到 GUI
         try:
             self._setup_gui_logging()
-        except Exception:
-            logger.debug(
-                "_setup_gui_logging failed in create_operation_panel",
-                exc_info=True,
-            )
-
-        return panel
-
-    def toggle_config_sidebar(self) -> bool:
-        """切换配置侧边栏，返回当前是否展开。"""
-        try:
-            sb = getattr(self, "config_sidebar", None)
-            if sb is not None:
-                sb.toggle_panel()
-                return sb.is_expanded()
-        except Exception:
-            logger.debug("toggle_config_sidebar failed", exc_info=True)
-            # 返回 None 表示发生错误，调用方不要将其误解释为已收起
-            return None
-
-    def toggle_history_sidebar(self) -> bool:
-        """切换批处理历史侧边栏，返回当前是否展开。"""
-        try:
-            sb = getattr(self, "history_sidebar", None)
-            if sb is not None:
-                sb.toggle_panel()
-                return sb.is_expanded()
-        except Exception:
-            logger.debug("toggle_history_sidebar failed", exc_info=True)
-            # 返回 None 表示发生错误，调用方不要将其误解释为已收起
-            return None
-
-    def _quick_select(self):
-        if self.batch_manager:
+            # 同步保存：在确认继续前确保保存已完成以避免竞态
             try:
-                self.batch_manager.open_quick_select_dialog()
+                pm = getattr(self, "project_manager", None)
+                if pm:
+                    # 若已有当前项目文件或用户选择了路径，弹模态进度对话并同步保存
+                    cur_fp = getattr(pm, "current_project_file", None)
+
+                    def _do_save(loop_path):
+                        """内部同步保存尝试，返回 True/False"""
+                        try:
+                            return pm.save_project(loop_path)
+                        except Exception:
+                            logger.exception("同步保存项目失败")
+                            return False
+
+                    # 循环尝试以支持重试
+                    while True:
+                        # 选择保存路径：若已有 current_project_file 则使用它，否则要求用户选择
+                        if cur_fp:
+                            path_to_save = cur_fp
+                        else:
+                            try:
+                                from PySide6.QtWidgets import QFileDialog
+
+                                pm_local = pm
+                                ext = getattr(pm_local.__class__, "PROJECT_FILE_EXTENSION", ".mtproject")
+                                suggested = f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
+                                start = str(Path.cwd() / suggested)
+                                save_path, _ = QFileDialog.getSaveFileName(
+                                    self,
+                                    "保存 Project 文件",
+                                    start,
+                                    "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                )
+                                if not save_path:
+                                    # 用户取消另存为，视为取消整个操作
+                                    return False
+                                path_to_save = Path(save_path)
+                            except Exception:
+                                logger.debug("另存为对话或选择路径出错", exc_info=True)
+                                return False
+
+                        # 显示模态的进度对话以避免并发操作
+                        try:
+                                dlg = QProgressDialog("正在保存项目…", None, 0, 0, self)
+                                dlg.setWindowModality(Qt.WindowModal)
+                                try:
+                                    dlg.setCancelButton(None)
+                                except Exception:
+                                    pass
+                                dlg.setMinimumDuration(0)
+                                dlg.show()
+                        except Exception:
+                            dlg = None
+
+                            try:
+                                # 优先使用异步保存并在本地事件循环中等待其完成，避免在主线程中直接长时间阻塞
+                                saved = False
+                                if hasattr(pm, "save_project_async") and callable(getattr(pm, "save_project_async")):
+                                    loop = QEventLoop()
+
+                                    def _on_async_finished(success, fp):
+                                        nonlocal saved
+                                        saved = bool(success)
+                                        try:
+                                            loop.quit()
+                                        except Exception:
+                                            pass
+
+                                    try:
+                                        worker = pm.save_project_async(path_to_save, on_finished=_on_async_finished)
+                                        # 如果 save_project_async 未立即触发回调，等待事件循环被回调退出
+                                        loop.exec()
+                                    except Exception:
+                                        logger.exception("调用 save_project_async 失败，回退到同步保存")
+                                        try:
+                                            saved = _do_save(path_to_save)
+                                        except Exception:
+                                            saved = False
+                                else:
+                                    saved = _do_save(path_to_save)
+                            finally:
+                                try:
+                                    if dlg:
+                                        dlg.close()
+                                except Exception:
+                                    pass
+
+                        if saved:
+                            # 成功 -> 更新 current_project_file 若之前无
+                            try:
+                                if not cur_fp:
+                                    pm.current_project_file = path_to_save
+                            except Exception:
+                                pass
+                            break
+
+                        # 保存失败：让用户选择 重试 / 继续（不保存） / 取消
+                        try:
+                            mb = QMessageBox(self)
+                            mb.setWindowTitle("保存失败")
+                            mb.setText("项目保存失败。请选择操作：")
+                            mb.setInformativeText("重试：再次尝试保存；继续：放弃保存并继续；取消：终止当前操作。")
+                            btn_retry = mb.addButton("重试", QMessageBox.AcceptRole)
+                            btn_continue = mb.addButton("继续（不保存）", QMessageBox.DestructiveRole)
+                            btn_cancel = mb.addButton("取消", QMessageBox.RejectRole)
+                            mb.setDefaultButton(btn_retry)
+                            mb.exec()
+                            clicked2 = mb.clickedButton()
+                            if clicked2 == btn_retry:
+                                # loop 再次尝试
+                                continue
+                            if clicked2 == btn_continue:
+                                # 视为放弃保存：将 last_saved_state 设为当前以避免后续重复提示
+                                try:
+                                    try:
+                                        pm.last_saved_state = pm._collect_current_state()
+                                    except Exception:
+                                        pm.last_saved_state = None
+                                    if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                                        try:
+                                            self.ui_state_manager.clear_user_modified()
+                                        except Exception:
+                                            pass
+                                    else:
+                                        try:
+                                            self.operation_performed = False
+                                            self._refresh_controls_state()
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    logger.debug("放弃保存后清理状态失败", exc_info=True)
+                                return True
+                            # 取消
+                            return False
+                        except Exception:
+                            logger.debug("显示保存失败对话异常，取消操作", exc_info=True)
+                            return False
+                else:
+                    # 没有 ProjectManager 时回退到调用原始保存逻辑（可能弹出对话）
+                    try:
+                        self._on_save_project()
+                    except Exception:
+                        logger.debug("调用 _on_save_project 失败", exc_info=True)
             except Exception:
-                logger.debug("打开快速选择对话框失败", exc_info=True)
+                logger.debug("保存分支处理失败", exc_info=True)
+                return False
 
-    # 文件选择方法委托给 BatchManager
-    def _select_all_files(self):
-        if self.batch_manager:
-            self.batch_manager.select_all_files()
-
-    def _select_none_files(self):
-        if self.batch_manager:
-            self.batch_manager.select_none_files()
-
-    def _invert_file_selection(self):
-        if self.batch_manager:
-            self.batch_manager.invert_file_selection()
-
-    # Part 保存方法委托给 PartManager
-    def _save_current_source_part(self):
-        if self.part_manager:
-            self.part_manager.save_current_source_part()
-
-    def _save_current_target_part(self):
-        if self.part_manager:
-            self.part_manager.save_current_target_part()
-
-    def load_config(self):
-        """加载配置文件 - 委托给 ConfigManager"""
-        try:
-            self.config_manager.load_config()
-        except AttributeError:
-            # 如果管理器未初始化，记录警告
-            logger.warning("ConfigManager 未初始化，无法加载配置")
-        except Exception as e:
-            logger.error("加载配置失败: %s", e)
+            # 保存后再次检测是否仍有未保存更改（用户可能取消了保存）
+            return not self._has_unsaved_changes()
+        except Exception:
+            logger.debug("连接日志处理器或同步保存流程失败（非致命）", exc_info=True)
 
     def save_config(self):
         """保存配置到JSON - 委托给 ConfigManager"""
@@ -287,6 +436,20 @@ class IntegratedAeroGUI(QMainWindow):
             logger.warning("ConfigManager 未初始化，无法保存配置")
         except Exception as e:
             logger.error("保存配置失败: %s", e)
+
+    def load_config(self):
+        """加载配置：委托给 ConfigManager（兼容旧接口）。"""
+        try:
+            cm = getattr(self, "config_manager", None)
+            if cm and hasattr(cm, "load_config"):
+                try:
+                    cm.load_config()
+                    return
+                except Exception:
+                    logger.debug("ConfigManager.load_config 调用失败", exc_info=True)
+            logger.warning("ConfigManager 未初始化或不支持 load_config")
+        except Exception:
+            logger.exception("load_config failed")
 
     def apply_config(self):
         # 已移除：应用配置的交互逻辑。
@@ -319,26 +482,117 @@ class IntegratedAeroGUI(QMainWindow):
     def _on_save_project(self):
         """保存Project（打开选择文件对话框）"""
         try:
-
             from PySide6.QtWidgets import QFileDialog
+            from datetime import datetime
 
-            # 打开保存文件对话框
+            # 若已有当前项目文件路径则后台保存（显示等待对话）
+            if getattr(self, "project_manager", None) and getattr(
+                self.project_manager, "current_project_file", None
+            ):
+                try:
+                    fp = self.project_manager.current_project_file
+
+                    dlg = QProgressDialog("正在保存项目…", None, 0, 0, self)
+                    dlg.setWindowModality(Qt.WindowModal)
+                    try:
+                        dlg.setCancelButton(None)
+                    except Exception:
+                        pass
+                    dlg.setMinimumDuration(0)
+                    dlg.show()
+
+                    def _on_saved(success, saved_fp):
+                        try:
+                            dlg.close()
+                        except Exception:
+                            pass
+                        if success:
+                            try:
+                                QMessageBox.information(
+                                    self, "成功", f"项目已保存到: {saved_fp}"
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "无法显示保存成功提示", exc_info=True
+                                )
+                        else:
+                            try:
+                                QMessageBox.critical(
+                                    self, "错误", "项目保存失败"
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "无法显示保存失败对话框（非致命）",
+                                    exc_info=True,
+                                )
+
+                    self.project_manager.save_project_async(fp, on_finished=_on_saved)
+                    return
+                except Exception:
+                    logger.debug("直接保存当前项目失败，退回到另存为对话", exc_info=True)
+
+            # 另存为：预填当前路径或建议文件名 project_YYYYMMDD.mtproject
+            default_dir = ""
+            pm = getattr(self, "project_manager", None)
+            ext = getattr(pm.__class__, "PROJECT_FILE_EXTENSION", ".mtproject") if pm else ".mtproject"
+            suggested = f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
+            try:
+                pm = getattr(self, "project_manager", None)
+                if pm and getattr(pm, "current_project_file", None):
+                    cur = pm.current_project_file
+                    default_dir = str(cur.parent)
+                else:
+                    # 尝试使用工作目录
+                    default_dir = str(Path.cwd())
+            except Exception:
+                default_dir = ""
+
+            # 打开保存文件对话框（预填路径+建议名）
+            start_path = str(Path(default_dir) / suggested) if default_dir else suggested
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "保存Project文件",
-                "",
+                start_path,
                 "MomentTransfer Project (*.mtproject);;All Files (*)",
             )
 
             if file_path:
                 if self.project_manager:
-                    self.project_manager.save_project(Path(file_path))
-                try:
-                    QMessageBox.information(
-                        self, "成功", f"项目已保存到: {file_path}"
-                    )
-                except Exception as e:
-                    logger.debug("无法显示保存成功提示: %s", e, exc_info=True)
+                    dlg = QProgressDialog("正在保存项目…", None, 0, 0, self)
+                    dlg.setWindowModality(Qt.WindowModal)
+                    try:
+                        dlg.setCancelButton(None)
+                    except Exception:
+                        pass
+                    dlg.setMinimumDuration(0)
+                    dlg.show()
+
+                    def _on_saved2(success, saved_fp):
+                        try:
+                            dlg.close()
+                        except Exception:
+                            pass
+                        if success:
+                            try:
+                                QMessageBox.information(
+                                    self, "成功", f"项目已保存到: {saved_fp}"
+                                )
+                            except Exception as e:
+                                logger.debug(
+                                    "无法显示保存成功提示: %s", e, exc_info=True
+                                )
+                        else:
+                            try:
+                                QMessageBox.critical(
+                                    self, "错误", "项目保存失败"
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "无法显示保存失败对话框（非致命）",
+                                    exc_info=True,
+                                )
+
+                    self.project_manager.save_project_async(Path(file_path), on_finished=_on_saved2)
         except Exception as e:
             logger.error("保存Project失败: %s", e)
             try:
@@ -349,6 +603,12 @@ class IntegratedAeroGUI(QMainWindow):
     def _new_project(self):
         """创建新Project"""
         try:
+            # 在新建前检测是否有未保存更改
+            if self._has_unsaved_changes():
+                proceed = self._confirm_save_discard_cancel("创建新项目")
+                if not proceed:
+                    return
+
             if self.project_manager:
                 if self.project_manager.create_new_project():
                     try:
@@ -363,6 +623,12 @@ class IntegratedAeroGUI(QMainWindow):
     def _open_project(self):
         """打开Project文件"""
         try:
+            # 在打开前检测是否有未保存更改
+            if self._has_unsaved_changes():
+                proceed = self._confirm_save_discard_cancel("打开项目")
+                if not proceed:
+                    return
+
             from pathlib import Path
 
             from PySide6.QtWidgets import QFileDialog
@@ -376,25 +642,194 @@ class IntegratedAeroGUI(QMainWindow):
 
             if file_path:
                 if self.project_manager:
-                    if self.project_manager.load_project(Path(file_path)):
+                    dlg = QProgressDialog("正在加载项目…", None, 0, 0, self)
+                    dlg.setWindowModality(Qt.WindowModal)
+                    try:
+                        dlg.setCancelButton(None)
+                    except Exception:
+                        pass
+                    dlg.setMinimumDuration(0)
+                    dlg.show()
+
+                    def _on_loaded(success, loaded_fp):
                         try:
-                            QMessageBox.information(
-                                self, "成功", f"项目已加载: {file_path}"
-                            )
-                        except Exception as e:
-                            logger.debug(
-                                "无法显示加载成功提示: %s", e, exc_info=True
-                            )
-                    else:
-                        try:
-                            QMessageBox.critical(self, "错误", "项目加载失败")
+                            dlg.close()
                         except Exception:
-                            logger.debug(
-                                "无法显示加载失败对话框（非致命）",
-                                exc_info=True,
-                            )
+                            pass
+                        if success:
+                            try:
+                                QMessageBox.information(
+                                    self, "成功", f"项目已加载: {loaded_fp}"
+                                )
+                            except Exception as e:
+                                logger.debug(
+                                    "无法显示加载成功提示: %s", e, exc_info=True
+                                )
+                        else:
+                            try:
+                                QMessageBox.critical(self, "错误", "项目加载失败")
+                            except Exception:
+                                logger.debug(
+                                    "无法显示加载失败对话框（非致命）",
+                                    exc_info=True,
+                                )
+
+                    self.project_manager.load_project_async(Path(file_path), on_finished=_on_loaded)
         except Exception as e:
             logger.error("打开Project失败: %s", e)
+
+    def _has_unsaved_changes(self) -> bool:
+        """检测当前是否存在未保存的更改。
+
+        优先使用 ProjectManager 的 last_saved_state 与当前收集状态比较；
+        若 ProjectManager 不可用或 last_saved_state 缺失，回退到 UI 状态管理器或 `operation_performed` 标志。
+        """
+        try:
+            pm = getattr(self, "project_manager", None)
+            if pm:
+                try:
+                    current = pm._collect_current_state()
+                    last = getattr(pm, "last_saved_state", None)
+                    if last is None:
+                        # 若没有 last_saved_state，退回到 UI 标志
+                        if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                            try:
+                                return bool(self.ui_state_manager.is_operation_performed())
+                            except Exception:
+                                return bool(getattr(self, "operation_performed", False))
+                        return bool(getattr(self, "operation_performed", False))
+                    return current != last
+                except Exception:
+                    logger.debug("比较项目状态时出错，退回到 UI 标志检测", exc_info=True)
+            # 回退检测
+            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                try:
+                    return bool(self.ui_state_manager.is_operation_performed())
+                except Exception:
+                    return bool(getattr(self, "operation_performed", False))
+            return bool(getattr(self, "operation_performed", False))
+        except Exception:
+            logger.debug("检测未保存更改失败，默认返回 False", exc_info=True)
+            return False
+
+    def _confirm_save_discard_cancel(self, intent: str) -> bool:
+        """在检测到未保存更改时弹出三选对话：保存 / 放弃 / 取消。
+
+        返回 True 表示继续执行 intent（保存或放弃后），False 表示取消操作。
+        """
+        try:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("未保存更改")
+            msg.setText(f"检测到未保存的更改。是否在执行“{intent}”前保存更改？")
+            msg.setInformativeText("保存：保存更改并继续；放弃：丢弃更改并继续；取消：返回。")
+            btn_save = msg.addButton("保存", QMessageBox.AcceptRole)
+            btn_discard = msg.addButton("放弃", QMessageBox.DestructiveRole)
+            btn_cancel = msg.addButton("取消", QMessageBox.RejectRole)
+            msg.exec()
+
+            clicked = msg.clickedButton()
+            if clicked == btn_save:
+                # 同步保存：在确认继续前确保保存已完成以避免竞态
+                try:
+                    pm = getattr(self, "project_manager", None)
+                    if pm:
+                        # 若已有当前项目文件，直接同步保存
+                        cur_fp = getattr(pm, "current_project_file", None)
+                        if cur_fp:
+                            try:
+                                saved = pm.save_project(cur_fp)
+                            except Exception:
+                                logger.exception("同步保存项目失败")
+                                saved = False
+                            if not saved:
+                                try:
+                                    QMessageBox.critical(
+                                        self, "错误", "项目保存失败"
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "无法显示保存失败对话框（非致命）",
+                                        exc_info=True,
+                                    )
+                                return False
+                        else:
+                            # 否则弹出另存为对话并同步保存
+                            try:
+                                from PySide6.QtWidgets import QFileDialog
+
+                                pm = getattr(self, "project_manager", None)
+                                ext = getattr(pm.__class__, "PROJECT_FILE_EXTENSION", ".mtproject") if pm else ".mtproject"
+                                suggested = f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
+                                start = str(Path.cwd() / suggested)
+                                save_path, _ = QFileDialog.getSaveFileName(
+                                    self,
+                                    "保存 Project 文件",
+                                    start,
+                                    "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                )
+                                if not save_path:
+                                    # 用户取消另存为，视为未完成保存 -> 取消原操作
+                                    return False
+                                try:
+                                    saved = pm.save_project(Path(save_path))
+                                except Exception:
+                                    logger.exception("同步另存为保存失败")
+                                    saved = False
+                                if not saved:
+                                    try:
+                                        QMessageBox.critical(
+                                            self, "错误", "项目保存失败"
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "无法显示保存失败对话框（非致命）",
+                                            exc_info=True,
+                                        )
+                                    return False
+                            except Exception:
+                                logger.debug("另存为对话或保存过程中出错", exc_info=True)
+                                return False
+                    else:
+                        # 没有 ProjectManager 时回退到调用原始保存逻辑（可能弹出对话）
+                        try:
+                            self._on_save_project()
+                        except Exception:
+                            logger.debug("调用 _on_save_project 失败", exc_info=True)
+                except Exception:
+                    logger.debug("保存分支处理失败", exc_info=True)
+                    return False
+
+                # 保存后再次检测是否仍有未保存更改（用户可能取消了保存）
+                return not self._has_unsaved_changes()
+            if clicked == btn_discard:
+                # 丢弃更改：将 ProjectManager.last_saved_state 覆盖为当前收集状态
+                try:
+                    pm = getattr(self, "project_manager", None)
+                    if pm:
+                        try:
+                            pm.last_saved_state = pm._collect_current_state()
+                        except Exception:
+                            pm.last_saved_state = None
+                    # 同时清除 UI 状态标志
+                    if hasattr(self, "ui_state_manager") and self.ui_state_manager:
+                        try:
+                            self.ui_state_manager.clear_user_modified()
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            self.operation_performed = False
+                            self._refresh_controls_state()
+                        except Exception:
+                            pass
+                except Exception:
+                    logger.debug("放弃更改时发生错误", exc_info=True)
+                return True
+            # 取消
+            return False
+        except Exception:
+            logger.debug("弹出未保存对话失败，默认取消操作", exc_info=True)
+            return False
 
     def run_batch_processing(self):
         """运行批处理 - 委托给 BatchManager"""

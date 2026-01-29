@@ -272,6 +272,11 @@ class ConfigManager:
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
 
             # 重置修改标志
+            # 保存加载时的快照作为基线，供面板比较是否已被用户修改
+            try:
+                self._loaded_snapshot = self.get_simple_payload_snapshot()
+            except Exception:
+                self._loaded_snapshot = None
             self._config_modified = False
         except Exception as e:
             QMessageBox.critical(
@@ -516,6 +521,19 @@ class ConfigManager:
     def set_config_modified(self, modified: bool):
         """设置配置修改状态"""
         self._config_modified = modified
+        # 若配置被用户修改，则同时标记为项目已被用户修改，
+        # 以便启用 Project 的保存按钮（用户通常希望保存包含当前配置的项目）。
+        try:
+            if modified and hasattr(self, "gui") and self.gui is not None:
+                try:
+                    if hasattr(self.gui, "mark_user_modified") and callable(
+                        self.gui.mark_user_modified
+                    ):
+                        self.gui.mark_user_modified()
+                except Exception:
+                    logger.debug("同步配置修改到项目修改标志失败", exc_info=True)
+        except Exception:
+            pass
 
     def reset_config(self) -> None:
         """重置配置到初始状态（向后兼容旧接口）。

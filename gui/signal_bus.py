@@ -45,6 +45,9 @@ class SignalBus(QObject):
 
     # UI 控制
     controlsLocked = Signal(bool)
+    # Project 相关
+    projectSaved = Signal(object)  # 保存项目，参数为 Path 或可序列化对象
+    projectLoaded = Signal(object)  # 加载项目，参数为 Path 或可序列化对象
 
     _instance: Optional[SignalBus] = None
 

@@ -3,12 +3,20 @@ Project 管理器 - 处理 MomentTransfer 项目文件的保存与恢复
 """
 
 import json
+import os
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
+import traceback
 
 logger = logging.getLogger(__name__)
+try:
+    # 非强制依赖：仅用于在 GUI 环境下启动异步线程
+    from PySide6.QtCore import QThread, Signal
+except Exception:
+    QThread = None
+    Signal = None
 
 
 class ProjectManager:
@@ -26,6 +34,8 @@ class ProjectManager:
         self.gui = gui_instance
         self.current_project_file: Optional[Path] = None
         self.last_saved_state: Optional[Dict] = None
+        # 后台任务引用（防止被GC），支持同时保留多个并在完成后清理
+        self._background_workers = []
 
     def create_new_project(self) -> bool:
         """创建新项目（清除当前工作状态）"""
@@ -44,15 +54,117 @@ class ProjectManager:
             except Exception:
                 logger.debug("reset workflow step failed", exc_info=True)
 
-            # 清除配置
             try:
-                if (
-                    hasattr(self.gui, "config_manager")
-                    and self.gui.config_manager
-                ):
-                    self.gui.config_manager.reset_config()
+                # 在加载成功后设置 UI 状态：标记为已加载。
+                # 对于加载的来源，区分是否为项目文件：
+                # - 若是明确的 project 文件（.mtproject），则清除用户修改标志（视为还原到已保存状态）；
+                # - 否则（例如加载数据文件或外部配置），将其视为用户产生的变更，标记为已修改以启用保存按钮。
+                try:
+                    if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                        try:
+                            self.gui.ui_state_manager.set_data_loaded(True)
+                        except Exception:
+                            pass
+                        try:
+                            self.gui.ui_state_manager.set_config_loaded(True)
+                        except Exception:
+                            pass
+
+                        try:
+                            is_project_file = False
+                            try:
+                                if file_path is not None:
+                                    suf = str(file_path).lower()
+                                    if suf.endswith(".mtproject"):
+                                        is_project_file = True
+                            except Exception:
+                                is_project_file = False
+
+                            if is_project_file:
+                                # 从项目文件加载：视为与已保存状态一致
+                                self.gui.ui_state_manager.clear_user_modified()
+                            else:
+                                # 加载数据/配置等视为用户引入的更改，启用保存
+                                try:
+                                    if hasattr(self.gui, "mark_user_modified"):
+                                        self.gui.mark_user_modified()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
             except Exception:
-                logger.debug("reset config failed", exc_info=True)
+                pass
+                    try:
+                        fsm.special_part_row_selection_by_file = {}
+                    except Exception:
+                        pass
+                    try:
+                        fsm.file_part_selection_by_file = {}
+                    except Exception:
+                        pass
+                    try:
+                        fsm.table_row_selection_by_file = {}
+                    except Exception:
+                        pass
+                    try:
+                        fsm._data_loaded = False
+                        fsm._config_loaded = False
+                        fsm._operation_performed = False
+                    except Exception:
+                        pass
+
+                # 兼容旧代码：在主窗口上清空旧的属性引用
+                try:
+                    for attr in [
+                        "special_part_mapping_by_file",
+                        "special_part_row_selection_by_file",
+                        "file_part_selection_by_file",
+                        "table_row_selection_by_file",
+                    ]:
+                        try:
+                            setattr(self.gui, attr, {})
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # 清空 GUI 的文件树与缓存项
+                try:
+                    if hasattr(self.gui, "file_tree") and getattr(
+                        self.gui, "file_tree"
+                    ) is not None:
+                        try:
+                            self.gui.file_tree.clear()
+                        except Exception:
+                            pass
+                    try:
+                        setattr(self.gui, "_file_tree_items", {})
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+                # 尝试清理文件列表区域的子控件（若存在）
+                try:
+                    flw = getattr(self.gui, "file_list_widget", None)
+                    if flw is not None:
+                        try:
+                            layout = flw.layout()
+                            if layout is not None:
+                                while layout.count():
+                                    item = layout.takeAt(0)
+                                    w = item.widget()
+                                    if w is not None:
+                                        try:
+                                            w.setParent(None)
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            except Exception:
+                logger.debug("清除文件选择缓存或 UI 失败（非致命）", exc_info=True)
 
             # 标记为用户已修改，以便启用保存按钮和相关 UI 控件
             try:
@@ -99,19 +211,126 @@ class ProjectManager:
             # 收集当前状态
             project_data = self._collect_current_state()
 
-            # 保存到文件
+            # 保存到临时文件，然后用原子替换确保不会丢失原文件
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(project_data, f, indent=2, ensure_ascii=False)
+            try:
+                tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(project_data, f, indent=2, ensure_ascii=False)
+                    try:
+                        f.flush()
+                        os.fsync(f.fileno())
+                    except Exception:
+                        # 非致命：继续尝试替换
+                        logger.debug("刷新临时文件失败，继续尝试替换", exc_info=True)
 
-            self.current_project_file = file_path
-            self.last_saved_state = project_data
+                # 原子替换（Windows/Unix 可用）
+                try:
+                    os.replace(tmp_path, file_path)
+                except Exception as e:
+                    # 若替换失败，尝试删除临时文件并抛出
+                    try:
+                        if tmp_path.exists():
+                            tmp_path.unlink()
+                    except Exception:
+                        logger.debug("删除临时文件失败", exc_info=True)
+                    raise
 
-            logger.info(f"项目已保存: {file_path}")
-            return True
+                self.current_project_file = file_path
+                self.last_saved_state = project_data
+                logger.info(f"项目已保存: {file_path}")
+                try:
+                    sb = getattr(self.gui, "signal_bus", None) or __import__("gui.signal_bus", fromlist=["SignalBus"]).SignalBus.instance()
+                    try:
+                        sb.projectSaved.emit(file_path)
+                    except Exception:
+                        logger.debug("发射 projectSaved 信号失败", exc_info=True)
+                except Exception:
+                    logger.debug("获取 SignalBus 失败，无法发射 projectSaved", exc_info=True)
+                return True
+            except Exception as e:
+                # 保证原文件不被修改；提示用户并记录日志
+                logger.error("原子保存项目失败: %s", e, exc_info=True)
+                try:
+                    from PySide6.QtWidgets import QMessageBox
+
+                    try:
+                        QMessageBox.critical(
+                            self.gui,
+                            "保存失败",
+                            f"项目保存失败，原文件已保留。错误: {e}",
+                        )
+                    except Exception:
+                        logger.debug("显示保存失败对话框失败", exc_info=True)
+                except Exception:
+                    # 非GUI环境：仅记录日志
+                    logger.debug("无法导入 QMessageBox 以显示错误", exc_info=True)
+                return False
         except Exception as e:
             logger.error("保存项目失败: %s", e)
             return False
+
+    def save_project_async(self, file_path: Optional[Path] = None, on_finished=None):
+        """在后台线程中异步保存项目，完成时触发回调。
+
+        Args:
+            file_path: 保存路径，若为 None 则使用当前路径
+            on_finished: 可选回调，签名为 `func(success: bool, file_path: Path)`
+        """
+        if QThread is None:
+            # 无 Qt 环境，退回到同步保存
+            res = self.save_project(file_path)
+            if callable(on_finished):
+                try:
+                    on_finished(res, Path(file_path) if file_path else self.current_project_file)
+                except Exception:
+                    logger.debug("异步回调执行失败", exc_info=True)
+            return None
+
+        class _SaveWorker(QThread):
+            finished = Signal(bool, object)
+
+            def __init__(self, pm, path):
+                super().__init__()
+                self.pm = pm
+                self.path = Path(path) if path is not None else None
+
+            def run(self):
+                try:
+                    result = self.pm.save_project(self.path)
+                except Exception:
+                    logger.exception("后台保存线程运行时异常")
+                    result = False
+                try:
+                    self.finished.emit(result, self.path)
+                except Exception:
+                    logger.debug("SaveWorker finished emit 失败", exc_info=True)
+
+        worker = _SaveWorker(self, file_path)
+
+        def _cleanup(success, fp):
+            try:
+                # 确保线程对象被删除
+                try:
+                    worker.deleteLater()
+                except Exception:
+                    pass
+                try:
+                    self._background_workers.remove(worker)
+                except Exception:
+                    pass
+                if callable(on_finished):
+                    try:
+                        on_finished(success, fp)
+                    except Exception:
+                        logger.debug("on_finished 回调失败", exc_info=True)
+            except Exception:
+                logger.debug("后台保存清理失败", exc_info=True)
+
+        worker.finished.connect(_cleanup)
+        self._background_workers.append(worker)
+        worker.start()
+        return worker
 
     def load_project(self, file_path: Path) -> bool:
         """加载项目文件
@@ -128,33 +347,303 @@ class ProjectManager:
                 logger.error(f"项目文件不存在: {file_path}")
                 return False
 
+            # 读取并解析 JSON，捕获语法错误并向用户提示
             with open(file_path, "r", encoding="utf-8") as f:
-                project_data = json.load(f)
+                try:
+                    project_data = json.load(f)
+                except Exception as e:
+                    logger.error("项目文件 JSON 解析失败: %s", e, exc_info=True)
+                    try:
+                        from PySide6.QtWidgets import QMessageBox, QFileDialog
 
-            # 验证版本
+                        msg = QMessageBox(self.gui)
+                        msg.setWindowTitle("项目文件解析失败")
+                        msg.setText("无法解析项目文件 (JSON 语法错误)。")
+                        msg.setInformativeText(str(e))
+                        btn_save = msg.addButton("另存为", QMessageBox.AcceptRole)
+                        btn_cancel = msg.addButton("取消", QMessageBox.RejectRole)
+                        msg.exec()
+                        if msg.clickedButton() == btn_save:
+                            try:
+                                suggested = file_path.name
+                                save_path, _ = QFileDialog.getSaveFileName(
+                                    self.gui,
+                                    "另存项目文件",
+                                    suggested,
+                                    "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                )
+                                if save_path:
+                                    # 将原始文本写入目标路径以保留内容
+                                    f.seek(0)
+                                    raw = f.read()
+                                    with open(save_path, "w", encoding="utf-8") as out:
+                                        out.write(raw)
+                            except Exception:
+                                logger.debug("另存为失败", exc_info=True)
+                        return False
+                    except Exception:
+                        logger.debug("显示解析错误对话失败", exc_info=True)
+                        return False
+
+            # 验证版本一致性，若不一致向用户提供 继续/取消/另存为 选项
             version = project_data.get("version")
             if version != self.PROJECT_VERSION:
                 logger.warning(
                     f"项目版本不匹配: {version} (期望 {self.PROJECT_VERSION})"
                 )
+                try:
+                    from PySide6.QtWidgets import QMessageBox, QFileDialog
 
-            # 恢复配置
-            self._restore_config(project_data)
+                    msg = QMessageBox(self.gui)
+                    msg.setWindowTitle("项目版本不匹配")
+                    msg.setText(
+                        f"项目版本为 {version} ，与当前版本 {self.PROJECT_VERSION} 不一致。继续可能导致数据丢失或行为异常。"
+                    )
+                    msg.setDetailedText(json.dumps(project_data, indent=2, ensure_ascii=False))
+                    btn_continue = msg.addButton("继续", QMessageBox.AcceptRole)
+                    btn_discard = msg.addButton("取消", QMessageBox.RejectRole)
+                    btn_save = msg.addButton("另存为", QMessageBox.DestructiveRole)
+                    msg.exec()
+                    clicked = msg.clickedButton()
+                    if clicked == btn_discard:
+                        return False
+                    if clicked == btn_save:
+                        try:
+                            suggested = file_path.name
+                            save_path, _ = QFileDialog.getSaveFileName(
+                                self.gui,
+                                "另存项目文件",
+                                suggested,
+                                "MomentTransfer Project (*.mtproject);;All Files (*)",
+                            )
+                            if save_path:
+                                self._atomic_write_dict(Path(save_path), project_data)
+                        except Exception:
+                            logger.debug("版本不匹配时另存为失败", exc_info=True)
+                        # 继续加载原文件
+                except Exception:
+                    logger.debug("显示版本不匹配对话失败，继续加载", exc_info=True)
 
-            # 恢复数据文件
+            # 在尝试恢复前先清理现有的文件选择/映射与 GUI，避免把新项目合并到旧状态
+            try:
+                fsm = getattr(self.gui, "file_selection_manager", None)
+                if fsm is not None:
+                    # 重置 FSM 的映射和状态标志
+                    try:
+                        fsm.special_part_mapping_by_file = {}
+                        fsm.special_part_row_selection_by_file = {}
+                        fsm.file_part_selection_by_file = {}
+                        fsm.table_row_selection_by_file = {}
+                    except Exception:
+                        logger.debug("重置 file_selection_manager 映射失败（非致命）", exc_info=True)
+
+                    try:
+                        fsm._data_loaded = False
+                        fsm._config_loaded = False
+                        fsm._operation_performed = False
+                    except Exception:
+                        logger.debug("清理 file_selection_manager 状态失败（非致命）", exc_info=True)
+
+                # 清空主窗口上的相关缓存与控件
+                try:
+                    if hasattr(self.gui, "file_tree") and getattr(self.gui, "file_tree") is not None:
+                        try:
+                            self.gui.file_tree.clear()
+                        except Exception:
+                            logger.debug("清空 file_tree 失败（非致命）", exc_info=True)
+
+                    try:
+                        setattr(self.gui, "_file_tree_items", {})
+                    except Exception:
+                        logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
+
+                    # 清空 file_list_widget 子控件（若存在）
+                    flw = getattr(self.gui, "file_list_widget", None)
+                    if flw is not None and hasattr(flw, "layout"):
+                        try:
+                            l = flw.layout()
+                            if l is not None:
+                                while l.count():
+                                    it = l.takeAt(0)
+                                    w = it.widget()
+                                    if w is not None:
+                                        try:
+                                            w.setParent(None)
+                                        except Exception:
+                                            logger.debug("移除 file_list_widget 子控件失败（非致命）", exc_info=True)
+                        except Exception:
+                            logger.debug("清理 file_list_widget 布局失败（非致命）", exc_info=True)
+                except Exception:
+                    logger.debug("清空 GUI 文件树/缓存失败（非致命）", exc_info=True)
+            except Exception:
+                logger.debug("加载前清理文件选择/UI 失败（非致命）", exc_info=True)
+
+            # 尝试恢复配置（解析模型失败时向用户提示并给予选项）
+            try:
+                # 使用内部恢复方法，它会尝试创建 ProjectConfigModel
+                self._restore_config(project_data)
+            except Exception as e:
+                logger.error("恢复配置时发生异常: %s", e, exc_info=True)
+                try:
+                    from PySide6.QtWidgets import QMessageBox, QFileDialog
+
+                    msg = QMessageBox(self.gui)
+                    msg.setWindowTitle("项目解析失败")
+                    msg.setText("无法解析项目到内部模型，可能缺失字段或格式不兼容。")
+                    msg.setDetailedText(traceback.format_exc())
+                    btn_continue = msg.addButton("继续", QMessageBox.AcceptRole)
+                    btn_discard = msg.addButton("取消", QMessageBox.RejectRole)
+                    btn_save = msg.addButton("另存为", QMessageBox.DestructiveRole)
+                    msg.exec()
+                    clicked = msg.clickedButton()
+                    if clicked == btn_discard:
+                        return False
+                    if clicked == btn_save:
+                        try:
+                            suggested = file_path.name
+                            save_path, _ = QFileDialog.getSaveFileName(
+                                self.gui,
+                                "另存项目文件",
+                                suggested,
+                                "MomentTransfer Project (*.mtproject);;All Files (*)",
+                            )
+                            if save_path:
+                                self._atomic_write_dict(Path(save_path), project_data)
+                        except Exception:
+                            logger.debug("解析失败时另存为失败", exc_info=True)
+                    # 若选择继续，则继续后续恢复（尽管模型可能未能设置）
+                except Exception:
+                    logger.debug("显示解析失败对话失败，放弃加载", exc_info=True)
+                    return False
+
+            # 恢复数据文件和工作流程
             self._restore_data_files(project_data)
-
-            # 恢复工作流程步骤
             self._restore_workflow_step(project_data)
 
+            # 记录加载路径与状态
             self.current_project_file = file_path
             self.last_saved_state = project_data
+
+            try:
+                # 在加载成功后设置 UI 状态：标记为已加载且未被用户修改
+                try:
+                    if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                        try:
+                            self.gui.ui_state_manager.set_data_loaded(True)
+                        except Exception:
+                            pass
+                        try:
+                            self.gui.ui_state_manager.set_config_loaded(True)
+                        except Exception:
+                            pass
+                        try:
+                            self.gui.ui_state_manager.clear_user_modified()
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            self.gui.data_loaded = True
+                        except Exception:
+                            pass
+                        try:
+                            self.gui.config_loaded = True
+                        except Exception:
+                            pass
+                        try:
+                            self.gui.operation_performed = False
+                        except Exception:
+                            pass
+
+                    # 确保 project 相关按钮在加载完成后按初始化时的行为被启用
+                    try:
+                        setattr(self.gui, "_project_buttons_temporarily_disabled", False)
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(self.gui, "_refresh_controls_state"):
+                            try:
+                                self.gui._refresh_controls_state()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                except Exception:
+                    logger.debug("设置 UIStateManager 状态失败（非致命）", exc_info=True)
+
+                sb = getattr(self.gui, "signal_bus", None) or __import__("gui.signal_bus", fromlist=["SignalBus"]).SignalBus.instance()
+                try:
+                    sb.projectLoaded.emit(file_path)
+                except Exception:
+                    logger.debug("发射 projectLoaded 信号失败", exc_info=True)
+            except Exception:
+                logger.debug("获取 SignalBus 失败，无法发射 projectLoaded", exc_info=True)
 
             logger.info(f"项目已加载: {file_path}")
             return True
         except Exception as e:
-            logger.error("加载项目失败: %s", e)
+            logger.error("加载项目失败: %s", e, exc_info=True)
             return False
+
+    def load_project_async(self, file_path: Path, on_finished=None):
+        """在后台线程中异步加载项目，完成时触发回调。
+
+        Args:
+            file_path: 项目路径
+            on_finished: 可选回调，签名为 `func(success: bool, file_path: Path)`
+        """
+        if QThread is None:
+            res = self.load_project(file_path)
+            if callable(on_finished):
+                try:
+                    on_finished(res, Path(file_path))
+                except Exception:
+                    logger.debug("异步加载回调失败", exc_info=True)
+            return None
+
+        class _LoadWorker(QThread):
+            finished = Signal(bool, object)
+
+            def __init__(self, pm, path):
+                super().__init__()
+                self.pm = pm
+                self.path = Path(path)
+
+            def run(self):
+                try:
+                    result = self.pm.load_project(self.path)
+                except Exception:
+                    logger.exception("后台加载线程运行时异常")
+                    result = False
+                try:
+                    self.finished.emit(result, self.path)
+                except Exception:
+                    logger.debug("LoadWorker finished emit 失败", exc_info=True)
+
+        worker = _LoadWorker(self, file_path)
+
+        def _cleanup(success, fp):
+            try:
+                try:
+                    worker.deleteLater()
+                except Exception:
+                    pass
+                try:
+                    self._background_workers.remove(worker)
+                except Exception:
+                    pass
+                if callable(on_finished):
+                    try:
+                        on_finished(success, fp)
+                    except Exception:
+                        logger.debug("load on_finished 回调失败", exc_info=True)
+            except Exception:
+                logger.debug("后台加载清理失败", exc_info=True)
+
+        worker.finished.connect(_cleanup)
+        self._background_workers.append(worker)
+        worker.start()
+        return worker
 
     def _collect_current_state(self) -> Dict:
         """收集当前工作状态"""
@@ -270,11 +759,30 @@ class ProjectManager:
                 mappings = file_info.get("special_mappings", {})
                 row_sel = file_info.get("row_selection", [])
 
-                if file_path and mappings:
-                    fsm.special_part_mapping_by_file[file_path] = mappings
+                # 统一键格式为绝对解析路径的字符串，避免相对/Path 混用导致查找失败或重复
+                try:
+                    key = str(Path(file_path).resolve()) if file_path else None
+                except Exception:
+                    key = str(file_path) if file_path else None
 
-                if file_path and row_sel:
-                    fsm.table_row_selection_by_file[file_path] = set(row_sel)
+                if key and mappings:
+                    try:
+                        fsm.special_part_mapping_by_file[key] = mappings
+                    except Exception:
+                        # 回退：尝试直接写入原 key
+                        try:
+                            fsm.special_part_mapping_by_file[file_path] = mappings
+                        except Exception:
+                            pass
+
+                if key and row_sel:
+                    try:
+                        fsm.table_row_selection_by_file[key] = set(row_sel)
+                    except Exception:
+                        try:
+                            fsm.table_row_selection_by_file[file_path] = set(row_sel)
+                        except Exception:
+                            pass
 
             logger.info(f"已恢复 {len(data_files)} 个数据文件的配置")
             return True
