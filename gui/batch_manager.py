@@ -198,9 +198,8 @@ class BatchManager:
         self._quick_filter_column = None
         self._quick_filter_operator = None
         self._quick_filter_value = None
-        self._connect_signal_bus_events()
-        self._connect_quick_filter()
-        self._connect_ui_signals()
+        # 不在构造期间立即进行 UI 绑定（控件可能尚未创建），
+        # 绑定将在 InitializationManager 中在 UI 就绪后进行并可重试。
         # 监听特殊格式解析完成事件以刷新预览
         try:
             from gui.signal_bus import SignalBus

@@ -10,17 +10,23 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def connect_ui_signals(manager: Any) -> None:
-    """连接文件树与 UI 回调（由 BatchManager 委托调用）。"""
+def connect_ui_signals(manager: Any) -> bool:
+    """连接文件树与 UI 回调（由 BatchManager 委托调用）。
+
+    返回 True 表示至少建立了一次成功连接；返回 False 表示尚未建立任何连接。
+    仅在至少一次成功连接后才设置 manager._ui_signals_connected 为 True。
+    """
     try:
         if getattr(manager, "_ui_signals_connected", False):
-            return
+            return True
         gui = manager.gui
+        made_connection = False
         if hasattr(gui, "file_tree") and gui.file_tree is not None:
 
             def _connect_file_tree(
                 signal_name: str, handler_name: str
             ) -> None:
+                nonlocal made_connection
                 try:
                     bm = getattr(gui, "batch_manager", None) or manager
                     handler = getattr(bm, handler_name, None)
@@ -31,6 +37,7 @@ def connect_ui_signals(manager: Any) -> None:
                         return
                     try:
                         sig.connect(handler)
+                        made_connection = True
                     except Exception:
                         logger.debug(
                             f"连接 file_tree.{signal_name} 失败", exc_info=True
@@ -47,53 +54,66 @@ def connect_ui_signals(manager: Any) -> None:
                 "itemDoubleClicked", "_on_file_tree_item_clicked"
             )
             _connect_file_tree("itemChanged", "_on_file_tree_item_changed")
-        try:
-            setattr(manager, "_ui_signals_connected", True)
-        except Exception:
-            pass
+
+        if made_connection:
+            try:
+                setattr(manager, "_ui_signals_connected", True)
+            except Exception:
+                pass
+        return bool(made_connection)
     except Exception:
         logger.debug("connect_ui_signals 失败", exc_info=True)
+        return False
 
 
 def connect_signal_bus_events(manager: Any) -> None:
     """将 SignalBus 的配置/part 变更事件绑定到 manager 的刷新方法（仅注册一次）。"""
     try:
         if getattr(manager, "_bus_connected", False):
-            return
+            return True
         gui = manager.gui
         bus = getattr(gui, "signal_bus", None)
         if bus is None:
-            return
+            return False
         handler = getattr(manager, "_safe_refresh_file_statuses", None)
+        made = False
         if callable(handler):
             try:
                 bus.configLoaded.connect(handler)
+                made = True
             except Exception:
                 pass
             try:
                 bus.configApplied.connect(handler)
+                made = True
             except Exception:
                 pass
             try:
                 bus.partAdded.connect(handler)
+                made = True
             except Exception:
                 pass
             try:
                 bus.partRemoved.connect(handler)
+                made = True
             except Exception:
                 pass
-        try:
-            setattr(manager, "_bus_connected", True)
-        except Exception:
-            pass
+        if made:
+            try:
+                setattr(manager, "_bus_connected", True)
+            except Exception:
+                pass
+        return bool(made)
     except Exception:
         logger.debug("connect_signal_bus_events 失败", exc_info=True)
+        return False
 
 
 def connect_quick_filter(manager: Any) -> None:
     """连接快速筛选面板的变化信号到 manager 的回调。"""
     try:
         gui = manager.gui
+        made = False
         if hasattr(gui, "batch_panel") and hasattr(
             gui.batch_panel, "quickFilterChanged"
         ):
@@ -102,6 +122,7 @@ def connect_quick_filter(manager: Any) -> None:
                 try:
                     gui.batch_panel.quickFilterChanged.connect(handler)
                     logger.info("快速筛选信号连接成功")
+                    made = True
                 except Exception as e:
                     logger.error(f"连接快速筛选信号失败: {e}", exc_info=True)
             else:
@@ -109,11 +130,13 @@ def connect_quick_filter(manager: Any) -> None:
                     "快速筛选信号连接失败：manager 未提供 _on_quick_filter_changed 回调"
                 )
         else:
-            logger.warning(
+            logger.debug(
                 "快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在"
             )
+        return bool(made)
     except Exception:
         logger.debug("connect_quick_filter 失败", exc_info=True)
+        return False
 
 
 def safe_refresh_file_statuses(manager: Any, *args, **kwargs) -> None:

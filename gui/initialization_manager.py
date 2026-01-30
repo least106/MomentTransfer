@@ -94,8 +94,75 @@ class InitializationManager:
         self._is_initializing = True
         self._init_overlay = None
 
+    def _set_splitter_bottom_ratio(self, splitter: QSplitter, bottom_ratio: float) -> None:
+        """按比例设置 splitter 的上下部尺寸（bottom_ratio 为 0.0-1.0）。
+
+        为了避免在布局尚未完成时设置不合理的像素值，本函数会尝试即时计算并设置；
+        若可用高度为 0，则使用 `QTimer.singleShot(0, ...)` 在事件循环下一次机会重试。
+        """
+        try:
+            # 限制比例范围
+            try:
+                r = float(bottom_ratio)
+            except Exception:
+                r = 0.0
+            r = max(0.0, min(1.0, r))
+
+            def _apply():
+                try:
+                    total_h = splitter.size().height()
+                    # 回退：尝试从父窗口或主窗口获取高度
+                    if not total_h or total_h <= 0:
+                        try:
+                            total_h = splitter.parentWidget().height() or 0
+                        except Exception:
+                            total_h = 0
+                    if not total_h or total_h <= 0:
+                        try:
+                            total_h = self.main_window.height() or 0
+                        except Exception:
+                            total_h = 0
+
+                    # 若仍无法获取可靠高度，则使用相对权重设置以交由 Qt 布局管理
+                    if not total_h or total_h <= 0:
+                        # 使用 setStretchFactor 提供更稳健的行为
+                        try:
+                            splitter.setStretchFactor(0, 1)
+                            splitter.setStretchFactor(1, 0 if r <= 0.0 else 1)
+                        except Exception:
+                            pass
+                        return
+
+                    bottom_h = int(total_h * r)
+                    top_h = max(0, total_h - bottom_h)
+                    try:
+                        splitter.setSizes([top_h, bottom_h])
+                    except Exception:
+                        # 回退为权重设置
+                        try:
+                            splitter.setStretchFactor(0, 1)
+                            splitter.setStretchFactor(1, 0 if r <= 0.0 else 1)
+                        except Exception:
+                            pass
+                except Exception:
+                    # 在应用尺寸时若出现问题，不要抛出异常
+                    logger.debug("_apply splitter sizes failed", exc_info=True)
+
+            # 若当前可见尺寸为 0，则在事件循环下一次机会重试
+            cur_h = splitter.size().height()
+            if not cur_h or cur_h <= 0:
+                try:
+                    QTimer.singleShot(0, _apply)
+                except Exception:
+                    _apply()
+            else:
+                _apply()
+        except Exception:
+            logger.debug("_set_splitter_bottom_ratio failed", exc_info=True)
+
     def setup_ui(self):
         """初始化 UI 组件"""
+        # setup_ui invoked
         try:
             # 在开始初始化时显示一个遮罩，提示用户程序正在初始化
             try:
@@ -117,8 +184,24 @@ class InitializationManager:
             # 创建配置/操作面板
             config_panel = self.main_window.create_config_panel()
             operation_panel = self.main_window.create_operation_panel()
-            self.main_window.operation_panel = operation_panel
-            self.main_window.config_panel = config_panel
+            # 通过集中注册接口统一管理面板，避免在多处重复赋值
+            try:
+                if hasattr(self.main_window, "register_panel"):
+                    self.main_window.register_panel("config_panel", config_panel)
+                    self.main_window.register_panel("operation_panel", operation_panel)
+                else:
+                    self.main_window.config_panel = config_panel
+                    self.main_window.operation_panel = operation_panel
+            except Exception:
+                # 兼容回退：尽量设置属性并记录失败
+                try:
+                    self.main_window.config_panel = config_panel
+                except Exception:
+                    logger.debug("注册 config_panel 失败（非致命）", exc_info=True)
+                try:
+                    self.main_window.operation_panel = operation_panel
+                except Exception:
+                    logger.debug("注册 operation_panel 失败（非致命）", exc_info=True)
 
             # 创建历史存储与面板
             history_store = BatchHistoryStore()
@@ -154,11 +237,12 @@ class InitializationManager:
             bottom_layout.addWidget(config_panel, 1)
             bottom_layout.addWidget(history_panel, 0)
 
-            # 初始折叠（隐藏底部栏） — 同时将分割器下部高度设为 0
+            # 初始折叠（隐藏底部栏） — 使用比例设置分割器大小以提高跨分辨率/字体的稳健性
             bottom_bar.setVisible(False)
             splitter.addWidget(bottom_bar)
             try:
-                splitter.setSizes([1000, 0])
+                # 使用 0.0 的底部占比以折叠底部栏（在布局完成后会应用）
+                self._set_splitter_bottom_ratio(splitter, 0.0)
             except Exception:
                 logger.debug("设置分割器初始大小失败（可忽略）", exc_info=True)
 
@@ -170,7 +254,16 @@ class InitializationManager:
 
             self.main_window.config_sidebar = config_sidebar
             self.main_window.history_sidebar = history_sidebar
-            self.main_window.operation_panel = operation_panel
+            try:
+                if hasattr(self.main_window, "register_panel"):
+                    self.main_window.register_panel("operation_panel", operation_panel)
+                else:
+                    self.main_window.operation_panel = operation_panel
+            except Exception:
+                try:
+                    self.main_window.operation_panel = operation_panel
+                except Exception:
+                    logger.debug("注册 operation_panel 回退失败（非致命）", exc_info=True)
             self.main_window.central_widget = central_widget
 
             # 将分割器加入主布局（包含 operation_panel 与 bottom_bar）
@@ -185,7 +278,8 @@ class InitializationManager:
                         if bool(visible):
                             # 展开到合理默认高度
                             try:
-                                splitter.setSizes([800, 200])
+                                # 使用约 20% 的底部高度作为默认展开比例
+                                self._set_splitter_bottom_ratio(splitter, 0.2)
                             except Exception:
                                 logger.debug(
                                     "展开底部栏时调整分割器大小失败（非致命）",
@@ -193,7 +287,7 @@ class InitializationManager:
                                 )
                         else:
                             try:
-                                splitter.setSizes([1000, 0])
+                                self._set_splitter_bottom_ratio(splitter, 0.0)
                             except Exception:
                                 logger.debug(
                                     "折叠底部栏时调整分割器大小失败（非致命）",
@@ -279,6 +373,61 @@ class InitializationManager:
                 logger.debug("绑定批处理历史失败", exc_info=True)
 
             logger.info("所有管理器初始化成功")
+            # 尝试绑定 BatchManager 的 UI 相关信号（若 UI 尚未就绪则重试）
+            try:
+                def _bind_once() -> bool:
+                    try:
+                        bm = getattr(self.main_window, "batch_manager", None)
+                        if bm is None:
+                            return False
+                        made = False
+                        try:
+                            if hasattr(bm, "_connect_ui_signals"):
+                                res = bm._connect_ui_signals()
+                                made = made or bool(res)
+                        except Exception:
+                            logger.debug("在 bind_once 中连接 UI 信号失败（非致命）", exc_info=True)
+                        try:
+                            if hasattr(bm, "_connect_quick_filter"):
+                                res = bm._connect_quick_filter()
+                                made = made or bool(res)
+                        except Exception:
+                            logger.debug("在 bind_once 中连接快速筛选失败（非致命）", exc_info=True)
+                        try:
+                            if hasattr(bm, "_connect_signal_bus_events"):
+                                res = bm._connect_signal_bus_events()
+                                made = made or bool(res)
+                        except Exception:
+                            logger.debug("在 bind_once 中连接 signal bus 失败（非致命）", exc_info=True)
+                        return bool(made)
+                    except Exception:
+                        logger.debug("批处理 UI 绑定单次尝试内部异常", exc_info=True)
+                        return False
+
+                def _attempt_bind(attempt_index: int = 0) -> None:
+                    try:
+                        if _bind_once():
+                            logger.info("批处理 UI 绑定成功")
+                            return
+                        # 重试上限与指数回退延迟
+                        delays = [0, 50, 150, 300, 600, 800]
+                        if attempt_index >= len(delays) - 1:
+                            logger.debug("批处理 UI 绑定尝试达到上限，停止重试")
+                            return
+                        delay = delays[min(attempt_index + 1, len(delays) - 1)]
+                        try:
+                            QTimer.singleShot(delay, lambda: _attempt_bind(attempt_index + 1))
+                        except Exception:
+                            logger.debug("调度批处理 UI 绑定重试失败（非致命）", exc_info=True)
+                    except Exception:
+                        logger.debug("批处理 UI 绑定尝试内部异常", exc_info=True)
+
+                try:
+                    _attempt_bind(0)
+                except Exception:
+                    logger.debug("启动批处理 UI 绑定重试序列失败（非致命）", exc_info=True)
+            except Exception:
+                logger.debug("调度批处理 UI 绑定流程失败（非致命）", exc_info=True)
             # 绑定：当用户在输入框直接输入路径并完成编辑时，触发扫描和控件启用状态更新
             try:
                 bp = getattr(self.main_window, "inp_batch_input", None)
@@ -396,36 +545,111 @@ class InitializationManager:
 
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
+        # 使用事件驱动的重试策略替代固定短延迟：在 managers 与关键组件就绪后再解除初始化保护。
+        # 这样可以避免在慢机或 I/O 慢时过早解除初始化或反之长时间保持锁定。
 
-        def _finalize():
-            self._is_initializing = False
-            self.main_window._is_initializing = False
+        # 判断是否可以完成初始化的条件：主窗口上的关键管理器存在
+        def _is_ready():
             try:
-                self._hide_initializing_overlay()
+                mw = self.main_window
+                required = (
+                    getattr(mw, "config_manager", None),
+                    getattr(mw, "part_manager", None),
+                    getattr(mw, "batch_manager", None),
+                    getattr(mw, "layout_manager", None),
+                )
+                # 若至少一个 manager 缺失，则认为尚未就绪
+                return all(x is not None for x in required)
             except Exception:
-                logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
-            # 初始化完成后启用 `新建`/`打开` 按钮，但让保存按钮继续由 UIStateManager 控制
+                return False
+
+        start_time = None
+
+        def _attempt_finalize():
+            nonlocal start_time
             try:
-                setattr(self.main_window, "_project_buttons_temporarily_disabled", False)
-                for btn_name in ("btn_new_project", "btn_open_project"):
-                    btn = getattr(self.main_window, btn_name, None)
-                    if btn is not None:
+                from time import monotonic
+
+                if start_time is None:
+                    start_time = monotonic()
+                # 如果满足就绪条件或超过最大等待时间（5s），都执行 finalize
+                elapsed = monotonic() - start_time
+                max_wait = 5.0
+                if _is_ready() or elapsed >= max_wait:
+                    try:
+                        self._is_initializing = False
+                        self.main_window._is_initializing = False
                         try:
-                            btn.setEnabled(True)
+                            self._hide_initializing_overlay()
                         except Exception:
-                            logger.debug("启用按钮 %s 失败", btn_name, exc_info=True)
-                # 刷新控件状态，让 managers 中的逻辑决定保存按钮是否可用（基于 is_operation_performed()）
-                try:
-                    if hasattr(self.main_window, "_refresh_controls_state"):
-                        self.main_window._refresh_controls_state()
-                except Exception:
-                    logger.debug("刷新控件状态失败（非致命）", exc_info=True)
-            except Exception:
-                logger.debug("初始化完成后启用 project 按钮失败", exc_info=True)
-            logger.debug("初始化完成")
+                            logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
+                        # 初始化完成后启用 `新建`/`打开` 按钮，但让保存按钮继续由 UIStateManager 控制
+                        try:
+                            setattr(self.main_window, "_project_buttons_temporarily_disabled", False)
+                            for btn_name in ("btn_new_project", "btn_open_project"):
+                                btn = getattr(self.main_window, btn_name, None)
+                                if btn is not None:
+                                    try:
+                                        btn.setEnabled(True)
+                                    except Exception:
+                                        logger.debug("启用按钮 %s 失败", btn_name, exc_info=True)
+                            # 刷新控件状态，让 managers 中的逻辑决定保存按钮是否可用（基于 is_operation_performed()）
+                            try:
+                                if hasattr(self.main_window, "_refresh_controls_state"):
+                                    self.main_window._refresh_controls_state()
+                            except Exception:
+                                logger.debug("刷新控件状态失败（非致命）", exc_info=True)
+                        except Exception:
+                            logger.debug("初始化完成后启用 project 按钮失败", exc_info=True)
+                        logger.debug("初始化完成 (elapsed=%.3fs)", elapsed)
+                        return
+                    except Exception:
+                        logger.debug("执行 finalize 操作时失败（非致命）", exc_info=True)
 
-        # 延迟完成标志，避免 showEvent 期间的弹窗
-        QTimer.singleShot(150, _finalize)
+                # 否则：还未就绪，使用指数回退的定时再次尝试（上限 800ms）
+                # initial 0ms -> 50ms -> 150ms -> 300ms -> 600ms -> 800ms ...
+                # 使用 elapsed 决定下次延迟
+                if elapsed < 0.05:
+                    delay = 0
+                elif elapsed < 0.2:
+                    delay = 50
+                elif elapsed < 0.6:
+                    delay = 150
+                elif elapsed < 1.2:
+                    delay = 300
+                elif elapsed < 2.5:
+                    delay = 600
+                else:
+                    delay = 800
+
+                try:
+                    QTimer.singleShot(delay, _attempt_finalize)
+                except Exception:
+                    # 若调度失败，记录并在 150ms 后尽力完成以避免永久阻塞
+                    logger.debug("调度后续 finalize 尝试失败，使用后备单次延迟", exc_info=True)
+                    try:
+                        QTimer.singleShot(150, _attempt_finalize)
+                    except Exception:
+                        # 最终兜底：立即尝试
+                        _attempt_finalize()
+            except Exception:
+                logger.debug("finalize_initialization 内部调度失败", exc_info=True)
+
+        # 立即尝试一次（非阻塞）
+        try:
+            _attempt_finalize()
+        except Exception:
+            logger.debug("启动 finalize_initialization 过程失败，退回到固定延迟解除初始化", exc_info=True)
+            try:
+                QTimer.singleShot(150, lambda: setattr(self.main_window, "_is_initializing", False))
+                QTimer.singleShot(150, lambda: setattr(self, "_is_initializing", False))
+            except Exception:
+                # 如果也失败，则立即解除以避免界面永久被锁定
+                try:
+                    self.main_window._is_initializing = False
+                    self._is_initializing = False
+                except Exception:
+                    pass
 
     def _setup_menu_bar(self):
         """创建工具栏（伪菜单栏）"""

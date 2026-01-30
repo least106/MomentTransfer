@@ -91,26 +91,101 @@ class IntegratedAeroGUI(QMainWindow):
         self.batch_manager = None
         self.layout_manager = None
 
-        # UI 状态标志（不再直接作为权威来源；通过属性代理到 UIStateManager）
-        # 兼容层：当 UIStateManager 不可用时使用本地回退字段
-        self._legacy_data_loaded = False
-        self._legacy_config_loaded = False
-        self._legacy_operation_performed = False
+        # 面板注册表：集中管理面板实例，避免多处重复赋值
+        self._panels = {}
+        # 继续执行剩余的初始化逻辑（因代码结构调整，这里调用专用方法完成）
+        try:
+            # 延迟调用，以便下面定义的方法可用
+            self._finish_init()
+        except Exception:
+            logger.debug("_finish_init 调用失败（非致命）", exc_info=True)
 
-        # 新管理器
-        self.initialization_manager = InitializationManager(self)
-        self.event_manager = EventManager(self)
+    def register_panel(self, name: str, widget, *, overwrite: bool = False) -> None:
+        """集中注册面板并在需要时警告重复赋值。
 
-        # 本地状态消息优先级（更高优先级不会被低优先级覆盖）
-        self._status_priority = 0
-        self._status_clear_timer = None
-        self._status_token = None
+        - `name` 是属性名（例如 'operation_panel' 或 'config_panel'）。
+        - 若已有同名面板且 `overwrite` 为 False，则记录警告并保持原值。
+        - 同时以属性形式保留向后兼容性（`self.<name>`）。
+        """
+        try:
+            if not name or not isinstance(name, str):
+                return
+            existing = self._panels.get(name, None)
+            if existing is not None and not overwrite:
+                logger.warning(
+                    "attempt to re-register panel '%s' ignored (existing=%r)",
+                    name,
+                    type(existing),
+                )
+                return
+            # 保存到 registry 并设置为属性以保持兼容
+            self._panels[name] = widget
+            try:
+                setattr(self, name, widget)
+            except Exception:
+                logger.debug("无法将面板 %s 设置为属性（非致命）", name, exc_info=True)
+        except Exception:
+            logger.debug("register_panel failed for %s", name, exc_info=True)
 
-        # 执行初始化
-        self.initialization_manager.setup_ui()
-        self.initialization_manager.setup_managers()
-        self.initialization_manager.setup_logging()
-        self.initialization_manager.bind_post_ui_signals()
+    def _finish_init(self):
+        """Finish initialization steps extracted from original __init__."""
+        # 简化与稳定化的初始化序列：保持最小防护以减少嵌套 try/except 导致的缩进错误。
+        # 设定兼容回退字段与管理器引用
+        try:
+            self._legacy_data_loaded = False
+            self._legacy_config_loaded = False
+            self._legacy_operation_performed = False
+            self.initialization_manager = InitializationManager(self)
+            self.event_manager = EventManager(self)
+            self._status_priority = 0
+            self._status_clear_timer = None
+            self._status_token = None
+        except Exception:
+            logger.debug("setting basic init fields failed", exc_info=True)
+
+        # 调用 setup_ui 并保证异常被记录，但不阻止后续步骤
+        try:
+            self.initialization_manager.setup_ui()
+        except Exception:
+            logger.exception("InitializationManager.setup_ui() failed")
+
+        for name in ("setup_managers", "setup_logging", "bind_post_ui_signals"):
+            try:
+                fn = getattr(self.initialization_manager, name, None)
+                if callable(fn):
+                    fn()
+            except Exception:
+                logger.debug(f"{name} failed (non-fatal)", exc_info=True)
+
+        # 回退：确保至少有一个 central widget
+        try:
+            if not bool(self.centralWidget()):
+                from PySide6.QtWidgets import QWidget, QVBoxLayout
+
+                fallback = QWidget()
+                try:
+                    fallback.setLayout(QVBoxLayout())
+                except Exception:
+                    pass
+                try:
+                    self.setCentralWidget(fallback)
+                except Exception:
+                    try:
+                        self.central_widget = fallback
+                    except Exception:
+                        logger.debug("无法设置回退 central_widget", exc_info=True)
+                try:
+                    if getattr(self, "initialization_manager", None):
+                        try:
+                            self.initialization_manager._hide_initializing_overlay()
+                        except Exception:
+                            logger.debug("回退时隐藏初始化遮罩失败", exc_info=True)
+                except Exception:
+                    pass
+                logger.info("已创建回退 central_widget 以避免空白界面")
+        except Exception:
+            logger.debug("post-init central_widget diagnostic failed", exc_info=True)
+
 
         # 连接 SignalBus 的统一状态消息信号，用于协调各处的状态提示
         try:
@@ -148,6 +223,16 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self._is_initializing = False
             try:
+                # 隐藏可能残留的初始化遮罩（某些启动路径会在 InitializationManager 中创建遮罩）
+                try:
+                    if getattr(self, "initialization_manager", None):
+                        try:
+                            self.initialization_manager._hide_initializing_overlay()
+                        except Exception:
+                            logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
+                except Exception:
+                    logger.debug("尝试隐藏初始化遮罩时发生错误（非致命）", exc_info=True)
+
                 if getattr(self, "_pending_init_notifications", None):
                     self._flush_init_notifications()
             except Exception:
@@ -159,38 +244,52 @@ class IntegratedAeroGUI(QMainWindow):
         """在初始化完成后展示或记录在初始化期间积累的通知。"""
         try:
             pending = getattr(self, "_pending_init_notifications", None) or []
+            remaining = []
             for item in pending:
                 try:
                     summary, details, duration_ms, button_text = item
-                    try:
-                        try:
-                            sb = None
-                            try:
-                                sb = self.statusBar()
-                            except Exception:
-                                sb = None
-                            if self.isVisible() and sb is not None:
-                                try:
-                                    self.notify_nonmodal(
-                                        summary=summary,
-                                        details=details,
-                                        duration_ms=duration_ms,
-                                        button_text=button_text,
-                                    )
-                                    continue
-                                except Exception:
-                                    logger.debug("显示初始化通知失败，回退为日志记录", exc_info=True)
-                        except Exception:
-                            logger.debug("检查窗口可见性/状态栏失败（非致命）", exc_info=True)
-                    except Exception:
-                        logger.debug("处理初始化通知判断失败（非致命）", exc_info=True)
-                    logger.error("初始化期间异常: %s", details)
                 except Exception:
-                    logger.debug("处理挂起通知时失败（非致命）", exc_info=True)
+                    # 非法条目跳过并记录
+                    logger.debug("初始化通知条目格式非法，已跳过: %r", item)
+                    continue
+
+                try:
+                    sb = None
+                    try:
+                        sb = self.statusBar()
+                    except Exception:
+                        sb = None
+
+                    # 仅当窗口可见且 statusBar 可用时直接展示
+                    if self.isVisible() and sb is not None:
+                        try:
+                            self.notify_nonmodal(
+                                summary=summary,
+                                details=details,
+                                duration_ms=duration_ms,
+                                button_text=button_text,
+                            )
+                            # 已展示，跳过重试队列
+                            continue
+                        except Exception:
+                            logger.debug("显示初始化通知失败，回退为日志记录", exc_info=True)
+
+                    # 若无法展示，保留到 remaining 以便稍后在 showEvent 中重试
+                    remaining.append(item)
+                except Exception:
+                    # 若处理单条通知时发生不可预期的错误，记录并继续处理其他条目
+                    logger.debug("处理挂起通知时发生错误（非致命）", exc_info=True)
+
+            # 将未能展示的通知保留在队列中，避免丢失；限制队列长度以防内存无限增长
             try:
-                self._pending_init_notifications = []
+                max_keep = 50
+                if len(remaining) > max_keep:
+                    logger.warning("初始化通知队列过长（%d），丢弃最旧的 %d 条。", len(remaining), len(remaining) - max_keep)
+                    remaining = remaining[-max_keep:]
+                self._pending_init_notifications = remaining
             except Exception:
-                pass
+                # 最后兜底：若无法修改属性，记录并清空局部变量
+                logger.debug("无法更新 _pending_init_notifications 引用（非致命）", exc_info=True)
         except Exception:
             logger.debug("刷新初始化通知队列失败（非致命）", exc_info=True)
 
@@ -1531,9 +1630,50 @@ class IntegratedAeroGUI(QMainWindow):
         return super().resizeEvent(event)
 
     def showEvent(self, event):
-        """在窗口首次显示后触发初始化"""
+        """在窗口首次显示后触发初始化（简化版：移除诊断输出）"""
+        try:
+            init_mgr = getattr(self, "initialization_manager", None)
+            if init_mgr is not None:
+                overlay = getattr(init_mgr, "_init_overlay", None)
+                if overlay is not None:
+                    try:
+                        init_mgr._hide_initializing_overlay()
+                    except Exception:
+                        try:
+                            # 兜底尝试再次隐藏
+                            init_mgr._hide_initializing_overlay()
+                        except Exception:
+                            pass
+            # 若 central_widget 属性尚未回填，则尝试回填为 Qt 层的 centralWidget()
+            try:
+                cw_attr = getattr(self, "central_widget", None)
+                try:
+                    cw_qt = self.centralWidget()
+                except Exception:
+                    cw_qt = None
+                if cw_attr is None and cw_qt is not None:
+                    try:
+                        self.central_widget = cw_qt
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         if hasattr(self, "event_manager") and self.event_manager:
             self.event_manager.on_show_event(event)
+
+        # 尝试展示在初始化期间积累的通知（若有）
+        try:
+            if getattr(self, "_pending_init_notifications", None):
+                try:
+                    self._flush_init_notifications()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         return super().showEvent(event)
 
     def closeEvent(self, event):
