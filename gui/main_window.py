@@ -91,10 +91,11 @@ class IntegratedAeroGUI(QMainWindow):
         self.batch_manager = None
         self.layout_manager = None
 
-        # UI 状态标志
-        self.data_loaded = False
-        self.config_loaded = False
-        self.operation_performed = False
+        # UI 状态标志（不再直接作为权威来源；通过属性代理到 UIStateManager）
+        # 兼容层：当 UIStateManager 不可用时使用本地回退字段
+        self._legacy_data_loaded = False
+        self._legacy_config_loaded = False
+        self._legacy_operation_performed = False
 
         # 新管理器
         self.initialization_manager = InitializationManager(self)
@@ -340,20 +341,87 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("set_config_panel_visible failed", exc_info=True)
 
+    # 属性代理：将局部标志代理到 `UIStateManager`，使 `UIStateManager` 成为单一可信来源。
+    @property
+    def data_loaded(self) -> bool:
+        try:
+            if getattr(self, "ui_state_manager", None):
+                try:
+                    return bool(self.ui_state_manager.is_data_loaded())
+                except Exception:
+                    return bool(getattr(self, "_legacy_data_loaded", False))
+            return bool(getattr(self, "_legacy_data_loaded", False))
+        except Exception:
+            return False
+
+    @data_loaded.setter
+    def data_loaded(self, val: bool) -> None:
+        try:
+            if getattr(self, "ui_state_manager", None):
+                try:
+                    self.ui_state_manager.set_data_loaded(bool(val))
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.set_data_loaded failed in setter", exc_info=True)
+            self._legacy_data_loaded = bool(val)
+        except Exception:
+            logger.debug("setting data_loaded failed", exc_info=True)
+
+    @property
+    def config_loaded(self) -> bool:
+        try:
+            if getattr(self, "ui_state_manager", None):
+                try:
+                    return bool(self.ui_state_manager.is_config_loaded())
+                except Exception:
+                    return bool(getattr(self, "_legacy_config_loaded", False))
+            return bool(getattr(self, "_legacy_config_loaded", False))
+        except Exception:
+            return False
+
+    @config_loaded.setter
+    def config_loaded(self, val: bool) -> None:
+        try:
+            if getattr(self, "ui_state_manager", None):
+                try:
+                    self.ui_state_manager.set_config_loaded(bool(val))
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.set_config_loaded failed in setter", exc_info=True)
+            self._legacy_config_loaded = bool(val)
+        except Exception:
+            logger.debug("setting config_loaded failed", exc_info=True)
+
+    @property
+    def operation_performed(self) -> bool:
+        try:
+            if getattr(self, "ui_state_manager", None):
+                try:
+                    return bool(self.ui_state_manager.is_operation_performed())
+                except Exception:
+                    return bool(getattr(self, "_legacy_operation_performed", False))
+            return bool(getattr(self, "_legacy_operation_performed", False))
+        except Exception:
+            return False
+
+    @operation_performed.setter
+    def operation_performed(self, val: bool) -> None:
+        try:
+            if getattr(self, "ui_state_manager", None):
+                try:
+                    # UIStateManager 负责集中状态并触发 UI 刷新
+                    self.ui_state_manager.set_operation_performed(bool(val))
+                    return
+                except Exception:
+                    logger.debug("ui_state_manager.set_operation_performed failed in setter", exc_info=True)
+            self._legacy_operation_performed = bool(val)
+        except Exception:
+            logger.debug("setting operation_performed failed", exc_info=True)
+
     def mark_data_loaded(self) -> None:
         """标记已加载数据文件并刷新控件状态"""
         try:
-            # 委托给 UIStateManager 以集中管理状态变化
-            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
-                try:
-                    self.ui_state_manager.set_data_loaded(True)
-                    return
-                except Exception:
-                    logger.debug(
-                        "ui_state_manager.set_data_loaded 调用失败，回退到直接设置",
-                        exc_info=True,
-                    )
-
+            # 统一入口：通过属性写入（属性会代理到 UIStateManager 或回退字段）
             self.data_loaded = True
             self._refresh_controls_state()
         except Exception:
@@ -362,16 +430,7 @@ class IntegratedAeroGUI(QMainWindow):
     def mark_config_loaded(self) -> None:
         """标记已加载配置并刷新控件状态"""
         try:
-            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
-                try:
-                    self.ui_state_manager.set_config_loaded(True)
-                    return
-                except Exception:
-                    logger.debug(
-                        "ui_state_manager.set_config_loaded 调用失败，回退到直接设置",
-                        exc_info=True,
-                    )
-
+            # 统一入口：通过属性写入（属性会代理到 UIStateManager 或回退字段）
             self.config_loaded = True
             self._refresh_controls_state()
         except Exception:
@@ -383,16 +442,7 @@ class IntegratedAeroGUI(QMainWindow):
         与 data_loaded/config_loaded 区分，避免仅加载即启用保存。
         """
         try:
-            if hasattr(self, "ui_state_manager") and self.ui_state_manager:
-                try:
-                    self.ui_state_manager.mark_user_modified()
-                    return
-                except Exception:
-                    logger.debug(
-                        "ui_state_manager.mark_user_modified 调用失败，回退到直接设置",
-                        exc_info=True,
-                    )
-
+            # 统一入口：通过属性写入（属性会代理到 UIStateManager 或回退字段）
             self.operation_performed = True
             self._refresh_controls_state()
         except Exception:

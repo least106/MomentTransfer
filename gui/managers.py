@@ -13,6 +13,7 @@ from typing import Dict, Optional
 from PySide6.QtWidgets import QWidget
 
 import logging
+import functools
 
 _logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ def _report_ui_exception(parent: QWidget, context: str, exc_info=True):
                 pass
         except Exception:
             pass
+
         if parent is not None and hasattr(parent, "statusBar"):
             try:
                 sb = parent.statusBar()
@@ -51,6 +53,44 @@ def _report_ui_exception(parent: QWidget, context: str, exc_info=True):
                 pass
     except Exception:
         pass
+
+
+def report_exceptions(context: str = None):
+    """装饰器：包装方法，在捕获异常时记录并向 UI 报告，而不是静默吞掉。
+
+    使用示例：
+        @report_exceptions("标记 skipped rows 失败")
+        def mark_skipped_rows(...):
+            ...
+    """
+    def deco(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                try:
+                    # 尝试从实例中获取 parent 以进行 UI 报告
+                    parent = None
+                    if len(args) >= 1:
+                        inst = args[0]
+                        parent = getattr(inst, "parent", None)
+                    msg = context or f"{func.__name__} 执行失败"
+                    _report_ui_exception(parent, msg, exc_info=True)
+                except Exception:
+                    try:
+                        _logger.exception("report_exceptions failed while reporting")
+                    except Exception:
+                        pass
+                # 仍记录异常到日志（供开发定位）
+                try:
+                    _logger.exception(f"Exception in {func.__name__}")
+                except Exception:
+                    pass
+                # 返回 None 或适当的默认值以保持向后兼容（多数调用者忽略返回值）
+                return None
+        return wrapper
+    return deco
 
 
 def normalize_path_key(p):
@@ -99,11 +139,12 @@ class FileSelectionManager:
     # ---- skipped rows API ----
     def mark_skipped_rows(self, file_path: Path, rows) -> None:
         """标记指定文件的多行为跳过（rows 可以是可迭代的索引）。"""
-        try:
-            key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
-        except Exception:
-            key = str(file_path)
-        try:
+        @report_exceptions("标记 skipped rows 失败")
+        def _impl(file_path, rows):
+            try:
+                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+            except Exception:
+                key = str(file_path)
             existing = self.skipped_rows_by_file.get(key) or set()
             existing = set(existing)
             existing.update(set(rows or []))
@@ -112,16 +153,17 @@ class FileSelectionManager:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
                 _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败")
-        except Exception:
-            _report_ui_exception(self.parent, "标记 skipped rows 失败")
+
+        return _impl(file_path, rows)
 
     def clear_skipped_rows(self, file_path: Path, rows=None) -> None:
         """清除指定文件的跳过行；若 rows 为 None 则清空所有跳过行。"""
-        try:
-            key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
-        except Exception:
-            key = str(file_path)
-        try:
+        @report_exceptions("清理 skipped rows 失败")
+        def _impl(file_path, rows=None):
+            try:
+                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+            except Exception:
+                key = str(file_path)
             if rows is None:
                 self.skipped_rows_by_file.pop(key, None)
             else:
@@ -137,25 +179,25 @@ class FileSelectionManager:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
                 _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（清理）")
-        except Exception:
-            _report_ui_exception(self.parent, "清理 skipped rows 失败")
+
+        return _impl(file_path, rows)
 
     def get_skipped_rows(self, file_path: Path):
         """返回指定文件的跳过行集合（set）或 None。"""
-        try:
-            key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
-        except Exception:
-            key = str(file_path)
-        try:
+        @report_exceptions("读取 skipped rows 失败")
+        def _impl(file_path):
+            try:
+                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+            except Exception:
+                key = str(file_path)
             s = self.skipped_rows_by_file.get(key)
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
                 _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（读取）")
             return set(s) if s is not None else None
-        except Exception:
-            _report_ui_exception(self.parent, "读取 skipped rows 失败")
-            return None
+
+        return _impl(file_path)
 
     def ensure_special_row_selection_storage(
         self, file_path: Path, part_names: list
@@ -164,7 +206,8 @@ class FileSelectionManager:
 
         返回 by_part dict（可被调用方修改）。
         """
-        try:
+        @report_exceptions("ensure_special_row_selection_storage 失败")
+        def _impl(file_path, part_names):
             by_file = self.special_part_row_selection_by_file or {}
             key = None
             try:
@@ -186,19 +229,19 @@ class FileSelectionManager:
             except Exception:
                 _report_ui_exception(self.parent, "同步 special_part_row_selection_by_file 到父窗口失败")
             return by_part
-        except Exception:
-            _report_ui_exception(self.parent, "ensure_special_row_selection_storage 失败")
-            return {}
+
+        return _impl(file_path, part_names)
 
     def open_quick_select_dialog(self) -> None:
         """打开快速选择对话框（委托给 GUI 的 QuickSelectDialog）。"""
-        try:
+        @report_exceptions("打开快速选择对话失败")
+        def _impl():
             from gui.quick_select_dialog import QuickSelectDialog
 
             dlg = QuickSelectDialog(self, parent=self.parent)
             dlg.exec()
-        except Exception:
-            _report_ui_exception(self.parent, "打开快速选择对话失败")
+
+        return _impl()
 
 
 class ModelManager:
@@ -899,10 +942,11 @@ class UIStateManager:
 
     def set_config_panel_visible(self, visible: bool) -> None:
         # 直接实现显示/隐藏配置编辑器的行为，避免递归委托到主窗口同名方法。
-        try:
+        @report_exceptions("切换配置面板可见性失败")
+        def _impl(vis: bool):
             sidebar = getattr(self.parent, "config_sidebar", None)
             if sidebar is not None:
-                if visible:
+                if vis:
                     sidebar.show_panel()
                 else:
                     sidebar.hide_panel()
@@ -914,18 +958,18 @@ class UIStateManager:
                 func = getattr(self.parent, "_set_config_panel_visible", None)
                 if callable(func):
                     try:
-                        func(visible)
+                        func(vis)
                     except Exception:
                         pass
                 return
 
-            panel.setVisible(bool(visible))
+            panel.setVisible(bool(vis))
             try:
                 # 兼容旧版使用的 splitter 属性，避免未定义的全局变量引用
                 parent_splitter = getattr(self.parent, "splitter", None)
                 if parent_splitter is not None:
                     try:
-                        if visible:
+                        if vis:
                             parent_splitter.setSizes([1, 3])
                         else:
                             parent_splitter.setSizes([0, 1])
@@ -940,13 +984,13 @@ class UIStateManager:
                     self.parent._force_layout_refresh()
             except Exception:
                 pass
-        except Exception:
-            # 静默失败以免在初始化阶段中断流程
-            return
+
+        return _impl(visible)
 
     def set_controls_locked(self, locked: bool) -> None:
         # 支持嵌套锁定：使用计数器来避免竞态或重复释放导致的状态不一致
-        try:
+        @report_exceptions("设置控件锁定状态失败")
+        def _impl(locked: bool):
             if bool(locked):
                 # 增加锁计数，只有由0->1时才真正禁用控件
                 try:
@@ -997,14 +1041,17 @@ class UIStateManager:
                         pass
             except Exception:
                 pass
-        except Exception:
-            # 回退到父对象的实现（如果存在且非递归）
+
+        res = _impl(locked)
+        if res is None:
+            # 若上层发生异常，尝试回退到父窗口实现以保持尽量的兼容性
             try:
                 func = getattr(self.parent, "_set_controls_locked", None)
                 if callable(func):
                     func(locked)
             except Exception:
                 pass
+        return res
 
     def refresh_controls_state(self) -> None:
         """集中刷新所有控件的启用/禁用状态。
