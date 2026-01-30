@@ -26,6 +26,7 @@ tools/
 *pylint*
 *flake8*
 patches/
+.cursor/
 
 # Packaging / build artifacts
 build/
