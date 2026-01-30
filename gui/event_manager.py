@@ -62,8 +62,47 @@ class EventManager:
     def on_close_event(self, event):
         """处理窗口关闭事件"""
         try:
-            # 如果批处理正在进行中，先停止它
-            batch_thread = getattr(self.main_window, "batch_thread", None)
+            # UX: 在关闭前确认是否有未保存的改动，优雅询问用户
+            try:
+                mw = self.main_window
+                has_unsaved = False
+                try:
+                    func_has = getattr(mw, "_has_unsaved_changes", None)
+                    if callable(func_has):
+                        has_unsaved = bool(func_has())
+                except Exception:
+                    has_unsaved = False
+
+                if has_unsaved:
+                    func_confirm = getattr(mw, "_confirm_save_discard_cancel", None)
+                    if callable(func_confirm):
+                        proceed = False
+                        try:
+                            proceed = bool(func_confirm("关闭窗口前是否保存更改？"))
+                        except Exception:
+                            proceed = False
+                        if not proceed:
+                            try:
+                                if event is not None and hasattr(event, "ignore"):
+                                    event.ignore()
+                            except Exception:
+                                pass
+                            return
+            except Exception:
+                # 忽略此处错误，继续后续关闭流程
+                logger.debug("关闭前未保存检查失败（非致命）", exc_info=True)
+
+            # 优先从 main_window.batch_manager 找到 batch_thread，然后回退到 main_window.batch_thread
+            batch_thread = None
+            try:
+                bm = getattr(self.main_window, "batch_manager", None)
+                if bm is not None:
+                    batch_thread = getattr(bm, "batch_thread", None)
+            except Exception:
+                batch_thread = None
+            if batch_thread is None:
+                batch_thread = getattr(self.main_window, "batch_thread", None)
+
             if batch_thread is not None and batch_thread.isRunning():
                 try:
                     batch_thread.request_stop()

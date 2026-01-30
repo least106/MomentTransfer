@@ -263,7 +263,10 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
 def request_cancel_batch(manager):
     """请求取消正在运行的批处理任务（由 main_window 或 BatchManager 调用）。"""
     try:
-        batch_thread = getattr(manager.gui, "batch_thread", None)
+        # 优先检查 manager 本身是否持有 batch_thread（BatchManager 情况），然后回退到 gui
+        batch_thread = getattr(manager, "batch_thread", None)
+        if batch_thread is None:
+            batch_thread = getattr(getattr(manager, "gui", None), "batch_thread", None)
         if batch_thread is None:
             return
 
