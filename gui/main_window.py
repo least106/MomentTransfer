@@ -1,4 +1,4 @@
-﻿"""
+"""
 MomentTransfer GUI 主窗口模块
 向后兼容入口：从 gui 包导入模块化的组件
 
@@ -13,6 +13,7 @@ MomentTransfer GUI 主窗口模块
 # pylint: disable=import-outside-toplevel
 
 import logging
+import uuid
 import sys
 import traceback
 from pathlib import Path
@@ -48,6 +49,11 @@ from gui.panels import ConfigPanel, OperationPanel
 from gui.signal_bus import SignalBus
 
 logger = logging.getLogger(__name__)
+
+try:
+    from gui.managers import _report_ui_exception
+except Exception:
+    _report_ui_exception = None
 
 # 主题常量（便于代码中引用）
 THEME_MAIN = "#0078d7"
@@ -94,11 +100,159 @@ class IntegratedAeroGUI(QMainWindow):
         self.initialization_manager = InitializationManager(self)
         self.event_manager = EventManager(self)
 
+        # 本地状态消息优先级（更高优先级不会被低优先级覆盖）
+        self._status_priority = 0
+        self._status_clear_timer = None
+        self._status_token = None
+
         # 执行初始化
         self.initialization_manager.setup_ui()
         self.initialization_manager.setup_managers()
         self.initialization_manager.setup_logging()
         self.initialization_manager.bind_post_ui_signals()
+
+        # 连接 SignalBus 的统一状态消息信号，用于协调各处的状态提示
+        try:
+            sb = getattr(self, "signal_bus", None) or __import__("gui.signal_bus", fromlist=["SignalBus"]).SignalBus.instance()
+            try:
+                sb.statusMessage.connect(self._on_status_message)
+            except Exception:
+                logger.debug("连接 statusMessage 信号失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("获取 SignalBus 失败（非致命）", exc_info=True)
+
+        # 确保 statusBar 存在
+        try:
+            if not hasattr(self, "statusBar"):
+                self.setStatusBar(self.statusBar())
+        except Exception:
+            logger.debug("确保 statusBar 存在失败（非致命）", exc_info=True)
+
+    def _on_status_message(self, message: str, timeout_ms: int, priority: int) -> None:
+        """统一处理状态消息：按优先级显示，并在超时后清理。
+
+        更高优先级的消息不会被低优先级覆盖。
+        """
+        try:
+            # 获取当前优先级
+            try:
+                cur_pr = int(getattr(self, "_status_priority", 0))
+            except Exception:
+                cur_pr = 0
+
+            # 若 incoming 优先级低于当前且已有未过期消息，则忽略
+            try:
+                t_old = getattr(self, "_status_clear_timer", None)
+                if int(priority) < cur_pr and t_old is not None and getattr(t_old, "isActive", lambda: False)():
+                    return
+            except Exception:
+                # 任何判定失败时不阻止显示新消息
+                pass
+
+            # 停止并清理已有定时器（我们将在下面根据新消息重建），并清除旧 token
+            try:
+                t_old = getattr(self, "_status_clear_timer", None)
+                if t_old is not None:
+                    try:
+                        t_old.stop()
+                    except Exception:
+                        logger.debug("停止旧状态清理定时器失败（非致命）", exc_info=True)
+                    self._status_clear_timer = None
+                try:
+                    self._status_token = None
+                except Exception:
+                    pass
+            except Exception:
+                logger.debug("清理旧状态定时器时发生异常（非致命）", exc_info=True)
+
+            # 立刻在状态栏显示消息（由我们控制何时清理）
+            try:
+                sb = self.statusBar()
+                if sb is not None:
+                    sb.showMessage(message)
+            except Exception:
+                logger.debug("显示状态栏消息失败", exc_info=True)
+
+            # 设置当前优先级（用于后续清理判断）
+            try:
+                self._status_priority = int(priority) if priority is not None else 0
+            except Exception:
+                self._status_priority = 0
+
+            # 若指定了超时，使用单个临时 QTimer 在超时后按 token 清理（避免仅通过 priority 字符串比较）
+            try:
+                if timeout_ms and int(timeout_ms) > 0:
+                    from PySide6.QtCore import QTimer
+
+                    timeout_val = int(timeout_ms)
+                    token = uuid.uuid4().hex
+                    # 保存 token 用于后续比较
+                    try:
+                        self._status_token = token
+                    except Exception:
+                        logger.debug("设置状态 token 失败（非致命）", exc_info=True)
+
+                    t = QTimer(self)
+                    t.setSingleShot(True)
+                    # 捕获 token，比较 token 一致性以决定是否清理
+                    t.timeout.connect(lambda tok=token: self._clear_status_if_token(tok))
+                    try:
+                        t.start(timeout_val)
+                    except Exception:
+                        logger.debug("启动状态清理定时器失败（非致命）", exc_info=True)
+                    self._status_clear_timer = t
+            except Exception:
+                logger.debug("设置状态清理定时器失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("处理 statusMessage 信号失败", exc_info=True)
+
+    def _clear_status_if_priority(self, priority_to_clear: int) -> None:
+        try:
+            if getattr(self, "_status_priority", 0) != priority_to_clear:
+                return
+            try:
+                sb = self.statusBar()
+                if sb is not None:
+                    sb.clearMessage()
+            except Exception:
+                logger.debug("清理状态栏消息失败（非致命）", exc_info=True)
+            try:
+                self._status_priority = 0
+            except Exception:
+                logger.debug("重置状态优先级失败（非致命）", exc_info=True)
+            try:
+                self._status_clear_timer = None
+            except Exception:
+                logger.debug("清除状态定时器引用失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("清理状态消息失败", exc_info=True)
+
+    def _clear_status_if_token(self, token: str) -> None:
+        try:
+            cur_tok = getattr(self, "_status_token", None)
+            if cur_tok != token:
+                return
+            try:
+                sb = self.statusBar()
+                if sb is not None:
+                    sb.clearMessage()
+            except Exception:
+                logger.debug("按 token 清理状态栏消息失败（非致命）", exc_info=True)
+            try:
+                self._status_priority = 0
+            except Exception:
+                logger.debug("按 token 重置状态优先级失败（非致命）", exc_info=True)
+            try:
+                self._status_clear_timer = None
+            except Exception:
+                logger.debug("按 token 清除状态定时器引用失败（非致命）", exc_info=True)
+            try:
+                self._status_token = None
+            except Exception:
+                logger.debug("清除状态 token 失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("按 token 清理状态消息失败", exc_info=True)
+
 
     def set_config_panel_visible(self, visible: bool) -> None:
         """按流程显示/隐藏配置编辑器，减少初始化干扰。"""
@@ -264,168 +418,8 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("attach_legacy_aliases 失败", exc_info=True)
 
-        # 返回创建的面板（确保函数以 QWidget 返回，避免包含后续逻辑的早期 return 导致布尔值被返回）
-        try:
-            return panel
-        except Exception:
-            # 极端情况下回退为原始 panel 引用
-            pass
-
-        # 将日志处理器连接到 GUI
-        try:
-            self._setup_gui_logging()
-            # 同步保存：在确认继续前确保保存已完成以避免竞态
-            try:
-                pm = getattr(self, "project_manager", None)
-                if pm:
-                    # 若已有当前项目文件或用户选择了路径，弹模态进度对话并同步保存
-                    cur_fp = getattr(pm, "current_project_file", None)
-
-                    def _do_save(loop_path):
-                        """内部同步保存尝试，返回 True/False"""
-                        try:
-                            return pm.save_project(loop_path)
-                        except Exception:
-                            logger.exception("同步保存项目失败")
-                            return False
-
-                    # 循环尝试以支持重试
-                    while True:
-                        # 选择保存路径：若已有 current_project_file 则使用它，否则要求用户选择
-                        if cur_fp:
-                            path_to_save = cur_fp
-                        else:
-                            try:
-                                from PySide6.QtWidgets import QFileDialog
-
-                                pm_local = pm
-                                ext = getattr(pm_local.__class__, "PROJECT_FILE_EXTENSION", ".mtproject")
-                                suggested = f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
-                                start = str(Path.cwd() / suggested)
-                                save_path, _ = QFileDialog.getSaveFileName(
-                                    self,
-                                    "保存 Project 文件",
-                                    start,
-                                    "MomentTransfer Project (*.mtproject);;All Files (*)",
-                                )
-                                if not save_path:
-                                    # 用户取消另存为，视为取消整个操作
-                                    return False
-                                path_to_save = Path(save_path)
-                            except Exception:
-                                logger.debug("另存为对话或选择路径出错", exc_info=True)
-                                return False
-
-                        # 显示模态的进度对话以避免并发操作
-                        try:
-                                dlg = QProgressDialog("正在保存项目…", None, 0, 0, self)
-                                dlg.setWindowModality(Qt.WindowModal)
-                                try:
-                                    dlg.setCancelButton(None)
-                                except Exception:
-                                    pass
-                                dlg.setMinimumDuration(0)
-                                dlg.show()
-                        except Exception:
-                            dlg = None
-
-                            try:
-                                # 优先使用异步保存并在本地事件循环中等待其完成，避免在主线程中直接长时间阻塞
-                                saved = False
-                                if hasattr(pm, "save_project_async") and callable(getattr(pm, "save_project_async")):
-                                    loop = QEventLoop()
-
-                                    def _on_async_finished(success, fp):
-                                        nonlocal saved
-                                        saved = bool(success)
-                                        try:
-                                            loop.quit()
-                                        except Exception:
-                                            pass
-
-                                    try:
-                                        worker = pm.save_project_async(path_to_save, on_finished=_on_async_finished)
-                                        # 如果 save_project_async 未立即触发回调，等待事件循环被回调退出
-                                        loop.exec()
-                                    except Exception:
-                                        logger.exception("调用 save_project_async 失败，回退到同步保存")
-                                        try:
-                                            saved = _do_save(path_to_save)
-                                        except Exception:
-                                            saved = False
-                                else:
-                                    saved = _do_save(path_to_save)
-                            finally:
-                                try:
-                                    if dlg:
-                                        dlg.close()
-                                except Exception:
-                                    pass
-
-                        if saved:
-                            # 成功 -> 更新 current_project_file 若之前无
-                            try:
-                                if not cur_fp:
-                                    pm.current_project_file = path_to_save
-                            except Exception:
-                                pass
-                            break
-
-                        # 保存失败：让用户选择 重试 / 继续（不保存） / 取消
-                        try:
-                            mb = QMessageBox(self)
-                            mb.setWindowTitle("保存失败")
-                            mb.setText("项目保存失败。请选择操作：")
-                            mb.setInformativeText("重试：再次尝试保存；继续：放弃保存并继续；取消：终止当前操作。")
-                            btn_retry = mb.addButton("重试", QMessageBox.AcceptRole)
-                            btn_continue = mb.addButton("继续（不保存）", QMessageBox.DestructiveRole)
-                            btn_cancel = mb.addButton("取消", QMessageBox.RejectRole)
-                            mb.setDefaultButton(btn_retry)
-                            mb.exec()
-                            clicked2 = mb.clickedButton()
-                            if clicked2 == btn_retry:
-                                # loop 再次尝试
-                                continue
-                            if clicked2 == btn_continue:
-                                # 视为放弃保存：将 last_saved_state 设为当前以避免后续重复提示
-                                try:
-                                    try:
-                                        pm.last_saved_state = pm._collect_current_state()
-                                    except Exception:
-                                        pm.last_saved_state = None
-                                    if hasattr(self, "ui_state_manager") and self.ui_state_manager:
-                                        try:
-                                            self.ui_state_manager.clear_user_modified()
-                                        except Exception:
-                                            pass
-                                    else:
-                                        try:
-                                            self.operation_performed = False
-                                            self._refresh_controls_state()
-                                        except Exception:
-                                            pass
-                                except Exception:
-                                    logger.debug("放弃保存后清理状态失败", exc_info=True)
-                                return True
-                            # 取消
-                            return False
-                        except Exception:
-                            logger.debug("显示保存失败对话异常，取消操作", exc_info=True)
-                            return False
-                else:
-                    # 没有 ProjectManager 时回退到调用原始保存逻辑（可能弹出对话）
-                    try:
-                        self._on_save_project()
-                    except Exception:
-                        logger.debug("调用 _on_save_project 失败", exc_info=True)
-            except Exception:
-                logger.debug("保存分支处理失败", exc_info=True)
-                return False
-
-            # 保存后再次检测是否仍有未保存更改（用户可能取消了保存）
-            return not self._has_unsaved_changes()
-        except Exception:
-            logger.debug("连接日志处理器或同步保存流程失败（非致命）", exc_info=True)
+        # 返回创建的面板（面板内部会触发对应回调；此处不应包含与保存/未保存提示无关的流程）
+        return panel
 
     def save_config(self):
         """保存配置到JSON - 委托给 ConfigManager"""
@@ -516,13 +510,15 @@ class IntegratedAeroGUI(QMainWindow):
                                     "无法显示保存成功提示", exc_info=True
                                 )
                         else:
+                            # UX：ProjectManager.save_project 内部已负责向用户展示失败原因。
+                            # 这里避免重复弹窗，仅做轻量提示。
                             try:
-                                QMessageBox.critical(
-                                    self, "错误", "项目保存失败"
+                                self.statusBar().showMessage(
+                                    "项目保存失败（详情请查看提示/日志）", 5000
                                 )
                             except Exception:
                                 logger.debug(
-                                    "无法显示保存失败对话框（非致命）",
+                                    "无法在状态栏提示保存失败（非致命）",
                                     exc_info=True,
                                 )
 
@@ -582,13 +578,15 @@ class IntegratedAeroGUI(QMainWindow):
                                     "无法显示保存成功提示: %s", e, exc_info=True
                                 )
                         else:
+                            # UX：ProjectManager.save_project 内部已负责向用户展示失败原因。
+                            # 这里避免重复弹窗，仅做轻量提示。
                             try:
-                                QMessageBox.critical(
-                                    self, "错误", "项目保存失败"
+                                self.statusBar().showMessage(
+                                    "项目保存失败（详情请查看提示/日志）", 5000
                                 )
                             except Exception:
                                 logger.debug(
-                                    "无法显示保存失败对话框（非致命）",
+                                    "无法在状态栏提示保存失败（非致命）",
                                     exc_info=True,
                                 )
 
@@ -666,11 +664,15 @@ class IntegratedAeroGUI(QMainWindow):
                                     "无法显示加载成功提示: %s", e, exc_info=True
                                 )
                         else:
+                            # UX：ProjectManager.load_project 内部会对解析失败/版本不匹配等情况弹窗说明。
+                            # 这里避免重复弹窗，仅做轻量提示。
                             try:
-                                QMessageBox.critical(self, "错误", "项目加载失败")
+                                self.statusBar().showMessage(
+                                    "项目加载失败（详情请查看提示/日志）", 5000
+                                )
                             except Exception:
                                 logger.debug(
-                                    "无法显示加载失败对话框（非致命）",
+                                    "无法在状态栏提示加载失败（非致命）",
                                     exc_info=True,
                                 )
 
@@ -721,39 +723,99 @@ class IntegratedAeroGUI(QMainWindow):
             msg = QMessageBox(self)
             msg.setWindowTitle("未保存更改")
             msg.setText(f"检测到未保存的更改。是否在执行“{intent}”前保存更改？")
-            msg.setInformativeText("保存：保存更改并继续；放弃：丢弃更改并继续；取消：返回。")
+            # UX：这里的“放弃”语义应为“本次不保存仍继续”，而不是立刻把未保存标记清掉。
+            # 否则若用户后续取消“打开文件”对话框，或“打开/新建”失败，会导致未保存状态被错误清除。
+            msg.setInformativeText("保存：保存更改并继续；放弃：本次不保存并继续；取消：返回。")
             btn_save = msg.addButton("保存", QMessageBox.AcceptRole)
             btn_discard = msg.addButton("放弃", QMessageBox.DestructiveRole)
             btn_cancel = msg.addButton("取消", QMessageBox.RejectRole)
+            try:
+                msg.setIcon(QMessageBox.Warning)
+            except Exception:
+                pass
+            # 防止误触 Enter 导致丢失数据；Esc 始终等价于“取消”
+            try:
+                # 默认按钮设为取消，降低误操作风险（回车不应意外触发保存）
+                msg.setDefaultButton(btn_cancel)
+            except Exception:
+                pass
+            try:
+                msg.setEscapeButton(btn_cancel)
+            except Exception:
+                pass
             msg.exec()
 
             clicked = msg.clickedButton()
             if clicked == btn_save:
-                # 同步保存：在确认继续前确保保存已完成以避免竞态
+                # 改为使用异步保存以避免阻塞主线程；在等待期间显示模态进度对话并用
+                # QEventLoop 保持界面响应。
                 try:
                     pm = getattr(self, "project_manager", None)
                     if pm:
-                        # 若已有当前项目文件，直接同步保存
+                        # 若已有当前项目文件，使用异步保存并等待回调
                         cur_fp = getattr(pm, "current_project_file", None)
                         if cur_fp:
+                            dlg = QProgressDialog("正在保存项目…", None, 0, 0, self)
+                            dlg.setWindowModality(Qt.WindowModal)
                             try:
-                                saved = pm.save_project(cur_fp)
+                                dlg.setCancelButton(None)
                             except Exception:
-                                logger.exception("同步保存项目失败")
-                                saved = False
-                            if not saved:
+                                pass
+                            dlg.setMinimumDuration(0)
+                            dlg.show()
+
+                            loop = QEventLoop()
+                            result = {"saved": False}
+
+                            def _on_saved_async(success, saved_fp):
                                 try:
-                                    QMessageBox.critical(
-                                        self, "错误", "项目保存失败"
-                                    )
+                                    result["saved"] = bool(success)
                                 except Exception:
-                                    logger.debug(
-                                        "无法显示保存失败对话框（非致命）",
-                                        exc_info=True,
-                                    )
+                                    result["saved"] = False
+                                try:
+                                    dlg.close()
+                                except Exception:
+                                    pass
+                                if success:
+                                    try:
+                                        QMessageBox.information(
+                                            self, "成功", f"项目已保存到: {saved_fp}"
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "无法显示保存成功提示", exc_info=True
+                                        )
+                                else:
+                                    try:
+                                        QMessageBox.critical(
+                                            self, "错误", "项目保存失败"
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "无法显示保存失败对话框（非致命）",
+                                            exc_info=True,
+                                        )
+                                try:
+                                    loop.quit()
+                                except Exception:
+                                    pass
+
+                            try:
+                                pm.save_project_async(cur_fp, on_finished=_on_saved_async)
+                                loop.exec()
+                            except Exception:
+                                logger.exception("异步保存项目失败")
+                                try:
+                                    dlg.close()
+                                except Exception:
+                                    pass
                                 return False
+
+                            if not result.get("saved"):
+                                return False
+
                         else:
-                            # 否则弹出另存为对话并同步保存
+                            # 否则弹出另存为对话并异步保存
                             try:
                                 from PySide6.QtWidgets import QFileDialog
 
@@ -770,21 +832,65 @@ class IntegratedAeroGUI(QMainWindow):
                                 if not save_path:
                                     # 用户取消另存为，视为未完成保存 -> 取消原操作
                                     return False
+
+                                dlg = QProgressDialog("正在保存项目…", None, 0, 0, self)
+                                dlg.setWindowModality(Qt.WindowModal)
                                 try:
-                                    saved = pm.save_project(Path(save_path))
+                                    dlg.setCancelButton(None)
                                 except Exception:
-                                    logger.exception("同步另存为保存失败")
-                                    saved = False
-                                if not saved:
+                                    pass
+                                dlg.setMinimumDuration(0)
+                                dlg.show()
+
+                                loop = QEventLoop()
+                                result = {"saved": False}
+
+                                def _on_saved2(success, saved_fp):
                                     try:
-                                        QMessageBox.critical(
-                                            self, "错误", "项目保存失败"
-                                        )
+                                        result["saved"] = bool(success)
                                     except Exception:
-                                        logger.debug(
-                                            "无法显示保存失败对话框（非致命）",
-                                            exc_info=True,
-                                        )
+                                        result["saved"] = False
+                                    try:
+                                        dlg.close()
+                                    except Exception:
+                                        pass
+                                    if success:
+                                        try:
+                                            QMessageBox.information(
+                                                self, "成功", f"项目已保存到: {saved_fp}"
+                                            )
+                                        except Exception:
+                                            logger.debug(
+                                                "无法显示保存成功提示: %s",
+                                                exc_info=True,
+                                            )
+                                    else:
+                                        try:
+                                            QMessageBox.critical(
+                                                self, "错误", "项目保存失败"
+                                            )
+                                        except Exception:
+                                            logger.debug(
+                                                "无法显示保存失败对话框（非致命）",
+                                                exc_info=True,
+                                            )
+                                    try:
+                                        loop.quit()
+                                    except Exception:
+                                        pass
+
+                                try:
+                                    pm.save_project_async(Path(save_path), on_finished=_on_saved2)
+                                    loop.exec()
+                                except Exception:
+                                    logger.exception("异步另存为保存失败")
+                                    try:
+                                        dlg.close()
+                                    except Exception:
+                                        pass
+                                    return False
+
+                                if not result.get("saved"):
                                     return False
                             except Exception:
                                 logger.debug("另存为对话或保存过程中出错", exc_info=True)
@@ -802,32 +908,18 @@ class IntegratedAeroGUI(QMainWindow):
                 # 保存后再次检测是否仍有未保存更改（用户可能取消了保存）
                 return not self._has_unsaved_changes()
             if clicked == btn_discard:
-                # 丢弃更改：将 ProjectManager.last_saved_state 覆盖为当前收集状态
-                try:
-                    pm = getattr(self, "project_manager", None)
-                    if pm:
-                        try:
-                            pm.last_saved_state = pm._collect_current_state()
-                        except Exception:
-                            pm.last_saved_state = None
-                    # 同时清除 UI 状态标志
-                    if hasattr(self, "ui_state_manager") and self.ui_state_manager:
-                        try:
-                            self.ui_state_manager.clear_user_modified()
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            self.operation_performed = False
-                            self._refresh_controls_state()
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.debug("放弃更改时发生错误", exc_info=True)
+                # “放弃”=本次不保存并继续：不要在这里修改 last_saved_state / UI 标志。
+                # 让后续 intent（打开/新建/退出）真正成功后再由对应流程清理状态，
+                # 避免“用户取消文件选择/加载失败但未保存状态被清掉”的 UX 逻辑漏洞。
                 return True
             # 取消
             return False
         except Exception:
+            try:
+                if _report_ui_exception:
+                    _report_ui_exception(self, "未保存更改对话弹出失败（已自动取消操作）")
+            except Exception:
+                logger.debug("报告未保存对话失败时出错", exc_info=True)
             logger.debug("弹出未保存对话失败，默认取消操作", exc_info=True)
             return False
 
@@ -845,7 +937,12 @@ class IntegratedAeroGUI(QMainWindow):
                         "系统尚未就绪（正在初始化或管理器未启动），请稍候再试。",
                     )
                 except Exception:
-                    logger.debug("显示未就绪提示失败（非致命）", exc_info=True)
+                    try:
+                        from gui.managers import _report_ui_exception
+
+                        _report_ui_exception(self, "显示未就绪提示失败（非致命）")
+                    except Exception:
+                        logger.debug("显示未就绪提示失败（非致命）", exc_info=True)
                 return
 
             # 检查配置是否被修改
@@ -860,7 +957,8 @@ class IntegratedAeroGUI(QMainWindow):
                     QMessageBox.Save
                     | QMessageBox.Discard
                     | QMessageBox.Cancel,
-                    QMessageBox.Save,
+                    # 默认选择改为取消，避免误触导致直接保存并覆盖配置
+                    QMessageBox.Cancel,
                 )
 
                 # 用户选择保存：尝试保存并仅在成功后继续
@@ -890,8 +988,9 @@ class IntegratedAeroGUI(QMainWindow):
                                     "继续（不保存）",
                                     QMessageBox.DestructiveRole,
                                 )
-                                mb.addButton("取消", QMessageBox.RejectRole)
-                                mb.setDefaultButton(btn_retry)
+                                btn_cancel = mb.addButton("取消", QMessageBox.RejectRole)
+                                # 默认设为取消以提供最安全的选项
+                                mb.setDefaultButton(btn_cancel)
                                 mb.exec()
 
                                 clicked = mb.clickedButton()
@@ -944,6 +1043,7 @@ class IntegratedAeroGUI(QMainWindow):
             logger.warning("BatchManager 未初始化")
         except Exception as e:
             logger.error("运行批处理失败: %s", e)
+
 
     def on_batch_finished(self, message):
         """批处理完成 - 委托给 BatchManager"""
@@ -1134,7 +1234,7 @@ class IntegratedAeroGUI(QMainWindow):
     ) -> None:
         """统一的非模态通知：在状态栏显示 summary，并提供查看 details 的非模态入口。"""
         try:
-            # 清理旧按钮
+            # 清理旧按钮及其 token
             try:
                 old = getattr(self, "_notification_btn", None)
                 if old is not None:
@@ -1142,12 +1242,23 @@ class IntegratedAeroGUI(QMainWindow):
                         self.statusBar().removeWidget(old)
                     except Exception:
                         old.setVisible(False)
+                    try:
+                        del self._notification_btn
+                    except Exception:
+                        pass
+                try:
+                    # 清理旧的通知 token（若存在）
+                    if hasattr(self, "_notification_token"):
+                        self._notification_token = None
+                except Exception:
+                    pass
             except Exception:
                 pass
 
             if details is None:
                 try:
-                    self.statusBar().showMessage(summary)
+                    # UX：非模态提示应在一定时间后自动消失，避免长期占用状态栏主消息区
+                    self.statusBar().showMessage(summary, int(duration_ms))
                     return
                 except Exception:
                     logger.debug(
@@ -1157,9 +1268,18 @@ class IntegratedAeroGUI(QMainWindow):
 
             btn = QPushButton(button_text, self)
             btn.setToolTip(summary)
-            btn.clicked.connect(
-                lambda: self._show_non_modal_error_details(details)
-            )
+            btn.clicked.connect(lambda: self._show_non_modal_error_details(details))
+            # 生成唯一 token 以绑定该条通知，避免基于 summary 字符串的比较冲突
+            try:
+                token = uuid.uuid4().hex
+                setattr(self, "_notification_token", token)
+                try:
+                    setattr(btn, "_notify_token", token)
+                except Exception:
+                    # 不影响主要行为
+                    pass
+            except Exception:
+                token = None
             self._notification_btn = btn
             try:
                 self.statusBar().addPermanentWidget(btn)
@@ -1175,6 +1295,15 @@ class IntegratedAeroGUI(QMainWindow):
             def _remove():
                 try:
                     b = getattr(self, "_notification_btn", None)
+                    # 仅当 token 与当前保存的一致时才清理该通知，避免冲突
+                    try:
+                        cur_tok = getattr(self, "_notification_token", None)
+                    except Exception:
+                        cur_tok = None
+
+                    if token is not None and cur_tok != token:
+                        return
+
                     if b is not None:
                         try:
                             self.statusBar().removeWidget(b)
@@ -1184,6 +1313,22 @@ class IntegratedAeroGUI(QMainWindow):
                             del self._notification_btn
                         except Exception:
                             pass
+
+                    try:
+                        # 仅在当前显示的消息仍然是本通知时才清理
+                        if getattr(self.statusBar(), "currentMessage", None):
+                            cur = self.statusBar().currentMessage()
+                        else:
+                            cur = None
+                        if cur == summary:
+                            self.statusBar().clearMessage()
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(self, "_notification_token"):
+                            self._notification_token = None
+                    except Exception:
+                        pass
                 except Exception:
                     logger.debug(
                         "清除非模态通知按钮失败（非致命）", exc_info=True
@@ -1201,7 +1346,8 @@ class IntegratedAeroGUI(QMainWindow):
                 )
 
             try:
-                self.statusBar().showMessage(summary)
+                # UX：与按钮移除计时保持一致
+                self.statusBar().showMessage(summary, int(duration_ms))
             except Exception:
                 logger.debug(
                     "statusBar showMessage failed after adding button (non-fatal)",
@@ -1453,15 +1599,7 @@ def main():
     window.show()
     try:
         sys.exit(app.exec())
-    except KeyboardInterrupt:
-        # 在控制台运行 GUI 时，按 Ctrl+C 时优雅退出
+    except Exception as e:
+        logger.error("运行失败: %s", e)
+    finally:
         logger.info("收到中断信号(Ctrl+C)，正在退出应用")
-        try:
-            app.quit()
-        except Exception:
-            logger.debug("尝试退出应用时关闭失败（非致命）", exc_info=True)
-        sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()

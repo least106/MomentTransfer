@@ -266,7 +266,8 @@ class ConfigManager:
                 logger.debug("连接坐标系面板信号失败", exc_info=True)
 
             QMessageBox.information(self.gui, "成功", f"配置已加载:\n{fname}")
-            self.gui.statusBar().showMessage(f"已加载: {fname}")
+            # UX：该提示属于短时反馈，避免长时间占用状态栏主消息区
+            self.gui.statusBar().showMessage(f"已加载: {fname}", 5000)
 
             # 仅加载配置：不再自动应用为“全局计算器”。
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
@@ -380,7 +381,8 @@ class ConfigManager:
                         f"配置已覆盖保存:\n{self._last_loaded_config_path}",
                     )
                     self.gui.statusBar().showMessage(
-                        f"已保存: {self._last_loaded_config_path}"
+                        f"已保存: {self._last_loaded_config_path}",
+                        5000,
                     )
                     try:
                         self.signal_bus.configSaved.emit(
@@ -407,7 +409,8 @@ class ConfigManager:
                 json.dump(data, f, indent=2)
 
             QMessageBox.information(self.gui, "成功", f"配置已保存:\n{fname}")
-            self.gui.statusBar().showMessage(f"已保存: {fname}")
+            # UX：该提示属于短时反馈，避免长时间占用状态栏主消息区
+            self.gui.statusBar().showMessage(f"已保存: {fname}", 5000)
             try:
                 from pathlib import Path
 

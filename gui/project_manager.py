@@ -2,6 +2,7 @@
 Project 管理器 - 处理 MomentTransfer 项目文件的保存与恢复
 """
 
+import base64
 import json
 import os
 import logging
@@ -17,6 +18,11 @@ try:
 except Exception:
     QThread = None
     Signal = None
+
+try:
+    from gui.managers import _report_ui_exception
+except Exception:
+    _report_ui_exception = None
 
 
 class ProjectManager:
@@ -109,22 +115,52 @@ class ProjectManager:
                     try:
                         setattr(self.gui, attr, {})
                     except Exception:
-                        pass
+                        try:
+                            if _report_ui_exception:
+                                _report_ui_exception(self.gui, f"设置主窗口属性 {attr} 失败")
+                            else:
+                                logger.debug("设置主窗口属性 %s 失败", attr, exc_info=True)
+                        except Exception:
+                            logger.debug("设置主窗口属性失败", exc_info=True)
             except Exception:
-                pass
+                try:
+                    if _report_ui_exception:
+                        _report_ui_exception(self.gui, "清理主窗口属性失败")
+                    else:
+                        logger.debug("清理主窗口属性失败", exc_info=True)
+                except Exception:
+                    logger.debug("清理主窗口属性失败", exc_info=True)
 
             try:
                 if hasattr(self.gui, "file_tree") and getattr(self.gui, "file_tree") is not None:
                     try:
                         self.gui.file_tree.clear()
                     except Exception:
-                        pass
+                        try:
+                            if _report_ui_exception:
+                                _report_ui_exception(self.gui, "清空 file_tree 失败（非致命）")
+                            else:
+                                logger.debug("清空 file_tree 失败（非致命）", exc_info=True)
+                        except Exception:
+                            logger.debug("清空 file_tree 失败（非致命）", exc_info=True)
                 try:
                     setattr(self.gui, "_file_tree_items", {})
                 except Exception:
-                    pass
+                    try:
+                        if _report_ui_exception:
+                            _report_ui_exception(self.gui, "重置 _file_tree_items 失败（非致命）")
+                        else:
+                            logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
+                    except Exception:
+                        logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
             except Exception:
-                pass
+                try:
+                    if _report_ui_exception:
+                        _report_ui_exception(self.gui, "访问/清理 file_tree 失败（非致命）")
+                    else:
+                        logger.debug("访问/清理 file_tree 失败（非致命）", exc_info=True)
+                except Exception:
+                    logger.debug("访问/清理 file_tree 失败（非致命）", exc_info=True)
 
             try:
                 flw = getattr(self.gui, "file_list_widget", None)
@@ -139,11 +175,29 @@ class ProjectManager:
                                     try:
                                         w.setParent(None)
                                     except Exception:
-                                        pass
+                                            try:
+                                                if _report_ui_exception:
+                                                    _report_ui_exception(self.gui, "移除 file_list_widget 子控件失败（非致命）")
+                                                else:
+                                                    logger.debug("移除 file_list_widget 子控件失败（非致命）", exc_info=True)
+                                            except Exception:
+                                                logger.debug("移除 file_list_widget 子控件失败（非致命）", exc_info=True)
                     except Exception:
-                        pass
+                            try:
+                                if _report_ui_exception:
+                                    _report_ui_exception(self.gui, "清理 file_list_widget 布局失败（非致命）")
+                                else:
+                                    logger.debug("清理 file_list_widget 布局失败（非致命）", exc_info=True)
+                            except Exception:
+                                logger.debug("清理 file_list_widget 布局失败（非致命）", exc_info=True)
             except Exception:
-                pass
+                    try:
+                        if _report_ui_exception:
+                            _report_ui_exception(self.gui, "访问 file_list_widget 失败（非致命）")
+                        else:
+                            logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
+                    except Exception:
+                        logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
 
             # 标记为用户已修改以启用保存（与 UIStateManager 协同）
             try:
@@ -270,13 +324,32 @@ class ProjectManager:
             on_finished: 可选回调，签名为 `func(success: bool, file_path: Path)`
         """
         if QThread is None:
-            # 无 Qt 环境，退回到同步保存
-            res = self.save_project(file_path)
-            if callable(on_finished):
-                try:
-                    on_finished(res, Path(file_path) if file_path else self.current_project_file)
-                except Exception:
-                    logger.debug("异步回调执行失败", exc_info=True)
+            # 无 Qt QThread 时，退回到 Python 线程以避免阻塞主线程
+            try:
+                import threading
+
+                def _bg():
+                    try:
+                        res = self.save_project(file_path)
+                    except Exception:
+                        logger.exception("线程式后台保存异常")
+                        res = False
+                    if callable(on_finished):
+                        try:
+                            on_finished(res, Path(file_path) if file_path else self.current_project_file)
+                        except Exception:
+                            logger.debug("异步回调执行失败", exc_info=True)
+
+                thr = threading.Thread(target=_bg, daemon=True)
+                thr.start()
+            except Exception:
+                # 极端情况下退回到同步保存（并调用回调）以保证功能性
+                res = self.save_project(file_path)
+                if callable(on_finished):
+                    try:
+                        on_finished(res, Path(file_path) if file_path else self.current_project_file)
+                    except Exception:
+                        logger.debug("异步回调执行失败", exc_info=True)
             return None
 
         class _SaveWorker(QThread):
@@ -354,6 +427,19 @@ class ProjectManager:
                         msg.setInformativeText(str(e))
                         btn_save = msg.addButton("另存为", QMessageBox.AcceptRole)
                         btn_cancel = msg.addButton("取消", QMessageBox.RejectRole)
+                        # UX：默认/ESC 走“取消”，避免误触回车导致进入另存为流程
+                        try:
+                            msg.setIcon(QMessageBox.Critical)
+                        except Exception:
+                            pass
+                        try:
+                            msg.setDefaultButton(btn_cancel)
+                        except Exception:
+                            pass
+                        try:
+                            msg.setEscapeButton(btn_cancel)
+                        except Exception:
+                            pass
                         msg.exec()
                         if msg.clickedButton() == btn_save:
                             try:
@@ -374,7 +460,12 @@ class ProjectManager:
                                 logger.debug("另存为失败", exc_info=True)
                         return False
                     except Exception:
-                        logger.debug("显示解析错误对话失败", exc_info=True)
+                        try:
+                            from gui.managers import _report_ui_exception
+
+                            _report_ui_exception(self.gui, "显示项目解析错误对话失败")
+                        except Exception:
+                            logger.debug("显示解析错误对话失败", exc_info=True)
                         return False
 
             # 验证版本一致性，若不一致向用户提供 继续/取消/另存为 选项
@@ -395,6 +486,19 @@ class ProjectManager:
                     btn_continue = msg.addButton("继续", QMessageBox.AcceptRole)
                     btn_discard = msg.addButton("取消", QMessageBox.RejectRole)
                     btn_save = msg.addButton("另存为", QMessageBox.DestructiveRole)
+                    # UX：默认/ESC 走“取消”，降低误操作概率（继续加载可能有数据风险）
+                    try:
+                        msg.setIcon(QMessageBox.Warning)
+                    except Exception:
+                        pass
+                    try:
+                        msg.setDefaultButton(btn_discard)
+                    except Exception:
+                        pass
+                    try:
+                        msg.setEscapeButton(btn_discard)
+                    except Exception:
+                        pass
                     msg.exec()
                     clicked = msg.clickedButton()
                     if clicked == btn_discard:
@@ -486,6 +590,19 @@ class ProjectManager:
                     btn_continue = msg.addButton("继续", QMessageBox.AcceptRole)
                     btn_discard = msg.addButton("取消", QMessageBox.RejectRole)
                     btn_save = msg.addButton("另存为", QMessageBox.DestructiveRole)
+                    # UX：默认/ESC 走“取消”，避免误触回车继续进入“可能不完整的项目状态”
+                    try:
+                        msg.setIcon(QMessageBox.Critical)
+                    except Exception:
+                        pass
+                    try:
+                        msg.setDefaultButton(btn_discard)
+                    except Exception:
+                        pass
+                    try:
+                        msg.setEscapeButton(btn_discard)
+                    except Exception:
+                        pass
                     msg.exec()
                     clicked = msg.clickedButton()
                     if clicked == btn_discard:
@@ -590,12 +707,31 @@ class ProjectManager:
             on_finished: 可选回调，签名为 `func(success: bool, file_path: Path)`
         """
         if QThread is None:
-            res = self.load_project(file_path)
-            if callable(on_finished):
-                try:
-                    on_finished(res, Path(file_path))
-                except Exception:
-                    logger.debug("异步加载回调失败", exc_info=True)
+            # 无 Qt QThread 时，使用 Python 线程执行以避免阻塞主线程
+            try:
+                import threading
+
+                def _bg_load():
+                    try:
+                        res = self.load_project(file_path)
+                    except Exception:
+                        logger.exception("线程式后台加载异常")
+                        res = False
+                    if callable(on_finished):
+                        try:
+                            on_finished(res, Path(file_path))
+                        except Exception:
+                            logger.debug("异步加载回调失败", exc_info=True)
+
+                thr = threading.Thread(target=_bg_load, daemon=True)
+                thr.start()
+            except Exception:
+                res = self.load_project(file_path)
+                if callable(on_finished):
+                    try:
+                        on_finished(res, Path(file_path))
+                    except Exception:
+                        logger.debug("异步加载回调失败", exc_info=True)
             return None
 
         class _LoadWorker(QThread):

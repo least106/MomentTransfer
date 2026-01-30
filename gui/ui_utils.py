@@ -71,7 +71,7 @@ def create_triple_spin(
         s2.setToolTip("Y 分量")
         s3.setToolTip("Z 分量")
     except Exception:
-        pass
+        logger.warning("设置 triple spin tooltip 失败", exc_info=True)
     return s1, s2, s3
 
 
@@ -119,7 +119,7 @@ def create_vector_row(inp1, inp2, inp3) -> QWidget:
         try:
             lb.setObjectName("smallLabel")
         except Exception:
-            pass
+            logger.debug("设置小标签 objectName 失败（非致命）", exc_info=True)
     # 对传入的输入框标记为 compact 以便样式表进行收缩
     try:
         for w in (inp1, inp2, inp3):
@@ -127,9 +127,9 @@ def create_vector_row(inp1, inp2, inp3) -> QWidget:
             try:
                 w.setMaximumWidth(96)
             except Exception:
-                pass
+                logger.debug("设置输入最大宽度失败（非致命）", exc_info=True)
     except Exception:
-        pass
+        logger.warning("为向量输入设置属性失败", exc_info=True)
     layout.addWidget(lb1)
     layout.addWidget(inp1)
     layout.addWidget(lb_comma1)

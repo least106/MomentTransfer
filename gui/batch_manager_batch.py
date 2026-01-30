@@ -83,7 +83,7 @@ def run_batch_processing(manager):
         try:
             QMessageBox.critical(manager.gui, "错误", f"启动失败: {e}")
         except Exception:
-            pass
+            logger.debug("显示启动失败对话失败（非致命）", exc_info=True)
 
 
 def attach_batch_thread_signals(manager):
@@ -275,7 +275,7 @@ def request_cancel_batch(manager):
                     f"[{ts}] 用户请求取消任务，正在停止..."
                 )
             except Exception:
-                pass
+                logger.debug("追加取消日志到 txt_batch_log 失败（非致命）", exc_info=True)
 
         # 立即在 UI 上显示取消中状态
         try:
@@ -284,7 +284,7 @@ def request_cancel_batch(manager):
                     manager.gui.btn_batch.setText("取消中...")
                     manager.gui.btn_batch.setEnabled(False)
                 except Exception:
-                    pass
+                    logger.debug("设置批处理按钮为取消中失败（非致命）", exc_info=True)
         except Exception:
             pass
 
@@ -295,7 +295,7 @@ def request_cancel_batch(manager):
                         "取消请求已发送，正在停止...", 5000
                     )
                 except Exception:
-                    pass
+                    logger.debug("显示取消状态栏消息失败（非致命）", exc_info=True)
         except Exception:
             pass
 
@@ -313,7 +313,7 @@ def request_cancel_batch(manager):
             try:
                 manager.gui.btn_cancel.setEnabled(False)
             except Exception:
-                pass
+                logger.debug("禁用取消按钮失败（非致命）", exc_info=True)
     except Exception:
         logger.debug("request_cancel_batch 失败", exc_info=True)
 

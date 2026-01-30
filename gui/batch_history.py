@@ -210,7 +210,11 @@ class BatchHistoryPanel(QWidget):
 
                 msg = f"确认撤销此批处理记录吗？\n将删除 {count} 个由该批处理生成的新文件\n输出目录: {out_dir}"
                 resp = QMessageBox.question(
-                    self, "确认撤销", msg, QMessageBox.Yes | QMessageBox.No
+                    self,
+                    "确认撤销",
+                    msg,
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
                 )
                 if resp != QMessageBox.Yes:
                     return
@@ -244,6 +248,7 @@ class BatchHistoryPanel(QWidget):
                             "可能的风险",
                             warn,
                             QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.No,
                         )
                         if resp2 != QMessageBox.Yes:
                             return

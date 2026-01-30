@@ -17,6 +17,10 @@ from PySide6.QtWidgets import (
 )
 
 logger = logging.getLogger(__name__)
+try:
+    from gui.managers import _report_ui_exception
+except Exception:
+    _report_ui_exception = None
 
 
 class TableFilterManager:
@@ -83,7 +87,12 @@ class TableFilterManager:
                 if item is None:
                     return False
                 cell_value = item.text() or ""
+            except (AttributeError, IndexError, TypeError) as e:
+                logger.debug("访问表格项失败，跳过该行: %s", e, exc_info=True)
+                return False
             except Exception:
+                # 意外错误，记录以便排查，但对用户保持静默
+                logger.debug("未知错误读取表格项", exc_info=True)
                 return False
 
             if not self._matches_condition(cell_value, op, val):
@@ -104,17 +113,29 @@ class TableFilterManager:
                 return cell_value.lower() == filter_value.lower()
             elif operator == "!=":
                 return cell_value.lower() != filter_value.lower()
-            elif operator == "<":
-                return float(cell_value) < float(filter_value)
-            elif operator == ">":
-                return float(cell_value) > float(filter_value)
-            elif operator == "<=":
-                return float(cell_value) <= float(filter_value)
-            elif operator == ">=":
-                return float(cell_value) >= float(filter_value)
+            elif operator in ("<", ">", "<=", ">="):
+                # 仅在需要数值比较时转换为 float，捕获具体的转换错误
+                try:
+                    lhs = float(cell_value)
+                    rhs = float(filter_value)
+                except (ValueError, TypeError):
+                    # 无法转换为数值 -> 不匹配
+                    return False
+
+                if operator == "<":
+                    return lhs < rhs
+                if operator == ">":
+                    return lhs > rhs
+                if operator == "<=":
+                    return lhs <= rhs
+                if operator == ">=":
+                    return lhs >= rhs
+            else:
+                # 未识别操作符，认为不匹配
+                return False
         except Exception:
-            pass
-        return True
+            logger.debug("在匹配筛选条件时发生异常", exc_info=True)
+            return False
 
     def _set_row_visible(self, row: int, visible: bool) -> None:
         """设置行的显示/灰显状态。"""
@@ -128,7 +149,7 @@ class TableFilterManager:
                 if item is not None:
                     item.setBackground(color)
             except Exception:
-                pass
+                logger.debug("为表格行设置颜色失败", exc_info=True)
 
     def get_visible_rows(self) -> List[int]:
         """获取所有可见（未被筛选隐藏）的行索引。"""

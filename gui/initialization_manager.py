@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 LAYOUT_MARGIN = 12
 LAYOUT_SPACING = 8
 
+try:
+    from gui.managers import _report_ui_exception
+except Exception:
+    _report_ui_exception = None
+
 
 class BottomDock:
     """底部栏兼容包装：提供 `toggle_panel`/`show_panel`/`hide_panel`/`is_expanded`。
@@ -316,6 +321,12 @@ class InitializationManager:
                 )
         except Exception as e:
             logger.error("管理器初始化失败: %s", e, exc_info=True)
+            # 向用户提供轻量提示（避免静默失败）
+            try:
+                if _report_ui_exception:
+                    _report_ui_exception(self.main_window, "管理器初始化失败（请查看日志以获取详细信息）")
+            except Exception:
+                logger.debug("报告初始化管理器失败时出错", exc_info=True)
             # 继续运行，即使管理器初始化失败
 
     def setup_logging(self):
@@ -537,7 +548,12 @@ class InitializationManager:
                         except Exception:
                             logger.debug("显示加载提示失败", exc_info=True)
                 except Exception:
-                    logger.debug("加载配置回调处理失败", exc_info=True)
+                    try:
+                        from gui.managers import _report_ui_exception
+
+                        _report_ui_exception(self.main_window, "加载配置回调处理失败")
+                    except Exception:
+                        logger.debug("加载配置回调处理失败", exc_info=True)
 
             btn_load_config.clicked.connect(_on_load_config_clicked)
             toolbar.addWidget(btn_load_config)

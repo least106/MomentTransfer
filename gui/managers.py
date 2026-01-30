@@ -12,6 +12,46 @@ from typing import Dict, Optional
 
 from PySide6.QtWidgets import QWidget
 
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+def _report_ui_exception(parent: QWidget, context: str, exc_info=True):
+    """记录警告并尝试在主窗口状态栏显示轻量提示以便可见化异常。
+
+    此工具用于替换仓库中大量的 silent-pass 模式，保持最小侵入性。
+    """
+    try:
+        _logger.warning("UI 操作异常：%s", context, exc_info=exc_info)
+    except Exception:
+        try:
+            _logger.warning("UI 操作异常（无法记录 exc_info）：%s", context)
+        except Exception:
+            pass
+    try:
+        # 使用 SignalBus 的统一状态通道以避免分散写入 statusBar
+        try:
+            from gui.signal_bus import SignalBus
+
+            try:
+                SignalBus.instance().statusMessage.emit(f"提示：{context}", 5000, 0)
+                return
+            except Exception:
+                pass
+        except Exception:
+            pass
+        if parent is not None and hasattr(parent, "statusBar"):
+            try:
+                sb = parent.statusBar()
+                if sb is not None:
+                    sb.showMessage(f"提示：{context}", 5000)
+            except Exception:
+                # 状态栏展示为非关键功能，忽略展示失败
+                pass
+    except Exception:
+        pass
+
 
 def normalize_path_key(p):
     """规范化路径键为绝对解析字符串（兼容 Path / str）。"""
@@ -71,9 +111,9 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                pass
+                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败")
         except Exception:
-            pass
+            _report_ui_exception(self.parent, "标记 skipped rows 失败")
 
     def clear_skipped_rows(self, file_path: Path, rows=None) -> None:
         """清除指定文件的跳过行；若 rows 为 None 则清空所有跳过行。"""
@@ -96,9 +136,9 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                pass
+                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（清理）")
         except Exception:
-            pass
+            _report_ui_exception(self.parent, "清理 skipped rows 失败")
 
     def get_skipped_rows(self, file_path: Path):
         """返回指定文件的跳过行集合（set）或 None。"""
@@ -111,9 +151,10 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                pass
+                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（读取）")
             return set(s) if s is not None else None
         except Exception:
+            _report_ui_exception(self.parent, "读取 skipped rows 失败")
             return None
 
     def ensure_special_row_selection_storage(
@@ -143,9 +184,10 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "special_part_row_selection_by_file", self.special_part_row_selection_by_file)
             except Exception:
-                pass
+                _report_ui_exception(self.parent, "同步 special_part_row_selection_by_file 到父窗口失败")
             return by_part
         except Exception:
+            _report_ui_exception(self.parent, "ensure_special_row_selection_storage 失败")
             return {}
 
     def open_quick_select_dialog(self) -> None:
@@ -156,8 +198,7 @@ class FileSelectionManager:
             dlg = QuickSelectDialog(self, parent=self.parent)
             dlg.exec()
         except Exception:
-            # 日志由调用方处理
-            pass
+            _report_ui_exception(self.parent, "打开快速选择对话失败")
 
 
 class ModelManager:
@@ -941,15 +982,19 @@ class UIStateManager:
                 except Exception:
                     pass
 
-            # 取消按钮在锁定时应保持可见/可用
+            # 取消按钮：始终保持可见以避免布局跳动，仅通过 setEnabled 控制可交互性。
             try:
                 if hasattr(self.parent, "btn_cancel"):
-                    if self._lock_count > 0:
+                    try:
                         self.parent.btn_cancel.setVisible(True)
-                        self.parent.btn_cancel.setEnabled(True)
-                    else:
-                        self.parent.btn_cancel.setVisible(False)
-                        self.parent.btn_cancel.setEnabled(False)
+                    except Exception:
+                        # 若控件不支持可见性设置，忽略
+                        pass
+                    try:
+                        # 在有锁时允许点击取消以便中断操作；否则禁用但保留占位
+                        self.parent.btn_cancel.setEnabled(bool(self._lock_count))
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
