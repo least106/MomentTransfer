@@ -121,12 +121,77 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("获取 SignalBus 失败（非致命）", exc_info=True)
 
-        # 确保 statusBar 存在
+        # 确保 statusBar 存在：不要用 hasattr(self, "statusBar")，该方法总是存在
         try:
-            if not hasattr(self, "statusBar"):
-                self.setStatusBar(self.statusBar())
+            try:
+                sb = self.statusBar()
+            except Exception:
+                sb = None
+            if sb is None:
+                from PySide6.QtWidgets import QStatusBar
+
+                try:
+                    self.setStatusBar(QStatusBar(self))
+                except Exception:
+                    logger.debug("设置 QStatusBar 失败（非致命）", exc_info=True)
         except Exception:
             logger.debug("确保 statusBar 存在失败（非致命）", exc_info=True)
+
+        # 初始化期间发生的非致命通知入队，初始化结束后再尝试展示
+        try:
+            self._pending_init_notifications = []
+        except Exception:
+            self._pending_init_notifications = []
+
+        # 初始化完成：解除初始化保护并刷新挂起通知
+        try:
+            self._is_initializing = False
+            try:
+                if getattr(self, "_pending_init_notifications", None):
+                    self._flush_init_notifications()
+            except Exception:
+                logger.debug("刷新初始化挂起通知失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("设置 _is_initializing=False 失败（非致命）", exc_info=True)
+
+    def _flush_init_notifications(self):
+        """在初始化完成后展示或记录在初始化期间积累的通知。"""
+        try:
+            pending = getattr(self, "_pending_init_notifications", None) or []
+            for item in pending:
+                try:
+                    summary, details, duration_ms, button_text = item
+                    try:
+                        try:
+                            sb = None
+                            try:
+                                sb = self.statusBar()
+                            except Exception:
+                                sb = None
+                            if self.isVisible() and sb is not None:
+                                try:
+                                    self.notify_nonmodal(
+                                        summary=summary,
+                                        details=details,
+                                        duration_ms=duration_ms,
+                                        button_text=button_text,
+                                    )
+                                    continue
+                                except Exception:
+                                    logger.debug("显示初始化通知失败，回退为日志记录", exc_info=True)
+                        except Exception:
+                            logger.debug("检查窗口可见性/状态栏失败（非致命）", exc_info=True)
+                    except Exception:
+                        logger.debug("处理初始化通知判断失败（非致命）", exc_info=True)
+                    logger.error("初始化期间异常: %s", details)
+                except Exception:
+                    logger.debug("处理挂起通知时失败（非致命）", exc_info=True)
+            try:
+                self._pending_init_notifications = []
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("刷新初始化通知队列失败（非致命）", exc_info=True)
 
     def _on_status_message(self, message: str, timeout_ms: int, priority: int) -> None:
         """统一处理状态消息：按优先级显示，并在超时后清理。
@@ -157,6 +222,19 @@ class IntegratedAeroGUI(QMainWindow):
                         t_old.stop()
                     except Exception:
                         logger.debug("停止旧状态清理定时器失败（非致命）", exc_info=True)
+                    try:
+                        # 尝试断开所有连接，避免遗留回调
+                        try:
+                            t_old.timeout.disconnect()
+                        except Exception:
+                            pass
+                        # 安全销毁定时器对象
+                        try:
+                            t_old.deleteLater()
+                        except Exception:
+                            pass
+                    except Exception:
+                        logger.debug("清理旧定时器资源失败（非致命）", exc_info=True)
                     self._status_clear_timer = None
                 try:
                     self._status_token = None
@@ -1241,11 +1319,21 @@ class IntegratedAeroGUI(QMainWindow):
                     try:
                         self.statusBar().removeWidget(old)
                     except Exception:
-                        old.setVisible(False)
+                        try:
+                            old.setVisible(False)
+                        except Exception:
+                            logger.debug(
+                                "hide old notification button failed (non-fatal)",
+                                exc_info=True,
+                            )
                     try:
                         del self._notification_btn
                     except Exception:
-                        pass
+                        # 确保引用被清理，不抛异常
+                        try:
+                            setattr(self, "_notification_btn", None)
+                        except Exception:
+                            pass
                 try:
                     # 清理旧的通知 token（若存在）
                     if hasattr(self, "_notification_token"):
@@ -1253,7 +1341,7 @@ class IntegratedAeroGUI(QMainWindow):
                 except Exception:
                     pass
             except Exception:
-                pass
+                logger.debug("initial notify_nonmodal cleanup failed", exc_info=True)
 
             if details is None:
                 try:
@@ -1308,22 +1396,40 @@ class IntegratedAeroGUI(QMainWindow):
                         try:
                             self.statusBar().removeWidget(b)
                         except Exception:
-                            b.setVisible(False)
+                            try:
+                                b.setVisible(False)
+                            except Exception:
+                                logger.debug(
+                                    "hide notification button failed (non-fatal)",
+                                    exc_info=True,
+                                )
                         try:
                             del self._notification_btn
                         except Exception:
-                            pass
+                            try:
+                                setattr(self, "_notification_btn", None)
+                            except Exception:
+                                pass
 
                     try:
                         # 仅在当前显示的消息仍然是本通知时才清理
-                        if getattr(self.statusBar(), "currentMessage", None):
+                        try:
                             cur = self.statusBar().currentMessage()
-                        else:
+                        except Exception:
                             cur = None
                         if cur == summary:
-                            self.statusBar().clearMessage()
+                            try:
+                                self.statusBar().clearMessage()
+                            except Exception:
+                                logger.debug(
+                                    "clearMessage failed (non-fatal)",
+                                    exc_info=True,
+                                )
                     except Exception:
-                        pass
+                        logger.debug(
+                            "inspect/clear statusBar currentMessage failed",
+                            exc_info=True,
+                        )
                     try:
                         if hasattr(self, "_notification_token"):
                             self._notification_token = None
@@ -1516,18 +1622,44 @@ def _initialize_exception_hook():
                 tb_text = f"{exc_type.__name__}: {exc_value}"
             logger.debug("初始化期间捕获异常（被抑制）: %s", tb_text)
 
-            # 使用统一的非模态通知入口展示初始化错误
+            # 使用统一的非模态通知入口展示初始化错误；若 UI 未就绪则入队等待
             try:
-                main_window.notify_nonmodal(
-                    summary="初始化异常，查看详情",
-                    details=tb_text,
-                    duration_ms=300000,
-                    button_text="查看初始化错误",
-                )
+                can_show = False
+                try:
+                    can_show = bool(main_window.isVisible() and getattr(main_window, "statusBar", None) is not None)
+                except Exception:
+                    can_show = False
+
+                if can_show:
+                    try:
+                        main_window.notify_nonmodal(
+                            summary="初始化异常，查看详情",
+                            details=tb_text,
+                            duration_ms=300000,
+                            button_text="查看初始化错误",
+                        )
+                    except Exception:
+                        logger.debug(
+                            "在状态栏显示初始化错误入口失败（非致命）", exc_info=True
+                        )
+                else:
+                    try:
+                        # 入队：待初始化结束后由主窗口刷新
+                        q = getattr(main_window, "_pending_init_notifications", None)
+                        if q is None:
+                            try:
+                                main_window._pending_init_notifications = []
+                                q = main_window._pending_init_notifications
+                            except Exception:
+                                q = []
+                        try:
+                            q.append(("初始化异常，查看详情", tb_text, 300000, "查看初始化错误"))
+                        except Exception:
+                            logger.debug("入队初始化通知失败（非致命）", exc_info=True)
+                    except Exception:
+                        logger.debug("无法入队初始化通知（非致命）", exc_info=True)
             except Exception:
-                logger.debug(
-                    "在状态栏显示初始化错误入口失败（非致命）", exc_info=True
-                )
+                logger.debug("在处理初始化异常通知时发生错误（非致命）", exc_info=True)
 
             return
 

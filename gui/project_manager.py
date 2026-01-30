@@ -14,10 +14,11 @@ import traceback
 logger = logging.getLogger(__name__)
 try:
     # 非强制依赖：仅用于在 GUI 环境下启动异步线程
-    from PySide6.QtCore import QThread, Signal
+    from PySide6.QtCore import QThread, Signal, Qt
 except Exception:
     QThread = None
     Signal = None
+    Qt = None
 
 try:
     from gui.managers import _report_ui_exception
@@ -235,6 +236,86 @@ class ProjectManager:
         Returns:
             是否保存成功
         """
+        # 当在主线程调用时，将实际写盘放到后台线程并显示模态进度，避免阻塞 UI。
+        try:
+            from PySide6.QtCore import QThread, QEventLoop
+            from PySide6.QtWidgets import QProgressDialog, QApplication
+            in_main_thread = QThread.currentThread() == QApplication.instance().thread()
+        except Exception:
+            in_main_thread = False
+
+        if in_main_thread:
+            try:
+                from PySide6.QtCore import QEventLoop
+                from PySide6.QtWidgets import QProgressDialog
+
+                loop = QEventLoop()
+                dlg = None
+                try:
+                    parent = getattr(self, "gui", None)
+                    dlg = QProgressDialog("正在保存项目…", None, 0, 0, parent)
+                    dlg.setWindowModality(Qt.WindowModal)
+                    try:
+                        dlg.setCancelButton(None)
+                    except Exception:
+                        pass
+                    dlg.setMinimumDuration(0)
+                    dlg.show()
+                except Exception:
+                    dlg = None
+
+                result_holder = {"res": False}
+
+                def _on_done(success):
+                    try:
+                        result_holder["res"] = bool(success)
+                    except Exception:
+                        result_holder["res"] = False
+                    try:
+                        if dlg is not None:
+                            dlg.close()
+                    except Exception:
+                        pass
+                    try:
+                        loop.quit()
+                    except Exception:
+                        pass
+
+                try:
+                    import threading
+
+                    def _bg():
+                        try:
+                            ok = self._do_save(file_path)
+                        except Exception:
+                            logger.exception("主线程回退后台保存异常")
+                            ok = False
+                        try:
+                            _on_done(ok)
+                        except Exception:
+                            pass
+
+                    thr = threading.Thread(target=_bg, daemon=True)
+                    thr.start()
+                    loop.exec()
+                    return bool(result_holder.get("res"))
+                except Exception:
+                    logger.debug("用后台线程执行保存失败，回退到同步保存", exc_info=True)
+                    if dlg is not None:
+                        try:
+                            dlg.close()
+                        except Exception:
+                            pass
+                    return self._do_save(file_path)
+            except Exception:
+                logger.debug("主线程保存回退到同步路径", exc_info=True)
+                return self._do_save(file_path)
+
+        # 非主线程或无法创建 UI 组件时，直接同步执行写盘
+        return self._do_save(file_path)
+
+    def _do_save(self, file_path: Optional[Path] = None) -> bool:
+        """内部保存实现：执行原子写入并发出信号。此方法为同步执行。"""
         try:
             if file_path is None:
                 file_path = self.current_project_file
@@ -362,7 +443,8 @@ class ProjectManager:
 
             def run(self):
                 try:
-                    result = self.pm.save_project(self.path)
+                    # 调用内部同步写盘实现，避免递归调用 save_project -> save_project_async
+                    result = self.pm._do_save(self.path)
                 except Exception:
                     logger.exception("后台保存线程运行时异常")
                     result = False
