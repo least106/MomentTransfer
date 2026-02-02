@@ -1296,29 +1296,20 @@ class BatchManager:
 
             if not files:
                 try:
-                    # 恢复到步骤1 提示（右侧永久标签可能存在）
+                    # 恢复到步骤1 提示：使用 SignalBus 统一状态消息
                     try:
-                        from PySide6.QtWidgets import QLabel
-
-                        lbl = self.gui.statusBar().findChild(
-                            QLabel, "statusMessage"
-                        )
-                        if lbl is not None:
-                            lbl.setText("步骤1：选择文件或目录")
+                        from gui.signal_bus import SignalBus
+                        bus = SignalBus.instance()
+                        # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
+                        bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
                     except Exception:
-                        # 如果找不到永久标签，回退到 showMessage
                         try:
-                            self.gui.statusBar().showMessage(
-                                "步骤1：选择文件或目录"
-                            )
-                        except Exception:
-                            try:
-                                if _report_ui_exception:
-                                    _report_ui_exception(self.gui, "在状态栏显示步骤1消息失败（非致命）")
-                                else:
-                                    logger.debug("在状态栏显示步骤1消息失败（非致命）", exc_info=True)
-                            except Exception:
+                            if _report_ui_exception:
+                                _report_ui_exception(self.gui, "在状态栏显示步骤1消息失败（非致命）")
+                            else:
                                 logger.debug("在状态栏显示步骤1消息失败（非致命）", exc_info=True)
+                        except Exception:
+                            logger.debug("在状态栏显示步骤1消息失败（非致命）", exc_info=True)
 
                     self.gui.file_list_widget.setVisible(False)
                 except Exception:
@@ -1373,27 +1364,20 @@ class BatchManager:
                 logger.debug("创建浏览对话失败", exc_info=True)
             return None
         try:
-            # 更新左侧临时消息
+            # 使用 SignalBus 统一状态消息显示步骤2
             try:
-                self.gui.statusBar().showMessage(
-                    "步骤2：在文件列表选择数据文件"
-                )
+                from gui.signal_bus import SignalBus
+                bus = SignalBus.instance()
+                # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
+                bus.statusMessage.emit("📂 步骤2：在文件列表选择数据文件", 0, 2)
             except Exception:
                 try:
                     if _report_ui_exception:
-                        _report_ui_exception(self.gui, "更新左侧临时状态失败（非致命）")
+                        _report_ui_exception(self.gui, "更新步骤2提示失败（非致命）")
                     else:
-                        logger.debug("更新左侧临时状态失败（非致命）", exc_info=True)
+                        logger.debug("更新步骤2提示失败（非致命）", exc_info=True)
                 except Exception:
-                    logger.debug("更新左侧临时状态失败（非致命）", exc_info=True)
-
-            # 同步更新状态栏右侧的永久标签（如果存在）
-            try:
-                from PySide6.QtWidgets import QLabel
-
-                lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
-                if lbl is not None:
-                    lbl.setText("步骤2：在文件列表选择数据文件")
+                    logger.debug("更新步骤2提示失败（非致命）", exc_info=True)
             except Exception:
                 # 忽略获取/设置永久标签的失败，但记录调试信息
                 try:
@@ -1669,18 +1653,20 @@ class BatchManager:
             if not file_path.exists():
                 return
             try:
-                self.gui.statusBar().showMessage(
-                    "步骤3：如需编辑配置请勾选“显示配置编辑器”；"
-                    "步骤4：在文件列表设置映射"
+                from gui.signal_bus import SignalBus
+                bus = SignalBus.instance()
+                # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
+                bus.statusMessage.emit(
+                    "⚙️ 步骤3：编辑配置（可选） | 📝 步骤4：设置文件映射", 0, 2
                 )
             except Exception:
                 try:
                     if _report_ui_exception:
-                        _report_ui_exception(self.gui, "更新左侧临时状态失败（非致命）")
+                        _report_ui_exception(self.gui, "更新步骤3/4提示失败（非致命）")
                     else:
-                        logger.debug("更新左侧临时状态失败（非致命）", exc_info=True)
+                        logger.debug("更新步骤3/4提示失败（非致命）", exc_info=True)
                 except Exception:
-                    logger.debug("更新左侧临时状态失败（非致命）", exc_info=True)
+                    logger.debug("更新步骤3/4提示失败（非致命）", exc_info=True)
 
             # 特殊格式：为该文件建立映射编辑区（无弹窗）
             try:
@@ -2282,16 +2268,12 @@ class BatchManager:
             self._restore_gui_after_batch(enable_undo=True)
             try:
                 # 完成后将步骤恢复到步骤1：选择文件或目录
-                from PySide6.QtWidgets import QLabel
-
-                lbl = self.gui.statusBar().findChild(QLabel, "statusMessage")
-                if lbl is not None:
-                    lbl.setText("步骤1：选择文件或目录")
+                from gui.signal_bus import SignalBus
+                bus = SignalBus.instance()
+                # 使用永久显示（timeout=0）和高优先级
+                bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
             except Exception:
-                try:
-                    self.gui.statusBar().showMessage("步骤1：选择文件或目录")
-                except Exception:
-                    logger.debug("恢复状态栏消息失败（非致命）", exc_info=True)
+                logger.debug("恢复步骤1提示失败", exc_info=True)
             QMessageBox.information(self.gui, "完成", message)
         except Exception as e:
             logger.error(f"处理完成事件失败: {e}")
@@ -2510,21 +2492,12 @@ class BatchManager:
                         if not files:
                             # 恢复到步骤1 文本
                             try:
-                                from PySide6.QtWidgets import QLabel
-
-                                lbl = self.gui.statusBar().findChild(
-                                    QLabel, "statusMessage"
-                                )
-                                if lbl is not None:
-                                    lbl.setText("步骤1：选择文件或目录")
+                                from gui.signal_bus import SignalBus
+                                bus = SignalBus.instance()
+                                # 使用永久显示（timeout=0）和高优先级
+                                bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
                             except Exception as e:
-                                logger.debug("恢复步骤1文本失败: %s", e, exc_info=True)
-                                try:
-                                    self.gui.statusBar().showMessage(
-                                        "步骤1：选择文件或目录"
-                                    )
-                                except Exception as e2:
-                                    logger.debug("显示状态栏消息失败: %s", e2, exc_info=True)
+                                logger.debug("恢复步骤1提示失败: %s", e, exc_info=True)
                         else:
                             # 填充文件树并进入 step2
                             try:
