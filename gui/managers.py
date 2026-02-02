@@ -1,6 +1,28 @@
 """GUI 管理器集合：将 `IntegratedAeroGUI` 的部分职责拆分为独立管理器。
 
 设计原则：最小侵入、向后兼容。当前实现提供轻量包装，未来可逐步迁移逻辑。
+
+=== 错误处理规范 ===
+
+为保持错误处理一致性，应使用以下函数进行错误报告：
+
+1. 非关键的 UI 操作异常 -> _report_ui_exception()
+   - 适用：UI 交互失败、参数验证失败等
+   - 行为：记录警告日志 + 状态栏提示（5秒）
+   - 示例：无法更新控件、对话框操作失败
+
+2. 用户可见的错误 -> report_user_error()
+   - 适用：用户操作失败、处理流程中断等
+   - 行为：记录错误日志 + 状态栏提示 + 错误消息框（如需）
+   - 示例：浏览失败、批处理启动失败、文件解析失败
+   
+3. 仅记录日志的异常 -> logger.error/warning/debug()
+   - 适用：内部编程错误、调试信息
+   - 不应用于用户交互相关的错误
+   
+禁止直接使用：
+- QMessageBox.critical() 直接调用（应用 report_user_error）
+- print() 用于错误信息（应用日志系统）
 """
 
 # 管理器模块中为避免循环导入，部分导入为延迟导入，允许 import-outside-toplevel
@@ -51,6 +73,62 @@ def _report_ui_exception(parent: QWidget, context: str, exc_info=True):
             except Exception:
                 # 状态栏展示为非关键功能，忽略展示失败
                 pass
+    except Exception:
+        pass
+
+
+def report_user_error(parent: QWidget, title: str, message: str, details: str = None, is_warning: bool = False):
+    """统一的用户错误报告函数：记录日志并显示用户可见的消息。
+    
+    参数：
+        parent: 父窗口（用于消息框的父窗口和状态栏访问）
+        title: 错误/警告标题
+        message: 用户可读的错误消息
+        details: 详细信息（可选，仅记录到日志）
+        is_warning: 是否为警告而非错误（决定日志级别和图标）
+    """
+    # 记录到日志
+    if is_warning:
+        if details:
+            _logger.warning("%s：%s - %s", title, message, details)
+        else:
+            _logger.warning("%s：%s", title, message)
+    else:
+        if details:
+            _logger.error("%s：%s - %s", title, message, details)
+        else:
+            _logger.error("%s：%s", title, message)
+    
+    # 优先使用状态栏提示以避免过多弹窗
+    try:
+        from gui.signal_bus import SignalBus
+        try:
+            # 优先级：错误=高，警告=中
+            priority = 1 if not is_warning else 0
+            SignalBus.instance().statusMessage.emit(f"{title}：{message}", 8000, priority)
+            return
+        except Exception:
+            pass
+    except Exception:
+        pass
+    
+    # 状态栏失败时尝试显示消息框（仅对关键错误）
+    if not is_warning:
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            
+            if parent is not None:
+                QMessageBox.critical(parent, title, message)
+            return
+        except Exception:
+            pass
+    
+    # 最后尝试直接更新状态栏
+    try:
+        if parent is not None and hasattr(parent, "statusBar"):
+            sb = parent.statusBar()
+            if sb is not None:
+                sb.showMessage(f"{title}：{message}", 8000)
     except Exception:
         pass
 

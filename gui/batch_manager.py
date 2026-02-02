@@ -556,9 +556,9 @@ class BatchManager:
 
                 # 如果线程执行过程中出现异常，则回退到主线程同步解析（并显示对话）
                 logger.warning("Python 线程解析失败或抛出异常，回退到同步解析")
-                _safe_report_ui_exception(
+                _report_ui_exception(
                     self.gui,
-                    "后台解析特殊格式时发生错误，已回退到同步解析（详细信息请查看日志）",
+                    "后台解析特殊格式时发生错误，已回退到同步解析",
                 )
             except Exception:
                 logger.warning("无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True)
@@ -594,12 +594,15 @@ class BatchManager:
                 except Exception:
                     logger.debug("清除状态栏消息失败（非致命）", exc_info=True)
                 return data_dict
-            except Exception:
+            except Exception as ex:
                 # 同步解析也失败——这是用户可见的操作失败，应通知并记录 traceback
-                logger.debug("解析特殊格式文件失败（同步回退）", exc_info=True)
-                _safe_report_ui_exception(
+                from gui.managers import report_user_error
+                report_user_error(
                     self.gui,
-                    "解析特殊格式文件失败，已跳过该文件（详细信息请查看日志）",
+                    "解析特殊格式失败",
+                    f"无法解析文件 {file_path.name}，已跳过",
+                    details=str(ex),
+                    is_warning=True
                 )
                 try:
                     self._special_data_cache[fp_str] = {"mtime": mtime, "data": {}}
@@ -938,8 +941,14 @@ class BatchManager:
 
             df = read_table_preview(file_path, int(max_rows))
         except (FileNotFoundError, PermissionError, OSError, pd.errors.ParserError) as e:
-            logger.error("读取表格预览失败: %s", e, exc_info=True)
-            _safe_report_ui_exception(self.gui, f"读取表格预览失败: {e}")
+            from gui.managers import report_user_error
+            report_user_error(
+                self.gui,
+                "读取表格预览失败",
+                f"无法读取文件预览（{type(e).__name__}）",
+                details=str(e),
+                is_warning=True
+            )
             df = None
         except Exception:
             # 非预期错误，记录调试信息但不打断用户流程
@@ -1219,8 +1228,14 @@ class BatchManager:
                     logger.debug("处理标签切换失败（非致命）", exc_info=True)
 
         except Exception as e:
-            logger.error(f"浏览输入失败: {e}")
-            QMessageBox.critical(self.gui, "错误", f"浏览失败: {e}")
+            # 使用统一的错误报告函数
+            from gui.managers import report_user_error
+            report_user_error(
+                self.gui,
+                "浏览失败",
+                "选择文件或目录时出错",
+                details=str(e)
+            )
 
     def _create_browse_dialog(self):
         """创建并配置选择输入文件或目录的 QFileDialog 实例。

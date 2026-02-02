@@ -79,11 +79,14 @@ def run_batch_processing(manager):
             manager.batch_thread.start()
             logger.info(f"开始批处理 {len(files_to_process)} 个文件")
     except Exception as e:
-        logger.error(f"启动批处理失败: {e}")
-        try:
-            QMessageBox.critical(manager.gui, "错误", f"启动失败: {e}")
-        except Exception:
-            logger.debug("显示启动失败对话失败（非致命）", exc_info=True)
+        # 使用统一的错误报告函数
+        from gui.managers import report_user_error
+        report_user_error(
+            manager.gui,
+            "启动批处理失败",
+            "无法启动批处理操作",
+            details=str(e)
+        )
 
 
 def attach_batch_thread_signals(manager):
