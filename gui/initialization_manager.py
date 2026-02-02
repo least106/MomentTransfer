@@ -275,6 +275,12 @@ class InitializationManager:
             # 将分割器加入主布局（包含 operation_panel 与 bottom_bar）
             main_layout.addWidget(splitter)
 
+            # 连接底部栏切换信号（必须在 splitter 和 bottom_bar 创建后）
+            try:
+                self._connect_bottom_bar_signals()
+            except Exception:
+                logger.debug("连接底部栏信号失败（非致命）", exc_info=True)
+
             # 将状态信息显示为状态栏右侧的永久标签，避免默认消息框在左侧分散注意力
             try:
                 from PySide6.QtWidgets import QLabel, QSizePolicy
@@ -816,42 +822,6 @@ class InitializationManager:
             # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
             self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
 
-            # 连接工具栏中的复选框信号以控制底部栏显示/隐藏
-            try:
-                splitter = self.main_window._bottom_splitter
-                bottom_bar = self.main_window._bottom_bar
-                
-                # 切换时同时调整 splitter 尺寸以折叠/展开底部栏
-                def _toggle_bottom_bar(visible: bool) -> None:
-                    try:
-                        bottom_bar.setVisible(bool(visible))
-                        if bool(visible):
-                            # 展开到合理默认高度
-                            try:
-                                # 使用约 20% 的底部高度作为默认展开比例
-                                self._set_splitter_bottom_ratio(splitter, 0.2)
-                            except Exception:
-                                logger.debug(
-                                    "展开底部栏时调整分割器大小失败（非致命）",
-                                    exc_info=True,
-                                )
-                        else:
-                            try:
-                                self._set_splitter_bottom_ratio(splitter, 0.0)
-                            except Exception:
-                                logger.debug(
-                                    "折叠底部栏时调整分割器大小失败（非致命）",
-                                    exc_info=True,
-                                )
-                    except Exception:
-                        logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
-
-                self.main_window.chk_bottom_bar_toolbar.toggled.connect(
-                    _toggle_bottom_bar
-                )
-            except Exception:
-                logger.debug("连接底部栏切换信号失败", exc_info=True)
-
             # 将工具栏添加到主窗口顶部
             self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
 
@@ -874,6 +844,43 @@ class InitializationManager:
             logger.info("工具栏已创建")
         except Exception as e:
             logger.error("创建工具栏失败: %s", e)
+
+    def _connect_bottom_bar_signals(self):
+        """连接底部栏切换信号（在 splitter 和 bottom_bar 创建后调用）"""
+        try:
+            splitter = self.main_window._bottom_splitter
+            bottom_bar = self.main_window._bottom_bar
+            
+            # 切换时同时调整 splitter 尺寸以折叠/展开底部栏
+            def _toggle_bottom_bar(visible: bool) -> None:
+                try:
+                    bottom_bar.setVisible(bool(visible))
+                    if bool(visible):
+                        # 展开到合理默认高度
+                        try:
+                            # 使用约 20% 的底部高度作为默认展开比例
+                            self._set_splitter_bottom_ratio(splitter, 0.2)
+                        except Exception:
+                            logger.debug(
+                                "展开底部栏时调整分割器大小失败（非致命）",
+                                exc_info=True,
+                            )
+                    else:
+                        try:
+                            self._set_splitter_bottom_ratio(splitter, 0.0)
+                        except Exception:
+                            logger.debug(
+                                "折叠底部栏时调整分割器大小失败（非致命）",
+                                exc_info=True,
+                            )
+                except Exception:
+                    logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
+
+            self.main_window.chk_bottom_bar_toolbar.toggled.connect(
+                _toggle_bottom_bar
+            )
+        except Exception:
+            logger.debug("连接底部栏切换信号失败", exc_info=True)
 
     def _show_initializing_overlay(self):
         """在主窗口上显示半透明遮罩，提示正在初始化。"""
