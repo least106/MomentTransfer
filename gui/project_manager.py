@@ -207,7 +207,7 @@ class ProjectManager:
                         # 新建项目通常视为需要保存（用户需确认/命名），标记为已修改
                         self.gui.ui_state_manager.set_data_loaded(True)
                         self.gui.ui_state_manager.set_config_loaded(True)
-                        self.gui.ui_state_manager.clear_user_modified()
+                        self.gui.ui_state_manager.mark_user_modified()
                     except Exception:
                         pass
                 else:

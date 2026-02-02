@@ -1283,37 +1283,35 @@ class UIStateManager:
 
     # 状态设置辅助方法，鼓励通过 UIStateManager 管理窗口级状态
     def set_data_loaded(self, loaded: bool) -> None:
-        """设置数据已加载标志并刷新控件状态。"""
+        """设置数据已加载标志并刷新控件状态。
+        
+        注意：不写回 parent.data_loaded，避免属性 setter 递归调用。
+        parent 的属性 getter 会读取 _data_loaded，setter 只更新 UIStateManager 内部状态。
+        """
         try:
             self._data_loaded = bool(loaded)
-            try:
-                setattr(self.parent, "data_loaded", bool(loaded))
-            except Exception:
-                pass
             self.refresh_controls_state()
         except Exception:
             pass
 
     def set_config_loaded(self, loaded: bool) -> None:
-        """设置配置已加载标志并刷新控件状态。"""
+        """设置配置已加载标志并刷新控件状态。
+        
+        注意：不写回 parent.config_loaded，避免属性 setter 递归调用。
+        """
         try:
             self._config_loaded = bool(loaded)
-            try:
-                setattr(self.parent, "config_loaded", bool(loaded))
-            except Exception:
-                pass
             self.refresh_controls_state()
         except Exception:
             pass
 
     def set_operation_performed(self, performed: bool) -> None:
-        """设置用户已执行操作标志（用于启用保存按钮）。"""
+        """设置用户已执行操作标志（用于启用保存按钮）。
+        
+        注意：不写回 parent.operation_performed，避免属性 setter 递归调用。
+        """
         try:
             self._operation_performed = bool(performed)
-            try:
-                setattr(self.parent, "operation_performed", bool(performed))
-            except Exception:
-                pass
             self.refresh_controls_state()
         except Exception:
             pass

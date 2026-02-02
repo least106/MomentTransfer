@@ -118,7 +118,7 @@ class IntegratedAeroGUI(QMainWindow):
                     type(existing),
                 )
                 return
-            # 保存到 registry 并设置为属性以保持兼容
+            # 保存到内部映射并设置为属性以保持兼容
             self._panels[name] = widget
             try:
                 setattr(self, name, widget)
@@ -240,6 +240,25 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("设置 _is_initializing=False 失败（非致命）", exc_info=True)
 
+    def _init_notification_container(self) -> None:
+        """初始化状态栏通知容器（首次调用时）。专用容器管理通知按钮，避免残留与占位问题。"""
+        try:
+            if getattr(self, "_notification_container", None) is not None:
+                return
+            from PySide6.QtWidgets import QHBoxLayout, QWidget
+            container = QWidget()
+            layout = QHBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+            self._notification_container = container
+            self._notification_layout = layout
+            try:
+                self.statusBar().addPermanentWidget(container)
+            except Exception:
+                logger.debug("添加通知容器到状态栏失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("初始化通知容器失败（非致命）", exc_info=True)
+
     def _flush_init_notifications(self):
         """在初始化完成后展示或记录在初始化期间积累的通知。"""
         try:
@@ -293,6 +312,46 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("刷新初始化通知队列失败（非致命）", exc_info=True)
 
+    def _reset_status_clear_timer(self) -> None:
+        """停止并释放状态栏清理定时器（集中管理，避免多处重复清理）。"""
+        try:
+            t_old = getattr(self, "_status_clear_timer", None)
+            if t_old is None:
+                return
+            try:
+                t_old.stop()
+            except Exception:
+                logger.debug("停止旧状态清理定时器失败（非致命）", exc_info=True)
+            try:
+                t_old.deleteLater()
+            except Exception:
+                logger.debug("释放旧状态清理定时器失败（非致命）", exc_info=True)
+            self._status_clear_timer = None
+        except Exception:
+            logger.debug("重置状态清理定时器失败（非致命）", exc_info=True)
+
+    def _clear_status_state(self) -> None:
+        """清理状态栏 token 与 timer，保证原子替换。"""
+        try:
+            self._reset_status_clear_timer()
+        except Exception:
+            pass
+        try:
+            self._status_token = None
+        except Exception:
+            logger.debug("清理状态 token 失败（非致命）", exc_info=True)
+
+    def _start_status_timer(self, timeout_ms: int, token: str) -> None:
+        """为当前 token 启动状态栏清理定时器。"""
+        try:
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(lambda tok=token: self._clear_status_if_token(tok))
+            t.start(int(timeout_ms))
+            self._status_clear_timer = t
+        except Exception:
+            logger.debug("启动状态清理定时器失败（非致命）", exc_info=True)
+
     def _on_status_message(self, message: str, timeout_ms: int, priority: int) -> None:
         """统一处理状态消息：按优先级显示，并在超时后清理。
 
@@ -314,34 +373,11 @@ class IntegratedAeroGUI(QMainWindow):
                 # 任何判定失败时不阻止显示新消息
                 pass
 
-            # 停止并清理已有定时器（我们将在下面根据新消息重建），并清除旧 token
+            # 统一清理已有定时器与 token，保证原子替换
             try:
-                t_old = getattr(self, "_status_clear_timer", None)
-                if t_old is not None:
-                    try:
-                        t_old.stop()
-                    except Exception:
-                        logger.debug("停止旧状态清理定时器失败（非致命）", exc_info=True)
-                    try:
-                        # 尝试断开所有连接，避免遗留回调
-                        try:
-                            t_old.timeout.disconnect()
-                        except Exception:
-                            pass
-                        # 安全销毁定时器对象
-                        try:
-                            t_old.deleteLater()
-                        except Exception:
-                            pass
-                    except Exception:
-                        logger.debug("清理旧定时器资源失败（非致命）", exc_info=True)
-                    self._status_clear_timer = None
-                try:
-                    self._status_token = None
-                except Exception:
-                    pass
+                self._clear_status_state()
             except Exception:
-                logger.debug("清理旧状态定时器时发生异常（非致命）", exc_info=True)
+                pass
 
             # 立刻在状态栏显示消息（由我们控制何时清理）
             try:
@@ -357,28 +393,16 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 self._status_priority = 0
 
-            # 若指定了超时，使用单个临时 QTimer 在超时后按 token 清理（避免仅通过 priority 字符串比较）
+            # 若指定了超时，使用 token + 单一计时器清理
             try:
                 if timeout_ms and int(timeout_ms) > 0:
-                    from PySide6.QtCore import QTimer
-
                     timeout_val = int(timeout_ms)
                     token = uuid.uuid4().hex
-                    # 保存 token 用于后续比较
                     try:
                         self._status_token = token
                     except Exception:
                         logger.debug("设置状态 token 失败（非致命）", exc_info=True)
-
-                    t = QTimer(self)
-                    t.setSingleShot(True)
-                    # 捕获 token，比较 token 一致性以决定是否清理
-                    t.timeout.connect(lambda tok=token: self._clear_status_if_token(tok))
-                    try:
-                        t.start(timeout_val)
-                    except Exception:
-                        logger.debug("启动状态清理定时器失败（非致命）", exc_info=True)
-                    self._status_clear_timer = t
+                    self._start_status_timer(timeout_val, token)
             except Exception:
                 logger.debug("设置状态清理定时器失败（非致命）", exc_info=True)
         except Exception:
@@ -399,9 +423,9 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 logger.debug("重置状态优先级失败（非致命）", exc_info=True)
             try:
-                self._status_clear_timer = None
+                self._clear_status_state()
             except Exception:
-                logger.debug("清除状态定时器引用失败（非致命）", exc_info=True)
+                pass
         except Exception:
             logger.debug("清理状态消息失败", exc_info=True)
 
@@ -421,13 +445,9 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 logger.debug("按 token 重置状态优先级失败（非致命）", exc_info=True)
             try:
-                self._status_clear_timer = None
+                self._clear_status_state()
             except Exception:
-                logger.debug("按 token 清除状态定时器引用失败（非致命）", exc_info=True)
-            try:
-                self._status_token = None
-            except Exception:
-                logger.debug("清除状态 token 失败（非致命）", exc_info=True)
+                pass
         except Exception:
             logger.debug("按 token 清理状态消息失败", exc_info=True)
 
@@ -455,14 +475,20 @@ class IntegratedAeroGUI(QMainWindow):
 
     @data_loaded.setter
     def data_loaded(self, val: bool) -> None:
+        """设置数据加载标志。委托给 UIStateManager，避免回写递归。"""
         try:
             if getattr(self, "ui_state_manager", None):
                 try:
+                    # 直接更新 UIStateManager 内部状态，不依赖属性写回
                     self.ui_state_manager.set_data_loaded(bool(val))
                     return
                 except Exception:
                     logger.debug("ui_state_manager.set_data_loaded failed in setter", exc_info=True)
-            self._legacy_data_loaded = bool(val)
+            # 回退：使用 object.__setattr__ 直接修改本地字段，避免属性递归
+            try:
+                object.__setattr__(self, "_legacy_data_loaded", bool(val))
+            except Exception:
+                pass
         except Exception:
             logger.debug("setting data_loaded failed", exc_info=True)
 
@@ -480,6 +506,7 @@ class IntegratedAeroGUI(QMainWindow):
 
     @config_loaded.setter
     def config_loaded(self, val: bool) -> None:
+        """设置配置加载标志。委托给 UIStateManager，避免回写递归。"""
         try:
             if getattr(self, "ui_state_manager", None):
                 try:
@@ -487,7 +514,11 @@ class IntegratedAeroGUI(QMainWindow):
                     return
                 except Exception:
                     logger.debug("ui_state_manager.set_config_loaded failed in setter", exc_info=True)
-            self._legacy_config_loaded = bool(val)
+            # 回退：使用 object.__setattr__ 直接修改本地字段，避免属性递归
+            try:
+                object.__setattr__(self, "_legacy_config_loaded", bool(val))
+            except Exception:
+                pass
         except Exception:
             logger.debug("setting config_loaded failed", exc_info=True)
 
@@ -505,15 +536,19 @@ class IntegratedAeroGUI(QMainWindow):
 
     @operation_performed.setter
     def operation_performed(self, val: bool) -> None:
+        """设置操作执行标志。委托给 UIStateManager，避免回写递归。"""
         try:
             if getattr(self, "ui_state_manager", None):
                 try:
-                    # UIStateManager 负责集中状态并触发 UI 刷新
                     self.ui_state_manager.set_operation_performed(bool(val))
                     return
                 except Exception:
                     logger.debug("ui_state_manager.set_operation_performed failed in setter", exc_info=True)
-            self._legacy_operation_performed = bool(val)
+            # 回退：使用 object.__setattr__ 直接修改本地字段，避免属性递归
+            try:
+                object.__setattr__(self, "_legacy_operation_performed", bool(val))
+            except Exception:
+                pass
         except Exception:
             logger.debug("setting operation_performed failed", exc_info=True)
 
@@ -680,7 +715,7 @@ class IntegratedAeroGUI(QMainWindow):
         logger.debug("apply_config 已被移除（no-op）")
 
     # 配置格式方法委托给 ConfigManager
-    # 已移除全局数据格式配置功能（改为 per-file sidecar / registry 机制）
+    # 已移除全局数据格式配置功能（改为按文件/目录自动识别）
 
     def browse_batch_input(self):
         """选择输入文件或目录 - 委托给 BatchManager"""
@@ -821,7 +856,14 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception as e:
             logger.error("保存Project失败: %s", e)
             try:
-                QMessageBox.critical(self, "错误", f"保存Project失败: {e}")
+                if hasattr(self, "notify_nonmodal") and callable(self.notify_nonmodal):
+                    self.notify_nonmodal(
+                        summary="保存项目失败",
+                        details=f"保存Project失败: {e}",
+                        duration_ms=10000,
+                    )
+                else:
+                    self.statusBar().showMessage(f"保存Project失败: {e}", 10000)
             except Exception:
                 logger.debug("无法显示保存失败对话框（非致命）", exc_info=True)
 
@@ -1321,7 +1363,7 @@ class IntegratedAeroGUI(QMainWindow):
                 title="处理失败",
                 message="批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。",
                 informative=(
-                    "建议：检查 per-file 格式定义（<文件名>.format.json / 同目录 format.json / registry），"
+                    "建议：检查输入文件的格式定义与解析规则，"
                     "以及 Target 配置中的 MomentCenter/Q/S。"
                 ),
                 detailed=str(error_msg),
@@ -1452,6 +1494,126 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("notify_modal failed (non-fatal)", exc_info=True)
 
+    def _reset_notification_timer(self) -> None:
+        """停止并释放非模态通知定时器（集中管理）。"""
+        try:
+            t_old = getattr(self, "_notification_timer", None)
+            if t_old is None:
+                return
+            try:
+                t_old.stop()
+            except Exception:
+                logger.debug("停止通知定时器失败（非致命）", exc_info=True)
+            try:
+                t_old.deleteLater()
+            except Exception:
+                logger.debug("释放通知定时器失败（非致命）", exc_info=True)
+            self._notification_timer = None
+        except Exception:
+            logger.debug("重置通知定时器失败（非致命）", exc_info=True)
+
+    def _clear_notification_state(self) -> None:
+        """清理非模态通知的按钮、token 与 timer。从容器布局中移除并释放按钮。"""
+        try:
+            old = getattr(self, "_notification_btn", None)
+            if old is not None:
+                try:
+                    layout = getattr(self, "_notification_layout", None)
+                    if layout is not None:
+                        try:
+                            layout.removeWidget(old)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    old.deleteLater()
+                except Exception:
+                    pass
+                self._notification_btn = None
+        except Exception:
+            logger.debug("清理旧通知按钮失败（非致命）", exc_info=True)
+        try:
+            self._reset_notification_timer()
+        except Exception:
+            pass
+        try:
+            self._notification_token = None
+        except Exception:
+            pass
+
+    def _remove_nonmodal_notification(self, token: str, summary: str) -> None:
+        """按 token 清理非模态通知，从容器布局移除并释放。避免清理到新消息。"""
+        try:
+            cur_tok = getattr(self, "_notification_token", None)
+            if cur_tok != token:
+                return
+            # 从容器布局移除按钮
+            try:
+                btn = getattr(self, "_notification_btn", None)
+                if btn is not None:
+                    try:
+                        layout = getattr(self, "_notification_layout", None)
+                        if layout is not None:
+                            try:
+                                layout.removeWidget(btn)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    try:
+                        btn.deleteLater()
+                    except Exception:
+                        pass
+                    self._notification_btn = None
+            except Exception:
+                logger.debug("清除非模态通知按钮失败（非致命）", exc_info=True)
+            # 清理状态栏消息（若仍匹配）
+            try:
+                try:
+                    cur = self.statusBar().currentMessage()
+                except Exception:
+                    cur = None
+                if cur == summary:
+                    try:
+                        self.statusBar().clearMessage()
+                    except Exception:
+                        logger.debug(
+                            "clearMessage failed (non-fatal)",
+                            exc_info=True,
+                        )
+            except Exception:
+                logger.debug(
+                    "inspect/clear statusBar currentMessage failed",
+                    exc_info=True,
+                )
+            # 停止并清理定时器
+            try:
+                self._reset_notification_timer()
+            except Exception:
+                pass
+            # 清理 token
+            try:
+                self._notification_token = None
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("清理非模态通知失败（非致命）", exc_info=True)
+
+    def _start_notification_timer(self, duration_ms: int, token: str, summary: str) -> None:
+        """启动非模态通知计时器。"""
+        try:
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(lambda tok=token, summ=summary: self._remove_nonmodal_notification(tok, summ))
+            t.start(int(duration_ms))
+            self._notification_timer = t
+        except Exception:
+            logger.debug(
+                "notification timer creation failed (non-fatal)",
+                exc_info=True,
+            )
+
     def notify_nonmodal(
         self,
         summary: str,
@@ -1459,42 +1621,19 @@ class IntegratedAeroGUI(QMainWindow):
         duration_ms: int = 120000,
         button_text: str = "查看详情",
     ) -> None:
-        """统一的非模态通知：在状态栏显示 summary，并提供查看 details 的非模态入口。"""
+        """统一的非模态通知：在状态栏显示 summary，并提供查看 details 的非模态入口。
+        
+        使用专用容器 widget 管理通知按钮，避免状态栏空间残留与占位问题。
+        """
         try:
-            # 清理旧按钮及其 token
+            # 清理旧通知状态（按钮、token、timer）
             try:
-                old = getattr(self, "_notification_btn", None)
-                if old is not None:
-                    try:
-                        self.statusBar().removeWidget(old)
-                    except Exception:
-                        try:
-                            old.setVisible(False)
-                        except Exception:
-                            logger.debug(
-                                "hide old notification button failed (non-fatal)",
-                                exc_info=True,
-                            )
-                    try:
-                        del self._notification_btn
-                    except Exception:
-                        # 确保引用被清理，不抛异常
-                        try:
-                            setattr(self, "_notification_btn", None)
-                        except Exception:
-                            pass
-                try:
-                    # 清理旧的通知 token（若存在）
-                    if hasattr(self, "_notification_token"):
-                        self._notification_token = None
-                except Exception:
-                    pass
+                self._clear_notification_state()
             except Exception:
-                logger.debug("initial notify_nonmodal cleanup failed", exc_info=True)
+                pass
 
             if details is None:
                 try:
-                    # UX：非模态提示应在一定时间后自动消失，避免长期占用状态栏主消息区
                     self.statusBar().showMessage(summary, int(duration_ms))
                     return
                 except Exception:
@@ -1506,102 +1645,41 @@ class IntegratedAeroGUI(QMainWindow):
             btn = QPushButton(button_text, self)
             btn.setToolTip(summary)
             btn.clicked.connect(lambda: self._show_non_modal_error_details(details))
-            # 生成唯一 token 以绑定该条通知，避免基于 summary 字符串的比较冲突
+            # 生成唯一 token 以绑定该条通知
             try:
                 token = uuid.uuid4().hex
-                setattr(self, "_notification_token", token)
-                try:
-                    setattr(btn, "_notify_token", token)
-                except Exception:
-                    # 不影响主要行为
-                    pass
+                self._notification_token = token
             except Exception:
                 token = None
             self._notification_btn = btn
+            # 添加按钮到容器（而非直接 addPermanentWidget）
             try:
-                self.statusBar().addPermanentWidget(btn)
+                # 初始化容器（首次调用时）
+                self._init_notification_container()
+                layout = getattr(self, "_notification_layout", None)
+                if layout is not None:
+                    layout.addWidget(btn)
+                else:
+                    # 容器未成功初始化，回退：仅显示消息
+                    self.statusBar().showMessage(summary)
             except Exception:
+                logger.debug(
+                    "添加通知按钮到容器失败，回退为消息显示", exc_info=True
+                )
                 try:
                     self.statusBar().showMessage(summary)
                 except Exception:
-                    logger.debug(
-                        "statusBar fallback failed (non-fatal)", exc_info=True
-                    )
+                    pass
 
-            # 自动移除按钮
-            def _remove():
-                try:
-                    b = getattr(self, "_notification_btn", None)
-                    # 仅当 token 与当前保存的一致时才清理该通知，避免冲突
-                    try:
-                        cur_tok = getattr(self, "_notification_token", None)
-                    except Exception:
-                        cur_tok = None
-
-                    if token is not None and cur_tok != token:
-                        return
-
-                    if b is not None:
-                        try:
-                            self.statusBar().removeWidget(b)
-                        except Exception:
-                            try:
-                                b.setVisible(False)
-                            except Exception:
-                                logger.debug(
-                                    "hide notification button failed (non-fatal)",
-                                    exc_info=True,
-                                )
-                        try:
-                            del self._notification_btn
-                        except Exception:
-                            try:
-                                setattr(self, "_notification_btn", None)
-                            except Exception:
-                                pass
-
-                    try:
-                        # 仅在当前显示的消息仍然是本通知时才清理
-                        try:
-                            cur = self.statusBar().currentMessage()
-                        except Exception:
-                            cur = None
-                        if cur == summary:
-                            try:
-                                self.statusBar().clearMessage()
-                            except Exception:
-                                logger.debug(
-                                    "clearMessage failed (non-fatal)",
-                                    exc_info=True,
-                                )
-                    except Exception:
-                        logger.debug(
-                            "inspect/clear statusBar currentMessage failed",
-                            exc_info=True,
-                        )
-                    try:
-                        if hasattr(self, "_notification_token"):
-                            self._notification_token = None
-                    except Exception:
-                        pass
-                except Exception:
-                    logger.debug(
-                        "清除非模态通知按钮失败（非致命）", exc_info=True
-                    )
-
+            # 启动定时器自动移除
             try:
-                timer = QTimer(self)
-                timer.setSingleShot(True)
-                timer.timeout.connect(_remove)
-                timer.start(duration_ms)
+                if token is not None:
+                    self._start_notification_timer(duration_ms, token, summary)
             except Exception:
-                logger.debug(
-                    "notification timer creation failed (non-fatal)",
-                    exc_info=True,
-                )
+                pass
 
+            # 显示主消息（与按钮移除计时保持一致）
             try:
-                # UX：与按钮移除计时保持一致
                 self.statusBar().showMessage(summary, int(duration_ms))
             except Exception:
                 logger.debug(
