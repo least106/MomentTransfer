@@ -673,7 +673,8 @@ class ProjectManager:
                                 self._atomic_write_dict(Path(save_path), project_data)
                         except Exception:
                             logger.debug("版本不匹配时另存为失败", exc_info=True)
-                        # 继续加载原文件
+                        # 用户选择另存为后，不再继续加载原文件，避免违背"仅保存副本"的预期
+                        return False
                 except Exception:
                     logger.debug("显示版本不匹配对话失败，继续加载", exc_info=True)
 

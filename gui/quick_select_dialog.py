@@ -80,12 +80,13 @@ class QuickSelectDialog(QDialog):
 
         lay = QVBoxLayout(self)
         desc = QLabel(
-            "勾选要操作的项后，会在下方生成对应的输入框。每个输入框填入要跳过的行号（1基，逗号分隔），下方立即显示这些行的数据。"
+            "勾选要操作的项后，会在下方生成对应的输入框。每个输入框填入要跳过的行号（1基，逗号分隔），下方立即显示这些行的数据。\n"
+            "提示：输入 'ALL' 可恢复全部行（清空之前的跳过设置）。"
         )
         lay.addWidget(desc)
 
         self.tree = QTreeWidget(self)
-        self.tree.setHeaderLabels(["文件名", "part"])
+        self.tree.setHeaderLabels(["文件路径", "part"])
         self.tree.setColumnWidth(0, 380)
         lay.addWidget(self.tree, 1)
 
@@ -245,14 +246,15 @@ class QuickSelectDialog(QDialog):
         v.setContentsMargins(4, 4, 4, 4)
         v.setSpacing(4)
 
-        title = f"文件: {Path(fp_str).name}" + (f"  part: {part}" if part else "")
+        # 显示完整路径以区分同名文件
+        title = f"文件: {fp_str}" + (f"  part: {part}" if part else "")
         lbl = QLabel(title)
         v.addWidget(lbl)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("跳过行(1基):"))
         inp = QLineEdit()
-        inp.setPlaceholderText("如 1,5,10")
+        inp.setPlaceholderText("如 1,5,10 或 ALL")
         row.addWidget(inp, 1)
         v.addLayout(row)
 
