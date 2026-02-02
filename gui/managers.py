@@ -1189,16 +1189,14 @@ class UIStateManager:
                 except Exception:
                     pass
 
-            # 取消按钮：始终保持可见以避免布局跳动，仅通过 setEnabled 控制可交互性。
+            # 取消按钮：仅在锁定（批处理中）显示，避免空闲时出现干扰控件。
             try:
                 if hasattr(self.parent, "btn_cancel"):
                     try:
-                        self.parent.btn_cancel.setVisible(True)
+                        self.parent.btn_cancel.setVisible(bool(self._lock_count))
                     except Exception:
-                        # 若控件不支持可见性设置，忽略
                         pass
                     try:
-                        # 在有锁时允许点击取消以便中断操作；否则禁用但保留占位
                         self.parent.btn_cancel.setEnabled(bool(self._lock_count))
                     except Exception:
                         pass
@@ -1345,10 +1343,7 @@ class UIStateManager:
                         except Exception:
                             cidx = -1
                         if cidx is not None and cidx >= 0:
-                            tab.setTabEnabled(
-                                cidx,
-                                bool(self.is_data_loaded() or self.is_config_loaded()),
-                            )
+                            tab.setTabEnabled(cidx, True)
             except Exception:
                 import logging
 

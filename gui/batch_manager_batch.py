@@ -48,18 +48,28 @@ def run_batch_processing(manager):
         all_files = []
         output_dir = None
         collect_fn = getattr(manager, "_collect_files_to_process", None)
-        
+
+        error_msg = None
         for input_path in input_paths:
-            if callable(collect_fn):
-                files, out_dir, error_msg = collect_fn(input_path)
-        else:
-            files_to_process, output_dir, error_msg = (
-                [],
-                None,
-                "无法收集待处理文件",
-            )
+            if not callable(collect_fn):
+                error_msg = "无法收集待处理文件"
+                break
+            files, out_dir, err = collect_fn(input_path)
+            if err:
+                error_msg = err
+                break
+            if out_dir is not None and output_dir is None:
+                output_dir = out_dir
+            if files:
+                all_files.extend(list(files))
+
         if error_msg:
             QMessageBox.warning(manager.gui, "提示", error_msg)
+            return
+
+        files_to_process = all_files
+        if not files_to_process:
+            QMessageBox.warning(manager.gui, "提示", "未找到可处理的文件")
             return
 
         if output_dir is None:
@@ -74,8 +84,10 @@ def run_batch_processing(manager):
         # pylint: enable=protected-access
 
         try:
+            input_paths_str = ";".join(str(p) for p in input_paths)
             manager._current_batch_context = {
-                "input_path": str(input_path),
+                "input_path": input_paths_str,
+                "input_paths": [str(p) for p in input_paths],
                 "files": [str(f) for f in files_to_process],
                 "output_dir": str(output_path),
             }

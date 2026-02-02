@@ -1437,6 +1437,12 @@ class BatchManager:
             except Exception:
                 logger.debug("填充文件树失败", exc_info=True)
 
+            # 刷新集中映射面板
+            try:
+                self.refresh_part_mapping_panel()
+            except Exception:
+                logger.debug("刷新映射面板失败", exc_info=True)
+
         except Exception as e:
             logger.error(f"扫描并填充文件列表失败: {e}")
             traceback.print_exc()
@@ -2218,6 +2224,13 @@ class BatchManager:
     def refresh_file_statuses(self) -> None:
         """当配置/Part 变化后，刷新文件列表的状态与映射下拉选项。"""
         try:
+            # 首先刷新集中映射面板（这会填充并保存默认的 Source/Target 选择）
+            try:
+                self.refresh_part_mapping_panel()
+            except Exception:
+                logger.debug("刷新映射面板失败", exc_info=True)
+            
+            # 然后验证文件状态（此时 file_part_selection_by_file 已被填充）
             items = getattr(self.gui, "_file_tree_items", {}) or {}
             for fp_str, item in items.items():
                 try:
@@ -2243,6 +2256,15 @@ class BatchManager:
                         logger.debug("刷新文件节点失败: %s", fp_str, exc_info=True)
         except Exception:
             logger.debug("refresh_file_statuses failed", exc_info=True)
+
+    def refresh_part_mapping_panel(self) -> None:
+        """刷新集中 Part 映射面板内容。"""
+        try:
+            panel = getattr(self.gui, "part_mapping_panel", None)
+            if panel is not None and hasattr(panel, "refresh_from_manager"):
+                panel.refresh_from_manager(self)
+        except Exception:
+            logger.debug("refresh_part_mapping_panel failed", exc_info=True)
 
     def run_batch_processing(self):
         return _run_batch_processing_impl(self)
@@ -2438,6 +2460,10 @@ class BatchManager:
                     self._ensure_special_mapping_rows(file_item, file_path)
             except Exception:
                 logger.debug("特殊格式解析完成后刷新子节点失败", exc_info=True)
+            try:
+                self.refresh_part_mapping_panel()
+            except Exception:
+                logger.debug("刷新映射面板失败", exc_info=True)
 
             # 刷新在内存中已注册的特殊预览表
             for key, table in list((self._special_preview_tables or {}).items()):
@@ -2753,8 +2779,18 @@ class BatchManager:
             for fp_str, table in (self._table_preview_tables or {}).items():
                 w = fw
                 inner = getattr(table, "table", None)
+                inner_viewport = None
+                try:
+                    if inner is not None and hasattr(inner, "viewport"):
+                        inner_viewport = inner.viewport()
+                except Exception:
+                    inner_viewport = None
                 while w is not None:
-                    if w is table or (inner is not None and w is inner):
+                    if (
+                        w is table
+                        or (inner is not None and w is inner)
+                        or (inner_viewport is not None and w is inner_viewport)
+                    ):
                         file_item = getattr(self.gui, "_file_tree_items", {}).get(
                             fp_str
                         )
@@ -2772,8 +2808,18 @@ class BatchManager:
             for (fp_str, sp), table in (self._special_preview_tables or {}).items():
                 w = fw
                 inner = getattr(table, "table", None)
+                inner_viewport = None
+                try:
+                    if inner is not None and hasattr(inner, "viewport"):
+                        inner_viewport = inner.viewport()
+                except Exception:
+                    inner_viewport = None
                 while w is not None:
-                    if w is table or (inner is not None and w is inner):
+                    if (
+                        w is table
+                        or (inner is not None and w is inner)
+                        or (inner_viewport is not None and w is inner_viewport)
+                    ):
                         part_item = self._find_special_part_item(fp_str, sp)
                         if part_item is not None:
                             return part_item, fp_str, sp

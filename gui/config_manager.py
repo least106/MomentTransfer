@@ -325,6 +325,7 @@ class ConfigManager:
                 sframe = project.get_source_part(s_part, s_variant)
             else:
                 sframe = project.source_config
+
             payload = self._frame_to_payload(sframe)
             try:
                 self.gui.source_panel.apply_variant_payload(payload)

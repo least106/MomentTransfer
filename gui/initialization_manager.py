@@ -183,14 +183,19 @@ class InitializationManager:
 
             # 创建配置/操作面板
             config_panel = self.main_window.create_config_panel()
+            part_mapping_panel = self.main_window.create_part_mapping_panel()
             operation_panel = self.main_window.create_operation_panel()
             # 通过集中注册接口统一管理面板，避免在多处重复赋值
             try:
                 if hasattr(self.main_window, "register_panel"):
                     self.main_window.register_panel("config_panel", config_panel)
+                    self.main_window.register_panel(
+                        "part_mapping_panel", part_mapping_panel
+                    )
                     self.main_window.register_panel("operation_panel", operation_panel)
                 else:
                     self.main_window.config_panel = config_panel
+                    self.main_window.part_mapping_panel = part_mapping_panel
                     self.main_window.operation_panel = operation_panel
             except Exception:
                 # 兼容回退：尽量设置属性并记录失败
@@ -198,6 +203,10 @@ class InitializationManager:
                     self.main_window.config_panel = config_panel
                 except Exception:
                     logger.debug("注册 config_panel 失败（非致命）", exc_info=True)
+                try:
+                    self.main_window.part_mapping_panel = part_mapping_panel
+                except Exception:
+                    logger.debug("注册 part_mapping_panel 失败（非致命）", exc_info=True)
                 try:
                     self.main_window.operation_panel = operation_panel
                 except Exception:
@@ -237,9 +246,8 @@ class InitializationManager:
             bottom_layout.setContentsMargins(0, 0, 0, 0)
             bottom_layout.setSpacing(LAYOUT_SPACING)
 
-            # 左右并排放置原先的配置与历史面板
-            bottom_layout.addWidget(config_panel, 1)
-            bottom_layout.addWidget(history_panel, 0)
+            # 底部栏仅放置批处理历史面板，避免配置面板重复插入导致父级重置
+            bottom_layout.addWidget(history_panel, 1)
 
             # 初始折叠（隐藏底部栏） — 使用比例设置分割器大小以提高跨分辨率/字体的稳健性
             bottom_bar.setVisible(False)
@@ -330,9 +338,19 @@ class InitializationManager:
                 ):
                     tab_main = self.main_window.tab_main
                     config_panel = self.main_window.config_panel
-                    # 替换第0个Tab的内容
+                    part_mapping_panel = getattr(
+                        self.main_window, "part_mapping_panel", None
+                    )
+                    # 替换第0个Tab的内容（在配置编辑器右侧加入映射面板）
+                    container = QWidget()
+                    container_layout = QHBoxLayout(container)
+                    container_layout.setContentsMargins(0, 0, 0, 0)
+                    container_layout.setSpacing(10)
+                    container_layout.addWidget(config_panel, 3)
+                    if part_mapping_panel is not None:
+                        container_layout.addWidget(part_mapping_panel, 2)
                     tab_main.removeTab(0)
-                    tab_main.insertTab(0, config_panel, "参考系管理")
+                    tab_main.insertTab(0, container, "参考系管理")
             except Exception:
                 logger.debug("替换参考系管理Tab失败", exc_info=True)
 
@@ -728,7 +746,7 @@ class InitializationManager:
             # 右侧：主要操作按钮（将复选框放在浏览按钮左侧）
             # 右侧：展开批处理记录复选框（放在浏览按钮左侧）
             chk_bottom_bar = QCheckBox("展开批处理记录")
-            chk_bottom_bar.setToolTip("在底部显示批处理历史记录与配置编辑器")
+            chk_bottom_bar.setToolTip("在底部显示批处理历史记录")
             chk_bottom_bar.setChecked(False)
 
             # 将复选框添加到工具栏并添加右侧的操作按钮

@@ -42,7 +42,7 @@ from gui.log_manager import LoggingManager
 from gui.managers import FileSelectionManager, ModelManager, UIStateManager
 
 # 导入面板组件
-from gui.panels import ConfigPanel, OperationPanel
+from gui.panels import ConfigPanel, OperationPanel, PartMappingPanel
 
 # 导入管理器和工具
 from gui.signal_bus import SignalBus
@@ -628,6 +628,17 @@ class IntegratedAeroGUI(QMainWindow):
         self.source_panel = panel.source_panel
         self.target_panel = panel.target_panel
 
+        return panel
+
+    def create_part_mapping_panel(self):
+        """创建文件部件映射面板（由 InitializationManager 调用）"""
+        panel = PartMappingPanel(self)
+        self.part_mapping_panel = panel
+        return panel
+
+    def create_part_mapping_panel(self):
+        """创建文件 Part 映射面板（由 InitializationManager 调用）"""
+        panel = PartMappingPanel(self)
         return panel
 
     def _select_all_files(self):

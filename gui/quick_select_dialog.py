@@ -162,7 +162,8 @@ class QuickSelectDialog(QDialog):
         return files
 
     def _populate_items(self) -> None:
-        from src.special_format_parser import get_part_names, looks_like_special_format
+        from src.special_format_detector import looks_like_special_format
+        from src.special_format_parser import get_part_names
 
         try:
             self.tree.blockSignals(True)
