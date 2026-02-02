@@ -44,6 +44,7 @@ class BatchProcessThread(QThread):
     """在后台线程中执行批量处理"""
 
     progress = Signal(int)
+    progress_detail = Signal(int, str)  # (百分比, 详细信息文本)
     log_message = Signal(str)
     finished = Signal(str)
     error = Signal(str)
@@ -761,6 +762,44 @@ class BatchProcessThread(QThread):
         except Exception:
             logger.debug("无法发出 ETA 消息", exc_info=True)
 
+    def _build_progress_detail(
+        self, completed: int, total: int, elapsed_list: list
+    ) -> str:
+        """构建详细的进度信息文本。
+        
+        Args:
+            completed: 已完成的文件数
+            total: 总文件数
+            elapsed_list: 各文件耗时列表
+            
+        Returns:
+            详细进度信息字符串，例如："15/100 文件 | 平均 2.5s/文件 | 预计剩余 3分25秒"
+        """
+        if not elapsed_list:
+            return f"{completed}/{total} 文件"
+        
+        avg = sum(elapsed_list) / len(elapsed_list)
+        remaining = total - completed
+        eta_seconds = int(avg * remaining)
+        
+        # 格式化预计剩余时间
+        if eta_seconds < 60:
+            eta_str = f"{eta_seconds}秒"
+        elif eta_seconds < 3600:
+            minutes = eta_seconds // 60
+            seconds = eta_seconds % 60
+            eta_str = f"{minutes}分{seconds}秒"
+        else:
+            hours = eta_seconds // 3600
+            minutes = (eta_seconds % 3600) // 60
+            eta_str = f"{hours}小时{minutes}分"
+        
+        return (
+            f"{completed}/{total} 文件 | "
+            f"平均 {avg:.1f}s/文件 | "
+            f"预计剩余 {eta_str}"
+        )
+
     def _finalize_run(
         self, success: int, total: int, elapsed_list: list
     ) -> None:
@@ -841,6 +880,18 @@ class BatchProcessThread(QThread):
             try:
                 pct = int((i + 1) / total * 100)
                 self.progress.emit(pct)
+                
+                # 发送详细进度信息
+                try:
+                    detail_msg = self._build_progress_detail(
+                        i + 1, total, elapsed_list
+                    )
+                    self.progress_detail.emit(pct, detail_msg)
+                except Exception:
+                    logger.debug(
+                        "无法发送详细进度信息",
+                        exc_info=True,
+                    )
             except Exception:
                 logger.debug(
                     "Unable to emit progress value for %s",

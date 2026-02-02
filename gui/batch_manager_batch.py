@@ -98,6 +98,22 @@ def attach_batch_thread_signals(manager):
         except Exception:
             logger.debug("连接 progress 信号失败（非致命）", exc_info=True)
 
+        # 连接详细进度信号以更新进度条格式文本
+        try:
+            def _on_progress_detail(pct, detail_msg):
+                try:
+                    # 设置进度条显示格式：百分比 + 详细信息
+                    manager.gui.progress_bar.setFormat(f"{pct}% - {detail_msg}")
+                except Exception:
+                    logger.debug(
+                        "更新进度条格式文本失败（非致命）",
+                        exc_info=True,
+                    )
+            
+            manager.batch_thread.progress_detail.connect(_on_progress_detail)
+        except Exception:
+            logger.debug("连接 progress_detail 信号失败（非致命）", exc_info=True)
+
         try:
 
             def _on_thread_log(msg):
@@ -148,6 +164,13 @@ def prepare_gui_for_batch(manager):
                 manager.gui.btn_batch.setText("处理中...")
         except Exception:
             logger.debug("无法禁用批处理按钮", exc_info=True)
+
+        # 初始化进度条格式以显示详细信息
+        try:
+            if hasattr(manager.gui, "progress_bar"):
+                manager.gui.progress_bar.setFormat("%p% - 准备中...")
+        except Exception:
+            logger.debug("初始化进度条格式失败（非致命）", exc_info=True)
 
         # 不再在开始处理时自动切换到日志标签，保持用户当前视图不变
     except Exception:
@@ -248,6 +271,13 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
                         pass
         except Exception:
             logger.debug("无法启用批处理按钮", exc_info=True)
+
+        # 重置进度条格式为默认百分比显示
+        try:
+            if hasattr(manager.gui, "progress_bar"):
+                manager.gui.progress_bar.setFormat("%p%")
+        except Exception:
+            logger.debug("重置进度条格式失败（非致命）", exc_info=True)
 
         if enable_undo:
             try:
