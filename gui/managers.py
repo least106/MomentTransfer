@@ -23,6 +23,26 @@
 禁止直接使用：
 - QMessageBox.critical() 直接调用（应用 report_user_error）
 - print() 用于错误信息（应用日志系统）
+
+=== 文件验证状态符号说明 ===
+
+文件树中显示的验证状态符号含义如下：
+
+✓（对号）- 文件配置正常，已就绪
+  - 特殊格式文件：所有 parts 已正确映射配置
+  - 普通格式文件：Source/Target 已选择
+  - 含义：该文件可以进行数据处理
+
+⚠（警告）- 文件配置不完整或存在问题
+  - 特殊格式文件：存在未映射的 parts、缺失的 Source/Target 配置
+  - 普通格式文件：未选择 Source/Target、选择的 parts 不存在
+  - 含义：用户需要补充或修正配置，文件暂不可处理
+
+❓（问号）- 文件状态无法验证
+  - 通常出现在：验证过程出错、数据加载失败
+  - 含义：系统无法确定该文件是否可以处理，需要检查日志
+
+提示：将鼠标悬停在状态符号上可查看详细说明（如"⚠ 未映射: part1, part2"）。
 """
 
 # 管理器模块中为避免循环导入，部分导入为延迟导入，允许 import-outside-toplevel
@@ -38,6 +58,57 @@ import logging
 import functools
 
 _logger = logging.getLogger(__name__)
+
+# ==================== 文件验证状态符号常数 ====================
+# 用于在文件树中标示文件的配置和验证状态，帮助用户一目了然地了解文件处理准备情况
+STATUS_SYMBOL_READY = "✓"  # 文件已就绪，可以处理
+STATUS_SYMBOL_WARNING = "⚠"  # 文件存在问题或配置不完整，需要用户处理
+STATUS_SYMBOL_UNVERIFIED = "❓"  # 文件状态无法验证或出现错误
+
+
+def get_status_symbol_help() -> str:
+    """返回文件验证状态符号的帮助文本。
+    
+    返回：
+        包含所有符号及其含义的帮助字符串
+    """
+    return (
+        f"{STATUS_SYMBOL_READY} 对号：文件配置正常且已就绪\n"
+        f"  - 特殊格式：所有 parts 映射已完成\n"
+        f"  - 普通格式：Source/Target 已选择\n"
+        f"{STATUS_SYMBOL_WARNING} 警告：文件配置不完整\n"
+        f"  - 缺少必要的部件映射或选择\n"
+        f"  - 选择的配置在项目中不存在\n"
+        f"{STATUS_SYMBOL_UNVERIFIED} 问号：文件状态无法验证\n"
+        f"  - 验证过程出错或数据加载失败\n"
+        f"  - 检查日志以了解具体原因"
+    )
+
+
+def show_status_symbol_help(parent: QWidget):
+    """显示文件验证状态符号的帮助对话框。"""
+    try:
+        from PySide6.QtWidgets import QMessageBox
+        
+        help_text = get_status_symbol_help()
+        
+        # 生成更易理解的帮助文本
+        detailed_help = (
+            "文件验证状态符号说明\n"
+            "=" * 30 + "\n\n"
+            + help_text + "\n\n"
+            "提示：\n"
+            "• 特殊格式文件需要配置所有 parts 的映射关系\n"
+            "• 普通格式文件需要选择数据的 Source（源部件）和 Target（目标部件）\n"
+            "• 具体原因可在文件树中查看详细提示信息"
+        )
+        
+        if parent is not None:
+            QMessageBox.information(parent, "文件验证状态说明", detailed_help)
+        else:
+            print(detailed_help)
+    except Exception as e:
+        _logger.error("显示符号帮助对话框失败：%s", e)
 
 
 def _report_ui_exception(parent: QWidget, context: str, exc_info=True):

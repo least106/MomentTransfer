@@ -13,6 +13,15 @@ from gui.batch_manager import BatchManager
 from gui.batch_thread import BatchProcessThread
 from gui.config_manager import ConfigManager
 
+# 导入管理器中的文件验证状态符号常数和辅助函数
+from gui.managers import (
+    STATUS_SYMBOL_READY,
+    STATUS_SYMBOL_WARNING,
+    STATUS_SYMBOL_UNVERIFIED,
+    get_status_symbol_help,
+    show_status_symbol_help,
+)
+
 # 导出主要组件类
 from gui.layout_manager import LayoutManager
 from gui.part_manager import PartManager
@@ -47,6 +56,12 @@ __all__ = [
     "PartManager",
     "BatchManager",
     "LayoutManager",
+    # 文件验证状态符号常数
+    "STATUS_SYMBOL_READY",
+    "STATUS_SYMBOL_WARNING",
+    "STATUS_SYMBOL_UNVERIFIED",
+    "get_status_symbol_help",
+    "show_status_symbol_help",
     # 主窗口
     "IntegratedAeroGUI",
 ]

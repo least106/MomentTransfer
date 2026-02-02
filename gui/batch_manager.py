@@ -1540,7 +1540,16 @@ class BatchManager:
             return None
 
     def _validate_special_format(self, file_path: Path) -> Optional[str]:
-        """对特殊格式文件进行预检，返回状态文本或 None 表示非特殊格式。"""
+        """对特殊格式文件进行预检，返回状态文本或 None 表示非特殊格式。
+        
+        状态符号说明：
+        - ✓ 特殊格式(可处理)：所有 parts 映射已完成，文件可以处理
+        - ✓ 特殊格式(待配置)：项目尚未配置 parts，但文件格式正确
+        - ⚠ 未映射: part1, part2：指定的 parts 尚未配置映射关系
+        - ⚠ Source缺失: part→source：指定的 Source 不在项目配置中
+        - ⚠ Target缺失: part→target：指定的 Target 不在项目配置中
+        - ❓ 未验证：验证过程出错，无法判断文件状态
+        """
         status = None
         try:
             if not looks_like_special_format(file_path):
@@ -1790,7 +1799,16 @@ class BatchManager:
     def _determine_part_selection_status(
         self, file_path: Path, project_data
     ) -> str:
-        """基于 project_data 与当前选择推断该文件的 source/target 状态。"""
+        """基于 project_data 与当前选择推断该文件的 source/target 状态。
+        
+        状态符号说明：
+        - ✓ 可处理：Source/Target 已完整选择，文件可以处理
+        - ✓ 格式正常(待配置)：文件格式正确但项目尚未配置任何 parts
+        - ⚠ 未选择 Source/Target：缺少必要的 Source 或 Target 选择
+        - ⚠ Source缺失: part：选择的 Source 不在项目配置中
+        - ⚠ Target缺失: part：选择的 Target 不在项目配置中
+        - ❓ 未验证：验证过程出错，无法判断文件状态
+        """
         try:
             sel = (
                 getattr(self.gui, "file_part_selection_by_file", {}) or {}
@@ -1922,7 +1940,10 @@ class BatchManager:
         fmt_info,
         project_data,
     ) -> str:
-        """评估非特殊格式文件的配置状态（小包装）。"""
+        """评估非特殊格式文件的配置状态（小包装）。
+        
+        返回的状态符号含义见 _determine_part_selection_status 方法文档。
+        """
         try:
             if project_data is None:
                 return "✓ 格式正常(待配置)"
