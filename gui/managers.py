@@ -1235,6 +1235,7 @@ class UIStateManager:
                 )
 
             base_tooltip = "开始批量处理（Ctrl+R）"
+            # 更新所有开始按钮（支持新旧按钮名称）
             for name in (
                 "btn_start_menu",
                 "btn_batch",

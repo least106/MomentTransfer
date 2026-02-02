@@ -22,6 +22,41 @@ from src.special_format_parser import get_part_names
 logger = logging.getLogger(__name__)
 
 
+def _collect_checked_files_from_tree(manager) -> list:
+    """从文件树收集用户勾选的文件。
+    
+    返回勾选的文件路径列表，如果没有勾选项或树不存在则返回空列表。
+    """
+    checked_files = []
+    try:
+        if not hasattr(manager.gui, "file_tree") or not hasattr(
+            manager.gui, "_file_tree_items"
+        ):
+            return checked_files
+            
+        tree = manager.gui.file_tree
+        items_dict = manager.gui._file_tree_items
+        
+        # 遍历所有树项，收集勾选的文件
+        for path_str, item in items_dict.items():
+            try:
+                # 检查勾选状态
+                if item.checkState(0) == Qt.Checked:
+                    # 检查是否为文件项（通过 meta 判断）
+                    meta = getattr(item, "_meta", None) or {}
+                    if meta.get("kind") == "file":
+                        file_path = Path(path_str)
+                        if file_path.exists() and file_path.is_file():
+                            checked_files.append(file_path)
+            except Exception:
+                logger.debug("读取树项 %s 勾选状态失败", path_str, exc_info=True)
+                
+    except Exception:
+        logger.debug("收集文件树勾选项失败", exc_info=True)
+        
+    return checked_files
+
+
 def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
     """根据路径 `p` 和当前 UI 设置收集匹配的文件列表，返回 (files, base_path)。"""
     files = []
@@ -212,11 +247,18 @@ def _collect_files_to_process(manager, input_path: Path):
             return files_to_process, output_dir, None
 
         if input_path.is_dir():
-            # 优先使用 GUI 的树形选择（若存在）
+            # 优先使用 GUI 的树形选择（若存在且有勾选项）
             if hasattr(manager.gui, "file_tree") and hasattr(
                 manager.gui, "_file_tree_items"
             ):
-                files_to_process.extend(_collect_files_for_scan(manager, input_path)[0])
+                # 尝试收集树中勾选的文件
+                checked_files = _collect_checked_files_from_tree(manager)
+                if checked_files:
+                    # 只使用用户勾选的文件
+                    files_to_process.extend(checked_files)
+                else:
+                    # 没有勾选项则扫描所有匹配文件
+                    files_to_process.extend(_collect_files_for_scan(manager, input_path)[0])
                 if output_dir is None:
                     output_dir = input_path
             else:

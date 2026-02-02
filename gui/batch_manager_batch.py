@@ -23,17 +23,35 @@ def run_batch_processing(manager):
             QMessageBox.warning(manager.gui, "提示", "请先加载配置（JSON）")
             return
 
-        if not hasattr(manager.gui, "inp_batch_input"):
-            QMessageBox.warning(manager.gui, "提示", "缺少输入路径控件")
-            return
-        input_path = Path(manager.gui.inp_batch_input.text().strip())
-        if not input_path.exists():
-            QMessageBox.warning(manager.gui, "错误", "输入路径不存在")
-            return
+        # 优先使用保存的多选路径列表，否则从输入框读取
+        selected_paths = getattr(manager, "_selected_paths", None)
+        if selected_paths and len(selected_paths) > 0:
+            input_paths = selected_paths
+        else:
+            if not hasattr(manager.gui, "inp_batch_input"):
+                QMessageBox.warning(manager.gui, "提示", "缺少输入路径控件")
+                return
+            input_text = manager.gui.inp_batch_input.text().strip()
+            if not input_text:
+                QMessageBox.warning(manager.gui, "错误", "请选择输入路径")
+                return
+            # 从文本解析路径（移除可能的 "(+N 项)" 后缀）
+            if "(+" in input_text and input_text.endswith("项)"):
+                input_text = input_text.split("(")[0].strip()
+            input_path = Path(input_text)
+            if not input_path.exists():
+                QMessageBox.warning(manager.gui, "错误", "输入路径不存在")
+                return
+            input_paths = [input_path]
 
+        # 收集所有选中路径的文件
+        all_files = []
+        output_dir = None
         collect_fn = getattr(manager, "_collect_files_to_process", None)
-        if callable(collect_fn):
-            files_to_process, output_dir, error_msg = collect_fn(input_path)
+        
+        for input_path in input_paths:
+            if callable(collect_fn):
+                files, out_dir, error_msg = collect_fn(input_path)
         else:
             files_to_process, output_dir, error_msg = (
                 [],
@@ -154,12 +172,20 @@ def prepare_gui_for_batch(manager):
         except Exception:
             logger.debug("设置控件锁定失败（非致命）", exc_info=True)
 
-        try:
-            if hasattr(manager.gui, "btn_batch"):
-                manager.gui.btn_batch.setEnabled(False)
-                manager.gui.btn_batch.setText("处理中...")
-        except Exception:
-            logger.debug("无法禁用批处理按钮", exc_info=True)
+        # 禁用所有开始按钮（支持新旧按钮名称）
+        for btn_name in ("btn_batch", "btn_start_menu", "btn_batch_in_toolbar"):
+            try:
+                btn = getattr(manager.gui, btn_name, None)
+                if btn is not None:
+                    btn.setEnabled(False)
+                    # 只对有 setText 方法的按钮设置文本
+                    if hasattr(btn, "setText"):
+                        try:
+                            btn.setText("处理中...")
+                        except Exception:
+                            pass
+            except Exception:
+                logger.debug("无法禁用按钮 %s", btn_name, exc_info=True)
 
         # 初始化进度条格式以显示详细信息
         try:

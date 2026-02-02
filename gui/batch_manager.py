@@ -1269,6 +1269,9 @@ class BatchManager:
                     display_text = str(first_path)
                 self.gui.inp_batch_input.setText(display_text)
 
+            # 保存实际选择的路径列表到 _selected_paths（用于批处理）
+            self._selected_paths = chosen_paths
+
             # 统一扫描所有选择的文件或目录
             # 对第一个路径进行完整扫描（清空旧数据）
             try:
