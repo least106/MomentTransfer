@@ -70,7 +70,7 @@ class EventManager:
                     if callable(func_confirm):
                         proceed = False
                         try:
-                            proceed = bool(func_confirm("关闭窗口前是否保存更改？"))
+                            proceed = bool(func_confirm("关闭窗口"))
                         except Exception:
                             proceed = False
                         if not proceed:

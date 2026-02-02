@@ -1168,7 +1168,21 @@ class UIStateManager:
                 getattr(self.parent, "btn_apply", None),
                 getattr(self.parent, "btn_batch", None),
             ]
+            extra_widgets = [
+                getattr(self.parent, "file_tree", None),
+                getattr(self.parent, "batch_panel", None),
+                getattr(self.parent, "config_panel", None),
+                getattr(self.parent, "source_panel", None),
+                getattr(self.parent, "target_panel", None),
+                getattr(self.parent, "operation_panel", None),
+            ]
             for w in widgets:
+                try:
+                    if w is not None:
+                        w.setEnabled(not bool(self._lock_count))
+                except Exception:
+                    pass
+            for w in extra_widgets:
                 try:
                     if w is not None:
                         w.setEnabled(not bool(self._lock_count))
@@ -1272,9 +1286,11 @@ class UIStateManager:
                         if bool(start_enabled):
                             lbl.setText("准备开始处理：点击开始处理")
                         else:
-                            # 若尚未加载数据，回到步骤1提示；否则保持原有文本不覆盖（避免误改）
+                            # 未加载数据 -> 提示步骤1；已加载数据但未加载配置 -> 提示步骤2
                             if not bool(self.is_data_loaded()):
                                 lbl.setText("步骤1：选择文件或目录")
+                            elif not bool(self.is_config_loaded()):
+                                lbl.setText("步骤2：加载配置")
                     except Exception:
                         pass
             except Exception:

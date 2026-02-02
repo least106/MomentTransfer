@@ -232,12 +232,23 @@ class ConfigManager:
 
             # 连接坐标系面板的修改信号
             try:
-                self.gui.source_panel.valuesChanged.connect(
-                    lambda: self.set_config_modified(True)
-                )
-                self.gui.target_panel.valuesChanged.connect(
-                    lambda: self.set_config_modified(True)
-                )
+                src_panel = getattr(self.gui, "source_panel", None)
+                tgt_panel = getattr(self.gui, "target_panel", None)
+                cached_panels = getattr(self, "_values_changed_panels", None)
+                if cached_panels != (src_panel, tgt_panel):
+                    self._values_changed_connected = False
+                    self._values_changed_panels = (src_panel, tgt_panel)
+
+                if not getattr(self, "_values_changed_connected", False):
+                    if src_panel is not None:
+                        src_panel.valuesChanged.connect(
+                            self._on_panel_values_changed
+                        )
+                    if tgt_panel is not None:
+                        tgt_panel.valuesChanged.connect(
+                            self._on_panel_values_changed
+                        )
+                    self._values_changed_connected = True
             except Exception:
                 logger.debug("连接坐标系面板信号失败", exc_info=True)
 
@@ -553,6 +564,13 @@ class ConfigManager:
                     logger.debug("同步配置修改到项目修改标志失败", exc_info=True)
         except Exception:
             pass
+
+    def _on_panel_values_changed(self):
+        """配置面板字段变更回调（防止重复连接导致多次触发）。"""
+        try:
+            self.set_config_modified(True)
+        except Exception:
+            logger.debug("处理面板修改回调失败（非致命）", exc_info=True)
 
     def reset_config(self) -> None:
         """重置配置到初始状态（向后兼容旧接口）。
