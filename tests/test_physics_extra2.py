@@ -51,9 +51,7 @@ def test_process_frame_and_batch_shapes_and_values():
     assert len(res.force_transformed) == 3
     assert isinstance(res.coeff_force, list) and len(res.coeff_force) == 3
 
-    batch = calc.process_batch(
-        np.array([[1.0, 0.0, 0.0]]), np.array([[0.0, 0.0, 0.0]])
-    )
+    batch = calc.process_batch(np.array([[1.0, 0.0, 0.0]]), np.array([[0.0, 0.0, 0.0]]))
     assert batch["force_transformed"].shape == (1, 3)
     assert batch["coeff_force"].shape == (1, 3)
 

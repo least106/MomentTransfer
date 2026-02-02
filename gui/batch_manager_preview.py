@@ -12,13 +12,11 @@ import math
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem, QTreeWidgetItem
 
 from gui.paged_table import PagedTableWidget
-from src.utils import csv_has_header
 
 logger = logging.getLogger(__name__)
 
@@ -208,9 +206,7 @@ def _apply_quick_filter_to_table(table, df, qcol, qval, operator: str) -> None:
             return
 
         # 优先尝试由分页表格实现的筛选方法
-        if _apply_quick_filter_with_paged_table_obj(
-            table, df, operator, qcol, qval
-        ):
+        if _apply_quick_filter_with_paged_table_obj(table, df, operator, qcol, qval):
             return
 
         _apply_quick_filter_table_iter_obj(table, df, operator, qcol, qval)
@@ -271,9 +267,7 @@ def _apply_quick_filter_table_iter(manager, table, df, operator: str) -> None:
             pass
 
 
-def _apply_quick_filter_with_paged_table(
-    manager, table, df, operator: str
-) -> bool:
+def _apply_quick_filter_with_paged_table(manager, table, df, operator: str) -> bool:
     try:
         if not hasattr(table, "set_filter_with_df"):
             return False
@@ -352,9 +346,7 @@ def _apply_quick_filter_with_paged_table_obj(
         return False
 
 
-def _apply_quick_filter_table_iter_obj(
-    table, df, operator: str, qcol, qval
-) -> None:
+def _apply_quick_filter_table_iter_obj(table, df, operator: str, qcol, qval) -> None:
     """非分页表格的快速筛选实现（不依赖 manager）。"""
     gray_color = QColor(220, 220, 220)
     text_color = QColor(160, 160, 160)
@@ -467,9 +459,7 @@ def _apply_quick_filter_to_special_table(
         logger.debug(f"应用特殊格式表格快速筛选失败: {e}", exc_info=True)
 
 
-def _apply_quick_filter_special_iter(
-    manager, table, df, operator: str
-) -> None:
+def _apply_quick_filter_special_iter(manager, table, df, operator: str) -> None:
     gray_color = QColor(220, 220, 220)
     text_color = QColor(160, 160, 160)
     qcol = getattr(manager, "_quick_filter_column", None)
@@ -503,9 +493,7 @@ def _apply_quick_filter_special_iter(
             pass
 
 
-def _apply_quick_filter_special_iter_obj(
-    table, df, operator: str, qcol, qval
-) -> None:
+def _apply_quick_filter_special_iter_obj(table, df, operator: str, qcol, qval) -> None:
     """特殊表格（特殊格式）的非分页筛选实现（不依赖 manager）。"""
     gray_color = QColor(220, 220, 220)
     text_color = QColor(160, 160, 160)
@@ -624,10 +612,7 @@ def _populate_table_data_rows(manager, file_item, file_path: Path, df) -> None:
     file_item.addChild(group)
 
     try:
-        sel = (
-            _ensure_table_row_selection_storage(manager, file_path, len(df))
-            or set()
-        )
+        sel = _ensure_table_row_selection_storage(manager, file_path, len(df)) or set()
     except Exception:
         sel = set()
 
@@ -655,9 +640,7 @@ def _make_preview_toggle_callback(
             if source_part is not None:
                 sp_local_inner = str(source_part)
             if is_special:
-                if not hasattr(
-                    manager.gui, "special_part_row_selection_by_file"
-                ):
+                if not hasattr(manager.gui, "special_part_row_selection_by_file"):
                     manager.gui.special_part_row_selection_by_file = {}
                 by_file_local = getattr(
                     manager.gui, "special_part_row_selection_by_file", {}
@@ -676,9 +659,7 @@ def _make_preview_toggle_callback(
             else:
                 if not hasattr(manager.gui, "table_row_selection_by_file"):
                     manager.gui.table_row_selection_by_file = {}
-                by_file_local = getattr(
-                    manager.gui, "table_row_selection_by_file", {}
-                )
+                by_file_local = getattr(manager.gui, "table_row_selection_by_file", {})
                 by_file_local = by_file_local or {}
                 sel_local = by_file_local.get(fp_local_inner)
                 if sel_local is None:
@@ -715,9 +696,7 @@ def _apply_preview_filters(
 
     try:
         if is_special:
-            _apply_quick_filter_to_special_table(
-                manager, table, fp_str, source_part
-            )
+            _apply_quick_filter_to_special_table(manager, table, fp_str, source_part)
         else:
             # 将筛选参数从 manager 中提取出来并传递给无依赖实现
             qcol = getattr(manager, "_quick_filter_column", None)
@@ -789,10 +768,7 @@ def _populate_special_data_rows(
 ) -> None:
     fp_str = str(file_path)
     try:
-        by_file = (
-            getattr(manager.gui, "special_part_row_selection_by_file", {})
-            or {}
-        )
+        by_file = getattr(manager.gui, "special_part_row_selection_by_file", {}) or {}
         by_part = by_file.setdefault(fp_str, {})
         sel = by_part.get(source_part)
     except Exception:
@@ -805,11 +781,9 @@ def _populate_special_data_rows(
             by_part[source_part] = sel
             if not hasattr(manager.gui, "special_part_row_selection_by_file"):
                 manager.gui.special_part_row_selection_by_file = {}
-            tmp_map = (
-                manager.gui.special_part_row_selection_by_file.setdefault(
-                    fp_str,
-                    {},
-                )
+            tmp_map = manager.gui.special_part_row_selection_by_file.setdefault(
+                fp_str,
+                {},
             )
             tmp_map[source_part] = sel
         except Exception:

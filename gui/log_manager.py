@@ -139,9 +139,7 @@ class LoggingManager:
 
         # 回退查找：清理已失效的 weakref 条目
         dead = []
-        for wid_key, (wref, handler) in list(
-            self._widget_handlers_fallback.items()
-        ):
+        for wid_key, (wref, handler) in list(self._widget_handlers_fallback.items()):
             if wref is None:
                 # 无法弱引用，保留基于 id 的映射
                 if wid_key == id(widget):
@@ -211,8 +209,7 @@ class LoggingManager:
                             try:
                                 if (
                                     isinstance(h, GUILogHandler)
-                                    and getattr(h, "text_widget", None)
-                                    is text_widget
+                                    and getattr(h, "text_widget", None) is text_widget
                                 ):
                                     gui_handler = h
                                     # 在本实例中注册以便后续复用
@@ -254,9 +251,9 @@ class LoggingManager:
             for log in loggers_to_configure:
                 # 清除之前的 StreamHandler（控制台处理器）
                 for handler in log.handlers[:]:
-                    if isinstance(
-                        handler, logging.StreamHandler
-                    ) and not isinstance(handler, logging.FileHandler):
+                    if isinstance(handler, logging.StreamHandler) and not isinstance(
+                        handler, logging.FileHandler
+                    ):
                         log.removeHandler(handler)
                 # 如果已经存在相同的 GUI 处理器则跳过，保证幂等性
                 if gui_handler not in log.handlers:
@@ -277,9 +274,7 @@ class LoggingManager:
 
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.debug(
-                "GUI logging setup failed (non-fatal): %s", e, exc_info=True
-            )
+            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)
 
     def _ensure_fallback_handlers(self):
         """确保存在文件与控制台处理器，作为 GUI 输出的回退。
@@ -333,9 +328,7 @@ class LoggingManager:
             if not has_stream:
                 sh = logging.StreamHandler()
                 sh.setLevel(logging.INFO)
-                sh.setFormatter(
-                    logging.Formatter("%(levelname)s: %(message)s")
-                )
+                sh.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
                 root.addHandler(sh)
 
         except Exception:

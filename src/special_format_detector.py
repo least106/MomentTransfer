@@ -105,12 +105,7 @@ def is_summary_line(line: str) -> bool:
         return False
 
     first_token = tokens[0]
-    if (
-        not first_token.replace("-", "")
-        .replace(".", "")
-        .replace("+", "")
-        .isdigit()
-    ):
+    if not first_token.replace("-", "").replace(".", "").replace("+", "").isdigit():
         summary_keywords = ["CLa", "Cdmin", "CmCL", "Cm0", "Kmax", "Alpha"]
         if any(kw in line for kw in summary_keywords):
             return True
@@ -176,9 +171,7 @@ def is_part_name_line(line: str, next_line: Optional[str] = None) -> bool:
     return False
 
 
-def looks_like_special_format(
-    file_path: Path, *, max_probe_lines: int = 20
-) -> bool:
+def looks_like_special_format(file_path: Path, *, max_probe_lines: int = 20) -> bool:
     """快速判断文件是否符合特殊格式。"""
     p = Path(file_path)
     suffix = p.suffix.lower()

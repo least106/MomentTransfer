@@ -88,18 +88,14 @@ class PerformanceMonitor:
         )
         return metrics
 
-    def end_measurement(
-        self, metrics: PerformanceMetrics
-    ) -> PerformanceMetrics:
+    def end_measurement(self, metrics: PerformanceMetrics) -> PerformanceMetrics:
         """结束测量"""
         metrics.end_time = time.time()
         metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
 
         if self.process:
             try:
-                metrics.memory_after_mb = (
-                    self.process.memory_info().rss / 1024 / 1024
-                )
+                metrics.memory_after_mb = self.process.memory_info().rss / 1024 / 1024
                 metrics.memory_delta_mb = (
                     metrics.memory_after_mb - metrics.memory_before_mb
                 )
@@ -116,9 +112,7 @@ class PerformanceMonitor:
 
         return metrics
 
-    def record_metric(
-        self, metric_name: str, duration_ms: float, **kwargs
-    ) -> None:
+    def record_metric(self, metric_name: str, duration_ms: float, **kwargs) -> None:
         """直接记录指标"""
         metrics = PerformanceMetrics(
             metric_name=metric_name,

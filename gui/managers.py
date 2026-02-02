@@ -15,11 +15,11 @@
    - 适用：用户操作失败、处理流程中断等
    - 行为：记录错误日志 + 状态栏提示 + 错误消息框（如需）
    - 示例：浏览失败、批处理启动失败、文件解析失败
-   
+
 3. 仅记录日志的异常 -> logger.error/warning/debug()
    - 适用：内部编程错误、调试信息
    - 不应用于用户交互相关的错误
-   
+
 禁止直接使用：
 - QMessageBox.critical() 直接调用（应用 report_user_error）
 - print() 用于错误信息（应用日志系统）
@@ -49,13 +49,12 @@
 # 同时临时允许部分注释/文档导致的行过长告警（C0301）
 # pylint: disable=import-outside-toplevel, line-too-long
 
+import functools
+import logging
 from pathlib import Path
 from typing import Dict, Optional
 
 from PySide6.QtWidgets import QWidget
-
-import logging
-import functools
 
 _logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ STATUS_SYMBOL_UNVERIFIED = "❓"  # 文件状态无法验证或出现错误
 
 def get_status_symbol_help() -> str:
     """返回文件验证状态符号的帮助文本。
-    
+
     返回：
         包含所有符号及其含义的帮助字符串
     """
@@ -89,20 +88,19 @@ def show_status_symbol_help(parent: QWidget):
     """显示文件验证状态符号的帮助对话框。"""
     try:
         from PySide6.QtWidgets import QMessageBox
-        
+
         help_text = get_status_symbol_help()
-        
+
         # 生成更易理解的帮助文本
         detailed_help = (
             "文件验证状态符号说明\n"
-            "=" * 30 + "\n\n"
-            + help_text + "\n\n"
+            "=" * 30 + "\n\n" + help_text + "\n\n"
             "提示：\n"
             "• 特殊格式文件需要配置所有 parts 的映射关系\n"
             "• 普通格式文件需要选择数据的 Source（源部件）和 Target（目标部件）\n"
             "• 具体原因可在文件树中查看详细提示信息"
         )
-        
+
         if parent is not None:
             QMessageBox.information(parent, "文件验证状态说明", detailed_help)
         else:
@@ -148,9 +146,15 @@ def _report_ui_exception(parent: QWidget, context: str, exc_info=True):
         pass
 
 
-def report_user_error(parent: QWidget, title: str, message: str, details: str = None, is_warning: bool = False):
+def report_user_error(
+    parent: QWidget,
+    title: str,
+    message: str,
+    details: str = None,
+    is_warning: bool = False,
+):
     """统一的用户错误报告函数：记录日志并显示用户可见的消息。
-    
+
     参数：
         parent: 父窗口（用于消息框的父窗口和状态栏访问）
         title: 错误/警告标题
@@ -169,31 +173,34 @@ def report_user_error(parent: QWidget, title: str, message: str, details: str = 
             _logger.error("%s：%s - %s", title, message, details)
         else:
             _logger.error("%s：%s", title, message)
-    
+
     # 优先使用状态栏提示以避免过多弹窗
     try:
         from gui.signal_bus import SignalBus
+
         try:
             # 优先级：错误=高，警告=中
             priority = 1 if not is_warning else 0
-            SignalBus.instance().statusMessage.emit(f"{title}：{message}", 8000, priority)
+            SignalBus.instance().statusMessage.emit(
+                f"{title}：{message}", 8000, priority
+            )
             return
         except Exception:
             pass
     except Exception:
         pass
-    
+
     # 状态栏失败时尝试显示消息框（仅对关键错误）
     if not is_warning:
         try:
             from PySide6.QtWidgets import QMessageBox
-            
+
             if parent is not None:
                 QMessageBox.critical(parent, title, message)
             return
         except Exception:
             pass
-    
+
     # 最后尝试直接更新状态栏
     try:
         if parent is not None and hasattr(parent, "statusBar"):
@@ -212,12 +219,13 @@ def report_exceptions(context: str = None):
         def mark_skipped_rows(...):
             ...
     """
+
     def deco(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:
+            except Exception:
                 try:
                     # 尝试从实例中获取 parent 以进行 UI 报告
                     parent = None
@@ -238,7 +246,9 @@ def report_exceptions(context: str = None):
                     pass
                 # 返回 None 或适当的默认值以保持向后兼容（多数调用者忽略返回值）
                 return None
+
         return wrapper
+
     return deco
 
 
@@ -288,10 +298,15 @@ class FileSelectionManager:
     # ---- skipped rows API ----
     def mark_skipped_rows(self, file_path: Path, rows) -> None:
         """标记指定文件的多行为跳过（rows 可以是可迭代的索引）。"""
+
         @report_exceptions("标记 skipped rows 失败")
         def _impl(file_path, rows):
             try:
-                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+                key = (
+                    str(Path(file_path).resolve())
+                    if file_path is not None
+                    else str(file_path)
+                )
             except Exception:
                 key = str(file_path)
             existing = self.skipped_rows_by_file.get(key) or set()
@@ -301,16 +316,23 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败")
+                _report_ui_exception(
+                    self.parent, "同步 skipped_rows_by_file 到父窗口失败"
+                )
 
         return _impl(file_path, rows)
 
     def clear_skipped_rows(self, file_path: Path, rows=None) -> None:
         """清除指定文件的跳过行；若 rows 为 None 则清空所有跳过行。"""
+
         @report_exceptions("清理 skipped rows 失败")
         def _impl(file_path, rows=None):
             try:
-                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+                key = (
+                    str(Path(file_path).resolve())
+                    if file_path is not None
+                    else str(file_path)
+                )
             except Exception:
                 key = str(file_path)
             if rows is None:
@@ -327,23 +349,32 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（清理）")
+                _report_ui_exception(
+                    self.parent, "同步 skipped_rows_by_file 到父窗口失败（清理）"
+                )
 
         return _impl(file_path, rows)
 
     def get_skipped_rows(self, file_path: Path):
         """返回指定文件的跳过行集合（set）或 None。"""
+
         @report_exceptions("读取 skipped rows 失败")
         def _impl(file_path):
             try:
-                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
+                key = (
+                    str(Path(file_path).resolve())
+                    if file_path is not None
+                    else str(file_path)
+                )
             except Exception:
                 key = str(file_path)
             s = self.skipped_rows_by_file.get(key)
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（读取）")
+                _report_ui_exception(
+                    self.parent, "同步 skipped_rows_by_file 到父窗口失败（读取）"
+                )
             return set(s) if s is not None else None
 
         return _impl(file_path)
@@ -355,6 +386,7 @@ class FileSelectionManager:
 
         返回 by_part dict（可被调用方修改）。
         """
+
         @report_exceptions("ensure_special_row_selection_storage 失败")
         def _impl(file_path, part_names):
             by_file = self.special_part_row_selection_by_file or {}
@@ -374,15 +406,22 @@ class FileSelectionManager:
                 by_part.setdefault(str(pn), None)
             self.special_part_row_selection_by_file = by_file
             try:
-                setattr(self.parent, "special_part_row_selection_by_file", self.special_part_row_selection_by_file)
+                setattr(
+                    self.parent,
+                    "special_part_row_selection_by_file",
+                    self.special_part_row_selection_by_file,
+                )
             except Exception:
-                _report_ui_exception(self.parent, "同步 special_part_row_selection_by_file 到父窗口失败")
+                _report_ui_exception(
+                    self.parent, "同步 special_part_row_selection_by_file 到父窗口失败"
+                )
             return by_part
 
         return _impl(file_path, part_names)
 
     def open_quick_select_dialog(self) -> None:
         """打开快速选择对话框（委托给 GUI 的 QuickSelectDialog）。"""
+
         @report_exceptions("打开快速选择对话失败")
         def _impl():
             from gui.quick_select_dialog import QuickSelectDialog
@@ -437,12 +476,8 @@ class ModelManager:
             )
             if hasattr(self.parent, "source_panel"):
                 # 使用面板提供的强类型模型接口
-                cs_model = (
-                    self.parent.source_panel.get_coordinate_system_model()
-                )
-                refs_model = (
-                    self.parent.source_panel.get_reference_values_model()
-                )
+                cs_model = self.parent.source_panel.get_coordinate_system_model()
+                refs_model = self.parent.source_panel.get_reference_values_model()
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
@@ -467,12 +502,8 @@ class ModelManager:
                 else "Target"
             )
             if hasattr(self.parent, "target_panel"):
-                cs_model = (
-                    self.parent.target_panel.get_coordinate_system_model()
-                )
-                refs_model = (
-                    self.parent.target_panel.get_reference_values_model()
-                )
+                cs_model = self.parent.target_panel.get_coordinate_system_model()
+                refs_model = self.parent.target_panel.get_reference_values_model()
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
@@ -535,10 +566,7 @@ class ModelManager:
             part_name = getattr(variant, "part_name", "") or ""
 
             mc = None
-            if (
-                cs is not None
-                and getattr(cs, "moment_center", None) is not None
-            ):
+            if cs is not None and getattr(cs, "moment_center", None) is not None:
                 mc = list(getattr(cs, "moment_center"))
             if mc is None:
                 mc = getattr(variant, "moment_center", None)
@@ -610,9 +638,7 @@ class ModelManager:
 
             try:
                 panel = (
-                    self.parent.source_panel
-                    if is_source
-                    else self.parent.target_panel
+                    self.parent.source_panel if is_source else self.parent.target_panel
                 )
                 current_name = getattr(panel, "_current_part_name", None)
                 if not current_name and selector:
@@ -668,21 +694,15 @@ class ModelManager:
             base_name = (suggested_name or "").strip()
             if not base_name:
                 try:
-                    base_name = (
-                        self.parent.source_panel.part_name_input.text().strip()
-                    )
+                    base_name = self.parent.source_panel.part_name_input.text().strip()
                 except Exception:
                     base_name = "NewSourcePart"
             existing = set(self.parent.project_model.source_parts.keys())
             name = self._unique_name(base_name, existing)
 
             try:
-                cs_model = (
-                    self.parent.source_panel.get_coordinate_system_model()
-                )
-                refs_model = (
-                    self.parent.source_panel.get_reference_values_model()
-                )
+                cs_model = self.parent.source_panel.get_coordinate_system_model()
+                refs_model = self.parent.source_panel.get_reference_values_model()
             except Exception:
                 logger.debug("读取 Source 面板强类型数据失败", exc_info=True)
                 cs_model = None
@@ -692,9 +712,7 @@ class ModelManager:
             from src.models.project_model import Part as PMPart
             from src.models.project_model import PartVariant as PMVariant
 
-            variant = PMVariant(
-                part_name=name, coord_system=cs_model, refs=refs_model
-            )
+            variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
             self.parent.project_model.source_parts[name] = PMPart(
                 part_name=name, variants=[variant]
             )
@@ -739,9 +757,7 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.warning(
-                    self.parent, "提示", "没有可删除的 Source Part"
-                )
+                QMessageBox.warning(self.parent, "提示", "没有可删除的 Source Part")
             except Exception:
                 pass
             return
@@ -780,20 +796,14 @@ class ModelManager:
             base_name = (suggested_name or "").strip()
             if not base_name:
                 try:
-                    base_name = (
-                        self.parent.target_panel.part_name_input.text().strip()
-                    )
+                    base_name = self.parent.target_panel.part_name_input.text().strip()
                 except Exception:
                     base_name = "NewTargetPart"
             existing = set(self.parent.project_model.target_parts.keys())
             name = self._unique_name(base_name, existing)
             try:
-                cs_model = (
-                    self.parent.target_panel.get_coordinate_system_model()
-                )
-                refs_model = (
-                    self.parent.target_panel.get_reference_values_model()
-                )
+                cs_model = self.parent.target_panel.get_coordinate_system_model()
+                refs_model = self.parent.target_panel.get_reference_values_model()
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
@@ -844,9 +854,7 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.warning(
-                    self.parent, "提示", "当前没有可删除的 Target Part"
-                )
+                QMessageBox.warning(self.parent, "提示", "当前没有可删除的 Target Part")
             except Exception:
                 pass
             return
@@ -906,9 +914,7 @@ class ModelManager:
                 self.parent.source_panel.part_name_input.setText(part_name)
             finally:
                 try:
-                    self.parent.source_panel.part_name_input.blockSignals(
-                        False
-                    )
+                    self.parent.source_panel.part_name_input.blockSignals(False)
                 except Exception:
                     pass
             try:
@@ -952,9 +958,7 @@ class ModelManager:
                 self.parent.target_panel.part_name_input.setText(part_name)
             finally:
                 try:
-                    self.parent.target_panel.part_name_input.blockSignals(
-                        False
-                    )
+                    self.parent.target_panel.part_name_input.blockSignals(False)
                 except Exception:
                     pass
             try:
@@ -983,9 +987,7 @@ class ModelManager:
             if not part_name:
                 logger.debug("part_name 为空")
                 return
-            old_name = getattr(
-                self.parent.source_panel, "_current_part_name", None
-            )
+            old_name = getattr(self.parent.source_panel, "_current_part_name", None)
             logger.debug(f"旧的 Source Part: {old_name}")
             if old_name and old_name != part_name:
                 logger.debug(f"保存旧 Part: {old_name}")
@@ -1037,9 +1039,7 @@ class ModelManager:
             if not part_name:
                 logger.debug("part_name 为空")
                 return
-            old_name = getattr(
-                self.parent.target_panel, "_current_part_name", None
-            )
+            old_name = getattr(self.parent.target_panel, "_current_part_name", None)
             logger.debug(f"旧的 Target Part: {old_name}")
             if old_name and old_name != part_name:
                 logger.debug(f"保存旧 Part: {old_name}")
@@ -1212,17 +1212,13 @@ class UIStateManager:
         try:
             parent = self.parent
             # Start 按钮：仅在已加载数据且已加载配置时启用
-            start_enabled = bool(
-                self.is_data_loaded() and self.is_config_loaded()
-            )
+            start_enabled = bool(self.is_data_loaded() and self.is_config_loaded())
 
             # 检查配置是否被修改，用于展示 tooltip 和文件列表上的未保存指示
             config_modified = False
             try:
                 cfg_mgr = getattr(parent, "config_manager", None)
-                if cfg_mgr is not None and hasattr(
-                    cfg_mgr, "is_config_modified"
-                ):
+                if cfg_mgr is not None and hasattr(cfg_mgr, "is_config_modified"):
                     try:
                         config_modified = bool(cfg_mgr.is_config_modified())
                     except Exception:
@@ -1286,14 +1282,9 @@ class UIStateManager:
 
             # 将未保存配置的可视指示同步到 BatchPanel（文件列表上方）
             try:
-                if (
-                    hasattr(parent, "batch_panel")
-                    and parent.batch_panel is not None
-                ):
+                if hasattr(parent, "batch_panel") and parent.batch_panel is not None:
                     try:
-                        parent.batch_panel.set_unsaved_indicator(
-                            config_modified
-                        )
+                        parent.batch_panel.set_unsaved_indicator(config_modified)
                     except Exception:
                         import logging
 
@@ -1310,15 +1301,11 @@ class UIStateManager:
 
             # 数据管理选项卡：在没有加载数据时禁用
             try:
-                if hasattr(parent, "tab_main") and hasattr(
-                    parent, "file_list_widget"
-                ):
+                if hasattr(parent, "tab_main") and hasattr(parent, "file_list_widget"):
                     tab = parent.tab_main
                     idx = -1
                     try:
-                        idx = tab.indexOf(
-                            getattr(parent, "file_list_widget", None)
-                        )
+                        idx = tab.indexOf(getattr(parent, "file_list_widget", None))
                     except Exception:
                         idx = -1
                     if idx is not None and idx >= 0:
@@ -1343,10 +1330,7 @@ class UIStateManager:
                         if cidx is not None and cidx >= 0:
                             tab.setTabEnabled(
                                 cidx,
-                                bool(
-                                    self.is_data_loaded()
-                                    or self.is_config_loaded()
-                                ),
+                                bool(self.is_data_loaded() or self.is_config_loaded()),
                             )
             except Exception:
                 import logging
@@ -1381,9 +1365,7 @@ class UIStateManager:
                     try:
                         # 同上：若临时禁用，则保持禁用
                         if project_buttons_disabled:
-                            parent.batch_panel.btn_save_project.setEnabled(
-                                False
-                            )
+                            parent.batch_panel.btn_save_project.setEnabled(False)
                         else:
                             parent.batch_panel.btn_save_project.setEnabled(
                                 bool(save_enabled)
@@ -1405,9 +1387,7 @@ class UIStateManager:
             try:
                 if hasattr(parent, "config_panel"):
                     try:
-                        parent.config_panel.btn_save.setEnabled(
-                            bool(save_enabled)
-                        )
+                        parent.config_panel.btn_save.setEnabled(bool(save_enabled))
                     except Exception:
                         import logging
 
@@ -1433,7 +1413,7 @@ class UIStateManager:
     # 状态设置辅助方法，鼓励通过 UIStateManager 管理窗口级状态
     def set_data_loaded(self, loaded: bool) -> None:
         """设置数据已加载标志并刷新控件状态。
-        
+
         注意：不写回 parent.data_loaded，避免属性 setter 递归调用。
         parent 的属性 getter 会读取 _data_loaded，setter 只更新 UIStateManager 内部状态。
         """
@@ -1445,7 +1425,7 @@ class UIStateManager:
 
     def set_config_loaded(self, loaded: bool) -> None:
         """设置配置已加载标志并刷新控件状态。
-        
+
         注意：不写回 parent.config_loaded，避免属性 setter 递归调用。
         """
         try:
@@ -1456,7 +1436,7 @@ class UIStateManager:
 
     def set_operation_performed(self, performed: bool) -> None:
         """设置用户已执行操作标志（用于启用保存按钮）。
-        
+
         注意：不写回 parent.operation_performed，避免属性 setter 递归调用。
         """
         try:
@@ -1555,7 +1535,9 @@ class UIStateManager:
                     by_file[key] = by_file.get(key, set())
                 # 将选择写入 parent 的表格选择结构（兼容旧代码）
                 try:
-                    fsm.table_row_selection_by_file = getattr(fsm, "table_row_selection_by_file", {}) or {}
+                    fsm.table_row_selection_by_file = (
+                        getattr(fsm, "table_row_selection_by_file", {}) or {}
+                    )
                     # 保留现有结构，不覆盖其他 keys
                     for k in by_file.keys():
                         fsm.table_row_selection_by_file.setdefault(k, None)

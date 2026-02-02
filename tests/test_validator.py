@@ -32,10 +32,7 @@ def test_validate_coordinate_success_and_errors():
 
 
 def test_validate_numeric_range_and_wrapper():
-    assert (
-        DataValidator.validate_numeric_range("3.5", min_val=0, max_val=10)
-        == 3.5
-    )
+    assert DataValidator.validate_numeric_range("3.5", min_val=0, max_val=10) == 3.5
     assert validate_numeric("2.2", min_val=-10, max_val=10) == 2.2
 
     with pytest.raises(ValidationError):
@@ -63,9 +60,7 @@ def test_validate_file_path_and_writable(tmp_path, monkeypatch):
     # writable check: monkeypatch os.access to simulate non-writable
     monkeypatch.setattr(os, "access", lambda *_: False)
     with pytest.raises(ValidationError):
-        DataValidator.validate_file_path(
-            str(f), must_exist=True, writable=True
-        )
+        DataValidator.validate_file_path(str(f), must_exist=True, writable=True)
 
 
 def test_validate_csv_safety_basic_and_errors(tmp_path, monkeypatch):

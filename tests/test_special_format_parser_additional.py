@@ -5,6 +5,7 @@ import pandas as pd
 
 from src import special_format_parser as sfp
 from src.data_loader import CoordSystemDefinition, FrameConfiguration, ProjectData
+from src.special_format_detector import looks_like_special_format
 
 
 def write_file(path: Path, content: str):
@@ -110,9 +111,7 @@ def test_process_special_format_file_success(tmp_path):
 
     # 构造 ProjectData，包含目标 part
     frame = make_frame_for_part("WingX")
-    proj = ProjectData(
-        source_parts={"WingX": [frame]}, target_parts={"WingX": [frame]}
-    )
+    proj = ProjectData(source_parts={"WingX": [frame]}, target_parts={"WingX": [frame]})
 
     out_dir = tmp_path / "out"
     outputs, report = sfp.process_special_format_file(
@@ -169,9 +168,7 @@ def test_process_special_format_file_missing_columns_skips(tmp_path):
     write_file(p, content)
 
     frame = make_frame_for_part("PartA")
-    proj = ProjectData(
-        source_parts={"PartA": [frame]}, target_parts={"PartA": [frame]}
-    )
+    proj = ProjectData(source_parts={"PartA": [frame]}, target_parts={"PartA": [frame]})
     out_dir = tmp_path / "out3"
     outputs, report = sfp.process_special_format_file(
         p, proj, out_dir, return_report=True
@@ -235,7 +232,7 @@ def test_get_part_names_and_parse_complex(tmp_path: Path):
 def test_looks_like_special_format_by_extension(tmp_path: Path):
     p = tmp_path / "x.mtfmt"
     p.write_text("dummy", encoding="utf-8")
-    assert sfp.looks_like_special_format(p)
+    assert looks_like_special_format(p)
 
 
 def test_looks_like_special_format_skips_csv(tmp_path: Path):
@@ -249,7 +246,7 @@ def test_looks_like_special_format_skips_csv(tmp_path: Path):
     p = tmp_path / "plain.csv"
     p.write_text(content, encoding="utf-8")
 
-    assert not sfp.looks_like_special_format(p)
+    assert not looks_like_special_format(p)
 
 
 def test_parse_skips_mismatched_rows_and_summary(tmp_path: Path):

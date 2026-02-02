@@ -55,9 +55,7 @@ def test_log_context_and_operation_context(capsys):
     # 至少两条日志：开始与完成
     assert len(parsed) >= 2
     # 确认 context 字段出现在日志中
-    assert any(
-        "context" in e and e["context"]["context_id"] == "ctx1" for e in parsed
-    )
+    assert any("context" in e and e["context"]["context_id"] == "ctx1" for e in parsed)
 
 
 def test_log_operation_context_exception_path(capsys):

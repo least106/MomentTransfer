@@ -34,9 +34,7 @@ def test_coeff_equals_force_when_unit_refs():
 
     assert res["force_transformed"].shape == (1, 3)
     assert res["coeff_force"].shape == (1, 3)
-    assert np.allclose(
-        res["coeff_force"], res["force_transformed"]
-    )  # 因为 q*s == 1
+    assert np.allclose(res["coeff_force"], res["force_transformed"])  # 因为 q*s == 1
 
 
 def test_transfer_moments_zero_r():

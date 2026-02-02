@@ -43,15 +43,11 @@ class DataValidator:
         try:
             if isinstance(coord, (list, tuple)):
                 if len(coord) != 3:
-                    raise ValidationError(
-                        f"{name} 必须有 3 个元素，得到 {len(coord)}"
-                    )
+                    raise ValidationError(f"{name} 必须有 3 个元素，得到 {len(coord)}")
                 coord_array = np.array(coord, dtype=float)
             elif isinstance(coord, np.ndarray):
                 if coord.shape != (3,):
-                    raise ValidationError(
-                        f"{name} 形状必须为 (3,)，得到 {coord.shape}"
-                    )
+                    raise ValidationError(f"{name} 形状必须为 (3,)，得到 {coord.shape}")
                 coord_array = coord.astype(float)
             else:
                 raise ValidationError(f"{name} 必须是列表、元组或 numpy 数组")
@@ -91,14 +87,10 @@ class DataValidator:
                 raise ValidationError(f"{name} 包含 NaN 或 Inf 值")
 
             if min_val is not None and float_val < min_val:
-                raise ValidationError(
-                    f"{name} = {float_val} < 最小值 {min_val}"
-                )
+                raise ValidationError(f"{name} = {float_val} < 最小值 {min_val}")
 
             if max_val is not None and float_val > max_val:
-                raise ValidationError(
-                    f"{name} = {float_val} > 最大值 {max_val}"
-                )
+                raise ValidationError(f"{name} = {float_val} > 最大值 {max_val}")
 
             return float_val
 
@@ -209,9 +201,7 @@ class DataValidator:
                 raise ValidationError("输入不是 DataFrame")
 
             if len(df) > max_rows:
-                raise ValidationError(
-                    f"DataFrame 行数过多: {len(df)} > {max_rows}"
-                )
+                raise ValidationError(f"DataFrame 行数过多: {len(df)} > {max_rows}")
 
             if required_columns:
                 missing_cols = set(required_columns) - set(df.columns)
@@ -229,9 +219,7 @@ class DataValidator:
             raise ValidationError(f"DataFrame 验证失败: {e}") from e
 
     @staticmethod
-    def validate_column_mapping(
-        mapping: dict, available_columns: List[str]
-    ) -> dict:
+    def validate_column_mapping(mapping: dict, available_columns: List[str]) -> dict:
         """
         验证列映射配置
 
@@ -249,9 +237,7 @@ class DataValidator:
             validated_mapping = {}
             for key, value in mapping.items():
                 if not isinstance(key, str):
-                    raise ValidationError(
-                        f"映射键必须是字符串，得到: {type(key)}"
-                    )
+                    raise ValidationError(f"映射键必须是字符串，得到: {type(key)}")
 
                 if isinstance(value, str):
                     # 列名映射

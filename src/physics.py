@@ -147,8 +147,7 @@ class AeroCalculator:
                 try:
                     source_part = (
                         getattr(init_options, "source_part")
-                        if getattr(init_options, "source_part", None)
-                        is not None
+                        if getattr(init_options, "source_part", None) is not None
                         else source_part
                     )
                     source_variant = getattr(
@@ -156,8 +155,7 @@ class AeroCalculator:
                     )
                     target_part = (
                         getattr(init_options, "target_part")
-                        if getattr(init_options, "target_part", None)
-                        is not None
+                        if getattr(init_options, "target_part", None) is not None
                         else target_part
                     )
                     target_variant = getattr(
@@ -176,9 +174,7 @@ class AeroCalculator:
 
             # 选择 source frame（可选）
             if source_part is not None:
-                source_frame = project.get_source_part(
-                    source_part, source_variant
-                )
+                source_frame = project.get_source_part(source_part, source_variant)
             else:
                 source_frame = project.source_config
 
@@ -237,9 +233,7 @@ class AeroCalculator:
 
         # 构造时验证 target 必需字段
         if self.target_frame.moment_center is None:
-            raise ValueError(
-                "目标 variant 必须包含 MomentCenter 字段（长度为3的列表）"
-            )
+            raise ValueError("目标 variant 必须包含 MomentCenter 字段（长度为3的列表）")
         if self.target_frame.q is None:
             raise ValueError("目标 variant 必须包含动压 Q（数值）")
         if self.target_frame.s_ref is None:
@@ -421,24 +415,18 @@ class AeroCalculator:
                         )
                         logger.debug("力臂转换缓存未命中，已计算并缓存")
                     except (RuntimeError, AttributeError, TypeError) as exc:
-                        logger.debug(
-                            "力臂转换写入失败，已忽略: %s", exc, exc_info=True
-                        )
+                        logger.debug("力臂转换写入失败，已忽略: %s", exc, exc_info=True)
                 else:
                     logger.debug("力臂转换缓存命中")
             else:
-                r_t = geometry.project_vector_to_frame(
-                    self.r_global, self.basis_target
-                )
+                r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
         except (AttributeError, TypeError) as exc:
             logger.debug(
                 "获取/使用力臂转换缓存时发生异常，直接计算 r_target: %s",
                 exc,
                 exc_info=True,
             )
-            r_t = geometry.project_vector_to_frame(
-                self.r_global, self.basis_target
-            )
+            r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
 
         return r_t
 
@@ -499,13 +487,9 @@ class AeroCalculator:
             array([[1., 0., 0.]])  # 对单位坐标系无变化
         """
         try:
-            return np.dot(
-                np.asarray(vectors, dtype=float), self.rotation_matrix.T
-            )
+            return np.dot(np.asarray(vectors, dtype=float), self.rotation_matrix.T)
         except (TypeError, ValueError) as exc:
-            logger.debug(
-                "旋转向量时发生异常，尝试逐行计算: %s", exc, exc_info=True
-            )
+            logger.debug("旋转向量时发生异常，尝试逐行计算: %s", exc, exc_info=True)
             vecs = np.asarray(vectors, dtype=float)
             out = np.zeros_like(vecs)
             for i, v in enumerate(vecs):
@@ -525,18 +509,14 @@ class AeroCalculator:
         try:
             return np.cross(self.r_target, np.asarray(F_rotated, dtype=float))
         except (TypeError, ValueError) as exc:
-            logger.debug(
-                "计算移轴力矩时异常，回退为逐行计算: %s", exc, exc_info=True
-            )
+            logger.debug("计算移轴力矩时异常，回退为逐行计算: %s", exc, exc_info=True)
             fr = np.asarray(F_rotated, dtype=float)
             out = np.zeros_like(fr)
             for i, f in enumerate(fr):
                 out[i] = np.cross(self.r_target, f)
             return out
 
-    def _compute_coefficients(
-        self, F_final: np.ndarray, M_final: np.ndarray
-    ) -> tuple:
+    def _compute_coefficients(self, F_final: np.ndarray, M_final: np.ndarray) -> tuple:
         """
         计算力与力矩的无量纲系数，封装无量纲化逻辑以便测试与复用。
 

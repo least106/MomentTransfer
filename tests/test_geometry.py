@@ -134,9 +134,7 @@ class TestProjectVectorToFrame:
         """测试投影到旋转坐标系"""
         vec_global = np.array([1.0, 0.0, 0.0])
         # 坐标系绕 Z 轴旋转 90 度
-        frame_basis = np.array(
-            [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
-        )
+        frame_basis = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
 
         vec_frame = project_vector_to_frame(vec_global, frame_basis)
 

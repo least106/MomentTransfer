@@ -29,9 +29,7 @@ def load_project_calculator(
         if isinstance(project_data, ProjectData) and target_part is None:
             if len(project_data.target_parts) == 1:
                 target_part = next(iter(project_data.target_parts.keys()))
-                logger.debug(
-                    "配置仅有一个 Target 坐标系，已自动选择: %s", target_part
-                )
+                logger.debug("配置仅有一个 Target 坐标系，已自动选择: %s", target_part)
             else:
                 logger.debug(
                     "配置包含 %d 个 Target 坐标系，未指定 target_part，"
@@ -50,9 +48,7 @@ def load_project_calculator(
     except FileNotFoundError as e:
         raise ValueError(f"配置文件未找到: {config_path}") from e
     except json.JSONDecodeError as e:
-        raise ValueError(
-            f"配置文件不是有效的 JSON: {config_path} -> {e}"
-        ) from e
+        raise ValueError(f"配置文件不是有效的 JSON: {config_path} -> {e}") from e
     except KeyError as e:
         raise ValueError(f"配置文件缺少必要字段: {e}") from e
 

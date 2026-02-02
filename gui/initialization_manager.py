@@ -70,9 +70,7 @@ class BottomDock:
                             break
             except Exception:
                 # 若查询子控件失败，则保守地不隐藏 bar
-                logger.debug(
-                    "检查底部栏子控件可见性失败（非致命）", exc_info=True
-                )
+                logger.debug("检查底部栏子控件可见性失败（非致命）", exc_info=True)
                 any_visible = True
             if not any_visible:
                 self._bar.setVisible(False)
@@ -94,7 +92,9 @@ class InitializationManager:
         self._is_initializing = True
         self._init_overlay = None
 
-    def _set_splitter_bottom_ratio(self, splitter: QSplitter, bottom_ratio: float) -> None:
+    def _set_splitter_bottom_ratio(
+        self, splitter: QSplitter, bottom_ratio: float
+    ) -> None:
         """按比例设置 splitter 的上下部尺寸（bottom_ratio 为 0.0-1.0）。
 
         为了避免在布局尚未完成时设置不合理的像素值，本函数会尝试即时计算并设置；
@@ -263,7 +263,9 @@ class InitializationManager:
                 try:
                     self.main_window.operation_panel = operation_panel
                 except Exception:
-                    logger.debug("注册 operation_panel 回退失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "注册 operation_panel 回退失败（非致命）", exc_info=True
+                    )
             self.main_window.central_widget = central_widget
 
             # 将分割器加入主布局（包含 operation_panel 与 bottom_bar）
@@ -294,9 +296,7 @@ class InitializationManager:
                                     exc_info=True,
                                 )
                     except Exception:
-                        logger.debug(
-                            "切换底部栏时发生异常（非致命）", exc_info=True
-                        )
+                        logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
 
                 self.main_window.chk_bottom_bar_toolbar.toggled.connect(
                     _toggle_bottom_bar
@@ -317,13 +317,9 @@ class InitializationManager:
             except Exception:
                 # 回退到默认行为
                 try:
-                    self.main_window.statusBar().showMessage(
-                        "步骤1：选择文件或目录"
-                    )
+                    self.main_window.statusBar().showMessage("步骤1：选择文件或目录")
                 except Exception:
-                    logger.debug(
-                        "回退到状态栏消息显示失败（非致命）", exc_info=True
-                    )
+                    logger.debug("回退到状态栏消息显示失败（非致命）", exc_info=True)
 
             logger.info("UI 组件初始化成功")
         except Exception as e:
@@ -375,6 +371,7 @@ class InitializationManager:
             logger.info("所有管理器初始化成功")
             # 尝试绑定 BatchManager 的 UI 相关信号（若 UI 尚未就绪则重试）
             try:
+
                 def _bind_once() -> bool:
                     try:
                         bm = getattr(self.main_window, "batch_manager", None)
@@ -386,19 +383,28 @@ class InitializationManager:
                                 res = bm._connect_ui_signals()
                                 made = made or bool(res)
                         except Exception:
-                            logger.debug("在 bind_once 中连接 UI 信号失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "在 bind_once 中连接 UI 信号失败（非致命）",
+                                exc_info=True,
+                            )
                         try:
                             if hasattr(bm, "_connect_quick_filter"):
                                 res = bm._connect_quick_filter()
                                 made = made or bool(res)
                         except Exception:
-                            logger.debug("在 bind_once 中连接快速筛选失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "在 bind_once 中连接快速筛选失败（非致命）",
+                                exc_info=True,
+                            )
                         try:
                             if hasattr(bm, "_connect_signal_bus_events"):
                                 res = bm._connect_signal_bus_events()
                                 made = made or bool(res)
                         except Exception:
-                            logger.debug("在 bind_once 中连接 signal bus 失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "在 bind_once 中连接 signal bus 失败（非致命）",
+                                exc_info=True,
+                            )
                         return bool(made)
                     except Exception:
                         logger.debug("批处理 UI 绑定单次尝试内部异常", exc_info=True)
@@ -416,16 +422,22 @@ class InitializationManager:
                             return
                         delay = delays[min(attempt_index + 1, len(delays) - 1)]
                         try:
-                            QTimer.singleShot(delay, lambda: _attempt_bind(attempt_index + 1))
+                            QTimer.singleShot(
+                                delay, lambda: _attempt_bind(attempt_index + 1)
+                            )
                         except Exception:
-                            logger.debug("调度批处理 UI 绑定重试失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "调度批处理 UI 绑定重试失败（非致命）", exc_info=True
+                            )
                     except Exception:
                         logger.debug("批处理 UI 绑定尝试内部异常", exc_info=True)
 
                 try:
                     _attempt_bind(0)
                 except Exception:
-                    logger.debug("启动批处理 UI 绑定重试序列失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "启动批处理 UI 绑定重试序列失败（非致命）", exc_info=True
+                    )
             except Exception:
                 logger.debug("调度批处理 UI 绑定流程失败（非致命）", exc_info=True)
             # 绑定：当用户在输入框直接输入路径并完成编辑时，触发扫描和控件启用状态更新
@@ -465,15 +477,15 @@ class InitializationManager:
                             exc_info=True,
                         )
             except Exception:
-                logger.debug(
-                    "绑定 inp_batch_input 编辑完成信号失败", exc_info=True
-                )
+                logger.debug("绑定 inp_batch_input 编辑完成信号失败", exc_info=True)
         except Exception as e:
             logger.error("管理器初始化失败: %s", e, exc_info=True)
             # 向用户提供轻量提示（避免静默失败）
             try:
                 if _report_ui_exception:
-                    _report_ui_exception(self.main_window, "管理器初始化失败（请查看日志以获取详细信息）")
+                    _report_ui_exception(
+                        self.main_window, "管理器初始化失败（请查看日志以获取详细信息）"
+                    )
             except Exception:
                 logger.debug("报告初始化管理器失败时出错", exc_info=True)
             # 继续运行，即使管理器初始化失败
@@ -484,9 +496,7 @@ class InitializationManager:
             logging_manager = LoggingManager(self.main_window)
             logging_manager.setup_gui_logging()
         except Exception as e:
-            logger.debug(
-                "GUI logging setup failed (non-fatal): %s", e, exc_info=True
-            )
+            logger.debug("GUI logging setup failed (non-fatal): %s", e, exc_info=True)
 
     def bind_post_ui_signals(self):
         """绑定主窗口的后置 UI 信号与默认可视状态。"""
@@ -585,26 +595,46 @@ class InitializationManager:
                             logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
                         # 初始化完成后启用 `新建`/`打开` 按钮，但让保存按钮继续由 UIStateManager 控制
                         try:
-                            setattr(self.main_window, "_project_buttons_temporarily_disabled", False)
+                            setattr(
+                                self.main_window,
+                                "_project_buttons_temporarily_disabled",
+                                False,
+                            )
                             for btn_name in ("btn_new_project", "btn_open_project"):
                                 btn = getattr(self.main_window, btn_name, None)
                                 if btn is not None:
                                     try:
                                         btn.setEnabled(True)
                                     except Exception:
-                                        logger.debug("启用按钮 %s 失败", btn_name, exc_info=True)
+                                        logger.debug(
+                                            "启用按钮 %s 失败", btn_name, exc_info=True
+                                        )
                             # 刷新控件状态，让 managers 中的逻辑决定保存按钮是否可用（基于 is_operation_performed()）
                             try:
                                 if hasattr(self.main_window, "_refresh_controls_state"):
                                     self.main_window._refresh_controls_state()
                             except Exception:
-                                logger.debug("刷新控件状态失败（非致命）", exc_info=True)
+                                logger.debug("刷新控件状态失败", exc_info=True)
+                            # 创建配置修改警告标签
+                            try:
+                                self._create_config_warning_label()
+                            except Exception:
+                                logger.debug(
+                                    "创建配置警告标签失败（非致命）", exc_info=True
+                                )
+                                logger.debug(
+                                    "刷新控件状态失败（非致命）", exc_info=True
+                                )
                         except Exception:
-                            logger.debug("初始化完成后启用 project 按钮失败", exc_info=True)
+                            logger.debug(
+                                "初始化完成后启用 project 按钮失败", exc_info=True
+                            )
                         logger.debug("初始化完成 (elapsed=%.3fs)", elapsed)
                         return
                     except Exception:
-                        logger.debug("执行 finalize 操作时失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "执行 finalize 操作时失败（非致命）", exc_info=True
+                        )
 
                 # 否则：还未就绪，使用指数回退的定时再次尝试（上限 800ms）
                 # initial 0ms -> 50ms -> 150ms -> 300ms -> 600ms -> 800ms ...
@@ -626,7 +656,9 @@ class InitializationManager:
                     QTimer.singleShot(delay, _attempt_finalize)
                 except Exception:
                     # 若调度失败，记录并在 150ms 后尽力完成以避免永久阻塞
-                    logger.debug("调度后续 finalize 尝试失败，使用后备单次延迟", exc_info=True)
+                    logger.debug(
+                        "调度后续 finalize 尝试失败，使用后备单次延迟", exc_info=True
+                    )
                     try:
                         QTimer.singleShot(150, _attempt_finalize)
                     except Exception:
@@ -639,9 +671,14 @@ class InitializationManager:
         try:
             _attempt_finalize()
         except Exception:
-            logger.debug("启动 finalize_initialization 过程失败，退回到固定延迟解除初始化", exc_info=True)
+            logger.debug(
+                "启动 finalize_initialization 过程失败，退回到固定延迟解除初始化",
+                exc_info=True,
+            )
             try:
-                QTimer.singleShot(150, lambda: setattr(self.main_window, "_is_initializing", False))
+                QTimer.singleShot(
+                    150, lambda: setattr(self.main_window, "_is_initializing", False)
+                )
                 QTimer.singleShot(150, lambda: setattr(self, "_is_initializing", False))
             except Exception:
                 # 如果也失败，则立即解除以避免界面永久被锁定
@@ -731,6 +768,7 @@ class InitializationManager:
             btn_load_config.setToolTip(
                 "加载配置文件（JSON），用于提供 Source/Target part 定义"
             )
+
             # 绑定到一个安全的回调：若 ConfigManager 已初始化则委托给它，否则弹出文件选择或提示
             def _on_load_config_clicked():
                 try:
@@ -740,7 +778,10 @@ class InitializationManager:
                             cm.load_config()
                             return
                         except Exception:
-                            logger.debug("ConfigManager.load_config 调用失败，回退处理", exc_info=True)
+                            logger.debug(
+                                "ConfigManager.load_config 调用失败，回退处理",
+                                exc_info=True,
+                            )
 
                     # 回退：由用户选择配置文件并尝试通过 ConfigManager 或直接提示
                     from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -759,7 +800,9 @@ class InitializationManager:
                             cm.load_config_from_file(fp)
                         except Exception as e:
                             try:
-                                QMessageBox.critical(self.main_window, "错误", f"加载配置失败: {e}")
+                                QMessageBox.critical(
+                                    self.main_window, "错误", f"加载配置失败: {e}"
+                                )
                             except Exception:
                                 logger.debug("显示加载失败对话失败", exc_info=True)
                     else:
@@ -786,9 +829,7 @@ class InitializationManager:
             btn_start.setMaximumWidth(80)
             # 初始化期间默认禁用开始按钮，避免在管理器未就绪时触发批处理
             btn_start.setEnabled(False)
-            btn_start.setToolTip(
-                "正在初始化，功能暂不可用 — 稍后将自动启用或刷新"
-            )
+            btn_start.setToolTip("正在初始化，功能暂不可用 — 稍后将自动启用或刷新")
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
 
@@ -892,14 +933,67 @@ class InitializationManager:
                                         exc_info=True,
                                     )
                         except Exception:
-                            logger.debug(
-                                "更新初始布局失败（非致命）", exc_info=True
-                            )
+                            logger.debug("更新初始布局失败（非致命）", exc_info=True)
                 except Exception:
                     logger.debug("调度初始布局更新时发生错误", exc_info=True)
 
             QTimer.singleShot(120, _do_initial_updates)
         except Exception:
-            logger.debug(
-                "Initial layout update scheduling failed", exc_info=True
+            logger.debug("Initial layout update scheduling failed", exc_info=True)
+
+    def _create_config_warning_label(self):
+        """创建配置修改警告标签并连接信号"""
+        try:
+            from PySide6.QtWidgets import QLabel
+
+            # 创建警告标签
+            warning_label = QLabel("⚠️ 配置已修改未保存")
+            warning_label.setStyleSheet(
+                """
+                QLabel {
+                    color: #ff6b35;
+                    background-color: rgba(255, 107, 53, 0.1);
+                    border: 1px solid #ff6b35;
+                    border-radius: 3px;
+                    padding: 4px 8px;
+                    font-weight: bold;
+                }
+            """
             )
+            warning_label.setVisible(False)
+            self.main_window.config_warning_label = warning_label
+
+            # 查找批处理按钮所在布局并添加警告标签
+            try:
+                batch_panel = getattr(self.main_window, "batch_panel", None)
+                if batch_panel:
+                    # 尝试将警告标签添加到批处理面板顶部
+                    layout = batch_panel.layout()
+                    if layout:
+                        # 在第一个位置插入警告标签
+                        layout.insertWidget(0, warning_label)
+                else:
+                    # 回退：添加到状态栏
+                    statusbar = getattr(self.main_window, "statusBar", lambda: None)()
+                    if statusbar:
+                        statusbar.addPermanentWidget(warning_label)
+            except Exception:
+                logger.debug("添加配置警告标签到布局失败", exc_info=True)
+
+            # 连接配置修改信号
+            def _on_config_modified(modified: bool):
+                try:
+                    warning_label.setVisible(modified)
+                except Exception:
+                    logger.debug("更新配置警告标签可见性失败", exc_info=True)
+
+            try:
+                from gui.signal_bus import SignalBus
+
+                signal_bus = SignalBus.instance()
+                signal_bus.configModified.connect(_on_config_modified)
+            except Exception:
+                logger.debug("连接配置修改信号失败", exc_info=True)
+
+        except Exception:
+            logger.debug("创建配置警告标签失败（完整）", exc_info=True)

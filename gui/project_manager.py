@@ -4,17 +4,17 @@ Project 管理器 - 处理 MomentTransfer 项目文件的保存与恢复
 
 import base64
 import json
-import os
 import logging
+import os
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
-import traceback
 
 logger = logging.getLogger(__name__)
 try:
     # 非强制依赖：仅用于在 GUI 环境下启动异步线程
-    from PySide6.QtCore import QThread, Signal, Qt
+    from PySide6.QtCore import Qt, QThread, Signal
 except Exception:
     QThread = None
     Signal = None
@@ -44,7 +44,9 @@ class ProjectManager:
         # 后台任务引用（防止被GC），支持同时保留多个并在完成后清理
         self._background_workers = []
 
-    def _notify_user_error(self, title: str, message: str, details: Optional[str] = None) -> None:
+    def _notify_user_error(
+        self, title: str, message: str, details: Optional[str] = None
+    ) -> None:
         """在 GUI 环境中向用户展示错误对话框；在无 GUI 时记录日志。
 
         只用于关键路径的用户可见提示，内部细节应记录到日志。
@@ -84,7 +86,9 @@ class ProjectManager:
                     try:
                         self.gui.batch_manager._set_workflow_step("init")
                     except Exception:
-                        logger.debug("batch_manager _set_workflow_step failed", exc_info=True)
+                        logger.debug(
+                            "batch_manager _set_workflow_step failed", exc_info=True
+                        )
             except Exception:
                 logger.debug("检查 batch_manager 失败（非致命）", exc_info=True)
 
@@ -101,9 +105,14 @@ class ProjectManager:
                         fsm._config_loaded = False
                         fsm._operation_performed = False
                     except Exception:
-                        logger.debug("重置 file_selection_manager 映射失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "重置 file_selection_manager 映射失败（非致命）",
+                            exc_info=True,
+                        )
             except Exception:
-                logger.debug("访问 file_selection_manager 失败（非致命）", exc_info=True)
+                logger.debug(
+                    "访问 file_selection_manager 失败（非致命）", exc_info=True
+                )
 
             # 清理主窗口上旧的属性与文件树、列表缓存
             try:
@@ -118,9 +127,13 @@ class ProjectManager:
                     except Exception:
                         try:
                             if _report_ui_exception:
-                                _report_ui_exception(self.gui, f"设置主窗口属性 {attr} 失败")
+                                _report_ui_exception(
+                                    self.gui, f"设置主窗口属性 {attr} 失败"
+                                )
                             else:
-                                logger.debug("设置主窗口属性 %s 失败", attr, exc_info=True)
+                                logger.debug(
+                                    "设置主窗口属性 %s 失败", attr, exc_info=True
+                                )
                         except Exception:
                             logger.debug("设置主窗口属性失败", exc_info=True)
             except Exception:
@@ -133,15 +146,22 @@ class ProjectManager:
                     logger.debug("清理主窗口属性失败", exc_info=True)
 
             try:
-                if hasattr(self.gui, "file_tree") and getattr(self.gui, "file_tree") is not None:
+                if (
+                    hasattr(self.gui, "file_tree")
+                    and getattr(self.gui, "file_tree") is not None
+                ):
                     try:
                         self.gui.file_tree.clear()
                     except Exception:
                         try:
                             if _report_ui_exception:
-                                _report_ui_exception(self.gui, "清空 file_tree 失败（非致命）")
+                                _report_ui_exception(
+                                    self.gui, "清空 file_tree 失败（非致命）"
+                                )
                             else:
-                                logger.debug("清空 file_tree 失败（非致命）", exc_info=True)
+                                logger.debug(
+                                    "清空 file_tree 失败（非致命）", exc_info=True
+                                )
                         except Exception:
                             logger.debug("清空 file_tree 失败（非致命）", exc_info=True)
                 try:
@@ -149,17 +169,27 @@ class ProjectManager:
                 except Exception:
                     try:
                         if _report_ui_exception:
-                            _report_ui_exception(self.gui, "重置 _file_tree_items 失败（非致命）")
+                            _report_ui_exception(
+                                self.gui, "重置 _file_tree_items 失败（非致命）"
+                            )
                         else:
-                            logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "重置 _file_tree_items 失败（非致命）", exc_info=True
+                            )
                     except Exception:
-                        logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "重置 _file_tree_items 失败（非致命）", exc_info=True
+                        )
             except Exception:
                 try:
                     if _report_ui_exception:
-                        _report_ui_exception(self.gui, "访问/清理 file_tree 失败（非致命）")
+                        _report_ui_exception(
+                            self.gui, "访问/清理 file_tree 失败（非致命）"
+                        )
                     else:
-                        logger.debug("访问/清理 file_tree 失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "访问/清理 file_tree 失败（非致命）", exc_info=True
+                        )
                 except Exception:
                     logger.debug("访问/清理 file_tree 失败（非致命）", exc_info=True)
 
@@ -176,29 +206,50 @@ class ProjectManager:
                                     try:
                                         w.setParent(None)
                                     except Exception:
-                                            try:
-                                                if _report_ui_exception:
-                                                    _report_ui_exception(self.gui, "移除 file_list_widget 子控件失败（非致命）")
-                                                else:
-                                                    logger.debug("移除 file_list_widget 子控件失败（非致命）", exc_info=True)
-                                            except Exception:
-                                                logger.debug("移除 file_list_widget 子控件失败（非致命）", exc_info=True)
+                                        try:
+                                            if _report_ui_exception:
+                                                _report_ui_exception(
+                                                    self.gui,
+                                                    "移除 file_list_widget 子控件失败（非致命）",
+                                                )
+                                            else:
+                                                logger.debug(
+                                                    "移除 file_list_widget 子控件失败（非致命）",
+                                                    exc_info=True,
+                                                )
+                                        except Exception:
+                                            logger.debug(
+                                                "移除 file_list_widget 子控件失败（非致命）",
+                                                exc_info=True,
+                                            )
                     except Exception:
-                            try:
-                                if _report_ui_exception:
-                                    _report_ui_exception(self.gui, "清理 file_list_widget 布局失败（非致命）")
-                                else:
-                                    logger.debug("清理 file_list_widget 布局失败（非致命）", exc_info=True)
-                            except Exception:
-                                logger.debug("清理 file_list_widget 布局失败（非致命）", exc_info=True)
+                        try:
+                            if _report_ui_exception:
+                                _report_ui_exception(
+                                    self.gui, "清理 file_list_widget 布局失败（非致命）"
+                                )
+                            else:
+                                logger.debug(
+                                    "清理 file_list_widget 布局失败（非致命）",
+                                    exc_info=True,
+                                )
+                        except Exception:
+                            logger.debug(
+                                "清理 file_list_widget 布局失败（非致命）",
+                                exc_info=True,
+                            )
             except Exception:
-                    try:
-                        if _report_ui_exception:
-                            _report_ui_exception(self.gui, "访问 file_list_widget 失败（非致命）")
-                        else:
-                            logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
-                    except Exception:
-                        logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
+                try:
+                    if _report_ui_exception:
+                        _report_ui_exception(
+                            self.gui, "访问 file_list_widget 失败（非致命）"
+                        )
+                    else:
+                        logger.debug(
+                            "访问 file_list_widget 失败（非致命）", exc_info=True
+                        )
+                except Exception:
+                    logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
 
             # 标记为用户已修改以启用保存（与 UIStateManager 协同）
             try:
@@ -212,7 +263,9 @@ class ProjectManager:
                         pass
                 else:
                     try:
-                        if hasattr(self.gui, "mark_user_modified") and callable(self.gui.mark_user_modified):
+                        if hasattr(self.gui, "mark_user_modified") and callable(
+                            self.gui.mark_user_modified
+                        ):
                             self.gui.mark_user_modified()
                     except Exception:
                         pass
@@ -238,16 +291,15 @@ class ProjectManager:
         """
         # 当在主线程调用时，将实际写盘放到后台线程并显示模态进度，避免阻塞 UI。
         try:
-            from PySide6.QtCore import QThread, QEventLoop
-            from PySide6.QtWidgets import QProgressDialog, QApplication
+            from PySide6.QtCore import QEventLoop, QThread
+            from PySide6.QtWidgets import QApplication, QProgressDialog
+
             in_main_thread = QThread.currentThread() == QApplication.instance().thread()
         except Exception:
             in_main_thread = False
 
         if in_main_thread:
             try:
-                from PySide6.QtCore import QEventLoop
-                from PySide6.QtWidgets import QProgressDialog
 
                 loop = QEventLoop()
                 dlg = None
@@ -300,7 +352,9 @@ class ProjectManager:
                     loop.exec()
                     return bool(result_holder.get("res"))
                 except Exception:
-                    logger.debug("用后台线程执行保存失败，回退到同步保存", exc_info=True)
+                    logger.debug(
+                        "用后台线程执行保存失败，回退到同步保存", exc_info=True
+                    )
                     if dlg is not None:
                         try:
                             dlg.close()
@@ -360,13 +414,20 @@ class ProjectManager:
                 self.last_saved_state = project_data
                 logger.info(f"项目已保存: {file_path}")
                 try:
-                    sb = getattr(self.gui, "signal_bus", None) or __import__("gui.signal_bus", fromlist=["SignalBus"]).SignalBus.instance()
+                    sb = (
+                        getattr(self.gui, "signal_bus", None)
+                        or __import__(
+                            "gui.signal_bus", fromlist=["SignalBus"]
+                        ).SignalBus.instance()
+                    )
                     try:
                         sb.projectSaved.emit(file_path)
                     except Exception:
                         logger.debug("发射 projectSaved 信号失败", exc_info=True)
                 except Exception:
-                    logger.debug("获取 SignalBus 失败，无法发射 projectSaved", exc_info=True)
+                    logger.debug(
+                        "获取 SignalBus 失败，无法发射 projectSaved", exc_info=True
+                    )
                 return True
             except Exception as e:
                 # 保证原文件不被修改；提示用户并记录日志
@@ -388,7 +449,9 @@ class ProjectManager:
 
                 # 在关键失败处也向用户展示更详细的错误（带堆栈）
                 try:
-                    self._notify_user_error("保存项目失败", str(e), traceback.format_exc())
+                    self._notify_user_error(
+                        "保存项目失败", str(e), traceback.format_exc()
+                    )
                 except Exception:
                     logger.debug("通知用户保存失败时出错", exc_info=True)
 
@@ -417,7 +480,14 @@ class ProjectManager:
                         res = False
                     if callable(on_finished):
                         try:
-                            on_finished(res, Path(file_path) if file_path else self.current_project_file)
+                            on_finished(
+                                res,
+                                (
+                                    Path(file_path)
+                                    if file_path
+                                    else self.current_project_file
+                                ),
+                            )
                         except Exception:
                             logger.debug("异步回调执行失败", exc_info=True)
 
@@ -428,7 +498,10 @@ class ProjectManager:
                 res = self.save_project(file_path)
                 if callable(on_finished):
                     try:
-                        on_finished(res, Path(file_path) if file_path else self.current_project_file)
+                        on_finished(
+                            res,
+                            Path(file_path) if file_path else self.current_project_file,
+                        )
                     except Exception:
                         logger.debug("异步回调执行失败", exc_info=True)
             return None
@@ -501,7 +574,7 @@ class ProjectManager:
                 except Exception as e:
                     logger.error("项目文件 JSON 解析失败: %s", e, exc_info=True)
                     try:
-                        from PySide6.QtWidgets import QMessageBox, QFileDialog
+                        from PySide6.QtWidgets import QFileDialog, QMessageBox
 
                         msg = QMessageBox(self.gui)
                         msg.setWindowTitle("项目文件解析失败")
@@ -557,15 +630,17 @@ class ProjectManager:
                     f"项目版本不匹配: {version} (期望 {self.PROJECT_VERSION})"
                 )
                 try:
-                    from PySide6.QtWidgets import QMessageBox, QFileDialog
+                    from PySide6.QtWidgets import QFileDialog, QMessageBox
 
                     msg = QMessageBox(self.gui)
                     msg.setWindowTitle("项目版本不匹配")
                     msg.setText(
                         f"项目版本为 {version} ，与当前版本 {self.PROJECT_VERSION} 不一致。继续可能导致数据丢失或行为异常。"
                     )
-                    msg.setDetailedText(json.dumps(project_data, indent=2, ensure_ascii=False))
-                    btn_continue = msg.addButton("继续", QMessageBox.AcceptRole)
+                    msg.setDetailedText(
+                        json.dumps(project_data, indent=2, ensure_ascii=False)
+                    )
+                    msg.addButton("继续", QMessageBox.AcceptRole)
                     btn_discard = msg.addButton("取消", QMessageBox.RejectRole)
                     btn_save = msg.addButton("另存为", QMessageBox.DestructiveRole)
                     # UX：默认/ESC 走“取消”，降低误操作概率（继续加载可能有数据风险）
@@ -613,18 +688,27 @@ class ProjectManager:
                         fsm.file_part_selection_by_file = {}
                         fsm.table_row_selection_by_file = {}
                     except Exception:
-                        logger.debug("重置 file_selection_manager 映射失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "重置 file_selection_manager 映射失败（非致命）",
+                            exc_info=True,
+                        )
 
                     try:
                         fsm._data_loaded = False
                         fsm._config_loaded = False
                         fsm._operation_performed = False
                     except Exception:
-                        logger.debug("清理 file_selection_manager 状态失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "清理 file_selection_manager 状态失败（非致命）",
+                            exc_info=True,
+                        )
 
                 # 清空主窗口上的相关缓存与控件
                 try:
-                    if hasattr(self.gui, "file_tree") and getattr(self.gui, "file_tree") is not None:
+                    if (
+                        hasattr(self.gui, "file_tree")
+                        and getattr(self.gui, "file_tree") is not None
+                    ):
                         try:
                             self.gui.file_tree.clear()
                         except Exception:
@@ -633,24 +717,32 @@ class ProjectManager:
                     try:
                         setattr(self.gui, "_file_tree_items", {})
                     except Exception:
-                        logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "重置 _file_tree_items 失败（非致命）", exc_info=True
+                        )
 
                     # 清空 file_list_widget 子控件（若存在）
                     flw = getattr(self.gui, "file_list_widget", None)
                     if flw is not None and hasattr(flw, "layout"):
                         try:
-                            l = flw.layout()
-                            if l is not None:
-                                while l.count():
-                                    it = l.takeAt(0)
+                            layout = flw.layout()
+                            if layout is not None:
+                                while layout.count():
+                                    it = layout.takeAt(0)
                                     w = it.widget()
                                     if w is not None:
                                         try:
                                             w.setParent(None)
                                         except Exception:
-                                            logger.debug("移除 file_list_widget 子控件失败（非致命）", exc_info=True)
+                                            logger.debug(
+                                                "移除 file_list_widget 子控件失败（非致命）",
+                                                exc_info=True,
+                                            )
                         except Exception:
-                            logger.debug("清理 file_list_widget 布局失败（非致命）", exc_info=True)
+                            logger.debug(
+                                "清理 file_list_widget 布局失败（非致命）",
+                                exc_info=True,
+                            )
                 except Exception:
                     logger.debug("清空 GUI 文件树/缓存失败（非致命）", exc_info=True)
             except Exception:
@@ -663,13 +755,13 @@ class ProjectManager:
             except Exception as e:
                 logger.error("恢复配置时发生异常: %s", e, exc_info=True)
                 try:
-                    from PySide6.QtWidgets import QMessageBox, QFileDialog
+                    from PySide6.QtWidgets import QFileDialog, QMessageBox
 
                     msg = QMessageBox(self.gui)
                     msg.setWindowTitle("项目解析失败")
                     msg.setText("无法解析项目到内部模型，可能缺失字段或格式不兼容。")
                     msg.setDetailedText(traceback.format_exc())
-                    btn_continue = msg.addButton("继续", QMessageBox.AcceptRole)
+                    msg.addButton("继续", QMessageBox.AcceptRole)
                     btn_discard = msg.addButton("取消", QMessageBox.RejectRole)
                     btn_save = msg.addButton("另存为", QMessageBox.DestructiveRole)
                     # UX：默认/ESC 走“取消”，避免误触回车继续进入“可能不完整的项目状态”
@@ -718,7 +810,10 @@ class ProjectManager:
             try:
                 # 在加载成功后设置 UI 状态：标记为已加载且未被用户修改
                 try:
-                    if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                    if (
+                        hasattr(self.gui, "ui_state_manager")
+                        and self.gui.ui_state_manager
+                    ):
                         try:
                             self.gui.ui_state_manager.set_data_loaded(True)
                         except Exception:
@@ -747,7 +842,9 @@ class ProjectManager:
 
                     # 确保 project 相关按钮在加载完成后按初始化时的行为被启用
                     try:
-                        setattr(self.gui, "_project_buttons_temporarily_disabled", False)
+                        setattr(
+                            self.gui, "_project_buttons_temporarily_disabled", False
+                        )
                     except Exception:
                         pass
                     try:
@@ -760,15 +857,24 @@ class ProjectManager:
                         pass
 
                 except Exception:
-                    logger.debug("设置 UIStateManager 状态失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "设置 UIStateManager 状态失败（非致命）", exc_info=True
+                    )
 
-                sb = getattr(self.gui, "signal_bus", None) or __import__("gui.signal_bus", fromlist=["SignalBus"]).SignalBus.instance()
+                sb = (
+                    getattr(self.gui, "signal_bus", None)
+                    or __import__(
+                        "gui.signal_bus", fromlist=["SignalBus"]
+                    ).SignalBus.instance()
+                )
                 try:
                     sb.projectLoaded.emit(file_path)
                 except Exception:
                     logger.debug("发射 projectLoaded 信号失败", exc_info=True)
             except Exception:
-                logger.debug("获取 SignalBus 失败，无法发射 projectLoaded", exc_info=True)
+                logger.debug(
+                    "获取 SignalBus 失败，无法发射 projectLoaded", exc_info=True
+                )
 
             logger.info(f"项目已加载: {file_path}")
             return True
@@ -872,9 +978,7 @@ class ProjectManager:
             config = None
             if hasattr(self.gui, "project_model") and self.gui.project_model:
                 config = self._serialize_project_model(self.gui.project_model)
-            elif (
-                hasattr(self.gui, "current_config") and self.gui.current_config
-            ):
+            elif hasattr(self.gui, "current_config") and self.gui.current_config:
                 config = self._serialize_config(self.gui.current_config)
 
             if config:
@@ -895,9 +999,7 @@ class ProjectManager:
                 special_mappings = (
                     getattr(fsm, "special_part_mapping_by_file", {}) or {}
                 )
-                table_selection = (
-                    getattr(fsm, "table_row_selection_by_file", {}) or {}
-                )
+                table_selection = getattr(fsm, "table_row_selection_by_file", {}) or {}
 
                 for file_path, mapping in special_mappings.items():
                     row_sel = table_selection.get(file_path)
@@ -917,9 +1019,7 @@ class ProjectManager:
         # 保存工作流程步骤
         try:
             if hasattr(self.gui, "batch_manager"):
-                step = getattr(
-                    self.gui.batch_manager, "_current_workflow_step", 1
-                )
+                step = getattr(self.gui.batch_manager, "_current_workflow_step", 1)
                 project_data["workflow_step"] = step
         except Exception:
             project_data["workflow_step"] = 1
@@ -944,14 +1044,24 @@ class ProjectManager:
             try:
                 geom_saved = None
                 try:
-                    if hasattr(self.gui, "saveGeometry") and callable(getattr(self.gui, "saveGeometry")):
+                    if hasattr(self.gui, "saveGeometry") and callable(
+                        getattr(self.gui, "saveGeometry")
+                    ):
                         raw = self.gui.saveGeometry()
                         if raw is not None:
                             try:
-                                raw_bytes = bytes(raw) if not isinstance(raw, (bytes, bytearray)) else bytes(raw)
+                                raw_bytes = (
+                                    bytes(raw)
+                                    if not isinstance(raw, (bytes, bytearray))
+                                    else bytes(raw)
+                                )
                             except Exception:
                                 try:
-                                    raw_bytes = raw.data() if hasattr(raw, "data") else bytes(raw)
+                                    raw_bytes = (
+                                        raw.data()
+                                        if hasattr(raw, "data")
+                                        else bytes(raw)
+                                    )
                                 except Exception:
                                     raw_bytes = None
                             if raw_bytes:
@@ -963,7 +1073,12 @@ class ProjectManager:
                     g = getattr(self.gui, "geometry", None)
                     if callable(g):
                         r = self.gui.geometry()
-                        ui_state["window_geometry"] = {"x": r.x(), "y": r.y(), "w": r.width(), "h": r.height()}
+                        ui_state["window_geometry"] = {
+                            "x": r.x(),
+                            "y": r.y(),
+                            "w": r.width(),
+                            "h": r.height(),
+                        }
                 except Exception:
                     pass
 
@@ -976,7 +1091,11 @@ class ProjectManager:
                 fsm = getattr(self.gui, "file_selection_manager", None)
                 if fsm is not None:
                     try:
-                        sel = list((getattr(fsm, "table_row_selection_by_file", {}) or {}).keys())
+                        sel = list(
+                            (
+                                getattr(fsm, "table_row_selection_by_file", {}) or {}
+                            ).keys()
+                        )
                         if sel:
                             ui_state["selected_files"] = sel
                     except Exception:
@@ -1019,9 +1138,7 @@ class ProjectManager:
         """恢复数据文件选择和映射"""
         try:
             data_files = project_data.get("data_files", [])
-            if not data_files or not hasattr(
-                self.gui, "file_selection_manager"
-            ):
+            if not data_files or not hasattr(self.gui, "file_selection_manager"):
                 return False
 
             fsm = self.gui.file_selection_manager
@@ -1094,15 +1211,11 @@ class ProjectManager:
 
             if hasattr(model, "source_parts"):
                 for name, part in (model.source_parts or {}).items():
-                    data["source_parts"][name] = (
-                        ProjectManager._serialize_part(part)
-                    )
+                    data["source_parts"][name] = ProjectManager._serialize_part(part)
 
             if hasattr(model, "target_parts"):
                 for name, part in (model.target_parts or {}).items():
-                    data["target_parts"][name] = (
-                        ProjectManager._serialize_part(part)
-                    )
+                    data["target_parts"][name] = ProjectManager._serialize_part(part)
 
             return data
         except Exception:

@@ -169,10 +169,6 @@ class ProjectConfigModel:
     def to_dict(self) -> Dict:
         """将 ProjectConfigModel 序列化为字典以便输出或持久化。"""
         return {
-            "Source": {
-                "Parts": [p.to_dict() for p in self.source_parts.values()]
-            },
-            "Target": {
-                "Parts": [p.to_dict() for p in self.target_parts.values()]
-            },
+            "Source": {"Parts": [p.to_dict() for p in self.source_parts.values()]},
+            "Target": {"Parts": [p.to_dict() for p in self.target_parts.values()]},
         }

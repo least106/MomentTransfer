@@ -1,7 +1,4 @@
-import json
 from pathlib import Path
-
-import pytest
 
 from gui.project_manager import ProjectManager
 
@@ -58,7 +55,9 @@ def test_collect_ui_state_includes_expected_keys(tmp_path):
     ui = state["ui_state"]
     assert ui.get("tab_index") == 2
     assert isinstance(ui.get("window_geometry"), dict)
-    assert "selected_files" in ui or True  # selected_files may be empty depending on FSM
+    assert (
+        "selected_files" in ui or True
+    )  # selected_files may be empty depending on FSM
 
 
 def test_restore_data_files_skipped_rows():
@@ -83,6 +82,11 @@ def test_restore_data_files_skipped_rows():
     fsm = gui.file_selection_manager
     # table_row_selection_by_file should have set of rows
     key = str(Path("/tmp/a.csv"))
-    assert key in fsm.table_row_selection_by_file or "/tmp/a.csv" in fsm.table_row_selection_by_file
+    assert (
+        key in fsm.table_row_selection_by_file
+        or "/tmp/a.csv" in fsm.table_row_selection_by_file
+    )
     # skipped rows restored
-    assert (key in fsm.skipped_rows_by_file) or ("/tmp/a.csv" in fsm.skipped_rows_by_file)
+    assert (key in fsm.skipped_rows_by_file) or (
+        "/tmp/a.csv" in fsm.skipped_rows_by_file
+    )

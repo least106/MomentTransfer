@@ -16,11 +16,10 @@ class SignalBus(QObject):
     """
 
     # 配置相关
-    configLoaded = Signal(
-        object
-    )  # 载入新模型（ProjectConfigModel 或兼容对象）
+    configLoaded = Signal(object)  # 载入新模型（ProjectConfigModel 或兼容对象）
     configSaved = Signal(Path)  # 保存路径
     configApplied = Signal()  # 已应用配置
+    configModified = Signal(bool)  # 配置修改状态变化 (True=已修改, False=未修改)
 
     # Part 相关
     sourcePartChanged = Signal(str)  # Source 当前 Part 名称
@@ -31,9 +30,7 @@ class SignalBus(QObject):
     partAddRequested = Signal(
         str, str
     )  # side: 'Source'|'Target'|'src'|'tgt', desired_name
-    partRemoveRequested = Signal(
-        str, str
-    )  # side: 'Source'|'Target'|'src'|'tgt', name
+    partRemoveRequested = Signal(str, str)  # side: 'Source'|'Target'|'src'|'tgt', name
 
     # 批处理相关
     batchStarted = Signal(list)

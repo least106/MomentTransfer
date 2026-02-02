@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 
@@ -23,7 +24,6 @@ def build_table_row_preview_text(row_index: int, row_series: Any) -> str:
     except Exception:
         pass
     return f"第{row_index + 1}行"
-from pathlib import Path
 
 
 def csv_has_header(path: Path) -> bool:

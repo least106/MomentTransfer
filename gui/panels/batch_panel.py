@@ -42,9 +42,7 @@ class BatchPanel(QWidget):
     selectAllRequested = Signal()  # 全选文件
     selectNoneRequested = Signal()  # 全不选
     invertSelectionRequested = Signal()  # 反选
-    quickFilterChanged = Signal(
-        str, str, str
-    )  # 快速筛选变化(列名, 运算符, 筛选值)
+    quickFilterChanged = Signal(str, str, str)  # 快速筛选变化(列名, 运算符, 筛选值)
     quickSelectRequested = Signal()  # 快速选择
     bottomBarToggled = Signal(bool)  # 切换底部栏显示/隐藏
     saveProjectRequested = Signal()  # 保存Project请求
@@ -115,9 +113,7 @@ class BatchPanel(QWidget):
         try:
             self.file_form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         except Exception as e:
-            logger.debug(
-                "设置表单标签对齐失败（非致命）: %s", e, exc_info=True
-            )
+            logger.debug("设置表单标签对齐失败（非致命）: %s", e, exc_info=True)
         # 保留属性以兼容旧代码，但在首页不显示输入框
         self.inp_batch_input = QLineEdit()
         self.inp_batch_input.setPlaceholderText("选择文件或目录...")
@@ -184,9 +180,7 @@ class BatchPanel(QWidget):
                 exc_info=True,
             )
         try:
-            self.btn_batch_in_toolbar.clicked.connect(
-                self.batchStartRequested.emit
-            )
+            self.btn_batch_in_toolbar.clicked.connect(self.batchStartRequested.emit)
         except Exception:
             logger.debug("无法连接 btn_batch_in_toolbar 信号", exc_info=True)
 
@@ -201,9 +195,7 @@ class BatchPanel(QWidget):
                 exc_info=True,
             )
         try:
-            self.btn_save_project.clicked.connect(
-                self.saveProjectRequested.emit
-            )
+            self.btn_save_project.clicked.connect(self.saveProjectRequested.emit)
         except Exception:
             logger.debug("无法连接 btn_save_project 信号", exc_info=True)
 
@@ -252,16 +244,12 @@ class BatchPanel(QWidget):
 
         # init：只保留操作按钮
         if step in ("init", "step1"):
-            _set_row_visible(
-                getattr(self, "row_format_summary_widget", None), False
-            )
+            _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
             return
 
         # step2+：保持默认显示
         if step in ("step2", "step3"):
-            _set_row_visible(
-                getattr(self, "row_format_summary_widget", None), False
-            )
+            _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
             # 标记为已加载数据（主要用于启用 Data 管理选项卡与开始按钮）
             try:
                 win = self.window()
@@ -336,9 +324,7 @@ class BatchPanel(QWidget):
 
         self.btn_select_all.clicked.connect(self.selectAllRequested.emit)
         self.btn_select_none.clicked.connect(self.selectNoneRequested.emit)
-        self.btn_select_invert.clicked.connect(
-            self.invertSelectionRequested.emit
-        )
+        self.btn_select_invert.clicked.connect(self.invertSelectionRequested.emit)
         self.btn_quick_select.clicked.connect(self.quickSelectRequested.emit)
 
         btn_row.addWidget(self.btn_select_all)
@@ -402,15 +388,11 @@ class BatchPanel(QWidget):
 
         # 连接筛选信号
         try:
-            self.inp_filter_column.textChanged.connect(
-                self._on_quick_filter_changed
-            )
+            self.inp_filter_column.textChanged.connect(self._on_quick_filter_changed)
             self.cmb_filter_operator.currentTextChanged.connect(
                 self._on_operator_changed
             )
-            self.inp_filter_value.textChanged.connect(
-                self._on_quick_filter_changed
-            )
+            self.inp_filter_value.textChanged.connect(self._on_quick_filter_changed)
         except Exception:
             logger.debug("连接快速筛选信号失败", exc_info=True)
 
@@ -530,9 +512,7 @@ class BatchPanel(QWidget):
                         try:
                             if (
                                 popup is None
-                                or not getattr(
-                                    popup, "isVisible", lambda: False
-                                )()
+                                or not getattr(popup, "isVisible", lambda: False)()
                             ):
                                 if comp is not None:
                                     comp.complete()
@@ -608,9 +588,7 @@ class BatchPanel(QWidget):
         self.txt_batch_log.setReadOnly(True)
         self.txt_batch_log.setFont(QFont("Consolas", 9))
         self.txt_batch_log.setMinimumHeight(160)
-        self.txt_batch_log.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.txt_batch_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout.addWidget(self.txt_batch_log)
 
@@ -647,9 +625,7 @@ class BatchPanel(QWidget):
                 self.tab_main.setCurrentIndex(idx)
             else:
                 # 兜底到最后一个 Tab（若找不到 log_tab）
-                self.tab_main.setCurrentIndex(
-                    max(0, self.tab_main.count() - 1)
-                )
+                self.tab_main.setCurrentIndex(max(0, self.tab_main.count() - 1))
         except Exception:
             try:
                 self.tab_main.setCurrentIndex(1)
@@ -670,8 +646,6 @@ class BatchPanel(QWidget):
                 else:
                     self.lbl_unsaved_indicator.setToolTip("")
             except Exception:
-                logger.debug(
-                    "更新未保存指示器提示失败（非致命）", exc_info=True
-                )
+                logger.debug("更新未保存指示器提示失败（非致命）", exc_info=True)
         except Exception:
             logger.debug("set_unsaved_indicator 失败（非致命）", exc_info=True)

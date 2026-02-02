@@ -59,9 +59,7 @@ class CoordinateSystemPanel(QGroupBox):
             self.signal_bus.partAdded.connect(self._on_part_added)
             self.signal_bus.partRemoved.connect(self._on_part_removed)
         except Exception:
-            logger.debug(
-                "SignalBus 初始化失败，Part 更新将不可用", exc_info=True
-            )
+            logger.debug("SignalBus 初始化失败，Part 更新将不可用", exc_info=True)
             self.signal_bus = None
 
         # 初始化UI
@@ -79,9 +77,7 @@ class CoordinateSystemPanel(QGroupBox):
     def begin_silent_update(self):
         """在批量程序化更新前调用以抑制 valuesChanged 信号（可嵌套）。"""
         try:
-            self._silent_update_count = (
-                getattr(self, "_silent_update_count", 0) + 1
-            )
+            self._silent_update_count = getattr(self, "_silent_update_count", 0) + 1
         except Exception:
             self._silent_update_count = 1
 
@@ -133,9 +129,7 @@ class CoordinateSystemPanel(QGroupBox):
         # 限制下拉框宽度并使用紧凑尺寸策略，确保与 + - 按钮同行
         try:
             self.part_selector.setMaximumWidth(160)
-            self.part_selector.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Fixed
-            )
+            self.part_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         except Exception:
             pass
         self.part_selector.currentTextChanged.connect(self._on_part_selected)
@@ -245,9 +239,7 @@ class CoordinateSystemPanel(QGroupBox):
         """创建坐标系输入表格（5行×3列）"""
         table = QTableWidget(5, 3)
         table.setHorizontalHeaderLabels(["X", "Y", "Z"])
-        table.setVerticalHeaderLabels(
-            ["Orig", "X轴", "Y轴", "Z轴", "力矩中心"]
-        )
+        table.setVerticalHeaderLabels(["Orig", "X轴", "Y轴", "Z轴", "力矩中心"])
 
         # 设置默认值
         default_values = [
@@ -417,9 +409,7 @@ class CoordinateSystemPanel(QGroupBox):
         """以强类型模型返回坐标系（别名）。"""
         return self.get_coordinate_system_model()
 
-    def set_reference_values(
-        self, cref: float, bref: float, sref: float, q: float
-    ):
+    def set_reference_values(self, cref: float, bref: float, sref: float, q: float):
         """设置参考量"""
         # 使用静默更新以避免程序化设置时触发 valuesChanged
         try:
@@ -441,9 +431,7 @@ class CoordinateSystemPanel(QGroupBox):
             return
 
         part_name = payload.get("PartName") or "Part"
-        logger.debug(
-            "%s apply_variant_payload: PartName=%s", self.prefix, part_name
-        )
+        logger.debug("%s apply_variant_payload: PartName=%s", self.prefix, part_name)
         try:
             self.part_name_input.blockSignals(True)
             self.part_name_input.setText(str(part_name))
@@ -464,9 +452,7 @@ class CoordinateSystemPanel(QGroupBox):
             "Z": cs.get("Z", [0.0, 0.0, 1.0]),
             "MomentCenter": mc if mc is not None else [0.0, 0.0, 0.0],
         }
-        logger.debug(
-            "%s apply_variant_payload: coord_data=%s", self.prefix, coord_data
-        )
+        logger.debug("%s apply_variant_payload: coord_data=%s", self.prefix, coord_data)
         # 参考量
         cref = payload.get("Cref", payload.get("C_ref", 1.0))
         bref = payload.get("Bref", payload.get("B_ref", 1.0))
@@ -490,9 +476,7 @@ class CoordinateSystemPanel(QGroupBox):
     def to_variant_payload(self, override_part_name: str = None) -> dict:
         """从面板生成 Variant 字典数据。"""
         coord = self.get_coord_data()
-        part_name = (
-            override_part_name or self.part_name_input.text().strip() or "Part"
-        )
+        part_name = override_part_name or self.part_name_input.text().strip() or "Part"
         return {
             "PartName": part_name,
             "CoordSystem": {
@@ -562,9 +546,7 @@ class CoordinateSystemPanel(QGroupBox):
                 self.part_selector.blockSignals(True)
                 self.part_selector.addItem(part_name)
                 self.part_selector.blockSignals(False)
-                logger.debug(
-                    "%s Part选择器已添加项目: %s", self.prefix, part_name
-                )
+                logger.debug("%s Part选择器已添加项目: %s", self.prefix, part_name)
         except Exception as e:
             logger.warning("Part添加事件处理失败: %s", e, exc_info=True)
 
@@ -585,8 +567,6 @@ class CoordinateSystemPanel(QGroupBox):
                 self.part_selector.blockSignals(True)
                 self.part_selector.removeItem(idx)
                 self.part_selector.blockSignals(False)
-                logger.debug(
-                    "%s Part选择器已移除项目: %s", self.prefix, part_name
-                )
+                logger.debug("%s Part选择器已移除项目: %s", self.prefix, part_name)
         except Exception as e:
             logger.warning("Part移除事件处理失败: %s", e, exc_info=True)

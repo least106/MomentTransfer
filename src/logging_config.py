@@ -5,9 +5,7 @@ import logging
 from typing import Optional
 
 
-def configure_logging(
-    log_file: Optional[str], verbose: bool
-) -> logging.Logger:
+def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
     """配置并返回名为 `batch` 的 logger。
 
     实现要点：

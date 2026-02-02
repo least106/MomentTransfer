@@ -48,9 +48,7 @@ class TableFilterManager:
             operator: 比较操作符（'==', '!=', '<', '>', '<=', '>=', 'contains', 'not_contains'）
             value: 比较值
         """
-        self.filters.append(
-            {"column": column, "operator": operator, "value": value}
-        )
+        self.filters.append({"column": column, "operator": operator, "value": value})
         self._apply_filters()
 
     def clear_filters(self) -> None:

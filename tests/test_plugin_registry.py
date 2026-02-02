@@ -65,8 +65,6 @@ def test_instantiate_and_register_with_module(tmp_path):
 
     registry = plugin_mod.PluginRegistry()
     loader = plugin_mod.PluginLoader(registry)
-    plugin = loader._instantiate_and_register(
-        module, Path(str(tmp_path / "fake.py"))
-    )
+    plugin = loader._instantiate_and_register(module, Path(str(tmp_path / "fake.py")))
     assert plugin is not None
     assert registry.get_plugin("mod_coord") is plugin

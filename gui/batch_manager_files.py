@@ -41,18 +41,14 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             # 使用默认的文件匹配模式（支持所有常见格式）
             pattern_text = "*.csv;*.xlsx;*.xls;*.mtfmt;*.mtdata;*.txt;*.dat"
 
-            patterns = [
-                x.strip() for x in pattern_text.split(";") if x.strip()
-            ]
+            patterns = [x.strip() for x in pattern_text.split(";") if x.strip()]
             if not patterns:
                 patterns = ["*.csv"]
 
             for file_path in p.rglob("*"):
                 if not file_path.is_file():
                     continue
-                if any(
-                    fnmatch.fnmatch(file_path.name, pat) for pat in patterns
-                ):
+                if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
                     files.append(file_path)
             files = sorted(set(files))
 
@@ -76,9 +72,7 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
     """根据 files 填充 `manager.gui.file_tree` 并显示文件列表区域。"""
     dir_items = {}
     for fp in files:
-        _safe_add_file_tree_entry(
-            manager, base_path, dir_items, fp, p.is_file()
-        )
+        _safe_add_file_tree_entry(manager, base_path, dir_items, fp, p.is_file())
 
     try:
         manager.gui.file_tree.expandAll()
@@ -88,9 +82,7 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
     try:
         manager.gui.file_list_widget.setVisible(True)
     except Exception:
-        logger.debug(
-            "设置 file_list_widget 可见性失败（非致命）", exc_info=True
-        )
+        logger.debug("设置 file_list_widget 可见性失败（非致命）", exc_info=True)
 
     logger.info(f"已扫描到 {len(files)} 个文件")
 
@@ -101,9 +93,7 @@ def _safe_add_file_tree_entry(
     """安全地调用 `_add_file_tree_entry` 并在发生异常时记录调试信息。"""
     try:
         try:
-            _add_file_tree_entry(
-                manager, base_path, dir_items, fp, single_file_mode
-            )
+            _add_file_tree_entry(manager, base_path, dir_items, fp, single_file_mode)
         except Exception:
             logger.debug("添加文件树项失败（外层）", exc_info=True)
     except Exception:
@@ -226,15 +216,11 @@ def _collect_files_to_process(manager, input_path: Path):
             if hasattr(manager.gui, "file_tree") and hasattr(
                 manager.gui, "_file_tree_items"
             ):
-                files_to_process.extend(
-                    _collect_files_for_scan(manager, input_path)[0]
-                )
+                files_to_process.extend(_collect_files_for_scan(manager, input_path)[0])
                 if output_dir is None:
                     output_dir = input_path
             else:
-                get_patterns = getattr(
-                    manager, "_get_patterns_from_widget", None
-                )
+                get_patterns = getattr(manager, "_get_patterns_from_widget", None)
                 if callable(get_patterns):
                     patterns, _ = get_patterns()
                 else:
@@ -246,9 +232,7 @@ def _collect_files_to_process(manager, input_path: Path):
                     output_dir = input_path
 
             if not files_to_process:
-                get_patterns = getattr(
-                    manager, "_get_patterns_from_widget", None
-                )
+                get_patterns = getattr(manager, "_get_patterns_from_widget", None)
                 if callable(get_patterns):
                     _, pattern_display = get_patterns()
                 else:
@@ -271,9 +255,7 @@ def _scan_dir_for_patterns(manager, input_path: Path, patterns: list) -> list:
             try:
                 if not file_path.is_file():
                     continue
-                if any(
-                    fnmatch.fnmatch(file_path.name, pat) for pat in patterns
-                ):
+                if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
                     found.append(file_path)
             except Exception:
                 pass
@@ -282,9 +264,7 @@ def _scan_dir_for_patterns(manager, input_path: Path, patterns: list) -> list:
     return found
 
 
-def _ensure_regular_file_selector_rows(
-    manager, file_item, file_path: Path
-) -> None:
+def _ensure_regular_file_selector_rows(manager, file_item, file_path: Path) -> None:
     """为常规文件创建 source/target 选择行（并排双下拉，与特殊格式统一）。"""
     from PySide6.QtWidgets import QComboBox, QHBoxLayout, QTreeWidgetItem, QWidget
 
@@ -341,9 +321,7 @@ def _ensure_regular_file_selector_rows(
             source_combo.setEnabled(True)
             source_combo.setToolTip("选择该文件对应的 Source part")
 
-        _safe_set_combo_selection(
-            manager, source_combo, current_src, source_names
-        )
+        _safe_set_combo_selection(manager, source_combo, current_src, source_names)
 
         # Target部分选择器
         current_tgt = (sel.get("target") or "").strip()
@@ -361,20 +339,14 @@ def _ensure_regular_file_selector_rows(
             target_combo.setEnabled(True)
             target_combo.setToolTip("选择该文件对应的 Target part")
 
-        _safe_set_combo_selection(
-            manager, target_combo, current_tgt, target_names
-        )
+        _safe_set_combo_selection(manager, target_combo, current_tgt, target_names)
 
         # 绑定source改变事件
-        src_handler = manager._make_part_change_handler(
-            str(file_path), "source"
-        )
+        src_handler = manager._make_part_change_handler(str(file_path), "source")
         source_combo.currentTextChanged.connect(src_handler)
 
         # 绑定target改变事件
-        tgt_handler = manager._make_part_change_handler(
-            str(file_path), "target"
-        )
+        tgt_handler = manager._make_part_change_handler(str(file_path), "target")
         target_combo.currentTextChanged.connect(tgt_handler)
 
         selector_layout.addWidget(source_combo, 1)
@@ -387,14 +359,10 @@ def _ensure_regular_file_selector_rows(
         except Exception:
             pass
     except Exception:
-        logger.debug(
-            "_ensure_regular_file_selector_rows failed", exc_info=True
-        )
+        logger.debug("_ensure_regular_file_selector_rows failed", exc_info=True)
 
 
-def _infer_source_part(
-    manager, part_name: str, source_names: list
-) -> Optional[str]:
+def _infer_source_part(manager, part_name: str, source_names: list) -> Optional[str]:
     """智能推测source part（内部部件名与配置中的source part对应关系）。
 
     策略：
@@ -424,8 +392,7 @@ def _infer_source_part(
                                 s2 = "".join(
                                     ch
                                     for ch in (s or "")
-                                    if ch.isalnum()
-                                    or ("\u4e00" <= ch <= "\u9fff")
+                                    if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff")
                                 )
                                 return s2.lower()
                             except Exception:
@@ -445,9 +412,7 @@ def _infer_source_part(
     return result
 
 
-def _infer_target_part(
-    manager, source_part: str, target_names: list
-) -> Optional[str]:
+def _infer_target_part(manager, source_part: str, target_names: list) -> Optional[str]:
     """智能推测 source->target 映射。"""
     result = None
     try:
@@ -469,8 +434,7 @@ def _infer_target_part(
                                 s2 = "".join(
                                     ch
                                     for ch in (s or "")
-                                    if ch.isalnum()
-                                    or ("\u4e00" <= ch <= "\u9fff")
+                                    if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff")
                                 )
                                 return s2.lower()
                             except Exception:
@@ -497,9 +461,7 @@ def _make_part_change_handler(manager, fp_str: str, key: str):
             try:
                 node = getattr(manager.gui, "_file_tree_items", {}).get(fp_str)
                 if node is not None:
-                    node.setText(
-                        1, manager._validate_file_config(Path(fp_str))
-                    )
+                    node.setText(1, manager._validate_file_config(Path(fp_str)))
             except Exception:
                 pass
         except Exception:
@@ -545,9 +507,7 @@ def _auto_fill_special_mappings(
 
             # 步骤1：推断source part
             if not (mapping[part_name].get("source") or "").strip():
-                inferred_source = _infer_source_part(
-                    manager, part_name, source_names
-                )
+                inferred_source = _infer_source_part(manager, part_name, source_names)
                 if inferred_source:
                     mapping[part_name]["source"] = inferred_source
                     changed = True
@@ -569,9 +529,7 @@ def _auto_fill_special_mappings(
 
 def _get_or_init_special_mapping(manager, file_path: Path) -> dict:
     try:
-        mapping_by_file = getattr(
-            manager.gui, "special_part_mapping_by_file", None
-        )
+        mapping_by_file = getattr(manager.gui, "special_part_mapping_by_file", None)
         if mapping_by_file is None:
             manager.gui.special_part_mapping_by_file = {}
             mapping_by_file = manager.gui.special_part_mapping_by_file
@@ -607,9 +565,7 @@ def _create_part_mapping_combo(
 
     def _on_changed(text: str, *, fp_str=str(file_path), sp=str(source_part)):
         try:
-            tmp = (
-                getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
-            )
+            tmp = getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
             m = tmp.setdefault(fp_str, {})
             val = (text or "").strip()
             if not val or val == "（未选择）":
@@ -620,15 +576,11 @@ def _create_part_mapping_combo(
                 tmp_items = getattr(manager.gui, "_file_tree_items", {}) or {}
                 file_node = tmp_items.get(fp_str)
                 if file_node is not None:
-                    file_node.setText(
-                        1, manager._validate_file_config(Path(fp_str))
-                    )
+                    file_node.setText(1, manager._validate_file_config(Path(fp_str)))
             except Exception:
                 pass
         except Exception:
-            logger.debug(
-                "special mapping changed handler failed", exc_info=True
-            )
+            logger.debug("special mapping changed handler failed", exc_info=True)
 
     combo.currentTextChanged.connect(_on_changed)
     return combo
@@ -718,9 +670,7 @@ def _create_special_part_node(
             source_combo.setToolTip("选择该部件对应的 Source part")
 
         current_source = (part_mapping.get("source") or "").strip()
-        _safe_set_combo_selection(
-            manager, source_combo, current_source, source_names
-        )
+        _safe_set_combo_selection(manager, source_combo, current_source, source_names)
 
         # Target部分选择器
         target_combo = QComboBox()
@@ -738,19 +688,14 @@ def _create_special_part_node(
             target_combo.setToolTip("选择该 Source part 对应的 Target part")
 
         current_target = (part_mapping.get("target") or "").strip()
-        _safe_set_combo_selection(
-            manager, target_combo, current_target, target_names
-        )
+        _safe_set_combo_selection(manager, target_combo, current_target, target_names)
 
         # 绑定source改变事件
         def _on_source_changed(
             text: str, *, fp_str=str(file_path), internal=internal_part_name
         ):
             try:
-                tmp = (
-                    getattr(manager.gui, "special_part_mapping_by_file", {})
-                    or {}
-                )
+                tmp = getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
                 m = tmp.setdefault(fp_str, {})
                 if internal not in m:
                     m[internal] = {"source": "", "target": ""}
@@ -759,10 +704,17 @@ def _create_special_part_node(
                     m[internal]["source"] = ""
                 else:
                     m[internal]["source"] = val
+                # 标记为未保存状态
                 try:
-                    tmp_items = (
-                        getattr(manager.gui, "_file_tree_items", {}) or {}
-                    )
+                    if (
+                        hasattr(manager.gui, "ui_state_manager")
+                        and manager.gui.ui_state_manager
+                    ):
+                        manager.gui.ui_state_manager.mark_operation_performed()
+                except Exception:
+                    logger.debug("标记未保存状态失败（非致命）", exc_info=True)
+                try:
+                    tmp_items = getattr(manager.gui, "_file_tree_items", {}) or {}
                     file_node = tmp_items.get(fp_str)
                     if file_node is not None:
                         file_node.setText(
@@ -771,19 +723,14 @@ def _create_special_part_node(
                 except Exception:
                     pass
             except Exception:
-                logger.debug(
-                    "source part changed handler failed", exc_info=True
-                )
+                logger.debug("source part changed handler failed", exc_info=True)
 
         # 绑定target改变事件
         def _on_target_changed(
             text: str, *, fp_str=str(file_path), internal=internal_part_name
         ):
             try:
-                tmp = (
-                    getattr(manager.gui, "special_part_mapping_by_file", {})
-                    or {}
-                )
+                tmp = getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
                 m = tmp.setdefault(fp_str, {})
                 if internal not in m:
                     m[internal] = {"source": "", "target": ""}
@@ -792,10 +739,17 @@ def _create_special_part_node(
                     m[internal]["target"] = ""
                 else:
                     m[internal]["target"] = val
+                # 标记为未保存状态
                 try:
-                    tmp_items = (
-                        getattr(manager.gui, "_file_tree_items", {}) or {}
-                    )
+                    if (
+                        hasattr(manager.gui, "ui_state_manager")
+                        and manager.gui.ui_state_manager
+                    ):
+                        manager.gui.ui_state_manager.mark_operation_performed()
+                except Exception:
+                    logger.debug("标记未保存状态失败（非致命）", exc_info=True)
+                try:
+                    tmp_items = getattr(manager.gui, "_file_tree_items", {}) or {}
                     file_node = tmp_items.get(fp_str)
                     if file_node is not None:
                         file_node.setText(
@@ -804,9 +758,7 @@ def _create_special_part_node(
                 except Exception:
                     pass
             except Exception:
-                logger.debug(
-                    "target part changed handler failed", exc_info=True
-                )
+                logger.debug("target part changed handler failed", exc_info=True)
 
         source_combo.currentTextChanged.connect(_on_source_changed)
         target_combo.currentTextChanged.connect(_on_target_changed)
@@ -879,12 +831,8 @@ def _get_project_parts(manager):
     try:
         cfg = getattr(manager.gui, "current_config", None)
         if cfg is not None:
-            source_parts = source_parts or (
-                getattr(cfg, "source_parts", {}) or {}
-            )
-            target_parts = target_parts or (
-                getattr(cfg, "target_parts", {}) or {}
-            )
+            source_parts = source_parts or (getattr(cfg, "source_parts", {}) or {})
+            target_parts = target_parts or (getattr(cfg, "target_parts", {}) or {})
     except Exception:
         pass
     return source_parts, target_parts
@@ -904,17 +852,13 @@ def _validate_special_format(manager, file_path: Path) -> Optional[str]:
             if not source_parts and not target_parts:
                 status = "✓ 特殊格式(待配置)"
             else:
-                missing_source = [
-                    pn for pn in part_names if pn not in source_parts
-                ]
+                missing_source = [pn for pn in part_names if pn not in source_parts]
                 if missing_source:
                     status = f"⚠ Source缺失: {', '.join(missing_source)}"
                 else:
                     mapping = mapping or {}
                     # reuse manager-side analyze if exists
-                    analyze_fn = getattr(
-                        manager, "_analyze_special_mapping", None
-                    )
+                    analyze_fn = getattr(manager, "_analyze_special_mapping", None)
                     if callable(analyze_fn):
                         unmapped, missing_target = analyze_fn(
                             part_names, mapping, list(target_parts.keys())
@@ -951,9 +895,7 @@ def _validate_file_config(manager, file_path: Path) -> str:
             else:
                 project_data = getattr(manager.gui, "current_config", None)
                 # delegate to manager's non-special evaluator if present
-                eval_fn = getattr(
-                    manager, "_evaluate_file_config_non_special", None
-                )
+                eval_fn = getattr(manager, "_evaluate_file_config_non_special", None)
                 if callable(eval_fn):
                     status = eval_fn(file_path, fmt_info, project_data)
                 else:

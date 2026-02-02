@@ -38,9 +38,7 @@ def create_input(default_value: str) -> QLineEdit:
     return inp
 
 
-def create_triple_spin(
-    a: float = 0.0, b: float = 0.0, c: float = 0.0
-) -> tuple:
+def create_triple_spin(a: float = 0.0, b: float = 0.0, c: float = 0.0) -> tuple:
     """创建一行三个紧凑型 QDoubleSpinBox
 
     参数：

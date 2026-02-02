@@ -142,7 +142,9 @@ class ConfigPanel(QWidget):
                             # 管理器内部模型之间的微小差异导致误判。
                             snap = None
                             try:
-                                snap = getattr(win.config_manager, "_loaded_snapshot", None)
+                                snap = getattr(
+                                    win.config_manager, "_loaded_snapshot", None
+                                )
                             except Exception:
                                 snap = None
                             if snap is None:
@@ -154,9 +156,7 @@ class ConfigPanel(QWidget):
                         def _make_simple(src, tgt):
                             s_part = (
                                 {
-                                    "PartName": (src or {}).get(
-                                        "PartName", "Global"
-                                    ),
+                                    "PartName": (src or {}).get("PartName", "Global"),
                                     "Variants": [src],
                                 }
                                 if src
@@ -164,9 +164,7 @@ class ConfigPanel(QWidget):
                             )
                             t_part = (
                                 {
-                                    "PartName": (tgt or {}).get(
-                                        "PartName", "Target"
-                                    ),
+                                    "PartName": (tgt or {}).get("PartName", "Target"),
                                     "Variants": [tgt],
                                 }
                                 if tgt
@@ -189,9 +187,7 @@ class ConfigPanel(QWidget):
                             marked = True
 
                         try:
-                            win.config_manager.set_config_modified(
-                                bool(marked)
-                            )
+                            win.config_manager.set_config_modified(bool(marked))
                         except Exception:
                             pass
 
@@ -204,17 +200,15 @@ class ConfigPanel(QWidget):
 
                     try:
                         # 仅当为用户修改（marked True）时标记为已操作，以启用保存按钮
-                        if win is not None and hasattr(
-                            win, "mark_user_modified"
-                        ):
+                        if win is not None and hasattr(win, "mark_user_modified"):
                             if marked:
                                 win.mark_user_modified()
                             else:
                                 # 清除用户修改标记并刷新状态（优先通过 UIStateManager）
                                 try:
-                                    if hasattr(
+                                    if hasattr(win, "ui_state_manager") and getattr(
                                         win, "ui_state_manager"
-                                    ) and getattr(win, "ui_state_manager"):
+                                    ):
                                         try:
                                             win.ui_state_manager.clear_user_modified()
                                         except Exception:
@@ -250,18 +244,13 @@ class ConfigPanel(QWidget):
             except Exception:
                 pass
         except Exception:
-            logger.debug(
-                "连接 panel valuesChanged/partNameChanged 失败", exc_info=True
-            )
+            logger.debug("连接 panel valuesChanged/partNameChanged 失败", exc_info=True)
 
         # 监听保存完成信号以隐藏未保存提示
         try:
             from gui.signal_bus import SignalBus
 
-            sb = (
-                getattr(self.window(), "signal_bus", None)
-                or SignalBus.instance()
-            )
+            sb = getattr(self.window(), "signal_bus", None) or SignalBus.instance()
             try:
                 sb.configSaved.connect(lambda _p=None: self._on_config_saved())
             except Exception:

@@ -46,9 +46,7 @@ def normalize(vec: np.ndarray) -> np.ndarray:
     """
     norm = np.linalg.norm(vec)
     if norm < ZERO_VECTOR_THRESHOLD:  # 使用模块级阈值以便维护和统一
-        raise ValueError(
-            f"无法归一化零向量或接近零的向量: {vec}，模长: {norm}"
-        )
+        raise ValueError(f"无法归一化零向量或接近零的向量: {vec}，模长: {norm}")
     return vec / norm
 
 
@@ -112,9 +110,7 @@ def construct_basis_matrix(
     yz_dot = abs(np.dot(vy, vz))
     zx_dot = abs(np.dot(vz, vx))
 
-    non_orthogonal = (
-        xy_dot > ortho_thr or yz_dot > ortho_thr or zx_dot > ortho_thr
-    )
+    non_orthogonal = xy_dot > ortho_thr or yz_dot > ortho_thr or zx_dot > ortho_thr
 
     if non_orthogonal:
         msg = (
@@ -211,9 +207,7 @@ def project_vector_to_frame(
         raise ValueError(f"frame_basis 必须为形状 (3,3)，当前形状: {fb.shape}")
     if v.shape not in ((3,), (3, 1)):
         # 允许 (3,) 或 (3,1) 的列向量输入
-        raise ValueError(
-            f"vec_global 必须为长度为3的向量，当前形状: {v.shape}"
-        )
+        raise ValueError(f"vec_global 必须为长度为3的向量，当前形状: {v.shape}")
 
     # 计算：基矩阵的行向量为在全局坐标系下的轴方向，
     # 将全局向量投影到该坐标系的坐标分量相当于对每个基向量做点积

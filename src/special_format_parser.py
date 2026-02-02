@@ -31,7 +31,6 @@ from src.special_format_detector import (  # noqa: E402
     is_data_line,
     is_metadata_line,
     is_part_name_line,
-    looks_like_special_format,
     is_summary_line,
 )
 
@@ -113,9 +112,7 @@ def _extract_parts_from_lines(
 
     返回字典: part_name -> (header_tokens, list_of_rows)
     """
-    extracted_parts: Dict[str, Tuple[Optional[List[str]], List[List[str]]]] = (
-        {}
-    )
+    extracted_parts: Dict[str, Tuple[Optional[List[str]], List[List[str]]]] = {}
     current_part = None
     current_header = None
     current_data: List[List[str]] = []

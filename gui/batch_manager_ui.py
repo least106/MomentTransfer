@@ -23,9 +23,7 @@ def connect_ui_signals(manager: Any) -> bool:
         made_connection = False
         if hasattr(gui, "file_tree") and gui.file_tree is not None:
 
-            def _connect_file_tree(
-                signal_name: str, handler_name: str
-            ) -> None:
+            def _connect_file_tree(signal_name: str, handler_name: str) -> None:
                 nonlocal made_connection
                 try:
                     bm = getattr(gui, "batch_manager", None) or manager
@@ -43,16 +41,12 @@ def connect_ui_signals(manager: Any) -> bool:
                             f"连接 file_tree.{signal_name} 失败", exc_info=True
                         )
                 except Exception:
-                    logger.debug(
-                        f"连接 file_tree {signal_name} 失败", exc_info=True
-                    )
+                    logger.debug(f"连接 file_tree {signal_name} 失败", exc_info=True)
 
             # 同时连接单击与双击：部分平台/样式可能只触发单击或双击事件之一
             # 但在处理器内部已有旧 selector 清理逻辑以避免重复创建控件
             _connect_file_tree("itemClicked", "_on_file_tree_item_clicked")
-            _connect_file_tree(
-                "itemDoubleClicked", "_on_file_tree_item_clicked"
-            )
+            _connect_file_tree("itemDoubleClicked", "_on_file_tree_item_clicked")
             _connect_file_tree("itemChanged", "_on_file_tree_item_changed")
 
         if made_connection:
@@ -141,7 +135,7 @@ def connect_quick_filter(manager: Any) -> None:
 
 def safe_refresh_file_statuses(manager: Any, *args, **kwargs) -> None:
     """容错包装：安全调用 manager.refresh_file_statuses。
-    
+
     当配置或 parts 发生变化时，通过 SignalBus 触发此方法，
     自动刷新文件树中所有文件的验证状态显示。
     """
@@ -151,6 +145,7 @@ def safe_refresh_file_statuses(manager: Any, *args, **kwargs) -> None:
         # 刷新完成后通知用户
         try:
             from gui.signal_bus import SignalBus
+
             bus = SignalBus.instance()
             bus.statusMessage.emit("文件验证状态已更新", 3000, 0)
         except Exception:
