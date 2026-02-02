@@ -380,8 +380,18 @@ class ConfigManager:
                     except Exception:
                         logger.debug("发射 configSaved 失败", exc_info=True)
 
-                    # 重置修改标志
+                    # 重置修改标志和操作状态
                     self._config_modified = False
+                    try:
+                        if hasattr(self.gui, "ui_state_manager") and getattr(self.gui, "ui_state_manager"):
+                            try:
+                                self.gui.ui_state_manager.clear_user_modified()
+                            except Exception:
+                                logger.debug("通过 UIStateManager 清理操作状态失败", exc_info=True)
+                        else:
+                            self.gui.operation_performed = False
+                    except Exception:
+                        logger.debug("清理操作状态失败（非致命）", exc_info=True)
                     return True
             except Exception:
                 logger.debug("直接覆盖失败，使用另存为", exc_info=True)
@@ -407,8 +417,18 @@ class ConfigManager:
             except Exception:
                 logger.debug("发射 configSaved 失败", exc_info=True)
 
-            # 重置修改标志
+            # 重置修改标志和操作状态
             self._config_modified = False
+            try:
+                if hasattr(self.gui, "ui_state_manager") and getattr(self.gui, "ui_state_manager"):
+                    try:
+                        self.gui.ui_state_manager.clear_user_modified()
+                    except Exception:
+                        logger.debug("通过 UIStateManager 清理操作状态失败", exc_info=True)
+                else:
+                    self.gui.operation_performed = False
+            except Exception:
+                logger.debug("清理操作状态失败（非致命）", exc_info=True)
             return True
 
         except ValueError as e:

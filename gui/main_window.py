@@ -1288,19 +1288,47 @@ class IntegratedAeroGUI(QMainWindow):
 
             # 检查配置是否被修改
             if self.config_manager and self.config_manager.is_config_modified():
-                # 配置已修改，直接在日志中记录警告，不再弹窗
-                # UI中的持续可见警告标签已经提示用户
-                logger.warning("批处理使用了未保存的配置，建议先保存配置")
+                # 配置已修改，弹出对话框确认用户是否继续或先保存
                 try:
-                    if hasattr(self, "statusBar"):
-                        self.statusBar().showMessage(
-                            "警告：批处理将使用当前未保存的配置", 5000
-                        )
-                except Exception:
-                    pass
+                    from PySide6.QtWidgets import QMessageBox
 
-            # 运行批处理（配置未修改或用户已知晓警告）
-            self.batch_manager.run_batch_processing()
+                    result = QMessageBox.warning(
+                        self,
+                        "未保存的配置",
+                        "检测到配置文件有未保存的修改。\n\n是否保存配置后再运行批处理？",
+                        QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                        QMessageBox.Yes,
+                    )
+
+                    if result == QMessageBox.Yes:
+                        # 用户选择保存，先保存配置
+                        if self.config_manager.save_config():
+                            # 保存成功，继续批处理
+                            self.batch_manager.run_batch_processing()
+                        else:
+                            # 保存失败或用户取消，不继续批处理
+                            logger.warning("用户取消保存配置或保存失败，批处理已中止")
+                            return
+                    elif result == QMessageBox.No:
+                        # 用户选择不保存，继续使用当前未保存配置运行批处理
+                        logger.warning("批处理将使用未保存的配置")
+                        try:
+                            self.statusBar().showMessage(
+                                "警告：批处理将使用当前未保存的配置", 5000
+                            )
+                        except Exception:
+                            pass
+                        self.batch_manager.run_batch_processing()
+                    else:
+                        # 用户取消，不运行批处理
+                        logger.info("用户取消了批处理")
+                        return
+                except Exception:
+                    logger.debug("未保存配置对话弹出失败，直接运行批处理", exc_info=True)
+                    self.batch_manager.run_batch_processing()
+            else:
+                # 配置未修改，直接运行批处理
+                self.batch_manager.run_batch_processing()
         except AttributeError:
             logger.warning("BatchManager 未初始化")
         except Exception as e:

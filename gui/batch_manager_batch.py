@@ -252,56 +252,61 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
         except Exception:
             logger.debug("恢复控件锁定失败（非致命）", exc_info=True)
 
+        # 恢复所有开始按钮（支持新旧按钮名称）
         try:
-            if hasattr(manager.gui, "btn_batch"):
-                # 根据线程的停止请求判断是否为已取消状态
-                try:
-                    bt = getattr(manager, "batch_thread", None)
-                    cancelled = False
-                    if bt is not None:
-                        cancelled = bool(getattr(bt, "_stop_requested", False))
-                except Exception:
-                    cancelled = False
+            # 根据线程的停止请求判断是否为已取消状态
+            try:
+                bt = getattr(manager, "batch_thread", None)
+                cancelled = False
+                if bt is not None:
+                    cancelled = bool(getattr(bt, "_stop_requested", False))
+            except Exception:
+                cancelled = False
 
-                try:
-                    if cancelled:
-                        manager.gui.btn_batch.setEnabled(True)
-                        manager.gui.btn_batch.setText("已取消")
-                        try:
-                            # 显示短时状态栏消息并在两秒后恢复按钮文字
-                            from PySide6.QtCore import QTimer
+            # 按钮文本和状态
+            btn_text = "已取消" if cancelled else "开始处理"
 
+            for btn_name in ("btn_batch", "btn_start_menu", "btn_batch_in_toolbar"):
+                try:
+                    btn = getattr(manager.gui, btn_name, None)
+                    if btn is not None:
+                        btn.setEnabled(True)
+                        # 只对有 setText 方法的按钮设置文本
+                        if hasattr(btn, "setText"):
                             try:
-                                manager.gui.statusBar().showMessage(
-                                    "批处理已取消", 3000
-                                )
+                                btn.setText(btn_text)
+                            except Exception:
+                                pass
+                except Exception:
+                    logger.debug("无法恢复按钮 %s", btn_name, exc_info=True)
+
+            # 如果是已取消状态，显示状态消息并在两秒后恢复按钮文字
+            if cancelled:
+                try:
+                    manager.gui.statusBar().showMessage("批处理已取消", 3000)
+                except Exception:
+                    pass
+
+                try:
+                    from PySide6.QtCore import QTimer
+
+                    def _reset_btn_text():
+                        for btn_name in ("btn_batch", "btn_start_menu", "btn_batch_in_toolbar"):
+                            try:
+                                btn = getattr(manager.gui, btn_name, None)
+                                if btn is not None and hasattr(btn, "setText"):
+                                    btn.setText("开始处理")
                             except Exception:
                                 pass
 
-                            def _reset():
-                                try:
-                                    manager.gui.btn_batch.setText("开始处理")
-                                except Exception:
-                                    pass
-
-                            try:
-                                QTimer.singleShot(2000, _reset)
-                            except Exception:
-                                _reset()
-                        except Exception:
-                            pass
-                    else:
-                        manager.gui.btn_batch.setEnabled(True)
-                        manager.gui.btn_batch.setText("开始处理")
-                except Exception:
-                    # 回退到默认文本
                     try:
-                        manager.gui.btn_batch.setEnabled(True)
-                        manager.gui.btn_batch.setText("开始处理")
+                        QTimer.singleShot(2000, _reset_btn_text)
                     except Exception:
-                        pass
+                        _reset_btn_text()
+                except Exception:
+                    pass
         except Exception:
-            logger.debug("无法启用批处理按钮", exc_info=True)
+            logger.debug("无法恢复开始按钮", exc_info=True)
 
         # 重置进度条格式为默认百分比显示并隐藏
         try:
