@@ -810,7 +810,7 @@ class InitializationManager:
             btn_cancel.setToolTip("取消当前批处理")
             btn_cancel.setVisible(False)  # 初始隐藏
             btn_cancel.setEnabled(False)
-            btn_cancel.clicked.connect(self.main_window.cancel_batch_processing)
+            btn_cancel.clicked.connect(self.main_window.request_cancel_batch)
             toolbar.addWidget(btn_cancel)
 
             # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
