@@ -468,7 +468,7 @@ class BatchPanel(QWidget):
             else:
                 # 字符串运算符：包含、不包含
                 self.inp_filter_value.setValidator(None)
-                self.inp_filter_value.setToolTip("输入文本（区分大小写）")
+                self.inp_filter_value.setToolTip("输入文本（不区分大小写）")
 
             # 触发筛选更新
             self._on_quick_filter_changed()
