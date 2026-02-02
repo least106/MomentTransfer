@@ -268,7 +268,24 @@ class ConfigManager:
             QMessageBox.information(self.gui, "成功", f"配置已加载:\n{fname}")
             # UX：该提示属于短时反馈，避免长时间占用状态栏主消息区
             self.gui.statusBar().showMessage(f"已加载: {fname}", 5000)
-
+            # 配置加载后触发文件状态刷新，让用户看到配置生效
+            try:
+                # 使用 SignalBus 通知其他模块配置已刷新
+                # BatchManager 会监听此信号并刷新文件状态显示
+                logger.info("配置加载完成，通知刷新文件状态")
+                # 添加短暂延迟确保 UI 已更新
+                from PySide6.QtCore import QTimer
+                def _delayed_refresh():
+                    try:
+                        # 通过状态栏告知用户文件状态正在更新
+                        self.signal_bus.statusMessage.emit("正在更新文件验证状态...", 2000, 0)
+                        # 等待 SignalBus 处理完 configLoaded 信号
+                        # BatchManager 会监听该信号并自动调用 refresh_file_statuses()
+                    except Exception as e:
+                        logger.debug(f"延迟刷新状态提示失败: {e}", exc_info=True)
+                QTimer.singleShot(100, _delayed_refresh)
+            except Exception as e:
+                logger.debug(f"配置加载后刷新失败: {e}", exc_info=True)
             # 仅加载配置：不再自动应用为“全局计算器”。
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
 

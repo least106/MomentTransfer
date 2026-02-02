@@ -140,8 +140,20 @@ def connect_quick_filter(manager: Any) -> None:
 
 
 def safe_refresh_file_statuses(manager: Any, *args, **kwargs) -> None:
-    """容错包装：安全调用 manager.refresh_file_statuses。"""
+    """容错包装：安全调用 manager.refresh_file_statuses。
+    
+    当配置或 parts 发生变化时，通过 SignalBus 触发此方法，
+    自动刷新文件树中所有文件的验证状态显示。
+    """
     try:
+        logger.info("响应配置/Part变更，刷新文件验证状态")
         manager.refresh_file_statuses()
+        # 刷新完成后通知用户
+        try:
+            from gui.signal_bus import SignalBus
+            bus = SignalBus.instance()
+            bus.statusMessage.emit("文件验证状态已更新", 3000, 0)
+        except Exception:
+            logger.debug("发送状态更新消息失败", exc_info=True)
     except Exception:
         logger.debug("调用 refresh_file_statuses 失败", exc_info=True)
