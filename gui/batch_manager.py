@@ -512,20 +512,29 @@ class BatchManager:
                     from PySide6.QtCore import Qt
 
                     parent = getattr(self, "gui", None)
-                    dlg = QProgressDialog("正在解析特殊格式…", None, 0, 0, parent)
-                    dlg.setWindowModality(Qt.WindowModal)
-                    try:
-                        dlg.setCancelButton(None)
-                    except Exception:
-                        logger.debug("设置解析等待对话取消按钮失败（非致命）", exc_info=True)
-                    dlg.setMinimumDuration(0)
+                    # 改进：使用非模态对话框，允许用户继续交互
+                    dlg = QProgressDialog("正在解析特殊格式…", "取消", 0, 0, parent)
+                    dlg.setWindowModality(Qt.NonModal)
+                    dlg.setMaximumWidth(400)
+                    
+                    # 处理用户取消
+                    cancel_requested = [False]
+                    def _on_cancel():
+                        cancel_requested[0] = True
+                    dlg.canceled.connect(_on_cancel)
+                    
+                    dlg.setMinimumDuration(500)  # 仅在超过 500ms 时显示对话
                     dlg.show()
                 except Exception:
                     dlg = None
+                    cancel_requested = [False]
 
                 # 以短轮询等待后台线程完成，同时保持 UI 响应
                 try:
                     while not done_event.wait(0.1):
+                        if cancel_requested[0]:
+                            logger.info("用户取消了特殊格式解析")
+                            break
                         try:
                             QApplication.processEvents()
                         except Exception:
@@ -554,26 +563,24 @@ class BatchManager:
             except Exception:
                 logger.warning("无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True)
 
-            # 同步解析（在主线程执行）——在开始前显示模态等待对话以告知用户
+            # 同步解析（在主线程执行）——使用状态栏提示而非模态对话框以改进 UX
             try:
-                from PySide6.QtWidgets import QProgressDialog, QApplication
-                from PySide6.QtCore import Qt
+                from PySide6.QtWidgets import QApplication
 
-                parent = getattr(self, "gui", None)
-                dlg = QProgressDialog("正在解析特殊格式（可能需要一些时间）…", None, 0, 0, parent)
-                dlg.setWindowModality(Qt.WindowModal)
+                # 优先使用状态栏提示，避免重复弹窗
                 try:
-                    dlg.setCancelButton(None)
+                    self.gui.statusBar().showMessage(
+                        f"正在解析特殊格式：{file_path.name}…", 0
+                    )
                 except Exception:
-                    logger.debug("设置解析等待对话取消按钮失败（非致命）", exc_info=True)
-                dlg.setMinimumDuration(0)
-                dlg.show()
+                    logger.debug("显示状态栏消息失败（非致命）", exc_info=True)
+                
                 try:
                     QApplication.processEvents()
                 except Exception:
-                    logger.debug("处理 GUI 事件时出错（同步解析对话）", exc_info=True)
+                    logger.debug("处理 GUI 事件时出错（同步解析）", exc_info=True)
             except Exception:
-                dlg = None
+                pass
 
             try:
                 data_dict = parse_special_format_file(file_path)
@@ -582,10 +589,10 @@ class BatchManager:
                 except Exception:
                     logger.debug("写入特殊格式缓存失败（同步回退，非致命）", exc_info=True)
                 try:
-                    if dlg is not None:
-                        dlg.close()
+                    # 清除状态栏消息
+                    self.gui.statusBar().showMessage("", 0)
                 except Exception:
-                    logger.debug("关闭同步解析等待对话失败（非致命）", exc_info=True)
+                    logger.debug("清除状态栏消息失败（非致命）", exc_info=True)
                 return data_dict
             except Exception:
                 # 同步解析也失败——这是用户可见的操作失败，应通知并记录 traceback
