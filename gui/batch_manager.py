@@ -1127,11 +1127,14 @@ class BatchManager:
         # SignalBus 事件在初始化阶段已注册
 
     def browse_batch_input(self):
-        """浏览并选择输入文件或目录，沿用 GUI 原有文件列表面板。"""
+        """浏览并选择输入文件或目录，沿用 GUI 原有文件列表面板。
+        
+        支持一次选择多个文件/目录，会自动扫描并添加所有选择的内容。
+        """
         try:
             dlg = self._create_browse_dialog()
 
-            # 若用户在前置选择中取消或发生错误，dlg 可能为 None
+            # 若创建对话框失败，直接返回
             if dlg is None:
                 return
 
@@ -1142,13 +1145,32 @@ class BatchManager:
             if not selected:
                 return
 
-            chosen_path = Path(selected[0])
+            # 改进：支持多个文件/目录的选择
+            # 当选择多个时，以第一个作为主显示路径，其他则自动扫描并添加
+            chosen_paths = [Path(p) for p in selected]
+            first_path = chosen_paths[0]
 
             if hasattr(self.gui, "inp_batch_input"):
-                self.gui.inp_batch_input.setText(str(chosen_path))
+                # 显示选择的路径（如果多个则显示为 "path1 + 2 more"）
+                if len(chosen_paths) > 1:
+                    display_text = f"{first_path} (+{len(chosen_paths)-1} 项)"
+                else:
+                    display_text = str(first_path)
+                self.gui.inp_batch_input.setText(display_text)
 
-            # 统一由 BatchManager 扫描并填充文件列表
-            self._scan_and_populate_files(chosen_path)
+            # 统一扫描所有选择的文件或目录
+            # 对第一个路径进行完整扫描（清空旧数据）
+            try:
+                self._scan_and_populate_files(first_path)
+            except Exception as e:
+                logger.debug("扫描第一个路径失败: %s", e, exc_info=True)
+
+            # 对其他选择的路径进行增量扫描（追加数据）
+            for additional_path in chosen_paths[1:]:
+                try:
+                    self._scan_and_populate_files(additional_path, clear=False)
+                except Exception as e:
+                    logger.debug("扫描追加路径 %s 失败: %s", additional_path, e, exc_info=True)
 
             # 输入路径后自动切换到文件列表页
             try:
@@ -1196,62 +1218,29 @@ class BatchManager:
     def _create_browse_dialog(self):
         """创建并配置选择输入文件或目录的 QFileDialog 实例。
 
-        为避免 native 对话框或平台差异下内嵌复选框不可见或行为不一致，
-        先弹出一个简单选择对话框，让用户明确选择“文件”或“目录”。
+        改进了 UX：取消前置"选择文件还是目录"对话框，直接使用单步选择器。
+        允许用户同时选择文件和目录，在后续处理中自动识别并展开。
         返回一个已配置的 `QFileDialog` 实例；若用户取消则返回 None。
         """
         try:
-            # 先询问用户希望选择文件还是目录，保证一致性
-            mb = QMessageBox(self.gui)
-            mb.setWindowTitle("选择输入类型")
-            mb.setText("请选择要选择的类型：")
-            file_btn = mb.addButton("选择文件", QMessageBox.AcceptRole)
-            dir_btn = mb.addButton("选择目录", QMessageBox.AcceptRole)
-            cancel_btn = mb.addButton("取消", QMessageBox.RejectRole)
-            # 默认设为取消，避免回车误触进入选择流程
-            mb.setDefaultButton(cancel_btn)
-            # UX：Esc 统一视为取消，避免误触导致进入选择流程
-            try:
-                mb.setEscapeButton(cancel_btn)
-            except Exception:
-                try:
-                    if _report_ui_exception:
-                        _report_ui_exception(self.gui, "设置对话 Esc 按钮失败（非致命）")
-                    else:
-                        logger.debug("设置对话 Esc 按钮失败（非致命）", exc_info=True)
-                except Exception:
-                    logger.debug("设置对话 Esc 按钮失败（非致命）", exc_info=True)
-            mb.exec()
-
-            clicked = mb.clickedButton()
-            # 如果用户选择取消或关闭对话框，返回 None
-            if clicked is None or clicked == cancel_btn:
-                return None
-
-            choose_dir = clicked == dir_btn
-        except Exception:
-            # 若弹出前置对话失败，回退到原有行为（选择文件模式）
-            logger.debug(
-                "前置选择对话失败，回退到默认文件选择模式", exc_info=True
-            )
-            choose_dir = False
-
-        dlg = QFileDialog(self.gui, "选择输入")
-        # 让系统决定是否使用 native dialog（不要强制禁用 native）
-        try:
-            if choose_dir:
-                dlg.setFileMode(QFileDialog.Directory)
-                dlg.setOption(QFileDialog.ShowDirsOnly, True)
-            else:
-                dlg.setFileMode(QFileDialog.ExistingFile)
-
+            dlg = QFileDialog(self.gui, "选择输入文件或目录")
+            
+            # 设置为允许选择多个文件和目录
+            dlg.setFileMode(QFileDialog.ExistingFiles)
+            
+            # 显示文件和目录
+            dlg.setOption(QFileDialog.DontUseNativeDialog, False)
+            
             parts = [
+                "所有支持的文件和目录 (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
                 "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
                 "CSV Files (*.csv)",
                 "Excel Files (*.xlsx *.xls)",
                 "MomentTransfer (*.mtfmt *.mtdata)",
+                "所有文件 (*)",
             ]
             dlg.setNameFilter(";;".join(parts))
+            
         except Exception:
             logger.debug(
                 "创建文件选择对话框时发生错误，尝试最小化回退", exc_info=True
@@ -1259,8 +1248,13 @@ class BatchManager:
 
         return dlg
 
-    def _scan_and_populate_files(self, chosen_path: Path):
-        """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。"""
+    def _scan_and_populate_files(self, chosen_path: Path, clear: bool = True):
+        """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。
+        
+        Args:
+            chosen_path: 要扫描的路径
+            clear: 是否清空旧的文件树项（True=清空开始新扫描，False=追加新项）
+        """
         try:
             p = Path(chosen_path)
             files, base_path = self._collect_files_for_scan(p)
@@ -1269,12 +1263,14 @@ class BatchManager:
             if not hasattr(self.gui, "file_tree"):
                 return
 
-            # 清空旧的树项
-            self.gui.file_tree.clear()
-            # 访问 GUI 的受保护属性以维护文件树映射。
-            # pylint: disable=protected-access
-            self.gui._file_tree_items = {}
-            # pylint: enable=protected-access
+            # 根据 clear 参数决定是否清空旧数据
+            if clear:
+                # 清空旧的树项
+                self.gui.file_tree.clear()
+                # 访问 GUI 的受保护属性以维护文件树映射。
+                # pylint: disable=protected-access
+                self.gui._file_tree_items = {}
+                # pylint: enable=protected-access
 
             if not files:
                 try:

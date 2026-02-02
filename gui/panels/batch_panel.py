@@ -220,7 +220,7 @@ class BatchPanel(QWidget):
         # 去除表单左侧的标签提示（首页不再展示输入路径标签）
         self.file_form.addRow("", self.row_input_widget)
 
-        # 全局数据格式配置已移除：表格列映射由 per-file sidecar/目录 format.json/registry 自动解析。
+        # 全局数据格式配置已移除：表格列映射改为自动识别。
         self.lbl_format_summary = None
         self.row_format_summary_widget = None
 
