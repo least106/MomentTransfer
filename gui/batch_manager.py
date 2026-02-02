@@ -571,10 +571,12 @@ class BatchManager:
                     cancel_requested = [False]
 
                 # 以短轮询等待后台线程完成，同时保持 UI 响应
+                user_cancelled = False
                 try:
                     while not done_event.wait(0.1):
                         if cancel_requested[0]:
                             logger.info("用户取消了特殊格式解析")
+                            user_cancelled = True
                             break
                         try:
                             QApplication.processEvents()
@@ -588,6 +590,18 @@ class BatchManager:
                             dlg.close()
                     except Exception:
                         logger.debug("关闭解析等待对话失败（非致命）", exc_info=True)
+
+                # 如果用户取消，等待线程结束后返回 None
+                if user_cancelled:
+                    logger.info("等待后台解析线程结束...")
+                    try:
+                        # 等待最多2秒让线程完成
+                        thr.join(timeout=2.0)
+                        if thr.is_alive():
+                            logger.warning("后台解析线程未能及时结束，但已取消用户等待")
+                    except Exception:
+                        logger.debug("等待线程结束时出错", exc_info=True)
+                    return None  # 用户取消时返回 None，不进行回退解析
 
                 if "data" in result_holder:
                     data_dict = result_holder.get("data") or {}

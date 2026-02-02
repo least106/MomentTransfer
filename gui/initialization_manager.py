@@ -833,6 +833,15 @@ class InitializationManager:
             btn_start.clicked.connect(self.main_window.run_batch_processing)
             toolbar.addWidget(btn_start)
 
+            # 添加取消按钮（初始隐藏，仅在批处理期间显示）
+            btn_cancel = QPushButton("取消")
+            btn_cancel.setMaximumWidth(60)
+            btn_cancel.setToolTip("取消当前批处理")
+            btn_cancel.setVisible(False)  # 初始隐藏
+            btn_cancel.setEnabled(False)
+            btn_cancel.clicked.connect(self.main_window.cancel_batch_processing)
+            toolbar.addWidget(btn_cancel)
+
             # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
             self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
 
@@ -853,6 +862,7 @@ class InitializationManager:
             self.main_window.btn_browse_menu = btn_browse
             self.main_window.btn_load_config_menu = btn_load_config
             self.main_window.btn_start_menu = btn_start
+            self.main_window.btn_cancel = btn_cancel
 
             logger.info("工具栏已创建")
         except Exception as e:

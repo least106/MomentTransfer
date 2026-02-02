@@ -187,12 +187,21 @@ def prepare_gui_for_batch(manager):
             except Exception:
                 logger.debug("无法禁用按钮 %s", btn_name, exc_info=True)
 
-        # 初始化进度条格式以显示详细信息
+        # 显示进度条并初始化格式
         try:
             if hasattr(manager.gui, "progress_bar"):
+                manager.gui.progress_bar.setVisible(True)
                 manager.gui.progress_bar.setFormat("%p% - 准备中...")
         except Exception:
-            logger.debug("初始化进度条格式失败（非致命）", exc_info=True)
+            logger.debug("显示进度条失败（非致命）", exc_info=True)
+
+        # 显示取消按钮
+        try:
+            if hasattr(manager.gui, "btn_cancel"):
+                manager.gui.btn_cancel.setVisible(True)
+                manager.gui.btn_cancel.setEnabled(True)
+        except Exception:
+            logger.debug("显示取消按钮失败（非致命）", exc_info=True)
 
         # 不再在开始处理时自动切换到日志标签，保持用户当前视图不变
     except Exception:
@@ -294,12 +303,21 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
         except Exception:
             logger.debug("无法启用批处理按钮", exc_info=True)
 
-        # 重置进度条格式为默认百分比显示
+        # 重置进度条格式为默认百分比显示并隐藏
         try:
             if hasattr(manager.gui, "progress_bar"):
                 manager.gui.progress_bar.setFormat("%p%")
+                manager.gui.progress_bar.setVisible(False)  # 批处理完成后隐藏进度条
         except Exception:
             logger.debug("重置进度条格式失败（非致命）", exc_info=True)
+
+        # 隐藏取消按钮
+        try:
+            if hasattr(manager.gui, "btn_cancel"):
+                manager.gui.btn_cancel.setVisible(False)
+                manager.gui.btn_cancel.setEnabled(False)
+        except Exception:
+            logger.debug("隐藏取消按钮失败（非致命）", exc_info=True)
 
         if enable_undo:
             try:
@@ -369,6 +387,7 @@ def request_cancel_batch(manager):
         if hasattr(manager.gui, "btn_cancel"):
             try:
                 manager.gui.btn_cancel.setEnabled(False)
+                manager.gui.btn_cancel.setVisible(False)  # 批处理结束后隐藏取消按钮
             except Exception:
                 logger.debug("禁用取消按钮失败（非致命）", exc_info=True)
 
