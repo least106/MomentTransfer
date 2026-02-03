@@ -7,6 +7,7 @@
 import logging
 import signal
 import sys
+
 from PySide6 import QtWidgets
 
 from gui.main_window import main as run_main
@@ -21,7 +22,9 @@ def main():
     try:
         signal.signal(signal.SIGINT, lambda *_: QtWidgets.QApplication.quit())
     except Exception:
-        logging.getLogger(__name__).debug("无法安装 SIGINT 处理器（非致命）", exc_info=True)
+        logging.getLogger(__name__).debug(
+            "无法安装 SIGINT 处理器（非致命）", exc_info=True
+        )
 
     try:
         run_main()

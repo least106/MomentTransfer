@@ -1,4 +1,5 @@
 """测试取消按钮可见性和特殊格式解析取消修复"""
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -118,16 +119,16 @@ def test_special_format_parse_cancel_returns_none():
     """测试特殊格式解析取消时返回 None 而不是继续同步解析"""
     # 这个测试验证了逻辑流程：当 user_cancelled 为 True 时应返回 None
     # 实际的线程取消测试较复杂，已在主逻辑中实现
-    
+
     # 模拟取消标志为 True 的场景
     user_cancelled = True
-    
+
     # 验证：当用户取消时应该返回 None 而不是继续处理
     if user_cancelled:
         result = None
     else:
         result = {"some": "data"}
-    
+
     assert result is None
 
 

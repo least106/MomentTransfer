@@ -34,9 +34,7 @@ def test_main_window_initialization():
         assert hasattr(window, "btn_start_menu"), "开始按钮未创建"
         assert hasattr(window, "btn_browse_menu"), "浏览按钮未创建"
         assert hasattr(window, "btn_cancel"), "取消按钮未创建"
-        assert hasattr(
-            window, "chk_bottom_bar_toolbar"
-        ), "底部栏复选框未创建"
+        assert hasattr(window, "chk_bottom_bar_toolbar"), "底部栏复选框未创建"
 
         # 验证底部栏相关组件已创建
         assert hasattr(window, "_bottom_splitter"), "_bottom_splitter 未创建"
@@ -49,9 +47,7 @@ def test_main_window_initialization():
         assert hasattr(
             window, "run_batch_processing"
         ), "run_batch_processing 方法不存在"
-        assert hasattr(
-            window, "browse_batch_input"
-        ), "browse_batch_input 方法不存在"
+        assert hasattr(window, "browse_batch_input"), "browse_batch_input 方法不存在"
 
     finally:
         # 清理窗口
@@ -112,12 +108,8 @@ def test_signal_connections():
         assert window.btn_cancel is not None, "取消按钮为 None"
 
         # 验证底部栏复选框的信号连接
-        assert hasattr(
-            window, "chk_bottom_bar_toolbar"
-        ), "底部栏复选框未创建"
-        assert (
-            window.chk_bottom_bar_toolbar is not None
-        ), "底部栏复选框为 None"
+        assert hasattr(window, "chk_bottom_bar_toolbar"), "底部栏复选框未创建"
+        assert window.chk_bottom_bar_toolbar is not None, "底部栏复选框为 None"
 
         # 测试底部栏切换信号连接正确（验证信号已连接，不验证UI行为）
         # 信号连接的验证：尝试触发不应抛出异常
@@ -125,10 +117,10 @@ def test_signal_connections():
             # 验证信号可以被触发而不抛出 AttributeError
             window.chk_bottom_bar_toolbar.setChecked(True)
             app.processEvents()
-            
+
             window.chk_bottom_bar_toolbar.setChecked(False)
             app.processEvents()
-            
+
             # 如果执行到这里，说明信号连接正确，没有 AttributeError
         except AttributeError as e:
             pytest.fail(f"底部栏切换信号连接有 AttributeError: {e}")
@@ -157,7 +149,9 @@ def test_cancel_button_connection():
         window = IntegratedAeroGUI()
 
         # 验证取消按钮连接的是正确的方法
-        assert hasattr(window, "request_cancel_batch"), "request_cancel_batch 方法不存在"
+        assert hasattr(
+            window, "request_cancel_batch"
+        ), "request_cancel_batch 方法不存在"
 
         # 验证方法可以安全调用（不会抛出异常）
         try:

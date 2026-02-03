@@ -44,9 +44,7 @@ def test_config_load_and_validation(tmp_path):
         config_file.write_text(json.dumps(test_config, ensure_ascii=False, indent=2))
 
         # 验证 load_config 方法存在
-        assert hasattr(
-            window.config_manager, "load_config"
-        ), "load_config 方法不存在"
+        assert hasattr(window.config_manager, "load_config"), "load_config 方法不存在"
 
         # 测试加载配置（不触发文件对话框）
         # 注意：实际调用可能触发 UI 对话框，这里只验证方法存在
@@ -141,12 +139,8 @@ def test_part_name_management(tmp_path):
         assert window.part_manager is not None, "部件管理器为 None"
 
         # 验证部件管理器的关键方法
-        assert hasattr(
-            window.part_manager, "add_source_part"
-        ), "添加源部件方法不存在"
-        assert hasattr(
-            window.part_manager, "add_target_part"
-        ), "添加目标部件方法不存在"
+        assert hasattr(window.part_manager, "add_source_part"), "添加源部件方法不存在"
+        assert hasattr(window.part_manager, "add_target_part"), "添加目标部件方法不存在"
         assert hasattr(
             window.part_manager, "save_current_source_part"
         ), "保存当前源部件方法不存在"
@@ -177,9 +171,7 @@ def test_batch_history_tracking(tmp_path):
         assert hasattr(window, "batch_manager"), "批处理管理器未创建"
 
         # 验证批处理相关方法存在
-        assert hasattr(
-            window.batch_manager, "attach_history"
-        ), "附加历史面板方法不存在"
+        assert hasattr(window.batch_manager, "attach_history"), "附加历史面板方法不存在"
         assert hasattr(
             window.batch_manager, "run_batch_processing"
         ), "运行批处理方法不存在"
@@ -334,12 +326,8 @@ def test_file_selection_manager(tmp_path):
         file_manager = window.file_selection_manager
 
         # 验证文件选择方法
-        assert hasattr(
-            file_manager, "mark_skipped_rows"
-        ), "标记跳过行方法不存在"
-        assert hasattr(
-            file_manager, "clear_skipped_rows"
-        ), "清除跳过行方法不存在"
+        assert hasattr(file_manager, "mark_skipped_rows"), "标记跳过行方法不存在"
+        assert hasattr(file_manager, "clear_skipped_rows"), "清除跳过行方法不存在"
 
         # 验证文件选择映射属性
         assert hasattr(
@@ -379,9 +367,7 @@ def test_model_manager_data_handling(tmp_path):
         assert hasattr(
             model_manager, "save_current_target_part"
         ), "保存当前目标部件方法不存在"
-        assert hasattr(
-            model_manager, "_ensure_project_model"
-        ), "确保项目模型方法不存在"
+        assert hasattr(model_manager, "_ensure_project_model"), "确保项目模型方法不存在"
 
         # 验证模型属性
         assert hasattr(model_manager, "calculator"), "calculator 属性不存在"
@@ -451,15 +437,11 @@ def test_batch_thread_lifecycle(tmp_path):
         batch_manager = window.batch_manager
 
         # 验证线程管理方法
-        assert hasattr(
-            batch_manager, "run_batch_processing"
-        ), "运行批处理方法不存在"
+        assert hasattr(batch_manager, "run_batch_processing"), "运行批处理方法不存在"
         assert hasattr(
             batch_manager, "request_cancel_batch"
         ), "请求取消批处理方法不存在"
-        assert hasattr(
-            batch_manager, "undo_batch_processing"
-        ), "撤销批处理方法不存在"
+        assert hasattr(batch_manager, "undo_batch_processing"), "撤销批处理方法不存在"
 
     finally:
         if window:
@@ -485,15 +467,9 @@ def test_event_manager_integration(tmp_path):
             event_manager = window.event_manager
 
             # 验证事件处理方法
-            assert hasattr(
-                event_manager, "on_show_event"
-            ), "显示事件处理方法不存在"
-            assert hasattr(
-                event_manager, "on_resize_event"
-            ), "缩放事件处理方法不存在"
-            assert hasattr(
-                event_manager, "on_close_event"
-            ), "关闭事件处理方法不存在"
+            assert hasattr(event_manager, "on_show_event"), "显示事件处理方法不存在"
+            assert hasattr(event_manager, "on_resize_event"), "缩放事件处理方法不存在"
+            assert hasattr(event_manager, "on_close_event"), "关闭事件处理方法不存在"
 
     finally:
         if window:
@@ -519,15 +495,9 @@ def test_layout_manager_components(tmp_path):
         layout_manager = window.layout_manager
 
         # 验证布局方法
-        assert hasattr(
-            layout_manager, "update_button_layout"
-        ), "更新按钮布局方法不存在"
-        assert hasattr(
-            layout_manager, "refresh_layouts"
-        ), "刷新布局方法不存在"
-        assert hasattr(
-            layout_manager, "force_layout_refresh"
-        ), "强制刷新布局方法不存在"
+        assert hasattr(layout_manager, "update_button_layout"), "更新按钮布局方法不存在"
+        assert hasattr(layout_manager, "refresh_layouts"), "刷新布局方法不存在"
+        assert hasattr(layout_manager, "force_layout_refresh"), "强制刷新布局方法不存在"
 
     finally:
         if window:

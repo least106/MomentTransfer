@@ -70,9 +70,7 @@ def test_file_selection_and_tree_display(tmp_path):
         # 验证文件树访问
         batch_manager = window.batch_manager
         assert hasattr(batch_manager, "gui"), "batch_manager.gui 未创建"
-        assert hasattr(
-            batch_manager.gui, "file_tree"
-        ), "文件树控件未创建"
+        assert hasattr(batch_manager.gui, "file_tree"), "文件树控件未创建"
 
         # 测试添加文件到批处理列表
         try:
@@ -173,10 +171,9 @@ def test_part_manager_operations():
         assert hasattr(part_manager, "signal_bus"), "part_manager.signal_bus 不存在"
 
         # 测试信号连接方法存在（这些是实际存在的内部方法）
-        has_internal_methods = (
-            hasattr(part_manager, "_on_part_add_requested")
-            or hasattr(part_manager, "_get_model_manager")
-        )
+        has_internal_methods = hasattr(
+            part_manager, "_on_part_add_requested"
+        ) or hasattr(part_manager, "_get_model_manager")
         assert has_internal_methods, "part_manager 关键方法不存在"
 
     finally:
@@ -205,16 +202,12 @@ def test_project_save_and_load(tmp_path):
         project_manager = window.project_manager
 
         # 验证项目管理方法存在
-        assert hasattr(
-            project_manager, "save_project"
-        ), "save_project 方法不存在"
-        assert hasattr(
-            project_manager, "load_project"
-        ), "load_project 方法不存在"
+        assert hasattr(project_manager, "save_project"), "save_project 方法不存在"
+        assert hasattr(project_manager, "load_project"), "load_project 方法不存在"
 
         # 验证项目管理器的基本属性
         assert hasattr(project_manager, "gui"), "project_manager.gui 不存在"
-        
+
         # 注意：实际的保存/加载测试会触发 QProgressDialog 导致测试卡死
         # 这些功能需要在手动 UI 测试中验证，或使用 mock 对象测试
 
@@ -247,7 +240,7 @@ def test_quick_filter_interaction():
         # 快速筛选控件在 batch_panel 中
         assert hasattr(gui, "batch_panel"), "batch_panel 未创建"
         batch_panel = gui.batch_panel
-        
+
         # 验证快速筛选控件存在
         assert hasattr(batch_panel, "inp_filter_column"), "筛选列输入框未创建"
         assert hasattr(batch_panel, "cmb_filter_operator"), "筛选运算符下拉框未创建"
@@ -387,7 +380,9 @@ def test_bottom_bar_panels_visibility():
 
         # 验证底部栏和复选框存在
         assert hasattr(window, "_bottom_bar"), "_bottom_bar 未创建"
-        assert hasattr(window, "chk_bottom_bar_toolbar"), "chk_bottom_bar_toolbar 未创建"
+        assert hasattr(
+            window, "chk_bottom_bar_toolbar"
+        ), "chk_bottom_bar_toolbar 未创建"
 
         bottom_bar = window._bottom_bar
         checkbox = window.chk_bottom_bar_toolbar
@@ -400,13 +395,13 @@ def test_bottom_bar_panels_visibility():
         try:
             checkbox.setChecked(True)
             app.processEvents()
-            
+
             checkbox.setChecked(False)
             app.processEvents()
-            
+
             checkbox.setChecked(True)
             app.processEvents()
-            
+
             # 信号触发成功，没有 AttributeError
         except AttributeError as e:
             pytest.fail(f"底部栏切换信号有 AttributeError: {e}")

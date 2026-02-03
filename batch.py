@@ -153,10 +153,16 @@ def _prepare_calculator_for_file(
     在无法推断 source/target 时抛出 ValueError 并由调用者处理。
     """
     calculator_to_use = base_calculator
-    if project_data is not None and (source_part is not None or target_part is not None):
+    if project_data is not None and (
+        source_part is not None or target_part is not None
+    ):
         try:
-            source_names = list((getattr(project_data, "source_parts", {}) or {}).keys())
-            target_names = list((getattr(project_data, "target_parts", {}) or {}).keys())
+            source_names = list(
+                (getattr(project_data, "source_parts", {}) or {}).keys()
+            )
+            target_names = list(
+                (getattr(project_data, "target_parts", {}) or {}).keys()
+            )
 
             actual_source = source_part
             actual_target = target_part
@@ -255,7 +261,6 @@ def _create_temp_and_flags(out_path: Path):
     return temp_out_path, partial_flag, complete_flag
 
 
-
 def generate_output_path(
     file_path: Path,
     output_dir: Path,
@@ -288,9 +293,7 @@ def generate_output_path(
         try:
             candidate.unlink()
         except Exception as e:
-            raise IOError(
-                f"无法覆盖已存在的输出文件: {candidate} -> {e}"
-            ) from e
+            raise IOError(f"无法覆盖已存在的输出文件: {candidate} -> {e}") from e
 
     # 如果不需要在磁盘上创建占位文件（例如 dry-run），仅计算一个不会冲突的名称并返回
     if not create_placeholder:
@@ -352,16 +355,12 @@ def generate_output_path(
         unique = uuid.uuid4().hex
         candidate = output_dir / f"{base}_{unique}{suf}"
         try:
-            fd = os.open(
-                str(candidate), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
-            )
+            fd = os.open(str(candidate), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
             os.close(fd)
             logger.debug("使用 UUID 回退输出名: %s", candidate.name)
         except Exception as e:
             # 最终尝试失败：不可写或权限不足
-            raise IOError(
-                f"无法在输出目录创建唯一输出文件: {candidate} -> {e}"
-            ) from e
+            raise IOError(f"无法在输出目录创建唯一输出文件: {candidate} -> {e}") from e
 
     # 确保路径可写性（占位创建已验证），返回已占位的路径
     return candidate
@@ -382,7 +381,9 @@ def _write_out_df(
     """
     last_exc = None
     if mode == "a":
-        csv_bytes = out_df.to_csv(index=False, header=header, encoding="utf-8").encode("utf-8")
+        csv_bytes = out_df.to_csv(index=False, header=header, encoding="utf-8").encode(
+            "utf-8"
+        )
         for attempt in range(1, SHARED_RETRY_ATTEMPTS + 1):
             try:
                 if portalocker:
@@ -391,7 +392,9 @@ def _write_out_df(
                             try:
                                 portalocker.lock(f, portalocker.LOCK_EX)
                             except Exception as le:
-                                logger.debug("portalocker.lock 失败，继续以无锁追加写入：%s", le)
+                                logger.debug(
+                                    "portalocker.lock 失败，继续以无锁追加写入：%s", le
+                                )
                         except Exception:
                             logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
@@ -412,7 +415,9 @@ def _write_out_df(
                     lock_acquired = False
                     lock_fd = None
                     try:
-                        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                        lock_fd = os.open(
+                            str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR
+                        )
                         lock_acquired = True
                     except FileExistsError:
                         waited = 0.0
@@ -420,7 +425,9 @@ def _write_out_df(
                             time.sleep(0.01)
                             waited += 0.01
                             try:
-                                lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                                lock_fd = os.open(
+                                    str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR
+                                )
                                 lock_acquired = True
                                 break
                             except FileExistsError:
@@ -458,9 +465,19 @@ def _write_out_df(
                 break
             except Exception as e:
                 last_exc = e
-                logger.warning("追加写入 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+                logger.warning(
+                    "追加写入 %s 失败（尝试 %d/%d）：%s",
+                    out_path.name,
+                    attempt,
+                    SHARED_RETRY_ATTEMPTS,
+                    e,
+                )
                 if attempt < SHARED_RETRY_ATTEMPTS:
-                    time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(WRITE_RETRY_BACKOFF_SECONDS) - 1)])
+                    time.sleep(
+                        WRITE_RETRY_BACKOFF_SECONDS[
+                            min(attempt - 1, len(WRITE_RETRY_BACKOFF_SECONDS) - 1)
+                        ]
+                    )
                 else:
                     logger.exception("追加写入失败，达到最大重试次数")
 
@@ -475,9 +492,14 @@ def _write_out_df(
                             try:
                                 portalocker.lock(f, portalocker.LOCK_EX)
                             except Exception as le:
-                                logger.debug("portalocker.lock 失败，继续以无锁模式写入：%s", le)
+                                logger.debug(
+                                    "portalocker.lock 失败，继续以无锁模式写入：%s", le
+                                )
                         else:
-                            logger.debug("portalocker 不可用，跳过文件锁（best-effort 写入）: %s", out_path)
+                            logger.debug(
+                                "portalocker 不可用，跳过文件锁（best-effort 写入）: %s",
+                                out_path,
+                            )
                     except Exception:
                         logger.exception("尝试加锁时发生意外异常（忽略并继续写入）")
 
@@ -500,12 +522,29 @@ def _write_out_df(
             except Exception as e:
                 last_exc = e
                 if isinstance(e, PermissionError):
-                    logger.warning("写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e, exc_info=True)
+                    logger.warning(
+                        "写入临时文件 %s 遇到 PermissionError（尝试 %d/%d），将重试：%s",
+                        out_path.name,
+                        attempt,
+                        SHARED_RETRY_ATTEMPTS,
+                        e,
+                        exc_info=True,
+                    )
                 else:
-                    logger.error("写入临时文件 %s 失败（尝试 %d/%d）：%s", out_path.name, attempt, SHARED_RETRY_ATTEMPTS, e)
+                    logger.error(
+                        "写入临时文件 %s 失败（尝试 %d/%d）：%s",
+                        out_path.name,
+                        attempt,
+                        SHARED_RETRY_ATTEMPTS,
+                        e,
+                    )
 
                 if attempt < SHARED_RETRY_ATTEMPTS:
-                    time.sleep(WRITE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(WRITE_RETRY_BACKOFF_SECONDS) - 1)])
+                    time.sleep(
+                        WRITE_RETRY_BACKOFF_SECONDS[
+                            min(attempt - 1, len(WRITE_RETRY_BACKOFF_SECONDS) - 1)
+                        ]
+                    )
                 else:
                     logger.exception("写入失败，达到最大重试次数")
 
@@ -525,6 +564,7 @@ def process_df_chunk(
 
     返回 (processed_rows, dropped_rows, non_numeric_count, first_chunk_flag)
     """
+
     # 数值准备与掩码逻辑函数定义（放在此处以便靠近使用处）
     def _prepare_for_batch_processing(
         chunk_df: pd.DataFrame, calculator: AeroCalculator, cfg: BatchConfig
@@ -613,10 +653,11 @@ def process_df_chunk(
             data_df = chunk_df.reset_index(drop=True)
 
         return forces, moments, data_df, n_non, mask_array, alpha_col_name
+
     # 统一列名（忽略大小写和前后空格）
     # 将数值准备与非数值掩码逻辑抽取为独立函数以降低复杂度
-    forces, moments, data_df, n_non, mask_array, alpha_col_name = _prepare_for_batch_processing(
-        chunk_df, calculator, cfg
+    forces, moments, data_df, n_non, mask_array, alpha_col_name = (
+        _prepare_for_batch_processing(chunk_df, calculator, cfg)
     )
     dropped = 0
 
@@ -668,9 +709,7 @@ def process_df_chunk(
     if alpha_col_name and alpha_col_name in chunk_df.columns:
         alpha_series = chunk_df[alpha_col_name].reset_index(drop=True)
         if cfg.treat_non_numeric == "drop" and n_non:
-            alpha_series = alpha_series.loc[data_df.index].reset_index(
-                drop=True
-            )
+            alpha_series = alpha_series.loc[data_df.index].reset_index(drop=True)
         out_data["Alpha"] = alpha_series
 
     # 一次性从字典构建 DataFrame（远比逐列赋值高效）
@@ -706,7 +745,15 @@ def process_df_chunk(
     # 写入重试参数（使用模块级常量）
     last_exc = None
     # 将写入与锁定逻辑抽出为独立函数以便测试和复用
-    _write_out_df(out_df, out_path, header, mode, open_mode, logger, mask_array if 'mask_array' in locals() else None)
+    _write_out_df(
+        out_df,
+        out_path,
+        header,
+        mode,
+        open_mode,
+        logger,
+        mask_array if "mask_array" in locals() else None,
+    )
 
     processed = len(out_df)
     first_chunk = False
@@ -734,9 +781,7 @@ def find_matching_files(directory: str, pattern: str) -> list:
     return sorted(matched_files)
 
 
-def read_data_with_config(
-    file_path: Path, config: BatchConfig
-) -> pd.DataFrame:
+def read_data_with_config(file_path: Path, config: BatchConfig) -> pd.DataFrame:
     """根据 `config` 读取整个数据表（非流式模式）。
 
     返回 pandas DataFrame，读取首行为表头。
@@ -786,7 +831,9 @@ def process_single_file(
 
     # 特殊格式路径：直接用专用解析器处理并按 part 输出
     if project_data is not None and looks_like_special_format(file_path):
-        return _handle_special_format_file(file_path, project_data, output_dir, config, logger)
+        return _handle_special_format_file(
+            file_path, project_data, output_dir, config, logger
+        )
 
     # 非流式：读取整表并可选行选择（已封装为辅助函数）
     df = _read_and_select_df(file_path, config, selected_rows)
@@ -815,7 +862,9 @@ def process_single_file(
         total_non_numeric += non_num
 
         # 完成后使用封装的替换工具完成原子替换与标记写入（见 _finalize_and_replace）
-        _finalize_and_replace(temp_out_path, out_path, partial_flag, complete_flag, logger)
+        _finalize_and_replace(
+            temp_out_path, out_path, partial_flag, complete_flag, logger
+        )
 
         logger.info(
             f"处理完成: 已输出 {total_processed} 行；非数值总计 {total_non_numeric} 行；丢弃 {total_dropped} 行"
@@ -830,9 +879,7 @@ def process_single_file(
         except Exception:
             pass
         try:
-            partial_flag.write_text(
-                f"error: {str(e)}\n{traceback.format_exc()}"
-            )
+            partial_flag.write_text(f"error: {str(e)}\n{traceback.format_exc()}")
         except Exception:
             pass
         logger.error("  ✗ 处理失败: %s", str(e), exc_info=True)
@@ -917,9 +964,7 @@ def _worker_process(args):
                 project_data = worker_data
             else:
                 # 仅在必要时加载一次并缓存到进程模块级缓存
-                project_data, calculator = load_project_calculator(
-                    project_config_path
-                )
+                project_data, calculator = load_project_calculator(project_config_path)
                 _gw["_WORKER_CALCULATOR"] = calculator
                 _gw["_WORKER_PROJECT_PATH"] = project_config_path
                 _gw["_WORKER_PROJECT_DATA"] = project_data
@@ -928,9 +973,7 @@ def _worker_process(args):
         cfg = BatchConfig()
         cfg.skip_rows = int(config_dict.get("skip_rows", 0))
         cfg.name_template = config_dict.get("name_template", cfg.name_template)
-        cfg.timestamp_format = config_dict.get(
-            "timestamp_format", cfg.timestamp_format
-        )
+        cfg.timestamp_format = config_dict.get("timestamp_format", cfg.timestamp_format)
         cfg.overwrite = bool(config_dict.get("overwrite", cfg.overwrite))
         cfg.treat_non_numeric = config_dict.get(
             "treat_non_numeric", cfg.treat_non_numeric
@@ -996,9 +1039,7 @@ def run_batch_processing(
         # 显示实际使用的 Target part 名称
         used_target = getattr(calculator, "target_frame", None)
         used_target_name = (
-            getattr(used_target, "part_name", None)
-            if used_target is not None
-            else None
+            getattr(used_target, "part_name", None) if used_target is not None else None
         )
         logger.info("  ✓ 配置加载成功: %s", used_target_name)
     except Exception as e:
@@ -1066,9 +1107,7 @@ def run_batch_processing(
     # 确保收集结果的容器始终存在，避免在空文件列表下引用未定义变量
     results = []
     for i, file_path in enumerate(files_to_process, 1):
-        logger.info(
-            "进度: [%d/%d] %s", i, len(files_to_process), file_path.name
-        )
+        logger.info("进度: [%d/%d] %s", i, len(files_to_process), file_path.name)
         # 使用全局配置处理每个文件
         cfg_local = resolve_file_format(str(file_path), data_config)
 
@@ -1121,9 +1160,7 @@ def run_batch_processing(
         if show_progress:
             files_done = i
             files_left = len(files_to_process) - files_done
-            avg_per_file = (
-                datetime.now() - start_time
-            ).total_seconds() / files_done
+            avg_per_file = (datetime.now() - start_time).total_seconds() / files_done
             eta_seconds = int(avg_per_file * files_left)
             logger.info(
                 "已完成 %d/%d，累计耗时 %.1fs，本文件耗时 %.2fs，平均 %.2fs/文件，预计剩余 %ds",
@@ -1209,21 +1246,15 @@ def run_batch_processing(
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "-c", "--config", "config", required=True, help="配置文件路径 (JSON)"
-)
-@click.option(
-    "-i", "--input", "input_path", required=True, help="输入文件或目录路径"
-)
+@click.option("-c", "--config", "config", required=True, help="配置文件路径 (JSON)")
+@click.option("-i", "--input", "input_path", required=True, help="输入文件或目录路径")
 @click.option(
     "-p",
     "--pattern",
     default=None,
     help='文件匹配模式（目录模式下），支持分号分隔多模式，如 "*.csv;*.mtfmt"',
 )
-@click.option(
-    "--log-file", "log_file", default=None, help="将日志写入指定文件"
-)
+@click.option("--log-file", "log_file", default=None, help="将日志写入指定文件")
 @click.option("--verbose", "verbose", is_flag=True, help="增加日志详细程度")
 @click.option(
     "--workers",
@@ -1507,9 +1538,7 @@ def main(**cli_options):
                 }
                 try:
                     with open(output_json, "w", encoding="utf-8") as fh:
-                        json.dump(
-                            summary_payload, fh, ensure_ascii=False, indent=2
-                        )
+                        json.dump(summary_payload, fh, ensure_ascii=False, indent=2)
                     logger.info("已将处理结果写入 %s", output_json)
                 except Exception:
                     logger.exception("写入 output_json 失败")

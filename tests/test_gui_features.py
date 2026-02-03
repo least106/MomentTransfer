@@ -37,7 +37,7 @@ def test_batch_input_path_selection():
         test_path = "C:/test/path"
         gui.inp_batch_input.setText(test_path)
         app.processEvents()
-        
+
         assert gui.inp_batch_input.text() == test_path, "路径设置失败"
 
     finally:
@@ -91,7 +91,7 @@ def test_coordinate_system_selection():
 
         # 验证 operation_panel 存在
         assert hasattr(window, "operation_panel"), "operation_panel 未创建"
-        
+
         # operation_panel 应该包含坐标系选择相关的控件
         # 这验证了面板的基本结构
         operation_panel = window.operation_panel
@@ -236,7 +236,7 @@ def test_signal_bus_singleton():
         # 验证信号总线是单例
         bus1 = SignalBus.instance()
         bus2 = SignalBus.instance()
-        
+
         assert bus1 is bus2, "SignalBus 不是单例"
 
         # 验证窗口使用相同的信号总线
