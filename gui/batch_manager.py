@@ -165,6 +165,16 @@ class BatchManager:
         self._selected_paths = None  # 用户选择的多个路径
         self._last_history_record_id = None  # 最近的历史记录ID
 
+        # 初始化状态管理器
+        from gui.batch_state import BatchStateManager
+
+        self._state_manager = BatchStateManager()
+
+        # 初始化文件管理器
+        from gui.batch_file_manager import BatchFileManager
+
+        self._file_manager = BatchFileManager()
+
         # 特殊格式：缓存每个文件的 source->target 映射控件（已废弃，使用下面两个）
         # key: (file_path_str, source_part)
         self._special_part_combo = {}
@@ -179,11 +189,11 @@ class BatchManager:
 
         # 特殊格式：缓存解析结果，避免频繁全量解析
         # key: file_path_str -> {"mtime": float, "data": Dict[str, DataFrame]}
-        self._special_data_cache = {}
+        self._special_data_cache = self._state_manager.special_data_cache
 
         # 常规表格（CSV/Excel）：缓存预览数据，避免频繁读取
         # key: file_path_str -> {"mtime": float, "df": DataFrame, "preview_rows": int}
-        self._table_data_cache = {}
+        self._table_data_cache = self._state_manager.table_data_cache
 
         # 文件树批量更新标记，避免 itemChanged 递归触发
         self._is_updating_tree = False
@@ -401,285 +411,8 @@ class BatchManager:
             return {}
 
     def _get_special_data_dict(self, file_path: Path):
-        """获取特殊格式解析结果（带 mtime 缓存）。"""
-        fp_str = str(file_path)
-        try:
-            mtime = file_path.stat().st_mtime
-        except Exception:
-            mtime = None
-
-        cached = self._special_data_cache.get(fp_str)
-        if cached and cached.get("mtime") == mtime and cached.get("data") is not None:
-            return cached.get("data")
-
-        # 若未缓存或已过期，则异步解析以避免阻塞主线程；先返回空字典占位
-        try:
-            from functools import partial
-
-            from PySide6.QtCore import QThread
-
-            from gui.background_worker import BackgroundWorker
-            from gui.signal_bus import SignalBus
-
-            # 安全幂等：如果已有后台解析正在进行，则不重复提交
-            in_progress_key = f"_parsing:{fp_str}"
-            if getattr(self, in_progress_key, False):
-                return {}
-            setattr(self, in_progress_key, True)
-
-            # 显示加载指示器
-            try:
-                if hasattr(self.gui, "statusBar"):
-                    self.gui.statusBar().showMessage(
-                        f"正在解析特殊格式文件: {file_path.name}...", 0
-                    )
-            except Exception:
-                logger.debug("显示解析状态栏消息失败（非致命）", exc_info=True)
-
-            def _do_parse(path: Path):
-                # 调用同步解析函数（在工作线程中运行）
-                return parse_special_format_file(path)
-
-            thread = QThread()
-            worker = BackgroundWorker(partial(_do_parse, file_path))
-            worker.moveToThread(thread)
-
-            def _on_finished(result):
-                try:
-                    data_dict = result or {}
-                    try:
-                        self._special_data_cache[fp_str] = {
-                            "mtime": mtime,
-                            "data": data_dict,
-                        }
-                    except Exception:
-                        logger.debug("更新特殊格式缓存失败（非致命）", exc_info=True)
-                    try:
-                        # 清除状态栏消息
-                        if hasattr(self.gui, "statusBar"):
-                            self.gui.statusBar().showMessage(
-                                f"特殊格式文件解析完成: {file_path.name}", 3000
-                            )
-                    except Exception:
-                        logger.debug("清除状态栏消息失败（非致命）", exc_info=True)
-                    try:
-                        # 发出信号通知相关 UI 刷新
-                        SignalBus.instance().specialDataParsed.emit(fp_str)
-                    except Exception:
-                        logger.debug(
-                            "发出 specialDataParsed 信号失败（非致命）", exc_info=True
-                        )
-                finally:
-                    try:
-                        setattr(self, in_progress_key, False)
-                    except Exception:
-                        logger.debug("设置解析进行标志失败（非致命）", exc_info=True)
-                    try:
-                        worker.deleteLater()
-                    except Exception:
-                        logger.debug("清理 worker 失败（非致命）", exc_info=True)
-                    try:
-                        thread.quit()
-                        thread.wait(1000)
-                    except Exception:
-                        logger.debug("停止后台线程失败（非致命）", exc_info=True)
-
-            def _on_error(tb_str):
-                logger.error("后台解析特殊格式失败: %s", tb_str)
-                # 显示错误消息给用户
-                try:
-                    if hasattr(self.gui, "statusBar"):
-                        self.gui.statusBar().showMessage(
-                            f"解析特殊格式文件失败: {file_path.name}", 5000
-                        )
-                    # 弹出错误提示
-                    from PySide6.QtWidgets import QMessageBox
-
-                    QMessageBox.warning(
-                        self.gui,
-                        "解析失败",
-                        f"无法解析特殊格式文件：\n{file_path.name}\n\n"
-                        f"错误信息：\n{tb_str[:200]}...\n\n"
-                        "请检查文件格式是否正确。",
-                    )
-                except Exception:
-                    logger.debug("显示解析错误提示失败", exc_info=True)
-                try:
-                    setattr(self, in_progress_key, False)
-                except Exception:
-                    logger.debug(
-                        "设置解析进行标志失败（错误路径，非致命）", exc_info=True
-                    )
-                try:
-                    worker.deleteLater()
-                except Exception:
-                    logger.debug("清理 worker 失败（错误路径，非致命）", exc_info=True)
-                try:
-                    thread.quit()
-                    thread.wait(1000)
-                except Exception:
-                    logger.debug("停止后台线程失败（错误路径，非致命）", exc_info=True)
-
-            worker.finished.connect(_on_finished)
-            worker.error.connect(_on_error)
-            thread.started.connect(worker.run)
-            thread.start()
-        except Exception as e:
-            # 无法使用 QThread 启动后台解析：优先尝试使用 Python 原生线程回退并显示等待对话，
-            # 若线程也不能启动，则在主线程同步解析前显示模态等待指示（以提高可见性）。
-            logger.warning(
-                "无法用 QThread 启动后台解析，尝试回退：%s", e, exc_info=True
-            )
-            try:
-                import threading
-
-                result_holder = {}
-                done_event = threading.Event()
-
-                def _worker():
-                    try:
-                        result_holder["data"] = parse_special_format_file(file_path)
-                    except Exception as ex:
-                        result_holder["exc"] = ex
-                    finally:
-                        done_event.set()
-
-                thr = threading.Thread(target=_worker, daemon=True)
-                thr.start()
-
-                # 显示模态等待对话并轮询线程完成，确保用户看到等待指示
-                try:
-                    from PySide6.QtCore import Qt
-                    from PySide6.QtWidgets import QApplication, QProgressDialog
-
-                    parent = getattr(self, "gui", None)
-                    # 改进：使用非模态对话框，允许用户继续交互
-                    dlg = QProgressDialog("正在解析特殊格式…", "取消", 0, 0, parent)
-                    dlg.setWindowModality(Qt.NonModal)
-                    dlg.setMaximumWidth(400)
-
-                    # 处理用户取消
-                    cancel_requested = [False]
-
-                    def _on_cancel():
-                        cancel_requested[0] = True
-
-                    dlg.canceled.connect(_on_cancel)
-
-                    dlg.setMinimumDuration(500)  # 仅在超过 500ms 时显示对话
-                    dlg.show()
-                except Exception:
-                    dlg = None
-                    cancel_requested = [False]
-
-                # 以短轮询等待后台线程完成，同时保持 UI 响应
-                user_cancelled = False
-                try:
-                    while not done_event.wait(0.1):
-                        if cancel_requested[0]:
-                            logger.info("用户取消了特殊格式解析")
-                            user_cancelled = True
-                            break
-                        try:
-                            QApplication.processEvents()
-                        except Exception:
-                            logger.debug(
-                                "处理 GUI 事件时出错（轮询线程）", exc_info=True
-                            )
-                finally:
-                    try:
-                        if dlg is not None:
-                            dlg.close()
-                    except Exception:
-                        logger.debug("关闭解析等待对话失败（非致命）", exc_info=True)
-
-                # 如果用户取消，等待线程结束后返回 None
-                if user_cancelled:
-                    logger.info("等待后台解析线程结束...")
-                    try:
-                        # 等待最多2秒让线程完成
-                        thr.join(timeout=2.0)
-                        if thr.is_alive():
-                            logger.warning("后台解析线程未能及时结束，但已取消用户等待")
-                    except Exception:
-                        logger.debug("等待线程结束时出错", exc_info=True)
-                    return None  # 用户取消时返回 None，不进行回退解析
-
-                if "data" in result_holder:
-                    data_dict = result_holder.get("data") or {}
-                    try:
-                        self._special_data_cache[fp_str] = {
-                            "mtime": mtime,
-                            "data": data_dict,
-                        }
-                    except Exception:
-                        logger.debug("写入特殊格式缓存失败（非致命）", exc_info=True)
-                    return data_dict
-
-                # 如果线程执行过程中出现异常，则回退到主线程同步解析（并显示对话）
-                logger.warning("Python 线程解析失败或抛出异常，回退到同步解析")
-                _report_ui_exception(
-                    self.gui,
-                    "后台解析特殊格式时发生错误，已回退到同步解析",
-                )
-            except Exception:
-                logger.warning(
-                    "无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True
-                )
-
-            # 同步解析（在主线程执行）——使用状态栏提示而非模态对话框以改进 UX
-            try:
-                from PySide6.QtWidgets import QApplication
-
-                # 优先使用状态栏提示，避免重复弹窗
-                try:
-                    self.gui.statusBar().showMessage(
-                        f"正在解析特殊格式：{file_path.name}…", 0
-                    )
-                except Exception:
-                    logger.debug("显示状态栏消息失败（非致命）", exc_info=True)
-
-                try:
-                    QApplication.processEvents()
-                except Exception:
-                    logger.debug("处理 GUI 事件时出错（同步解析）", exc_info=True)
-            except Exception:
-                pass
-
-            try:
-                data_dict = parse_special_format_file(file_path)
-                try:
-                    self._special_data_cache[fp_str] = {
-                        "mtime": mtime,
-                        "data": data_dict,
-                    }
-                except Exception:
-                    logger.debug(
-                        "写入特殊格式缓存失败（同步回退，非致命）", exc_info=True
-                    )
-                try:
-                    # 清除状态栏消息
-                    self.gui.statusBar().showMessage("", 0)
-                except Exception:
-                    logger.debug("清除状态栏消息失败（非致命）", exc_info=True)
-                return data_dict
-            except Exception as ex:
-                # 同步解析也失败——这是用户可见的操作失败，应通知并记录 traceback
-                from gui.managers import report_user_error
-
-                report_user_error(
-                    self.gui,
-                    "解析特殊格式失败",
-                    f"无法解析文件 {file_path.name}，已跳过",
-                    details=str(ex),
-                    is_warning=True,
-                )
-                try:
-                    self._special_data_cache[fp_str] = {"mtime": mtime, "data": {}}
-                except Exception:
-                    logger.debug("写入空特殊格式缓存失败（非致命）", exc_info=True)
-
-        return {}
+        """获取特殊格式解析结果（带 mtime 缓存）- 委托给 batch_state"""
+        return self._state_manager.get_special_data_dict(file_path, self)
 
     def _format_preview_value(self, v):
         """将单元格值格式化为便于显示的字符串（处理 None/NaN 和异常）。"""
@@ -910,53 +643,8 @@ class BatchManager:
                 return ""
 
     def _get_table_df_preview(self, file_path: Path, *, max_rows: int = 200):
-        """读取 CSV/Excel 的预览数据（带 mtime 缓存）。"""
-        fp_str = str(file_path)
-        try:
-            mtime = file_path.stat().st_mtime
-        except Exception:
-            mtime = None
-
-        cached = self._table_data_cache.get(fp_str)
-        if (
-            cached
-            and cached.get("mtime") == mtime
-            and cached.get("df") is not None
-            and cached.get("preview_rows") == int(max_rows)
-        ):
-            return cached.get("df")
-
-        try:
-            from src.utils import read_table_preview
-
-            df = read_table_preview(file_path, int(max_rows))
-        except (
-            FileNotFoundError,
-            PermissionError,
-            OSError,
-            pd.errors.ParserError,
-        ) as e:
-            from gui.managers import report_user_error
-
-            report_user_error(
-                self.gui,
-                "读取表格预览失败",
-                f"无法读取文件预览（{type(e).__name__}）",
-                details=str(e),
-                is_warning=True,
-            )
-            df = None
-        except Exception:
-            # 非预期错误，记录调试信息但不打断用户流程
-            logger.debug("读取表格预览失败（非致命）", exc_info=True)
-            df = None
-
-        self._table_data_cache[fp_str] = {
-            "mtime": mtime,
-            "df": df,
-            "preview_rows": int(max_rows),
-        }
-        return df
+        """读取 CSV/Excel 的预览数据 - 委托给 batch_state"""
+        return self._state_manager.get_table_df_preview(file_path, self.gui, max_rows)
 
     def _ensure_table_row_selection_storage(
         self, file_path: Path, row_count: int
@@ -1142,134 +830,8 @@ class BatchManager:
         # SignalBus 事件在初始化阶段已注册
 
     def browse_batch_input(self):
-        """浏览并选择输入文件或目录，沿用 GUI 原有文件列表面板。
-
-        支持一次选择多个文件/目录，会自动扫描并添加所有选择的内容。
-        """
-        try:
-            # 创建非原生对话框，支持文件和目录选择
-            dlg = QFileDialog(self.gui, "选择输入文件或目录")
-            dlg.setOption(QFileDialog.DontUseNativeDialog, True)
-
-            # 默认为文件模式
-            dlg.setFileMode(QFileDialog.ExistingFiles)
-
-            parts = [
-                "所有文件 (*)",
-                "所有支持的数据文件 (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
-                "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
-                "CSV Files (*.csv)",
-                "Excel Files (*.xlsx *.xls)",
-                "MomentConversion (*.mtfmt *.mtdata)",
-            ]
-            dlg.setNameFilter(";;".join(parts))
-
-            # 添加"选择目录"复选框，允许用户动态切换模式
-            from PySide6.QtWidgets import QCheckBox, QHBoxLayout
-
-            mode_box = QCheckBox("选择目录模式")
-            mode_box.setChecked(False)
-
-            # 定义模式切换函数
-            def toggle_mode(checked):
-                if checked:
-                    # 切换到目录选择模式
-                    dlg.setFileMode(QFileDialog.Directory)
-                    dlg.setOption(QFileDialog.ShowDirsOnly, True)
-                else:
-                    # 切换回文件选择模式
-                    dlg.setFileMode(QFileDialog.ExistingFiles)
-                    dlg.setOption(QFileDialog.ShowDirsOnly, False)
-
-            # 连接复选框信号
-            mode_box.stateChanged.connect(toggle_mode)
-
-            # 获取对话框的主布局，并在底部添加复选框
-            main_layout = dlg.layout()
-            if main_layout is not None:
-                # 创建一个水平布局来放置复选框
-                checkbox_layout = QHBoxLayout()
-                checkbox_layout.addStretch()  # 左边留空
-                checkbox_layout.addWidget(mode_box)
-                checkbox_layout.addStretch()  # 右边留空
-
-                # QGridLayout 需要指定行列位置
-                # 添加到最后一行的第 0 列，跨越所有列
-                row = main_layout.rowCount()
-                main_layout.addLayout(
-                    checkbox_layout, row, 0, 1, main_layout.columnCount()
-                )
-
-            # 用户取消了对话框
-            if dlg.exec() != QDialog.Accepted:
-                return
-
-            # 获取选择的文件/目录
-            selected = dlg.selectedFiles()
-            chosen_paths = [Path(p) for p in selected]
-            if not chosen_paths:
-                return
-            first_path = chosen_paths[0]
-
-            if hasattr(self.gui, "inp_batch_input"):
-                # 显示所有选择的路径，便于用户确认处理范围
-                if len(chosen_paths) > 1:
-                    display_text = "; ".join(str(p) for p in chosen_paths)
-                else:
-                    display_text = str(first_path)
-                self.gui.inp_batch_input.setText(display_text)
-                try:
-                    self.gui.inp_batch_input.setToolTip(display_text)
-                except Exception:
-                    pass
-
-            # 保存实际选择的路径列表到 _selected_paths（用于批处理）
-            self._selected_paths = chosen_paths
-
-            # 统一扫描所有选择的文件或目录
-            # 对第一个路径进行完整扫描（清空旧数据）
-            try:
-                self._scan_and_populate_files(first_path)
-            except Exception as e:
-                logger.debug("扫描第一个路径失败: %s", e, exc_info=True)
-
-            # 对其他选择的路径进行增量扫描（追加数据）
-            for additional_path in chosen_paths[1:]:
-                try:
-                    self._scan_and_populate_files(additional_path, clear=False)
-                except Exception as e:
-                    logger.debug(
-                        "扫描追加路径 %s 失败: %s", additional_path, e, exc_info=True
-                    )
-
-            # 输入路径后自动切换到文件列表页
-            try:
-                if hasattr(self.gui, "tab_main"):
-                    try:
-                        tab = self.gui.tab_main
-                        # 尝试通过文件列表控件查找正确的 Tab 索引（避免硬编码索引）
-                        idx = -1
-                        try:
-                            idx = tab.indexOf(
-                                getattr(self.gui, "file_list_widget", None)
-                            )
-                        except Exception:
-                            idx = -1
-
-                        if idx is None or idx == -1:
-                            # 兜底到第一个可用 Tab
-                            idx = 0
-                        tab.setCurrentIndex(idx)
-                    except Exception:
-                        # 最后兜底方案：直接切换到第0个Tab
-                        try:
-                            self.gui.tab_main.setCurrentIndex(0)
-                        except Exception:
-                            try:
-                                if _report_ui_exception:
-                                    _report_ui_exception(
-                                        self.gui, "切换到第0个 Tab 失败（非致命）"
-                                    )
+        """浏览并选择输入文件或目录 - 委托给 batch_file_manager"""
+        return self._file_manager.browse_batch_input(self)
                                 else:
                                     logger.debug(
                                         "切换到第0个 Tab 失败（非致命）", exc_info=True
@@ -1388,56 +950,8 @@ class BatchManager:
             traceback.print_exc()
 
     def _prepare_file_list_ui(self) -> None:
-        """准备文件列表界面（设置 workflow step 与状态栏）。"""
-        try:
-            bp = getattr(self.gui, "batch_panel", None)
-            if bp is not None and hasattr(bp, "set_workflow_step"):
-                try:
-                    bp.set_workflow_step("step2")
-                except (IndexError, KeyError, TypeError, ValueError) as e:
-                    logger.debug("处理筛选回退行时出错: %s", e, exc_info=True)
-                except Exception:
-                    logger.debug("处理筛选回退行时发生未知错误", exc_info=True)
-        except Exception:
-            try:
-                from gui.managers import _report_ui_exception
-
-                _report_ui_exception(self.gui, "创建浏览对话失败")
-            except Exception:
-                # 保持向后兼容：若无法展示提示则记录调试信息
-                logger.debug("创建浏览对话失败", exc_info=True)
-            return None
-        try:
-            # 使用 SignalBus 统一状态消息显示步骤2
-            try:
-                from gui.signal_bus import SignalBus
-
-                bus = SignalBus.instance()
-                # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
-                bus.statusMessage.emit("📂 步骤2：在文件列表选择数据文件", 0, 2)
-            except Exception:
-                try:
-                    if _report_ui_exception:
-                        _report_ui_exception(self.gui, "更新步骤2提示失败（非致命）")
-                    else:
-                        logger.debug("更新步骤2提示失败（非致命）", exc_info=True)
-                except Exception:
-                    logger.debug("更新步骤2提示失败（非致命）", exc_info=True)
-            except Exception:
-                # 忽略获取/设置永久标签的失败，但记录调试信息
-                try:
-                    if _report_ui_exception:
-                        _report_ui_exception(
-                            self.gui, "设置永久状态标签文本失败（非致命）"
-                        )
-                    else:
-                        logger.debug(
-                            "设置永久状态标签文本失败（非致命）", exc_info=True
-                        )
-                except Exception:
-                    logger.debug("设置永久状态标签文本失败（非致命）", exc_info=True)
-        except Exception:
-            logger.debug("设置永久状态标签文本外层异常（非致命）", exc_info=True)
+        """准备文件列表界面 - 委托给 batch_file_manager"""
+        return self._file_manager.prepare_file_list_ui(self)
 
     def _populate_file_tree_from_files(self, files, base_path, p: Path) -> None:
         """根据 files 填充 `self.gui.file_tree` 并显示文件列表区域。
@@ -1568,77 +1082,8 @@ class BatchManager:
             return None
 
     def _validate_special_format(self, file_path: Path) -> Optional[str]:
-        """对特殊格式文件进行预检，返回状态文本或 None 表示非特殊格式。
-
-        状态符号说明：
-        - ✓ 特殊格式(可处理)：所有 parts 映射已完成，文件可以处理
-        - ✓ 特殊格式(待配置)：项目尚未配置 parts，但文件格式正确
-        - ⚠ 未映射: part1, part2：指定的 parts 尚未配置映射关系
-        - ⚠ Source缺失: part→source：指定的 Source 不在项目配置中
-        - ⚠ Target缺失: part→target：指定的 Target 不在项目配置中
-        - ❓ 未验证：验证过程出错，无法判断文件状态
-        """
-        status = None
-        try:
-            if not looks_like_special_format(file_path):
-                status = None
-            else:
-                part_names = get_part_names(file_path)
-                mapping = self._get_special_mapping_if_exists(file_path)
-                source_parts, target_parts = self._get_project_parts()
-
-                # 若项目中无 parts 则提示待配置
-                if not source_parts and not target_parts:
-                    status = "✓ 特殊格式(待配置)"
-                else:
-                    mapping = mapping or {}
-
-                    # 检查新的映射结构：每个内部部件 -> {source, target}
-                    unmapped_parts = []
-                    missing_source_parts = []
-                    missing_target_parts = []
-
-                    for part_name in part_names:
-                        part_name_str = str(part_name)
-                        part_mapping = mapping.get(part_name_str)
-
-                        if not isinstance(part_mapping, dict):
-                            # 兼容旧格式或未映射
-                            unmapped_parts.append(part_name_str)
-                            continue
-
-                        source_part = (part_mapping.get("source") or "").strip()
-                        target_part = (part_mapping.get("target") or "").strip()
-
-                        # 检查source part
-                        if not source_part:
-                            unmapped_parts.append(part_name_str)
-                        elif source_part not in source_parts:
-                            missing_source_parts.append(
-                                f"{part_name_str}→{source_part}"
-                            )
-
-                        # 检查target part
-                        if not target_part:
-                            if source_part:  # 只有当source已选择时才检查target
-                                unmapped_parts.append(part_name_str)
-                        elif target_part not in target_parts:
-                            missing_target_parts.append(
-                                f"{part_name_str}→{target_part}"
-                            )
-
-                    if unmapped_parts:
-                        status = f"⚠ 未映射: {', '.join(unmapped_parts)}"
-                    elif missing_source_parts:
-                        status = f"⚠ Source缺失: {', '.join(missing_source_parts)}"
-                    elif missing_target_parts:
-                        status = f"⚠ Target缺失: {', '.join(missing_target_parts)}"
-                    else:
-                        status = "✓ 特殊格式(可处理)"
-        except Exception:
-            logger.debug("特殊格式校验失败", exc_info=True)
-            status = None
-        return status
+        """对特殊格式文件进行预检 - 委托给 batch_state"""
+        return self._state_manager.validate_special_format(self, file_path)
 
     def _get_special_mapping_if_exists(self, file_path: Path):
         """安全获取 GUI 中已存在的 special mapping（不初始化）。"""
@@ -1873,84 +1318,10 @@ class BatchManager:
         return unmapped, missing_target
 
     def _set_control_enabled_with_style(self, widget, enabled: bool) -> None:
-        """设置控件启用状态并在单文件模式下通过文字颜色灰显提示（安全包装）。"""
-        try:
-            if widget is None:
-                return
-            # 优先使用 setEnabled 保持控件行为一致且让 Qt 按主题处理禁用样式
-            try:
-                widget.setEnabled(enabled)
-                return
-            except Exception:
-                # 个别自定义控件可能不支持 setEnabled，继续尝试更温和的视觉提示
-                logger.debug(
-                    "控件不支持 setEnabled，尝试使用调色板/样式回退", exc_info=True
-                )
+        """设置控件启用状态并样式 - 委托给 batch_ui_utils"""
+        from gui.batch_ui_utils import set_control_enabled_with_style
 
-            # 回退：尝试使用 QPalette 根据状态设置文字颜色，优先保证对暗色/亮色主题友好
-            try:
-                from PySide6.QtGui import QPalette
-
-                pal = widget.palette()
-                if not enabled:
-                    # 使用 Disabled 状态下的文本颜色
-                    try:
-                        disabled_color = pal.color(QPalette.Disabled, QPalette.Text)
-                    except Exception:
-                        disabled_color = pal.color(QPalette.Text)
-                    try:
-                        pal.setColor(QPalette.Active, QPalette.Text, disabled_color)
-                        pal.setColor(QPalette.Inactive, QPalette.Text, disabled_color)
-                    except Exception:
-                        try:
-                            pal.setColor(QPalette.Text, disabled_color)
-                        except Exception:
-                            logger.debug(
-                                "设置 QPalette 文本颜色失败（非致命）", exc_info=True
-                            )
-                else:
-                    # 恢复为 Active 状态的文本颜色
-                    try:
-                        active_color = pal.color(QPalette.Active, QPalette.Text)
-                        pal.setColor(QPalette.Active, QPalette.Text, active_color)
-                        pal.setColor(QPalette.Inactive, QPalette.Text, active_color)
-                    except Exception:
-                        logger.debug(
-                            "恢复 Active 状态颜色失败（非致命）", exc_info=True
-                        )
-                try:
-                    widget.setPalette(pal)
-                    widget.update()
-                    return
-                except Exception:
-                    logger.debug(
-                        "使用 QPalette 设置控件颜色失败，尝试样式表回退", exc_info=True
-                    )
-            except Exception:
-                logger.debug("构建 QPalette 回退路径失败", exc_info=True)
-
-            # 最后回退：尝试从控件的调色板获取一个主题中性颜色作为折中
-            try:
-                from PySide6.QtGui import QPalette
-
-                pal = widget.palette()
-                try:
-                    c = pal.color(QPalette.Disabled, QPalette.Text)
-                except Exception:
-                    c = pal.color(QPalette.Text)
-                try:
-                    neutral_gray = f"color: {c.name()};"
-                except Exception:
-                    neutral_gray = "color: gray;"
-            except Exception:
-                neutral_gray = "color: gray;"
-            try:
-                widget.setStyleSheet("" if enabled else neutral_gray)
-            except Exception:
-                logger.debug("使用 setStyleSheet 回退失败", exc_info=True)
-
-        except Exception:
-            logger.debug("设置控件启用/样式失败", exc_info=True)
+        return set_control_enabled_with_style(widget, enabled)
 
     def _evaluate_file_config_non_special(
         self,
