@@ -505,7 +505,6 @@ def _write_out_df(
     mode: str,
     open_mode: str,
     logger,
-    mask_array,
 ):
     """写入 DataFrame 到目标文件，处理 append/write 模式、文件锁和重试策略。
 
@@ -884,7 +883,6 @@ def process_df_chunk(
         mode,
         open_mode,
         logger,
-        mask_array if "mask_array" in locals() else None,
     )
 
     processed = len(out_df)
@@ -1147,7 +1145,7 @@ def run_batch_processing(
     config_path: str,
     input_path: str,
     data_config: BatchConfig = None,
-    strict: bool = False,
+    strict: bool = False,  # 保留用于向前兼容和子进程传递
     dry_run: bool = False,
     show_progress: bool = False,
     output_json: str = None,

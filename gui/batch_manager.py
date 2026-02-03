@@ -759,11 +759,10 @@ class BatchManager:
             if df is None or df.empty or self._quick_filter_column not in df.columns:
                 return None
 
-            operator = self._quick_filter_operator
-            operator = self._quick_filter_operator
-
             # 分页组件联动：优先使用分页表格的筛选跳页
-            if self._apply_quick_filter_with_paged_table(table, df, operator):
+            if self._apply_quick_filter_with_paged_table(
+                table, df, self._quick_filter_operator
+            ):
                 return None
 
         except Exception as e:

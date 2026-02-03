@@ -6,7 +6,6 @@ tmp_*
 *.bak
 *.bak_*
 *.bak.*
-*.tmp
 .vscode/
 .github/copilot-instructions.md
 .github/instructions/
@@ -27,6 +26,7 @@ tools/
 *flake8*
 patches/
 .cursor/
+Check/
 
 # Packaging / build artifacts
 build/
