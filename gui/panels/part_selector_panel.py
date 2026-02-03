@@ -61,18 +61,24 @@ class PartSelectorPanel(QGroupBox):
             pass
 
         # Source Part 选择器
-        source_widget, self.source_selector, self.btn_add_source, self.btn_remove_source = (
-            self._create_selector_widget("Source")
-        )
+        (
+            source_widget,
+            self.source_selector,
+            self.btn_add_source,
+            self.btn_remove_source,
+        ) = self._create_selector_widget("Source")
 
         lbl_source = QLabel("Source Part:")
         lbl_source.setFixedWidth(90)
         form_layout.addRow(lbl_source, source_widget)
 
         # Target Part 选择器
-        target_widget, self.target_selector, self.btn_add_target, self.btn_remove_target = (
-            self._create_selector_widget("Target")
-        )
+        (
+            target_widget,
+            self.target_selector,
+            self.btn_add_target,
+            self.btn_remove_target,
+        ) = self._create_selector_widget("Target")
 
         lbl_target = QLabel("Target Part:")
         lbl_target.setFixedWidth(90)
@@ -170,7 +176,9 @@ class PartSelectorPanel(QGroupBox):
                 )
                 logger.debug("Part 选择器面板已连接到 SignalBus")
         except Exception as e:
-            logger.warning("连接 Part 选择器面板到 SignalBus 失败: %s", e, exc_info=True)
+            logger.warning(
+                "连接 Part 选择器面板到 SignalBus 失败: %s", e, exc_info=True
+            )
 
     def _on_part_added(self, side: str, part_name: str):
         """响应 Part 添加事件"""

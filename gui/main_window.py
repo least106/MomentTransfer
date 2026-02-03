@@ -631,12 +631,6 @@ class IntegratedAeroGUI(QMainWindow):
         return panel
 
     def create_part_mapping_panel(self):
-        """创建文件部件映射面板（由 InitializationManager 调用）"""
-        panel = PartMappingPanel(self)
-        self.part_mapping_panel = panel
-        return panel
-
-    def create_part_mapping_panel(self):
         """创建文件 Part 映射面板（由 InitializationManager 调用）"""
         panel = PartMappingPanel(self)
         return panel
@@ -1335,7 +1329,9 @@ class IntegratedAeroGUI(QMainWindow):
                         logger.info("用户取消了批处理")
                         return
                 except Exception:
-                    logger.debug("未保存配置对话弹出失败，直接运行批处理", exc_info=True)
+                    logger.debug(
+                        "未保存配置对话弹出失败，直接运行批处理", exc_info=True
+                    )
                     self.batch_manager.run_batch_processing()
             else:
                 # 配置未修改，直接运行批处理

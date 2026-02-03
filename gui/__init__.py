@@ -35,9 +35,9 @@ from gui.ui_utils import (
 )
 
 # 添加父目录到路径以便导入 gui.py
-_parent_dir = str(Path(__file__).parent.parent)
-if _parent_dir not in sys.path:
-    sys.path.insert(0, _parent_dir)
+_PARENT_DIR = str(Path(__file__).parent.parent)
+if _PARENT_DIR not in sys.path:
+    sys.path.insert(0, _PARENT_DIR)
 
 # 在这里我们不导入 IntegratedAeroGUI，因为 gui.py 会导入此包，可能造成循环导入
 # 用户应该直接从 gui 模块导入：from gui import IntegratedAeroGUI

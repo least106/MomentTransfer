@@ -203,6 +203,18 @@ def _apply_quick_filter_to_table(table, df, qcol, qval, operator: str) -> None:
             return
 
         if df is None or df.empty or qcol not in df.columns:
+            try:
+                from gui.signal_bus import SignalBus
+
+                bus = SignalBus.instance()
+                if df is None or df.empty:
+                    bus.statusMessage.emit("快速筛选未生效：当前数据为空", 5000, 1)
+                else:
+                    bus.statusMessage.emit(
+                        f"快速筛选未生效：列不存在（{qcol}）", 5000, 1
+                    )
+            except Exception:
+                logger.debug("发送快速筛选反馈失败（非致命）", exc_info=True)
             return
 
         # 优先尝试由分页表格实现的筛选方法

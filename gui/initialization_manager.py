@@ -206,7 +206,9 @@ class InitializationManager:
                 try:
                     self.main_window.part_mapping_panel = part_mapping_panel
                 except Exception:
-                    logger.debug("注册 part_mapping_panel 失败（非致命）", exc_info=True)
+                    logger.debug(
+                        "注册 part_mapping_panel 失败（非致命）", exc_info=True
+                    )
                 try:
                     self.main_window.operation_panel = operation_panel
                 except Exception:
@@ -868,7 +870,7 @@ class InitializationManager:
         try:
             splitter = self.main_window._bottom_splitter
             bottom_bar = self.main_window._bottom_bar
-            
+
             # 切换时同时调整 splitter 尺寸以折叠/展开底部栏
             def _toggle_bottom_bar(visible: bool) -> None:
                 try:
@@ -894,9 +896,7 @@ class InitializationManager:
                 except Exception:
                     logger.debug("切换底部栏时发生异常（非致命）", exc_info=True)
 
-            self.main_window.chk_bottom_bar_toolbar.toggled.connect(
-                _toggle_bottom_bar
-            )
+            self.main_window.chk_bottom_bar_toolbar.toggled.connect(_toggle_bottom_bar)
         except Exception:
             logger.debug("连接底部栏切换信号失败", exc_info=True)
 

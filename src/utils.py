@@ -68,13 +68,13 @@ def read_table_preview(path: Path, max_rows: int = 200):
             import pandas as _pd
 
             return _pd.read_csv(path, header=header_opt, nrows=int(max_rows))
-        else:
-            import pandas as _pd
 
-            df = _pd.read_excel(path, header=None)
-            try:
-                return df.head(int(max_rows))
-            except Exception:
-                return df
+        import pandas as _pd
+
+        df = _pd.read_excel(path, header=None)
+        try:
+            return df.head(int(max_rows))
+        except Exception:
+            return df
     except Exception:
         return None

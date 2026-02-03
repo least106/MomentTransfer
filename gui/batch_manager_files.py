@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def _collect_checked_files_from_tree(manager) -> list:
     """从文件树收集用户勾选的文件。
-    
+
     返回勾选的文件路径列表，如果没有勾选项或树不存在则返回空列表。
     """
     checked_files = []
@@ -33,10 +33,9 @@ def _collect_checked_files_from_tree(manager) -> list:
             manager.gui, "_file_tree_items"
         ):
             return checked_files
-            
-        tree = manager.gui.file_tree
+
         items_dict = manager.gui._file_tree_items
-        
+
         # 遍历所有树项，收集勾选的文件
         for path_str, item in items_dict.items():
             try:
@@ -50,10 +49,10 @@ def _collect_checked_files_from_tree(manager) -> list:
                             checked_files.append(file_path)
             except Exception:
                 logger.debug("读取树项 %s 勾选状态失败", path_str, exc_info=True)
-                
+
     except Exception:
         logger.debug("收集文件树勾选项失败", exc_info=True)
-        
+
     return checked_files
 
 
@@ -80,11 +79,31 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             if not patterns:
                 patterns = ["*.csv"]
 
-            for file_path in p.rglob("*"):
-                if not file_path.is_file():
-                    continue
-                if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
-                    files.append(file_path)
+            try:
+                from gui.signal_bus import SignalBus
+
+                SignalBus.instance().statusMessage.emit(f"正在扫描目录：{p}", 0, 1)
+            except Exception:
+                logger.debug("发送扫描提示失败（非致命）", exc_info=True)
+
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                tick = 0
+                for file_path in p.rglob("*"):
+                    if not file_path.is_file():
+                        continue
+                    if any(fnmatch.fnmatch(file_path.name, pat) for pat in patterns):
+                        files.append(file_path)
+                    tick += 1
+                    if tick % 500 == 0:
+                        try:
+                            QApplication.processEvents()
+                        except Exception:
+                            pass
+            except Exception:
+                logger.debug("目录扫描失败", exc_info=True)
+
             files = sorted(set(files))
 
             try:
@@ -96,6 +115,15 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
                 )
 
             base_path = p
+
+            try:
+                from gui.signal_bus import SignalBus
+
+                SignalBus.instance().statusMessage.emit(
+                    f"目录扫描完成：共 {len(files)} 个文件", 5000, 1
+                )
+            except Exception:
+                logger.debug("发送扫描完成提示失败（非致命）", exc_info=True)
 
     except Exception:
         logger.debug("收集文件失败", exc_info=True)
@@ -110,9 +138,23 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
         _safe_add_file_tree_entry(manager, base_path, dir_items, fp, p.is_file())
 
     try:
-        manager.gui.file_tree.expandAll()
+        from PySide6.QtCore import QTimer
+
+        def _expand_tree():
+            try:
+                manager.gui.file_tree.expandAll()
+            except Exception:
+                logger.debug("展开文件树失败（非致命）", exc_info=True)
+            try:
+                from gui.signal_bus import SignalBus
+
+                SignalBus.instance().statusMessage.emit("文件列表已展开", 2000, 0)
+            except Exception:
+                logger.debug("发送展开完成提示失败（非致命）", exc_info=True)
+
+        QTimer.singleShot(0, _expand_tree)
     except Exception:
-        logger.debug("展开文件树失败（非致命）", exc_info=True)
+        logger.debug("调度展开文件树失败（非致命）", exc_info=True)
 
     try:
         manager.gui.file_list_widget.setVisible(True)
@@ -257,8 +299,17 @@ def _collect_files_to_process(manager, input_path: Path):
                     # 只使用用户勾选的文件
                     files_to_process.extend(checked_files)
                 else:
-                    # 没有勾选项则扫描所有匹配文件
-                    files_to_process.extend(_collect_files_for_scan(manager, input_path)[0])
+                    # 没有勾选项则提示用户选择文件，避免误处理整目录
+                    get_patterns = getattr(manager, "_get_patterns_from_widget", None)
+                    if callable(get_patterns):
+                        _, pattern_display = get_patterns()
+                    else:
+                        pattern_display = "*.csv"
+                    msg = (
+                        f"未选择任何文件，请在文件列表中勾选后再开始处理。"
+                        f"（当前匹配规则: {pattern_display}）"
+                    )
+                    return [], None, msg
                 if output_dir is None:
                     output_dir = input_path
             else:
@@ -279,11 +330,27 @@ def _collect_files_to_process(manager, input_path: Path):
                     _, pattern_display = get_patterns()
                 else:
                     pattern_display = "*.csv"
-                msg = f"未找到匹配 '{pattern_display}' 的文件或未选择任何文件"
+                # 如果有文件树，说明是目录扫描模式；否则是树形勾选模式
+                if not hasattr(manager.gui, "file_tree"):
+                    msg = f"在目录中未找到匹配 '{pattern_display}' 的文件"
+                else:
+                    msg = f"文件树中未勾选任何文件（当前匹配规则: {pattern_display}）"
                 return [], None, msg
             return files_to_process, output_dir, None
 
-        return [], None, "输入路径无效"
+        # 路径既不是文件也不是目录
+        error_details = ""
+        if not input_path.exists():
+            error_details = f"路径不存在: {input_path}"
+        else:
+            try:
+                input_path.stat()
+                error_details = f"路径无效或无权限访问: {input_path}"
+            except PermissionError:
+                error_details = f"权限不足，无法访问: {input_path}"
+            except Exception as e:
+                error_details = f"路径访问失败: {input_path}（{str(e)}）"
+        return [], None, error_details
     except Exception:
         logger.debug("收集待处理文件失败", exc_info=True)
         return [], None, "收集待处理文件时发生错误"
@@ -578,8 +645,6 @@ def _create_special_part_node(
         # 确保mapping中有该部件的数据结构
         if internal_part_name not in mapping:
             mapping[internal_part_name] = {"source": "", "target": ""}
-
-        part_mapping = mapping[internal_part_name]
 
         # 创建部件名节点
         part_item = QTreeWidgetItem([internal_part_name, ""])

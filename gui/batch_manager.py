@@ -162,6 +162,8 @@ class BatchManager:
         self._bus_connected = False
         self.history_store: Optional[BatchHistoryStore] = None
         self.history_panel: Optional[BatchHistoryPanel] = None
+        self._selected_paths = None  # 用户选择的多个路径
+        self._last_history_record_id = None  # 最近的历史记录ID
 
         # 特殊格式：缓存每个文件的 source->target 映射控件（已废弃，使用下面两个）
         # key: (file_path_str, source_part)
@@ -1273,15 +1275,21 @@ class BatchManager:
             # 获取选择的文件/目录
             selected = dlg.selectedFiles()
             chosen_paths = [Path(p) for p in selected]
+            if not chosen_paths:
+                return
             first_path = chosen_paths[0]
 
             if hasattr(self.gui, "inp_batch_input"):
-                # 显示选择的路径（如果多个则显示为 "path1 + 2 more"）
+                # 显示所有选择的路径，便于用户确认处理范围
                 if len(chosen_paths) > 1:
-                    display_text = f"{first_path} (+{len(chosen_paths)-1} 项)"
+                    display_text = "; ".join(str(p) for p in chosen_paths)
                 else:
                     display_text = str(first_path)
                 self.gui.inp_batch_input.setText(display_text)
+                try:
+                    self.gui.inp_batch_input.setToolTip(display_text)
+                except Exception:
+                    pass
 
             # 保存实际选择的路径列表到 _selected_paths（用于批处理）
             self._selected_paths = chosen_paths
@@ -2229,7 +2237,7 @@ class BatchManager:
                 self.refresh_part_mapping_panel()
             except Exception:
                 logger.debug("刷新映射面板失败", exc_info=True)
-            
+
             # 然后验证文件状态（此时 file_part_selection_by_file 已被填充）
             items = getattr(self.gui, "_file_tree_items", {}) or {}
             for fp_str, item in items.items():
@@ -2368,7 +2376,11 @@ class BatchManager:
                 bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
             except Exception:
                 logger.debug("恢复步骤1提示失败", exc_info=True)
-            QMessageBox.information(self.gui, "完成", message)
+            try:
+                if hasattr(self.gui, "statusBar"):
+                    self.gui.statusBar().showMessage(message, 5000)
+            except Exception:
+                logger.debug("显示完成提示失败（非致命）", exc_info=True)
         except Exception as e:
             logger.error(f"处理完成事件失败: {e}")
 
@@ -2379,7 +2391,17 @@ class BatchManager:
             self._record_batch_history(status="failed")
             # 恢复 GUI 状态并提示错误
             self._restore_gui_after_batch(enable_undo=False)
-            QMessageBox.critical(self.gui, "错误", f"批处理出错: {error_msg}")
+            try:
+                from gui.managers import report_user_error
+
+                report_user_error(
+                    self.gui,
+                    "批处理出错",
+                    "批处理过程中发生错误",
+                    details=str(error_msg),
+                )
+            except Exception:
+                logger.debug("报告批处理错误失败（非致命）", exc_info=True)
             # 返回 True 表示该 manager 已展示用户可见的错误提示，调用方无需重复展示
             return True
         except Exception as e:

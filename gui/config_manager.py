@@ -35,6 +35,12 @@ class ConfigManager:
         # 统一使用 ProjectConfigModel
         self.project_config_model: Optional[ProjectConfigModel] = None
         self._config_modified = False  # 追踪配置是否被修改
+        self._values_changed_connected = False  # 追踪是否已连接面板信号
+        self._values_changed_panels = []  # 已连接的面板列表
+        self._loaded_snapshot = None  # 加载时的配置快照
+        self._values_changed_connected = False
+        self._values_changed_panels = []
+        self._loaded_snapshot = None
         try:
             self.signal_bus = getattr(gui_instance, "signal_bus", SignalBus.instance())
         except Exception:
@@ -241,19 +247,14 @@ class ConfigManager:
 
                 if not getattr(self, "_values_changed_connected", False):
                     if src_panel is not None:
-                        src_panel.valuesChanged.connect(
-                            self._on_panel_values_changed
-                        )
+                        src_panel.valuesChanged.connect(self._on_panel_values_changed)
                     if tgt_panel is not None:
-                        tgt_panel.valuesChanged.connect(
-                            self._on_panel_values_changed
-                        )
+                        tgt_panel.valuesChanged.connect(self._on_panel_values_changed)
                     self._values_changed_connected = True
             except Exception:
                 logger.debug("连接坐标系面板信号失败", exc_info=True)
 
-            QMessageBox.information(self.gui, "成功", f"配置已加载:\n{fname}")
-            # UX：该提示属于短时反馈，避免长时间占用状态栏主消息区
+            # UX：使用状态栏反馈，避免成功类操作打断流程
             self.gui.statusBar().showMessage(f"已加载: {fname}", 5000)
             # 配置加载后触发文件状态刷新，让用户看到配置生效
             try:
@@ -395,11 +396,16 @@ class ConfigManager:
                     # 重置修改标志和操作状态
                     self._config_modified = False
                     try:
-                        if hasattr(self.gui, "ui_state_manager") and getattr(self.gui, "ui_state_manager"):
+                        if hasattr(self.gui, "ui_state_manager") and getattr(
+                            self.gui, "ui_state_manager"
+                        ):
                             try:
                                 self.gui.ui_state_manager.clear_user_modified()
                             except Exception:
-                                logger.debug("通过 UIStateManager 清理操作状态失败", exc_info=True)
+                                logger.debug(
+                                    "通过 UIStateManager 清理操作状态失败",
+                                    exc_info=True,
+                                )
                         else:
                             self.gui.operation_performed = False
                     except Exception:
@@ -432,11 +438,15 @@ class ConfigManager:
             # 重置修改标志和操作状态
             self._config_modified = False
             try:
-                if hasattr(self.gui, "ui_state_manager") and getattr(self.gui, "ui_state_manager"):
+                if hasattr(self.gui, "ui_state_manager") and getattr(
+                    self.gui, "ui_state_manager"
+                ):
                     try:
                         self.gui.ui_state_manager.clear_user_modified()
                     except Exception:
-                        logger.debug("通过 UIStateManager 清理操作状态失败", exc_info=True)
+                        logger.debug(
+                            "通过 UIStateManager 清理操作状态失败", exc_info=True
+                        )
                 else:
                     self.gui.operation_performed = False
             except Exception:

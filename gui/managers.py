@@ -1000,7 +1000,13 @@ class ModelManager:
                     self._read_variant_fields(variant)
                 )
                 logger.debug(
-                    f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}"
+                    "读取变体字段: cs=%s, mc=%s, cref=%s, bref=%s, sref=%s, q=%s",
+                    cs is not None,
+                    mc,
+                    cref_val,
+                    bref_val,
+                    sref_val,
+                    q_val,
                 )
                 payload = {
                     "PartName": part_name,
@@ -1052,7 +1058,13 @@ class ModelManager:
                     self._read_variant_fields(variant)
                 )
                 logger.debug(
-                    f"读取变体字段: cs={cs is not None}, mc={mc}, cref={cref_val}, bref={bref_val}, sref={sref_val}, q={q_val}"
+                    "读取变体字段: cs=%s, mc=%s, cref=%s, bref=%s, sref=%s, q=%s",
+                    cs is not None,
+                    mc,
+                    cref_val,
+                    bref_val,
+                    sref_val,
+                    q_val,
                 )
                 payload = {
                     "PartName": part_name,

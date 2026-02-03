@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import sys
+import traceback
 from typing import Optional
 
 from PySide6.QtCore import (
@@ -36,9 +38,6 @@ def _safe_log(msg: str, exc_info: bool = True) -> None:
         _logger.debug(msg, exc_info=exc_info)
     except Exception:
         try:
-            import sys
-            import traceback
-
             traceback.print_exc()
             try:
                 sys.stderr.write(msg + "\n")

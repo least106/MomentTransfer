@@ -18,9 +18,18 @@ logger = logging.getLogger(__name__)
 def run_batch_processing(manager):
     """运行批处理（由 `BatchManager` 委托）。"""
     try:
+
+        def _report_error(title: str, message: str, details: str = None) -> None:
+            try:
+                from gui.managers import report_user_error
+
+                report_user_error(manager.gui, title, message, details=details)
+            except Exception:
+                logger.debug("报告用户错误失败（非致命）", exc_info=True)
+
         project_data = getattr(manager.gui, "current_config", None)
         if project_data is None:
-            QMessageBox.warning(manager.gui, "提示", "请先加载配置（JSON）")
+            _report_error("缺少配置", "请先加载配置（JSON）")
             return
 
         # 优先使用保存的多选路径列表，否则从输入框读取
@@ -29,18 +38,18 @@ def run_batch_processing(manager):
             input_paths = selected_paths
         else:
             if not hasattr(manager.gui, "inp_batch_input"):
-                QMessageBox.warning(manager.gui, "提示", "缺少输入路径控件")
+                _report_error("输入控件缺失", "缺少输入路径控件")
                 return
             input_text = manager.gui.inp_batch_input.text().strip()
             if not input_text:
-                QMessageBox.warning(manager.gui, "错误", "请选择输入路径")
+                _report_error("未选择路径", "请选择输入路径")
                 return
             # 从文本解析路径（移除可能的 "(+N 项)" 后缀）
             if "(+" in input_text and input_text.endswith("项)"):
                 input_text = input_text.split("(")[0].strip()
             input_path = Path(input_text)
             if not input_path.exists():
-                QMessageBox.warning(manager.gui, "错误", "输入路径不存在")
+                _report_error("路径不存在", "输入路径不存在", details=str(input_path))
                 return
             input_paths = [input_path]
 
@@ -64,12 +73,12 @@ def run_batch_processing(manager):
                 all_files.extend(list(files))
 
         if error_msg:
-            QMessageBox.warning(manager.gui, "提示", error_msg)
+            _report_error("收集失败", "无法收集待处理文件", details=str(error_msg))
             return
 
         files_to_process = all_files
         if not files_to_process:
-            QMessageBox.warning(manager.gui, "提示", "未找到可处理的文件")
+            _report_error("无可处理文件", "未找到可处理的文件")
             return
 
         if output_dir is None:
@@ -303,7 +312,11 @@ def restore_gui_after_batch(manager, *, enable_undo: bool = False):
                     from PySide6.QtCore import QTimer
 
                     def _reset_btn_text():
-                        for btn_name in ("btn_batch", "btn_start_menu", "btn_batch_in_toolbar"):
+                        for btn_name in (
+                            "btn_batch",
+                            "btn_start_menu",
+                            "btn_batch_in_toolbar",
+                        ):
                             try:
                                 btn = getattr(manager.gui, btn_name, None)
                                 if btn is not None and hasattr(btn, "setText"):

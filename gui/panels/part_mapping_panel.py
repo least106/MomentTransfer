@@ -48,7 +48,9 @@ class PartMappingPanel(QGroupBox):
 
         self.mapping_tree = QTreeWidget()
         self.mapping_tree.setColumnCount(4)
-        self.mapping_tree.setHeaderLabels(["文件/部件", "Source Part", "Target Part", "状态"])
+        self.mapping_tree.setHeaderLabels(
+            ["文件/部件", "Source Part", "Target Part", "状态"]
+        )
         self.mapping_tree.setAlternatingRowColors(True)
         self.mapping_tree.setRootIsDecorated(True)
         self.mapping_tree.setUniformRowHeights(True)
@@ -90,7 +92,7 @@ class PartMappingPanel(QGroupBox):
 
             source_names = manager._get_source_part_names()
             target_names = manager._get_target_part_names()
-            
+
             # 获取默认的 Source/Target Part（用于尚无选择的文件）
             default_source = self._get_default_part("source", manager, source_names)
             default_target = self._get_default_part("target", manager, target_names)
@@ -98,9 +100,7 @@ class PartMappingPanel(QGroupBox):
             for file_path in files:
                 try:
                     file_item = QTreeWidgetItem([str(file_path.name), "", "", ""])
-                    file_item.setData(
-                        0, int(Qt.UserRole) + 1, {"file": str(file_path)}
-                    )
+                    file_item.setData(0, int(Qt.UserRole) + 1, {"file": str(file_path)})
                     self.mapping_tree.addTopLevelItem(file_item)
 
                     try:
@@ -148,7 +148,9 @@ class PartMappingPanel(QGroupBox):
             logger.debug("读取文件列表失败", exc_info=True)
         return sorted({f for f in files if f.exists()})
 
-    def _get_default_part(self, kind: str, manager, available_names: list) -> Optional[str]:
+    def _get_default_part(
+        self, kind: str, manager, available_names: list
+    ) -> Optional[str]:
         """获取默认的 Source/Target Part（优先级：Panel选择 > 配置中的第一个 > None）"""
         try:
             # 优先从面板中读取当前选择
@@ -156,7 +158,7 @@ class PartMappingPanel(QGroupBox):
                 panel = getattr(manager.gui, "source_panel", None)
             else:
                 panel = getattr(manager.gui, "target_panel", None)
-            
+
             if panel is not None:
                 try:
                     selector = getattr(panel, "part_selector", None)
@@ -166,14 +168,13 @@ class PartMappingPanel(QGroupBox):
                             return current_text
                 except Exception:
                     logger.debug(f"从 {kind}_panel 读取选择失败", exc_info=True)
-            
+
             # 回退：使用配置中的第一个部件
             if available_names:
                 return str(available_names[0])
         except Exception:
             logger.debug(f"获取默认 {kind} part 失败", exc_info=True)
         return None
-
 
     def _populate_regular_file(
         self,
@@ -228,12 +229,16 @@ class PartMappingPanel(QGroupBox):
 
             self.mapping_tree.setItemWidget(file_item, 1, source_combo)
             self.mapping_tree.setItemWidget(file_item, 2, target_combo)
-            
+
             # 确保默认值已被正式保存到字典
             if sel.get("source"):
-                self._on_regular_changed(manager, str(file_path), "source", sel.get("source"))
+                self._on_regular_changed(
+                    manager, str(file_path), "source", sel.get("source")
+                )
             if sel.get("target"):
-                self._on_regular_changed(manager, str(file_path), "target", sel.get("target"))
+                self._on_regular_changed(
+                    manager, str(file_path), "target", sel.get("target")
+                )
         except Exception:
             logger.debug("填充常规文件映射失败", exc_info=True)
 
@@ -282,24 +287,40 @@ class PartMappingPanel(QGroupBox):
                 )
 
                 source_combo.currentTextChanged.connect(
-                    lambda text, fp=str(file_path), internal=part_name: self._on_special_changed(
+                    lambda text, fp=str(
+                        file_path
+                    ), internal=part_name: self._on_special_changed(
                         manager, fp, internal, "source", text
                     )
                 )
                 target_combo.currentTextChanged.connect(
-                    lambda text, fp=str(file_path), internal=part_name: self._on_special_changed(
+                    lambda text, fp=str(
+                        file_path
+                    ), internal=part_name: self._on_special_changed(
                         manager, fp, internal, "target", text
                     )
                 )
 
                 self.mapping_tree.setItemWidget(child, 1, source_combo)
                 self.mapping_tree.setItemWidget(child, 2, target_combo)
-                
+
                 # 确保默认值已被正式保存到字典
                 if part_mapping.get("source"):
-                    self._on_special_changed(manager, str(file_path), part_name, "source", part_mapping.get("source"))
+                    self._on_special_changed(
+                        manager,
+                        str(file_path),
+                        part_name,
+                        "source",
+                        part_mapping.get("source"),
+                    )
                 if part_mapping.get("target"):
-                    self._on_special_changed(manager, str(file_path), part_name, "target", part_mapping.get("target"))
+                    self._on_special_changed(
+                        manager,
+                        str(file_path),
+                        part_name,
+                        "target",
+                        part_mapping.get("target"),
+                    )
         except Exception:
             logger.debug("填充特殊文件映射失败", exc_info=True)
 
@@ -360,7 +381,10 @@ class PartMappingPanel(QGroupBox):
 
     def _mark_modified(self, manager) -> None:
         try:
-            if hasattr(manager.gui, "ui_state_manager") and manager.gui.ui_state_manager:
+            if (
+                hasattr(manager.gui, "ui_state_manager")
+                and manager.gui.ui_state_manager
+            ):
                 manager.gui.ui_state_manager.mark_operation_performed()
         except Exception:
             logger.debug("标记未保存状态失败（非致命）", exc_info=True)
