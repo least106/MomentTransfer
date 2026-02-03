@@ -47,6 +47,16 @@ from gui.panels import ConfigPanel, OperationPanel, PartMappingPanel
 # 导入管理器和工具
 from gui.signal_bus import SignalBus
 
+# 导入新的辅助模块以改进代码质量
+from gui.error_handling import ErrorContext, safe_execute, try_or_log
+from gui.status_manager import StatusMessageManager
+from gui.dialog_helpers import (
+    show_error_dialog,
+    show_info_dialog,
+    show_yes_no_cancel_dialog,
+    show_confirm_save_changes_dialog,
+)
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -83,6 +93,9 @@ class IntegratedAeroGUI(QMainWindow):
         self.model_manager = ModelManager(self)
 
         self.ui_state_manager = UIStateManager(self)
+
+        # 状态消息管理器占位符（在初始化时创建）
+        self.status_message_manager = None
 
         # 管理器占位（将由 InitializationManager 初始化）
         self.config_manager = None
@@ -806,12 +819,7 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             pass
                         if success:
-                            try:
-                                QMessageBox.information(
-                                    self, "成功", f"项目已保存到: {saved_fp}"
-                                )
-                            except Exception:
-                                logger.debug("无法显示保存成功提示", exc_info=True)
+                            show_info_dialog(self, "成功", f"项目已保存到: {saved_fp}")
                         else:
                             # UX：ProjectManager.save_project 内部已负责向用户展示失败原因。
                             # 这里避免重复弹窗，仅做轻量提示。
@@ -880,14 +888,7 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             pass
                         if success:
-                            try:
-                                QMessageBox.information(
-                                    self, "成功", f"项目已保存到: {saved_fp}"
-                                )
-                            except Exception as e:
-                                logger.debug(
-                                    "无法显示保存成功提示: %s", e, exc_info=True
-                                )
+                            show_info_dialog(self, "成功", f"项目已保存到: {saved_fp}")
                         else:
                             # UX：ProjectManager.save_project 内部已负责向用户展示失败原因。
                             # 这里避免重复弹窗，仅做轻量提示。
@@ -929,10 +930,7 @@ class IntegratedAeroGUI(QMainWindow):
 
             if self.project_manager:
                 if self.project_manager.create_new_project():
-                    try:
-                        QMessageBox.information(self, "成功", "新项目已创建")
-                    except Exception as e:
-                        logger.debug("无法显示新项目提示: %s", e, exc_info=True)
+                    show_info_dialog(self, "成功", "新项目已创建")
         except Exception as e:
             logger.error("创建新Project失败: %s", e)
 
@@ -973,14 +971,9 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             pass
                         if success:
-                            try:
-                                QMessageBox.information(
-                                    self, "成功", f"项目已加载: {loaded_fp}"
-                                )
-                            except Exception as e:
-                                logger.debug(
-                                    "无法显示加载成功提示: %s", e, exc_info=True
-                                )
+                            show_info_dialog(
+                                self, "成功", f"项目已加载: {loaded_fp}"
+                            )
                         else:
                             # UX：ProjectManager.load_project 内部会对解析失败/版本不匹配等情况弹窗说明。
                             # 这里避免重复弹窗，仅做轻量提示。
@@ -1103,24 +1096,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 except Exception:
                                     pass
                                 if success:
-                                    try:
-                                        QMessageBox.information(
-                                            self, "成功", f"项目已保存到: {saved_fp}"
-                                        )
-                                    except Exception:
-                                        logger.debug(
-                                            "无法显示保存成功提示", exc_info=True
-                                        )
+                                    show_info_dialog(self, "成功", f"项目已保存到: {saved_fp}")
                                 else:
-                                    try:
-                                        QMessageBox.critical(
-                                            self, "错误", "项目保存失败"
-                                        )
-                                    except Exception:
-                                        logger.debug(
-                                            "无法显示保存失败对话框（非致命）",
-                                            exc_info=True,
-                                        )
+                                    show_error_dialog(self, "错误", "项目保存失败")
                                 try:
                                     loop.quit()
                                 except Exception:
@@ -1193,27 +1171,13 @@ class IntegratedAeroGUI(QMainWindow):
                                     except Exception:
                                         pass
                                     if success:
-                                        try:
-                                            QMessageBox.information(
-                                                self,
-                                                "成功",
-                                                f"项目已保存到: {saved_fp}",
-                                            )
-                                        except Exception:
-                                            logger.debug(
-                                                "无法显示保存成功提示: %s",
-                                                exc_info=True,
-                                            )
+                                        show_info_dialog(
+                                            self,
+                                            "成功",
+                                            f"项目已保存到: {saved_fp}",
+                                        )
                                     else:
-                                        try:
-                                            QMessageBox.critical(
-                                                self, "错误", "项目保存失败"
-                                            )
-                                        except Exception:
-                                            logger.debug(
-                                                "无法显示保存失败对话框（非致命）",
-                                                exc_info=True,
-                                            )
+                                        show_error_dialog(self, "错误", "项目保存失败")
                                     try:
                                         loop.quit()
                                     except Exception:
@@ -1276,63 +1240,45 @@ class IntegratedAeroGUI(QMainWindow):
             if not getattr(self, "batch_manager", None) or not getattr(
                 self, "config_manager", None
             ):
-                try:
-                    QMessageBox.information(
-                        self,
-                        "功能暂不可用",
-                        "系统尚未就绪（正在初始化或管理器未启动），请稍候再试。",
-                    )
-                except Exception:
-                    try:
-                        from gui.managers import _report_ui_exception
-
-                        _report_ui_exception(self, "显示未就绪提示失败（非致命）")
-                    except Exception:
-                        logger.debug("显示未就绪提示失败（非致命）", exc_info=True)
+                show_info_dialog(
+                    self,
+                    "功能暂不可用",
+                    "系统尚未就绪（正在初始化或管理器未启动），请稍候再试。",
+                )
                 return
 
             # 检查配置是否被修改
             if self.config_manager and self.config_manager.is_config_modified():
                 # 配置已修改，弹出对话框确认用户是否继续或先保存
-                try:
-                    from PySide6.QtWidgets import QMessageBox
+                result = show_yes_no_cancel_dialog(
+                    self,
+                    "未保存的配置",
+                    "检测到配置文件有未保存的修改。\n\n是否保存配置后再运行批处理？",
+                )
 
-                    result = QMessageBox.warning(
-                        self,
-                        "未保存的配置",
-                        "检测到配置文件有未保存的修改。\n\n是否保存配置后再运行批处理？",
-                        QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                        QMessageBox.Yes,
-                    )
-
-                    if result == QMessageBox.Yes:
-                        # 用户选择保存，先保存配置
-                        if self.config_manager.save_config():
-                            # 保存成功，继续批处理
-                            self.batch_manager.run_batch_processing()
-                        else:
-                            # 保存失败或用户取消，不继续批处理
-                            logger.warning("用户取消保存配置或保存失败，批处理已中止")
-                            return
-                    elif result == QMessageBox.No:
-                        # 用户选择不保存，继续使用当前未保存配置运行批处理
-                        logger.warning("批处理将使用未保存的配置")
-                        try:
-                            self.statusBar().showMessage(
-                                "警告：批处理将使用当前未保存的配置", 5000
-                            )
-                        except Exception:
-                            pass
+                if result == "yes":
+                    # 用户选择保存，先保存配置
+                    if self.config_manager.save_config():
+                        # 保存成功，继续批处理
                         self.batch_manager.run_batch_processing()
                     else:
-                        # 用户取消，不运行批处理
-                        logger.info("用户取消了批处理")
+                        # 保存失败或用户取消，不继续批处理
+                        logger.warning("用户取消保存配置或保存失败，批处理已中止")
                         return
-                except Exception:
-                    logger.debug(
-                        "未保存配置对话弹出失败，直接运行批处理", exc_info=True
-                    )
+                elif result == "no":
+                    # 用户选择不保存，继续使用当前未保存配置运行批处理
+                    logger.warning("批处理将使用未保存的配置")
+                    try:
+                        self.statusBar().showMessage(
+                            "警告：批处理将使用当前未保存的配置", 5000
+                        )
+                    except Exception:
+                        pass
                     self.batch_manager.run_batch_processing()
+                else:
+                    # 用户取消，不运行批处理
+                    logger.info("用户取消了批处理")
+                    return
             else:
                 # 配置未修改，直接运行批处理
                 self.batch_manager.run_batch_processing()

@@ -126,6 +126,10 @@ from src.file_cache import get_file_cache
 # 项目内模块（本地导入）
 from src.special_format_detector import looks_like_special_format
 
+# 导入新的辅助模块以改进代码质量
+from gui.error_handling import ErrorContext, safe_execute, try_or_log
+from gui.dialog_helpers import show_error_dialog, show_info_dialog
+
 logger = logging.getLogger(__name__)
 try:
     from gui.managers import _report_ui_exception

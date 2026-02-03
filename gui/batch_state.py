@@ -9,6 +9,10 @@ from typing import Dict
 from PySide6.QtCore import QThread, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
+# 导入新的辅助模块以改进代码质量
+from gui.error_handling import ErrorContext, try_or_log
+from gui.dialog_helpers import show_error_dialog
+
 logger = logging.getLogger(__name__)
 
 

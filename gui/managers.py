@@ -56,6 +56,9 @@ from typing import Dict, Optional
 
 from PySide6.QtWidgets import QWidget
 
+# 导入新的辅助模块以改进代码质量
+from gui.error_handling import ErrorContext, try_or_log
+
 _logger = logging.getLogger(__name__)
 
 # ==================== 文件验证状态符号常数 ====================
