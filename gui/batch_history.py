@@ -31,22 +31,34 @@ class BatchHistoryStore:
         base_dir.mkdir(parents=True, exist_ok=True)
         self.store_path = store_path or base_dir / "batch_history.json"
         self.records: List[Dict] = []
+        self.redo_stack: List[Dict] = []  # 重做栈：存储被撤销的记录
         self._load()
 
     def _load(self) -> None:
         try:
             if self.store_path.exists():
                 data = json.loads(self.store_path.read_text(encoding="utf-8"))
-                if isinstance(data, list):
+                if isinstance(data, dict):
+                    # 新格式：包含records和redo_stack
+                    self.records = data.get("records", [])
+                    self.redo_stack = data.get("redo_stack", [])
+                elif isinstance(data, list):
+                    # 兼容旧格式：仅有records列表
                     self.records = data
+                    self.redo_stack = []
         except Exception:
             logger.debug("加载批处理历史失败，使用空记录", exc_info=True)
             self.records = []
+            self.redo_stack = []
 
     def save(self) -> None:
         try:
+            data = {
+                "records": self.records,
+                "redo_stack": self.redo_stack,
+            }
             self.store_path.write_text(
-                json.dumps(self.records, ensure_ascii=False, indent=2),
+                json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
         except Exception:
@@ -61,7 +73,23 @@ class BatchHistoryStore:
         new_files: List[str],
         status: str = "completed",
         timestamp: Optional[datetime] = None,
+        row_selections: Optional[Dict] = None,
+        part_mappings: Optional[Dict] = None,
+        file_configs: Optional[Dict] = None,
     ) -> Dict:
+        """添加批处理记录
+        
+        Args:
+            input_path: 输入路径
+            output_dir: 输出目录
+            files: 处理的文件列表
+            new_files: 生成的新文件列表
+            status: 状态
+            timestamp: 时间戳
+            row_selections: 数据行选择信息 {file_path: {part: [row_indices]}}
+            part_mappings: Part映射配置 {file_path: {internal_part: {source: xx, target: yy}}}
+            file_configs: 文件配置 {file_path: {source: xx, target: yy}}
+        """
         ts = timestamp or datetime.now()
         record = {
             "id": uuid.uuid4().hex,
@@ -72,35 +100,90 @@ class BatchHistoryStore:
             "new_files": list(new_files or []),
             "status": status,
         }
+        
+        # 添加数据选择信息
+        if row_selections:
+            record["row_selections"] = row_selections
+        if part_mappings:
+            record["part_mappings"] = part_mappings
+        if file_configs:
+            record["file_configs"] = file_configs
+        
         self.records.insert(0, record)
+        # 新增记录时清空redo栈（标准Undo/Redo行为）
+        self.redo_stack = []
         self.save()
         return record
-
-    def mark_status(self, record_id: str, status: str) -> Optional[Dict]:
-        for rec in self.records:
-            if rec.get("id") == record_id:
-                rec["status"] = status
-                self.save()
-                return rec
-        return None
 
     def get_records(self) -> List[Dict]:
         return list(self.records)
 
+    def undo_record(self, record_id: str) -> Optional[Dict]:
+        """撤销指定记录：标记为undone并移入redo栈"""
+        for rec in self.records:
+            if rec.get("id") == record_id:
+                # 保存撤销前的状态到redo栈
+                redo_item = {
+                    "record": dict(rec),  # 深拷贝记录
+                    "action": "undo",
+                    "timestamp": datetime.now().isoformat(),
+                }
+                self.redo_stack.insert(0, redo_item)
+                # 标记为已撤销
+                rec["status"] = "undone"
+                self.save()
+                return rec
+        return None
+
+    def redo_record(self) -> Optional[Dict]:
+        """重做最近一次撤销：从redo栈恢复记录"""
+        if not self.redo_stack:
+            return None
+        
+        redo_item = self.redo_stack.pop(0)
+        record = redo_item.get("record")
+        if not record:
+            return None
+        
+        # 恢复记录状态
+        record_id = record.get("id")
+        for rec in self.records:
+            if rec.get("id") == record_id:
+                rec["status"] = record.get("status", "completed")
+                self.save()
+                return rec
+        
+        return None
+
+    def get_redo_info(self) -> Optional[Dict]:
+        """获取可重做的操作信息（用于按钮提示）"""
+        if not self.redo_stack:
+            return None
+        
+        redo_item = self.redo_stack[0]
+        record = redo_item.get("record", {})
+        return {
+            "count": len(record.get("new_files", [])),
+            "output_dir": record.get("output_dir", ""),
+            "timestamp": record.get("timestamp", ""),
+        }
+
 
 class BatchHistoryPanel(QWidget):
-    """右侧历史面板：按日期分组显示批处理记录，并提供撤销按钮。"""
+    """右侧历史面板：按日期分组显示批处理记录，并提供撤销/重做按钮。"""
 
     def __init__(
         self,
         store: BatchHistoryStore,
         *,
         on_undo: Optional[Callable[[str], None]] = None,
+        on_redo: Optional[Callable[[str], None]] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.store = store
         self._on_undo_cb = on_undo
+        self._on_redo_cb = on_redo
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -123,6 +206,9 @@ class BatchHistoryPanel(QWidget):
 
     def set_undo_callback(self, cb: Callable[[str], None]) -> None:
         self._on_undo_cb = cb
+
+    def set_redo_callback(self, cb: Callable[[str], None]) -> None:
+        self._on_redo_cb = cb
 
     def refresh(self) -> None:
         self.tree.clear()
@@ -147,7 +233,7 @@ class BatchHistoryPanel(QWidget):
                 status = self._status_text(rec.get("status"))
                 row = QTreeWidgetItem([time_part, summary, status, ""])
                 day_item.addChild(row)
-                btn = self._make_undo_button(rec)
+                btn = self._make_action_button(rec)
                 if btn is not None:
                     self.tree.setItemWidget(row, 3, btn)
 
@@ -156,7 +242,24 @@ class BatchHistoryPanel(QWidget):
     def _build_summary(self, rec: Dict) -> str:
         count = len(rec.get("files") or [])
         out_dir = rec.get("output_dir", "")
-        return f"{count} 个文件 → {out_dir}"
+        
+        # 添加数据选择信息
+        summary = f"{count} 个文件 → {out_dir}"
+        
+        # 统计选中的数据行数
+        row_selections = rec.get("row_selections", {})
+        if row_selections:
+            total_rows = 0
+            for file_sels in row_selections.values():
+                if isinstance(file_sels, dict):  # 特殊格式: {part: [rows]}
+                    for rows in file_sels.values():
+                        total_rows += len(rows) if rows else 0
+                elif isinstance(file_sels, list):  # 常规格式: [rows]
+                    total_rows += len(file_sels)
+            if total_rows > 0:
+                summary += f" | {total_rows} 行数据"
+        
+        return summary
 
     def _status_text(self, status: Optional[str]) -> str:
         if status == "undone":
@@ -165,15 +268,80 @@ class BatchHistoryPanel(QWidget):
             return "失败"
         return "完成"
 
-    def _make_undo_button(self, rec: Dict) -> Optional[QPushButton]:
-        if rec.get("status") == "undone":
-            return None
+    def get_record_details(self, record_id: str) -> Optional[str]:
+        """获取记录的详细信息（用于tooltip）"""
+        for rec in self.store.get_records():
+            if rec.get("id") == record_id:
+                details = []
+                
+                # 基本信息
+                details.append(f"📁 输入: {rec.get('input_path', '')}")
+                details.append(f"💾 输出: {rec.get('output_dir', '')}")
+                details.append(f"📄 文件: {len(rec.get('files', []))} 个")
+                details.append(f"✅ 生成: {len(rec.get('new_files', []))} 个")
+                
+                # 数据选择信息
+                row_selections = rec.get("row_selections", {})
+                if row_selections:
+                    details.append("")
+                    details.append("📋 数据选择:")
+                    for file_path, sels in row_selections.items():
+                        file_name = Path(file_path).name if file_path else "Unknown"
+                        if isinstance(sels, dict):  # 特殊格式
+                            for part, rows in sels.items():
+                                count = len(rows) if rows else 0
+                                details.append(f"  • {file_name} [{part}]: {count} 行")
+                        elif isinstance(sels, list):  # 常规格式
+                            details.append(f"  • {file_name}: {len(sels)} 行")
+                
+                # Part映射信息
+                part_mappings = rec.get("part_mappings", {})
+                if part_mappings:
+                    details.append("")
+                    details.append("🔗 Part映射:")
+                    for file_path, mappings in part_mappings.items():
+                        file_name = Path(file_path).name if file_path else "Unknown"
+                        if isinstance(mappings, dict):
+                            for internal_part, mapping in mappings.items():
+                                if isinstance(mapping, dict):
+                                    src = mapping.get("source", "?")
+                                    tgt = mapping.get("target", "?")
+                                    details.append(f"  • {file_name} [{internal_part}]: {src} → {tgt}")
+                
+                return "\n".join(details)
+        return None
+
+    def _make_action_button(self, rec: Dict) -> Optional[QPushButton]:
+        """根据记录状态创建撤销或重做按钮"""
         new_files = rec.get("new_files") or []
         if not new_files:
             return None
-        btn = QPushButton("撤销")
-        btn.setProperty("class", "ghost")
-        btn.clicked.connect(lambda _=False, rid=rec.get("id"): self._on_undo(rid))
+        
+        record_id = rec.get("id")
+        status = rec.get("status")
+        
+        # 获取详细信息用于tooltip
+        details = self.get_record_details(record_id)
+        
+        if status == "undone":
+            # 已撤销状态 → 显示重做按钮
+            btn = QPushButton("🔄 重做")
+            btn.setProperty("class", "primary")  # 使用主题色突出显示
+            tooltip = f"重做此批处理（{len(new_files)} 个文件）"
+            if details:
+                tooltip += f"\n\n{details}"
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(lambda _=False, rid=record_id: self._on_redo(rid))
+        else:
+            # 完成状态 → 显示撤销按钮
+            btn = QPushButton("撤销")
+            btn.setProperty("class", "ghost")
+            tooltip = f"撤销此批处理（删除 {len(new_files)} 个文件）"
+            if details:
+                tooltip += f"\n\n{details}"
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(lambda _=False, rid=record_id: self._on_undo(rid))
+        
         return btn
 
     def _on_undo(self, record_id: Optional[str]) -> None:
@@ -256,3 +424,58 @@ class BatchHistoryPanel(QWidget):
                 pass
         except Exception:
             logger.debug("撤销操作触发失败", exc_info=True)
+
+    def _on_redo(self, record_id: Optional[str]) -> None:
+        """处理重做按钮点击"""
+        try:
+            if not record_id or not callable(self._on_redo_cb):
+                return
+            
+            # 查找记录以便显示提示信息
+            record = None
+            for rec in self.store.get_records():
+                if rec.get("id") == record_id:
+                    record = rec
+                    break
+            
+            if record is None:
+                return
+            
+            # 确认对话框
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                
+                out_dir = record.get("output_dir", "")
+                new_files = record.get("new_files") or []
+                count = len(new_files)
+                
+                msg = (
+                    f"确认重做此批处理操作吗？\n\n"
+                    f"📁 输出目录: {out_dir}\n"
+                    f"📄 涉及文件: {count} 个\n\n"
+                    f"⚠️ 注意：重做只会恢复记录状态，不会重新生成已删除的文件。\n"
+                    f"如需重新生成文件，请重新运行批处理。"
+                )
+                
+                resp = QMessageBox.question(
+                    self,
+                    "确认重做",
+                    msg,
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                
+                if resp != QMessageBox.Yes:
+                    return
+            except Exception:
+                # 若无法弹出确认对话，则直接返回
+                return
+            
+            # 调用回调并刷新
+            self._on_redo_cb(record_id)
+            try:
+                self.refresh()
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("重做操作触发失败", exc_info=True)
