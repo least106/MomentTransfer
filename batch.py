@@ -160,10 +160,11 @@ def _prepare_calculator_for_file(
 
     calculator_to_use = base_calculator
 
-    # 如果没有提供 project_data 或者没有指定 source/target，直接返回基础计算器
+    # 如果没有提供 project_data，直接返回基础计算器
     if project_data is None:
         return calculator_to_use
 
+    # 如果source和target都没有（既无全局参数也不需要推测），返回基础计算器
     if source_part is None and target_part is None:
         return calculator_to_use
 
@@ -171,79 +172,142 @@ def _prepare_calculator_for_file(
         source_names = list((getattr(project_data, "source_parts", {}) or {}).keys())
         target_names = list((getattr(project_data, "target_parts", {}) or {}).keys())
 
-        actual_source = source_part
-        actual_target = target_part
+        # Global默认值（来自命令行参数）
+        global_source = source_part
+        global_target = target_part
 
-        # 智能推测 source part
-        if not actual_source:
-            # 尝试从文件名推测
+        actual_source = None
+        actual_target = None
+
+        # 第一步：尝试智能推测 source part（从文件名）
+        if source_names:
             file_stem = file_path.stem  # 不含扩展名的文件名
             source_result = infer_source_part(
                 file_stem,
                 getattr(project_data, "source_parts", {}) or {},
                 strategy="fuzzy",
-                allow_default=True,
+                allow_default=False,  # 不使用引擎的默认策略，我们有Global默认值
             )
 
             if source_result.is_successful():
                 actual_source = source_result.part_name
-                logger.info(
-                    "文件 %s：智能推测 source part → '%s' (方法=%s, 置信度=%s)",
-                    file_path.name,
-                    actual_source,
-                    source_result.method,
-                    source_result.confidence,
+                confidence_info = (
+                    f"方法={source_result.method}, 置信度={source_result.confidence}"
                 )
 
-                # 低置信度时给出警告
-                if source_result.confidence == "low":
-                    logger.warning(
-                        "文件 %s：source part 推测置信度较低，建议使用 --source-part 参数明确指定",
+                # 如果有Global默认值，比较推测结果
+                if global_source:
+                    if actual_source != global_source:
+                        logger.info(
+                            "文件 %s：智能推测 source part '%s' (%s)，覆盖全局设置 '%s'",
+                            file_path.name,
+                            actual_source,
+                            confidence_info,
+                            global_source,
+                        )
+                    else:
+                        logger.debug(
+                            "文件 %s：智能推测结果与全局设置一致 '%s'",
+                            file_path.name,
+                            actual_source,
+                        )
+                else:
+                    logger.info(
+                        "文件 %s：智能推测 source part → '%s' (%s)",
                         file_path.name,
+                        actual_source,
+                        confidence_info,
                     )
             else:
-                error_msg = format_inference_error(
-                    file_stem, source_result, "source", "--source-part"
-                )
-                logger.error("文件 %s：%s", file_path.name, error_msg)
-                raise ValueError(
-                    f"文件 {file_path.name} 无法推测 source part\n{error_msg}"
-                )
+                # 推测失败，使用Global默认值
+                if global_source:
+                    actual_source = global_source
+                    logger.info(
+                        "文件 %s：无法推测 source part，使用全局设置 '%s'",
+                        file_path.name,
+                        global_source,
+                    )
+                else:
+                    # 既无推测也无Global，报错
+                    error_msg = format_inference_error(
+                        file_stem, source_result, "source", "--source-part"
+                    )
+                    logger.error("文件 %s：%s", file_path.name, error_msg)
+                    raise ValueError(
+                        f"文件 {file_path.name} 无法推测 source part，且未提供全局默认值\n{error_msg}"
+                    )
 
-        # 智能推测 target part
-        if not actual_target:
+        # 如果source_names为空但有Global，直接使用Global
+        if not actual_source and global_source:
+            actual_source = global_source
+            logger.debug(
+                "文件 %s：使用全局 source part '%s'", file_path.name, global_source
+            )
+
+        # 第二步：智能推测 target part
+        if target_names and actual_source:
             target_result = infer_target_part(
                 actual_source,
                 getattr(project_data, "target_parts", {}) or {},
                 file_path=file_path,
                 strategy="fuzzy",
-                allow_default=True,
+                allow_default=False,  # 不使用引擎的默认策略，我们有Global默认值
             )
 
             if target_result.is_successful():
                 actual_target = target_result.part_name
-                logger.info(
-                    "文件 %s：智能推测 target part → '%s' (方法=%s, 置信度=%s)",
-                    file_path.name,
-                    actual_target,
-                    target_result.method,
-                    target_result.confidence,
+                confidence_info = (
+                    f"方法={target_result.method}, 置信度={target_result.confidence}"
                 )
 
-                # 低置信度时给出警告
-                if target_result.confidence == "low":
-                    logger.warning(
-                        "文件 %s：target part 推测置信度较低，建议使用 --target-part 参数明确指定",
+                # 如果有Global默认值，比较推测结果
+                if global_target:
+                    if actual_target != global_target:
+                        logger.info(
+                            "文件 %s：智能推测 target part '%s' (%s)，覆盖全局设置 '%s'",
+                            file_path.name,
+                            actual_target,
+                            confidence_info,
+                            global_target,
+                        )
+                    else:
+                        logger.debug(
+                            "文件 %s：智能推测结果与全局设置一致 '%s'",
+                            file_path.name,
+                            actual_target,
+                        )
+                else:
+                    logger.info(
+                        "文件 %s：智能推测 target part → '%s' (%s)",
                         file_path.name,
+                        actual_target,
+                        confidence_info,
                     )
             else:
-                error_msg = format_inference_error(
-                    actual_source, target_result, "target", "--target-part"
-                )
-                logger.error("文件 %s：%s", file_path.name, error_msg)
-                raise ValueError(
-                    f"文件 {file_path.name} 无法推测 target part\n{error_msg}"
-                )
+                # 推测失败，使用Global默认值
+                if global_target:
+                    actual_target = global_target
+                    logger.info(
+                        "文件 %s：无法推测 target part，使用全局设置 '%s'",
+                        file_path.name,
+                        global_target,
+                    )
+                else:
+                    # 既无推测也无Global，报错
+                    error_msg = format_inference_error(
+                        actual_source, target_result, "target", "--target-part"
+                    )
+                    logger.error("文件 %s：%s", file_path.name, error_msg)
+                    raise ValueError(
+                        f"文件 {file_path.name} 无法推测 target part，且未提供全局默认值\n{error_msg}"
+                    )
+
+        # 如果target_names为空但有Global，直接使用Global
+        if not actual_target and global_target:
+            actual_target = global_target
+            logger.debug(
+                "文件 %s：使用全局 target part '%s'", file_path.name, global_target
+            )
 
         calculator_to_use = AeroCalculator(
             project_data, source_part=actual_source, target_part=actual_target
