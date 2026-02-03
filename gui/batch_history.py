@@ -78,7 +78,7 @@ class BatchHistoryStore:
         file_configs: Optional[Dict] = None,
     ) -> Dict:
         """添加批处理记录
-        
+
         Args:
             input_path: 输入路径
             output_dir: 输出目录
@@ -86,8 +86,10 @@ class BatchHistoryStore:
             new_files: 生成的新文件列表
             status: 状态
             timestamp: 时间戳
-            row_selections: 数据行选择信息 {file_path: {part: [row_indices]}}
-            part_mappings: Part映射配置 {file_path: {internal_part: {source: xx, target: yy}}}
+            row_selections: 数据行选择信息
+                {file_path: {part: [row_indices]}}
+            part_mappings: Part映射配置
+                {file_path: {internal_part: {source: xx, target: yy}}}
             file_configs: 文件配置 {file_path: {source: xx, target: yy}}
         """
         ts = timestamp or datetime.now()
@@ -100,7 +102,7 @@ class BatchHistoryStore:
             "new_files": list(new_files or []),
             "status": status,
         }
-        
+
         # 添加数据选择信息
         if row_selections:
             record["row_selections"] = row_selections
@@ -108,7 +110,7 @@ class BatchHistoryStore:
             record["part_mappings"] = part_mappings
         if file_configs:
             record["file_configs"] = file_configs
-        
+
         self.records.insert(0, record)
         # 新增记录时清空redo栈（标准Undo/Redo行为）
         self.redo_stack = []
@@ -139,12 +141,12 @@ class BatchHistoryStore:
         """重做最近一次撤销：从redo栈恢复记录"""
         if not self.redo_stack:
             return None
-        
+
         redo_item = self.redo_stack.pop(0)
         record = redo_item.get("record")
         if not record:
             return None
-        
+
         # 恢复记录状态
         record_id = record.get("id")
         for rec in self.records:
@@ -152,14 +154,14 @@ class BatchHistoryStore:
                 rec["status"] = record.get("status", "completed")
                 self.save()
                 return rec
-        
+
         return None
 
     def get_redo_info(self) -> Optional[Dict]:
         """获取可重做的操作信息（用于按钮提示）"""
         if not self.redo_stack:
             return None
-        
+
         redo_item = self.redo_stack[0]
         record = redo_item.get("record", {})
         return {
@@ -242,10 +244,10 @@ class BatchHistoryPanel(QWidget):
     def _build_summary(self, rec: Dict) -> str:
         count = len(rec.get("files") or [])
         out_dir = rec.get("output_dir", "")
-        
+
         # 添加数据选择信息
         summary = f"{count} 个文件 → {out_dir}"
-        
+
         # 统计选中的数据行数
         row_selections = rec.get("row_selections", {})
         if row_selections:
@@ -258,7 +260,7 @@ class BatchHistoryPanel(QWidget):
                     total_rows += len(file_sels)
             if total_rows > 0:
                 summary += f" | {total_rows} 行数据"
-        
+
         return summary
 
     def _status_text(self, status: Optional[str]) -> str:
@@ -273,13 +275,13 @@ class BatchHistoryPanel(QWidget):
         for rec in self.store.get_records():
             if rec.get("id") == record_id:
                 details = []
-                
+
                 # 基本信息
                 details.append(f"📁 输入: {rec.get('input_path', '')}")
                 details.append(f"💾 输出: {rec.get('output_dir', '')}")
                 details.append(f"📄 文件: {len(rec.get('files', []))} 个")
                 details.append(f"✅ 生成: {len(rec.get('new_files', []))} 个")
-                
+
                 # 数据选择信息
                 row_selections = rec.get("row_selections", {})
                 if row_selections:
@@ -293,7 +295,7 @@ class BatchHistoryPanel(QWidget):
                                 details.append(f"  • {file_name} [{part}]: {count} 行")
                         elif isinstance(sels, list):  # 常规格式
                             details.append(f"  • {file_name}: {len(sels)} 行")
-                
+
                 # Part映射信息
                 part_mappings = rec.get("part_mappings", {})
                 if part_mappings:
@@ -306,8 +308,12 @@ class BatchHistoryPanel(QWidget):
                                 if isinstance(mapping, dict):
                                     src = mapping.get("source", "?")
                                     tgt = mapping.get("target", "?")
-                                    details.append(f"  • {file_name} [{internal_part}]: {src} → {tgt}")
-                
+                                    line = (
+                                        f"  • {file_name} "
+                                        f"[{internal_part}]: {src} → {tgt}"
+                                    )
+                                    details.append(line)
+
                 return "\n".join(details)
         return None
 
@@ -316,13 +322,13 @@ class BatchHistoryPanel(QWidget):
         new_files = rec.get("new_files") or []
         if not new_files:
             return None
-        
+
         record_id = rec.get("id")
         status = rec.get("status")
-        
+
         # 获取详细信息用于tooltip
         details = self.get_record_details(record_id)
-        
+
         if status == "undone":
             # 已撤销状态 → 显示重做按钮
             btn = QPushButton("🔄 重做")
@@ -341,7 +347,7 @@ class BatchHistoryPanel(QWidget):
                 tooltip += f"\n\n{details}"
             btn.setToolTip(tooltip)
             btn.clicked.connect(lambda _=False, rid=record_id: self._on_undo(rid))
-        
+
         return btn
 
     def _on_undo(self, record_id: Optional[str]) -> None:
@@ -430,25 +436,25 @@ class BatchHistoryPanel(QWidget):
         try:
             if not record_id or not callable(self._on_redo_cb):
                 return
-            
+
             # 查找记录以便显示提示信息
             record = None
             for rec in self.store.get_records():
                 if rec.get("id") == record_id:
                     record = rec
                     break
-            
+
             if record is None:
                 return
-            
+
             # 确认对话框
             try:
                 from PySide6.QtWidgets import QMessageBox
-                
+
                 out_dir = record.get("output_dir", "")
                 new_files = record.get("new_files") or []
                 count = len(new_files)
-                
+
                 msg = (
                     f"确认重做此批处理操作吗？\n\n"
                     f"📁 输出目录: {out_dir}\n"
@@ -456,7 +462,7 @@ class BatchHistoryPanel(QWidget):
                     f"⚠️ 注意：重做只会恢复记录状态，不会重新生成已删除的文件。\n"
                     f"如需重新生成文件，请重新运行批处理。"
                 )
-                
+
                 resp = QMessageBox.question(
                     self,
                     "确认重做",
@@ -464,13 +470,13 @@ class BatchHistoryPanel(QWidget):
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
                 )
-                
+
                 if resp != QMessageBox.Yes:
                     return
             except Exception:
                 # 若无法弹出确认对话，则直接返回
                 return
-            
+
             # 调用回调并刷新
             self._on_redo_cb(record_id)
             try:

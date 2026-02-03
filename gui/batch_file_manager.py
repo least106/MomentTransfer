@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import List
 
-from PySide6.QtWidgets import QDialog, QFileDialog, QCheckBox, QHBoxLayout
+from PySide6.QtWidgets import QCheckBox, QDialog, QFileDialog, QHBoxLayout
 
 logger = logging.getLogger(__name__)
 

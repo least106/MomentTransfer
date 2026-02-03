@@ -4,10 +4,10 @@ import logging
 import threading
 from functools import partial
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 from PySide6.QtCore import QThread, Qt
-from PySide6.QtWidgets import QApplication, QProgressDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +27,19 @@ class BatchStateManager:
 
     def get_special_data_dict(self, file_path: Path, manager_instance):
         """获取特殊格式解析结果（带 mtime 缓存）
-        
+
         Args:
             file_path: 文件路径
             manager_instance: BatchManager 实例（用于访问 GUI 和缓存）
-        
+
         Returns:
             解析后的数据字典 {part_name: DataFrame}
         """
-        from src.special_format_parser import parse_special_format_file
         from gui.background_worker import BackgroundWorker
+        from gui.managers import _report_ui_exception, report_user_error
         from gui.signal_bus import SignalBus
-        from gui.managers import report_user_error, _report_ui_exception
-        
+        from src.special_format_parser import parse_special_format_file
+
         fp_str = str(file_path)
         try:
             mtime = file_path.stat().st_mtime
@@ -78,7 +78,10 @@ class BatchStateManager:
                 try:
                     data_dict = result or {}
                     try:
-                        self.special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
+                        self.special_data_cache[fp_str] = {
+                            "mtime": mtime,
+                            "data": data_dict,
+                        }
                     except Exception:
                         logger.debug("更新特殊格式缓存失败（非致命）", exc_info=True)
                     try:
@@ -91,7 +94,9 @@ class BatchStateManager:
                     try:
                         SignalBus.instance().specialDataParsed.emit(fp_str)
                     except Exception:
-                        logger.debug("发出 specialDataParsed 信号失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "发出 specialDataParsed 信号失败（非致命）", exc_info=True
+                        )
                 finally:
                     try:
                         setattr(manager_instance, in_progress_key, False)
@@ -136,7 +141,9 @@ class BatchStateManager:
             thread.started.connect(worker.run)
             thread.start()
         except Exception as e:
-            logger.warning("无法用 QThread 启动后台解析，尝试回退：%s", e, exc_info=True)
+            logger.warning(
+                "无法用 QThread 启动后台解析，尝试回退：%s", e, exc_info=True
+            )
             try:
                 result_holder = {}
                 done_event = threading.Event()
@@ -153,7 +160,9 @@ class BatchStateManager:
                 thr.start()
 
                 try:
-                    dlg = QProgressDialog("正在解析特殊格式…", "取消", 0, 0, manager_instance.gui)
+                    dlg = QProgressDialog(
+                        "正在解析特殊格式…", "取消", 0, 0, manager_instance.gui
+                    )
                     dlg.setWindowModality(Qt.NonModal)
                     dlg.setMaximumWidth(400)
                     cancel_requested = [False]
@@ -178,7 +187,9 @@ class BatchStateManager:
                         try:
                             QApplication.processEvents()
                         except Exception:
-                            logger.debug("处理 GUI 事件时出错（轮询线程）", exc_info=True)
+                            logger.debug(
+                                "处理 GUI 事件时出错（轮询线程）", exc_info=True
+                            )
                 finally:
                     try:
                         if dlg is not None:
@@ -199,7 +210,10 @@ class BatchStateManager:
                 if "data" in result_holder:
                     data_dict = result_holder.get("data") or {}
                     try:
-                        self.special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
+                        self.special_data_cache[fp_str] = {
+                            "mtime": mtime,
+                            "data": data_dict,
+                        }
                     except Exception:
                         logger.debug("写入特殊格式缓存失败（非致命）", exc_info=True)
                     return data_dict
@@ -210,7 +224,9 @@ class BatchStateManager:
                     "后台解析特殊格式时发生错误，已回退到同步解析",
                 )
             except Exception:
-                logger.warning("无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True)
+                logger.warning(
+                    "无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True
+                )
 
             # 同步解析（在主线程执行）
             try:
@@ -231,9 +247,14 @@ class BatchStateManager:
             try:
                 data_dict = parse_special_format_file(file_path)
                 try:
-                    self.special_data_cache[fp_str] = {"mtime": mtime, "data": data_dict}
+                    self.special_data_cache[fp_str] = {
+                        "mtime": mtime,
+                        "data": data_dict,
+                    }
                 except Exception:
-                    logger.debug("写入特殊格式缓存失败（同步回退，非致命）", exc_info=True)
+                    logger.debug(
+                        "写入特殊格式缓存失败（同步回退，非致命）", exc_info=True
+                    )
                 try:
                     manager_instance.gui.statusBar().showMessage("", 0)
                 except Exception:
@@ -256,19 +277,20 @@ class BatchStateManager:
 
     def get_table_df_preview(self, file_path: Path, gui_instance, max_rows: int = 200):
         """读取 CSV/Excel 的预览数据（带 mtime 缓存）
-        
+
         Args:
             file_path: 文件路径
             gui_instance: GUI 主窗口实例
             max_rows: 最大预览行数
-        
+
         Returns:
             DataFrame 或 None
         """
         import pandas as pd
-        from src.utils import read_table_preview
+
         from gui.managers import report_user_error
-        
+        from src.utils import read_table_preview
+
         fp_str = str(file_path)
         try:
             mtime = file_path.stat().st_mtime
@@ -394,3 +416,138 @@ class BatchStateManager:
             status = None
 
         return status
+
+    def ensure_special_mapping_rows(self, manager_instance, file_item, file_path: Path):
+        """在文件节点下创建/刷新子节点：每个内部部件一行，包含source和target两个下拉框
+
+        Args:
+            manager_instance: BatchManager 实例
+            file_item: 文件树节点
+            file_path: 文件路径
+        """
+        from src.special_format_parser import get_part_names
+
+        try:
+            mapping = manager_instance._get_or_init_special_mapping(file_path)
+            mapping_by_file = getattr(
+                manager_instance.gui, "special_part_mapping_by_file", {}
+            )
+            mapping_by_file = mapping_by_file or {}
+            part_names = get_part_names(file_path)
+            source_names = manager_instance._get_source_part_names()
+            target_names = manager_instance._get_target_part_names()
+
+            # 智能推测：在加载配置/新增 part 后自动补全未映射项（不覆盖用户已设置的映射）
+            try:
+                if source_names and target_names:
+                    if manager_instance._auto_fill_special_mappings(
+                        file_path,
+                        part_names,
+                        source_names,
+                        target_names,
+                        mapping,
+                    ):
+                        mapping_by_file[str(file_path)] = mapping
+                        manager_instance.gui.special_part_mapping_by_file = (
+                            mapping_by_file
+                        )
+            except Exception:
+                logger.debug("自动补全映射失败", exc_info=True)
+
+            # 行选择缓存：确保存在（首次默认全选）
+            manager_instance._ensure_special_row_selection_storage(
+                file_path, part_names
+            )
+
+            # 特殊格式解析数据：用于生成数据行预览
+            data_dict = manager_instance._get_special_data_dict(file_path)
+
+            # 清理旧的子节点与 widget 引用（避免 target part 列表变化后残留）
+            for i in range(file_item.childCount() - 1, -1, -1):
+                try:
+                    child = file_item.child(i)
+                    file_item.removeChild(child)
+                except Exception:
+                    logger.debug("移除子节点失败", exc_info=True)
+
+            for internal_part_name in part_names:
+                try:
+                    manager_instance._create_special_part_node(
+                        file_item,
+                        file_path,
+                        internal_part_name,
+                        source_names,
+                        target_names,
+                        mapping,
+                        data_dict,
+                    )
+                except Exception:
+                    logger.debug("创建 special part 节点失败", exc_info=True)
+
+            try:
+                file_item.setExpanded(True)
+            except Exception:
+                logger.debug("展开文件项失败", exc_info=True)
+
+            # 刷新文件状态（映射模式下会提示未映射/缺失）
+            try:
+                file_item.setText(1, manager_instance._validate_file_config(file_path))
+            except Exception:
+                logger.debug("刷新文件状态文本失败", exc_info=True)
+        except Exception:
+            logger.debug("ensure_special_mapping_rows failed", exc_info=True)
+
+    def determine_part_selection_status(
+        self, manager_instance, file_path: Path, project_data
+    ):
+        """基于 project_data 与当前选择推断该文件的 source/target 状态
+
+        状态符号说明：
+        - ✓ 可处理：Source/Target 已完整选择，文件可以处理
+        - ✓ 格式正常(待配置)：文件格式正确但项目尚未配置任何 parts
+        - ⚠ 未选择 Source/Target：缺少必要的 Source 或 Target 选择
+        - ⚠ Source缺失: part：选择的 Source 不在项目配置中
+        - ⚠ Target缺失: part：选择的 Target 不在项目配置中
+        - ❓ 未验证：验证过程出错，无法判断文件状态
+
+        Args:
+            manager_instance: BatchManager 实例
+            file_path: 文件路径
+            project_data: 项目配置数据
+
+        Returns:
+            str: 状态文本
+        """
+        try:
+            sel = (
+                getattr(manager_instance.gui, "file_part_selection_by_file", {}) or {}
+            ).get(str(file_path)) or {}
+            source_sel = (sel.get("source") or "").strip()
+            target_sel = (sel.get("target") or "").strip()
+
+            try:
+                source_names = list(
+                    (getattr(project_data, "source_parts", {}) or {}).keys()
+                )
+                target_names = list(
+                    (getattr(project_data, "target_parts", {}) or {}).keys()
+                )
+            except Exception:
+                source_names, target_names = [], []
+
+            # 允许"唯一 part 自动选取"的兜底
+            if not source_sel and len(source_names) == 1:
+                source_sel = str(source_names[0])
+            if not target_sel and len(target_names) == 1:
+                target_sel = str(target_names[0])
+
+            if not source_sel or not target_sel:
+                return "⚠ 未选择 Source/Target"
+            if source_names and source_sel not in source_names:
+                return f"⚠ Source缺失: {source_sel}"
+            if target_names and target_sel not in target_names:
+                return f"⚠ Target缺失: {target_sel}"
+            return "✓ 可处理"
+        except Exception:
+            logger.debug("确定 part 选择状态失败", exc_info=True)
+            return "❓ 未验证"

@@ -16,11 +16,11 @@
         target_part="BODY",
         target_variant=0
     )
-    
+
     # 执行单点计算
     engine = ExecutionEngine(ctx)
     result = engine.execute_frame([100, 0, -50], [0, 500, 0])
-    
+
     # 执行批量计算
     results = engine.execute_batch(forces_array, moments_array)
 """
@@ -232,7 +232,8 @@ class ExecutionEngine:
         """获取所有可用的目标坐标系。
 
         返回：
-            (target_names, target_info_dict) 其中 target_info_dict 包含每个 target 的 variants 数量
+            (target_names, target_info_dict)
+            其中 target_info_dict 包含每个 target 的 variants 数量
         """
         target_parts = self.context.project_data.target_parts
         target_names = list(target_parts.keys())
@@ -260,9 +261,8 @@ class ExecutionEngine:
             if isinstance(v, np.ndarray):
                 v = v.tolist()
             if not isinstance(v, (list, tuple)) or len(v) != 3:
-                raise ValueError(
-                    f"{name}必须是长度为3的序列，得到 {type(v)} {len(v) if hasattr(v, '__len__') else 'N/A'}"
-                )
+                v_len = len(v) if hasattr(v, "__len__") else "N/A"
+                raise ValueError(f"{name}必须是长度为3的序列，得到 {type(v)} {v_len}")
             return list(float(x) for x in v)
         except (TypeError, ValueError) as e:
             raise ValueError(f"{name}验证失败: {str(e)}") from e

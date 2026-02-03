@@ -1,7 +1,7 @@
 """批处理管理模块 - 处理批处理相关功能"""
 
 # 模块级 pylint 配置：批处理模块包含多个 GUI 回调，接受较多参数
-# 为了在小步重构过程中避免大量噪声，临时禁用参数过多与超长行警告。
+# 为了在小步重构过程中避免大量噪声,临时禁用参数过多与超长行警告。
 # 之后可以逐步移除或替换为局部禁用。
 # pylint: disable=too-many-arguments,line-too-long
 
@@ -11,14 +11,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
-    QDialog,
-    QFileDialog,
     QMessageBox,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
@@ -95,9 +92,6 @@ from gui.batch_manager_preview import (
     _apply_quick_filter_table_iter as _apply_quick_filter_table_iter_impl,
 )
 from gui.batch_manager_preview import (
-    _apply_quick_filter_to_special_table as _apply_quick_filter_to_special_table_impl,
-)
-from gui.batch_manager_preview import (
     _build_row_preview_text as _build_row_preview_text_impl,
 )
 from gui.batch_manager_preview import _clear_preview_group as _clear_preview_group_impl
@@ -131,7 +125,6 @@ from src.file_cache import get_file_cache
 
 # 项目内模块（本地导入）
 from src.special_format_detector import looks_like_special_format
-from src.special_format_parser import get_part_names, parse_special_format_file
 
 logger = logging.getLogger(__name__)
 try:
@@ -827,35 +820,10 @@ class BatchManager:
         except Exception as e:
             logger.debug("处理 table_data_row 变化失败: %s", e, exc_info=True)
             return False
-        # SignalBus 事件在初始化阶段已注册
 
     def browse_batch_input(self):
         """浏览并选择输入文件或目录 - 委托给 batch_file_manager"""
         return self._file_manager.browse_batch_input(self)
-                                else:
-                                    logger.debug(
-                                        "切换到第0个 Tab 失败（非致命）", exc_info=True
-                                    )
-                            except Exception:
-                                logger.debug(
-                                    "切换到第0个 Tab 失败（非致命）", exc_info=True
-                                )
-            except Exception:
-                try:
-                    if _report_ui_exception:
-                        _report_ui_exception(self.gui, "处理标签切换失败（非致命）")
-                    else:
-                        logger.debug("处理标签切换失败（非致命）", exc_info=True)
-                except Exception:
-                    logger.debug("处理标签切换失败（非致命）", exc_info=True)
-
-        except Exception as e:
-            # 使用统一的错误报告函数
-            from gui.managers import report_user_error
-
-            report_user_error(
-                self.gui, "浏览失败", "选择文件或目录时出错", details=str(e)
-            )
 
     def _scan_and_populate_files(self, chosen_path: Path, clear: bool = True):
         """扫描所选路径并在文件树中显示（支持目录结构，默认全选）。
@@ -1466,71 +1434,10 @@ class BatchManager:
             logger.debug("填充数据行预览失败", exc_info=True)
 
     def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
-        """在文件节点下创建/刷新子节点：每个内部部件一行，包含source和target两个下拉框。"""
-        try:
-            mapping = self._get_or_init_special_mapping(file_path)
-            mapping_by_file = getattr(self.gui, "special_part_mapping_by_file", {})
-            mapping_by_file = mapping_by_file or {}
-            part_names = get_part_names(file_path)
-            source_names = self._get_source_part_names()
-            target_names = self._get_target_part_names()
-
-            # 智能推测：在加载配置/新增 part 后自动补全未映射项（不覆盖用户已设置的映射）
-            try:
-                if source_names and target_names:
-                    if self._auto_fill_special_mappings(
-                        file_path,
-                        part_names,
-                        source_names,
-                        target_names,
-                        mapping,
-                    ):
-                        mapping_by_file[str(file_path)] = mapping
-                        self.gui.special_part_mapping_by_file = mapping_by_file
-            except Exception:
-                logger.debug("自动补全映射失败", exc_info=True)
-
-            # 行选择缓存：确保存在（首次默认全选）
-            self._ensure_special_row_selection_storage(file_path, part_names)
-
-            # 特殊格式解析数据：用于生成数据行预览
-
-            data_dict = self._get_special_data_dict(file_path)
-
-            # 清理旧的子节点与 widget 引用（避免 target part 列表变化后残留）
-            for i in range(file_item.childCount() - 1, -1, -1):
-                try:
-                    child = file_item.child(i)
-                    file_item.removeChild(child)
-                except Exception:
-                    logger.debug("移除子节点失败", exc_info=True)
-
-            for internal_part_name in part_names:
-                try:
-                    self._create_special_part_node(
-                        file_item,
-                        file_path,
-                        internal_part_name,
-                        source_names,
-                        target_names,
-                        mapping,
-                        data_dict,
-                    )
-                except Exception:
-                    logger.debug("创建 special part 节点失败", exc_info=True)
-
-            try:
-                file_item.setExpanded(True)
-            except Exception:
-                logger.debug("展开文件项失败", exc_info=True)
-
-            # 刷新文件状态（映射模式下会提示未映射/缺失）
-            try:
-                file_item.setText(1, self._validate_file_config(file_path))
-            except Exception:
-                logger.debug("刷新文件状态文本失败", exc_info=True)
-        except Exception:
-            logger.debug("_ensure_special_mapping_rows failed", exc_info=True)
+        """在文件节点下创建/刷新子节点 - 委托给 batch_state"""
+        return self._state_manager.ensure_special_mapping_rows(
+            self, file_item, file_path
+        )
 
     def refresh_file_statuses(self) -> None:
         """当配置/Part 变化后，刷新文件列表的状态与映射下拉选项。"""
