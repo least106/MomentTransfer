@@ -3,8 +3,10 @@
 
 import json
 import logging
+from typing import Optional, Tuple
 
 from src.data_loader import ProjectData, load_data, try_load_project_data
+from src.execution import create_execution_context
 from src.physics import AeroCalculator
 
 logger = logging.getLogger("batch")
@@ -18,33 +20,24 @@ def load_project_calculator(
     source_variant: int = 0,
     target_part: str = None,
     target_variant: int = 0,
-):
+) -> Tuple[ProjectData, AeroCalculator]:
     """加载几何/项目配置并返回 (project_data, AeroCalculator)
 
     支持可选的 part/variant 指定以便直接构造使用特定 variant 的计算器。
     若加载失败会抛出 ValueError，消息对用户更友好。
+
+    【已对齐】该函数现使用统一的执行上下文工厂，确保与CLI/GUI一致的配置加载流程。
     """
     try:
-        project_data = load_data(config_path)
-        if isinstance(project_data, ProjectData) and target_part is None:
-            if len(project_data.target_parts) == 1:
-                target_part = next(iter(project_data.target_parts.keys()))
-                logger.debug("配置仅有一个 Target 坐标系，已自动选择: %s", target_part)
-            else:
-                logger.debug(
-                    "配置包含 %d 个 Target 坐标系，未指定 target_part，"
-                    "将在后续处理中根据文件类型确定",
-                    len(project_data.target_parts),
-                )
-
-        calculator = AeroCalculator(
-            project_data,
+        # 使用统一的执行上下文工厂加载配置
+        ctx = create_execution_context(
+            config_path,
             source_part=source_part,
             source_variant=source_variant,
             target_part=target_part,
             target_variant=target_variant,
         )
-        return project_data, calculator
+        return ctx.project_data, ctx.calculator
     except FileNotFoundError as e:
         raise ValueError(f"配置文件未找到: {config_path}") from e
     except json.JSONDecodeError as e:

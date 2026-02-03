@@ -150,42 +150,110 @@ def _prepare_calculator_for_file(
 
     若提供了 project_data 且存在 file 级 source/target 覆盖，则为该文件创建独立的 `AeroCalculator`。
     否则返回传入的 `base_calculator`。
-    在无法推断 source/target 时抛出 ValueError 并由调用者处理。
+    使用智能推测引擎自动匹配 source/target part。
     """
+    from src.part_inference import (
+        format_inference_error,
+        infer_source_part,
+        infer_target_part,
+    )
+
     calculator_to_use = base_calculator
-    if project_data is not None and (
-        source_part is not None or target_part is not None
-    ):
-        try:
-            source_names = list(
-                (getattr(project_data, "source_parts", {}) or {}).keys()
+
+    # 如果没有提供 project_data 或者没有指定 source/target，直接返回基础计算器
+    if project_data is None:
+        return calculator_to_use
+
+    if source_part is None and target_part is None:
+        return calculator_to_use
+
+    try:
+        source_names = list((getattr(project_data, "source_parts", {}) or {}).keys())
+        target_names = list((getattr(project_data, "target_parts", {}) or {}).keys())
+
+        actual_source = source_part
+        actual_target = target_part
+
+        # 智能推测 source part
+        if not actual_source:
+            # 尝试从文件名推测
+            file_stem = file_path.stem  # 不含扩展名的文件名
+            source_result = infer_source_part(
+                file_stem,
+                getattr(project_data, "source_parts", {}) or {},
+                strategy="fuzzy",
+                allow_default=True,
             )
-            target_names = list(
-                (getattr(project_data, "target_parts", {}) or {}).keys()
-            )
 
-            actual_source = source_part
-            actual_target = target_part
-
-            if not actual_source and len(source_names) == 1:
-                actual_source = str(source_names[0])
-            if not actual_target and len(target_names) == 1:
-                actual_target = str(target_names[0])
-
-            if not actual_source or not actual_target:
-                raise ValueError(
-                    f"文件 {file_path.name} 未指定 source/target part，且无法唯一推断"
+            if source_result.is_successful():
+                actual_source = source_result.part_name
+                logger.info(
+                    "文件 %s：智能推测 source part → '%s' (方法=%s, 置信度=%s)",
+                    file_path.name,
+                    actual_source,
+                    source_result.method,
+                    source_result.confidence,
                 )
 
-            calculator_to_use = AeroCalculator(
-                project_data, source_part=actual_source, target_part=actual_target
+                # 低置信度时给出警告
+                if source_result.confidence == "low":
+                    logger.warning(
+                        "文件 %s：source part 推测置信度较低，建议使用 --source-part 参数明确指定",
+                        file_path.name,
+                    )
+            else:
+                error_msg = format_inference_error(
+                    file_stem, source_result, "source", "--source-part"
+                )
+                logger.error("文件 %s：%s", file_path.name, error_msg)
+                raise ValueError(
+                    f"文件 {file_path.name} 无法推测 source part\n{error_msg}"
+                )
+
+        # 智能推测 target part
+        if not actual_target:
+            target_result = infer_target_part(
+                actual_source,
+                getattr(project_data, "target_parts", {}) or {},
+                file_path=file_path,
+                strategy="fuzzy",
+                allow_default=True,
             )
-            logger.debug(
-                f"为文件 {file_path.name} 创建独立计算器: source={actual_source}, target={actual_target}"
-            )
-        except Exception as e:
-            logger.error("为文件 %s 创建计算器失败: %s", file_path.name, e)
-            raise
+
+            if target_result.is_successful():
+                actual_target = target_result.part_name
+                logger.info(
+                    "文件 %s：智能推测 target part → '%s' (方法=%s, 置信度=%s)",
+                    file_path.name,
+                    actual_target,
+                    target_result.method,
+                    target_result.confidence,
+                )
+
+                # 低置信度时给出警告
+                if target_result.confidence == "low":
+                    logger.warning(
+                        "文件 %s：target part 推测置信度较低，建议使用 --target-part 参数明确指定",
+                        file_path.name,
+                    )
+            else:
+                error_msg = format_inference_error(
+                    actual_source, target_result, "target", "--target-part"
+                )
+                logger.error("文件 %s：%s", file_path.name, error_msg)
+                raise ValueError(
+                    f"文件 {file_path.name} 无法推测 target part\n{error_msg}"
+                )
+
+        calculator_to_use = AeroCalculator(
+            project_data, source_part=actual_source, target_part=actual_target
+        )
+        logger.debug(
+            f"为文件 {file_path.name} 创建独立计算器: source={actual_source}, target={actual_target}"
+        )
+    except Exception as e:
+        logger.error("为文件 %s 创建计算器失败: %s", file_path.name, e)
+        raise
     return calculator_to_use
 
 
@@ -1020,6 +1088,7 @@ def run_batch_processing(
     show_progress: bool = False,
     output_json: str = None,
     summary: bool = False,
+    source_part: str = None,
     target_part: str = None,
     target_variant: int = 0,
     file_source_target_map: dict = None,
@@ -1029,12 +1098,15 @@ def run_batch_processing(
     logger = logging.getLogger("batch")
 
     logger.info("%s", "=" * 70)
-    logger.info("MomentTransfer Batch Processing")
+    logger.info("MomentConversion Batch Processing")
     logger.info("%s", "=" * 70)
     logger.info("[1/5] 加载几何配置: %s", config_path)
     try:
         project_data, calculator = load_project_calculator(
-            config_path, target_part=target_part, target_variant=target_variant
+            config_path,
+            source_part=source_part,
+            target_part=target_part,
+            target_variant=target_variant,
         )
         # 显示实际使用的 Target part 名称
         used_target = getattr(calculator, "target_frame", None)
@@ -1296,10 +1368,16 @@ def run_batch_processing(
     help="记录非数值示例的行数上限 (默认5)",
 )
 @click.option(
+    "--source-part",
+    "source_part",
+    default=None,
+    help="源 part 名称（可选，覆盖自动推测）",
+)
+@click.option(
     "--target-part",
     "target_part",
     default=None,
-    help="目标 part 名称（必须指定或通过参数提供）",
+    help="目标 part 名称（可选，覆盖自动推测）",
 )
 @click.option(
     "--target-variant",
@@ -1352,6 +1430,7 @@ def main(**cli_options):
     timestamp_format = cli_options.get("timestamp_format")
     treat_non_numeric = cli_options.get("treat_non_numeric")
     sample_rows = cli_options.get("sample_rows")
+    source_part = cli_options.get("source_part")
     target_part = cli_options.get("target_part")
     target_variant = cli_options.get("target_variant")
     strict = cli_options.get("strict")
@@ -1574,6 +1653,7 @@ def main(**cli_options):
                 show_progress=show_progress,
                 output_json=output_json,
                 summary=summary,
+                source_part=source_part,
                 target_part=target_part,
                 target_variant=target_variant,
                 file_source_target_map=None,

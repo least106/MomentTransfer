@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from src.part_inference import format_inference_error, infer_parts_for_file
 from src.physics import AeroCalculator
 from src.special_format_parser import parse_special_format_file
 
@@ -46,14 +47,94 @@ def _process_single_part(
         timestamp_format: 时间戳格式
         overwrite: 是否覆盖
     """
-    # 推断source part：优先使用part_source_mapping，否则默认=part_name
-    source_part = part_name
+    # Part 推测逻辑：优先使用显式映射，否则使用智能推测
+    source_part = None
+    target_part = None
+    explicit_source_mapping = False
+    explicit_target_mapping = False
+
+    # 1. 检查是否有显式的 source 映射
     try:
         if isinstance(part_source_mapping, dict) and part_source_mapping.get(part_name):
             source_part = part_source_mapping.get(part_name)
+            explicit_source_mapping = True
+            logger.debug("使用显式 source 映射：'%s' → '%s'", part_name, source_part)
     except (TypeError, AttributeError):
         pass
 
+    # 2. 检查是否有显式的 target 映射
+    try:
+        if isinstance(part_target_mapping, dict) and part_target_mapping.get(part_name):
+            target_part = part_target_mapping.get(part_name)
+            explicit_target_mapping = True
+            logger.debug("使用显式 target 映射：'%s' → '%s'", part_name, target_part)
+    except (TypeError, AttributeError):
+        pass
+
+    # 3. 如果没有显式映射，使用智能推测
+    if not explicit_source_mapping or not explicit_target_mapping:
+        if project_data is not None:
+            source_result, target_result = infer_parts_for_file(
+                part_name,
+                project_data,
+                file_path=file_path,
+                strategy="fuzzy",
+                allow_default=True,
+            )
+
+            # 使用推测的 source（如果没有显式映射）
+            if not explicit_source_mapping:
+                if source_result.is_successful():
+                    source_part = source_result.part_name
+                    logger.info(
+                        "智能推测 source part：'%s' → '%s' (方法=%s, 置信度=%s)",
+                        part_name,
+                        source_part,
+                        source_result.method,
+                        source_result.confidence,
+                    )
+                else:
+                    error_msg = format_inference_error(
+                        part_name, source_result, "source", "--source-part"
+                    )
+                    logger.error(error_msg)
+                    return None, {
+                        "part": part_name,
+                        "source_part": None,
+                        "target_part": target_part,
+                        "status": "failed",
+                        "reason": "source_inference_failed",
+                        "message": error_msg,
+                        "candidates": source_result.candidates,
+                    }
+
+            # 使用推测的 target（如果没有显式映射）
+            if not explicit_target_mapping:
+                if target_result.is_successful():
+                    target_part = target_result.part_name
+                    logger.info(
+                        "智能推测 target part：'%s' → '%s' (方法=%s, 置信度=%s)",
+                        part_name,
+                        target_part,
+                        target_result.method,
+                        target_result.confidence,
+                    )
+                else:
+                    error_msg = format_inference_error(
+                        part_name, target_result, "target", "--target-part"
+                    )
+                    logger.error(error_msg)
+                    return None, {
+                        "part": part_name,
+                        "source_part": source_part,
+                        "target_part": None,
+                        "status": "failed",
+                        "reason": "target_inference_failed",
+                        "message": error_msg,
+                        "candidates": target_result.candidates,
+                    }
+
+    # 行过滤逻辑（保持不变）
     try:
         selected = None
         if isinstance(part_row_selection, dict):
@@ -75,64 +156,14 @@ def _process_single_part(
         return None, {
             "part": part_name,
             "source_part": source_part,
-            "target_part": (part_target_mapping or {}).get(part_name) or None,
+            "target_part": target_part,
             "status": "skipped",
             "reason": "no_rows_selected",
             "message": msg,
         }
 
-    target_part = None
-    explicit_mapping_used = False
-    try:
-        if isinstance(part_target_mapping, dict) and part_target_mapping.get(part_name):
-            target_part = part_target_mapping.get(part_name)
-            explicit_mapping_used = True
-        else:
-            target_part = part_name
-    except (TypeError, AttributeError) as exc:
-        logger.debug(
-            "解析 part_target_mapping 时发生异常，回退为同名 target (part=%s): %s",
-            part_name,
-            exc,
-            exc_info=True,
-        )
-        target_part = part_name
-
-    if project_data is not None:
-        if hasattr(project_data, "source_parts"):
-            if source_part not in (getattr(project_data, "source_parts", {}) or {}):
-                msg = f"来源配置中不存在 Source part '{source_part}'，已跳过该块"
-                logger.warning(msg)
-                return None, {
-                    "part": part_name,
-                    "source_part": source_part,
-                    "target_part": target_part,
-                    "status": "skipped",
-                    "reason": "source_missing",
-                    "message": msg,
-                }
-
-        if hasattr(project_data, "target_parts"):
-            target_parts = getattr(project_data, "target_parts", {}) or {}
-            if target_part not in target_parts:
-                if explicit_mapping_used:
-                    msg = f"目标配置中不存在 Target part '{target_part}'，已跳过该块"
-                    reason = "target_missing"
-                else:
-                    msg = (
-                        f"part '{part_name}' 未提供 Target 映射，且不存在同名 "
-                        f"Target part '{target_part}'，已跳过该块"
-                    )
-                    reason = "target_not_mapped"
-                logger.warning(msg)
-                return None, {
-                    "part": part_name,
-                    "source_part": source_part,
-                    "target_part": target_part,
-                    "status": "skipped",
-                    "reason": reason,
-                    "message": msg,
-                }
+    # 移除旧的 target_part 推测逻辑（已被上面的智能推测替代）
+    # 智能推测已经确保 source_part 和 target_part 都存在于配置中
 
     required_cols = ["Cx", "Cy", "Cz/FN", "CMx", "CMy", "CMz"]
     missing = [c for c in required_cols if c not in df.columns]
