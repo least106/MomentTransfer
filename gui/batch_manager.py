@@ -770,13 +770,8 @@ class BatchManager:
             return None
 
     def _clear_quick_filter_table(self, table) -> None:
-        """将表格恢复到未筛选的显示（白底黑字），跳过勾选列。"""
-        for r in range(table.rowCount()):
-            for c in range(1, table.columnCount()):  # 跳过勾选列
-                item = self._get_table_item(table, r, c)
-                if item:
-                    item.setBackground(QColor(255, 255, 255))
-                    item.setForeground(QColor(0, 0, 0))
+        """将表格恢复到未筛选的显示 - 委托给 batch_preview"""
+        return self._preview_renderer.clear_quick_filter_table(table)
 
     def _apply_quick_filter_table_iter(self, table, df, operator: str) -> None:
         """迭代表格行并基于筛选结果调整颜色显示。"""
@@ -831,24 +826,8 @@ class BatchManager:
             return False
 
     def _evaluate_filter(self, row_value, operator: str, filter_value: str) -> bool:
-        """评估筛选条件是否匹配"""
-        try:
-            if operator == "包含":
-                return str(filter_value).lower() in str(row_value).lower()
-            if operator == "不包含":
-                return str(filter_value).lower() not in str(row_value).lower()
-            if operator in ["=", "≠", "<", ">", "≤", "≥", "≈"]:
-                # 数值比较，委托给 helper
-                try:
-                    val = float(row_value)
-                    flt = float(filter_value)
-                except (ValueError, TypeError):
-                    return False
-                return self._compare_numeric(val, flt, operator)
-            return False
-        except Exception:
-            logger.debug("评估筛选条件失败（非致命）", exc_info=True)
-            return False
+        """评估筛选条件是否匹配 - 委托给 batch_preview"""
+        return self._preview_renderer.evaluate_filter(row_value, operator, filter_value)
 
     def _compare_numeric(self, val: float, flt: float, operator: str) -> bool:
         """比较两个浮点数，根据运算符返回布尔结果。"""
@@ -878,56 +857,10 @@ class BatchManager:
     def _apply_quick_filter_to_special_table(
         self, table, file_path_str: str, source_part: str
     ) -> None:
-        """对特殊格式表格应用快速筛选。
-
-        - 若为分页表格，调用其 set_filter_with_df 以联动翻页。
-        - 否则回退为灰显不匹配行。
-        """
-        try:
-            # 如果没有筛选条件，恢复所有行
-            if not self._quick_filter_column or not self._quick_filter_value:
-                self._clear_quick_filter_table(table)
-                return None
-
-            # 获取数据
-            data_dict = self._get_special_data_dict(Path(file_path_str))
-            df = data_dict.get(source_part)
-            if df is None or df.empty or self._quick_filter_column not in df.columns:
-                return None
-
-            operator = self._quick_filter_operator
-
-            # 分页组件联动
-            try:
-                if hasattr(table, "set_filter_with_df"):
-
-                    def _eval(v):
-                        return self._evaluate_filter(
-                            v, operator, self._quick_filter_value
-                        )
-
-                    table.set_filter_with_df(df, _eval, self._quick_filter_column)
-                    return None
-            except Exception:
-                try:
-                    if _report_ui_exception:
-                        _report_ui_exception(
-                            self.gui, "为表格设置快速筛选回调失败（非致命）"
-                        )
-                    else:
-                        logger.debug(
-                            "为表格设置快速筛选回调失败（非致命）", exc_info=True
-                        )
-                except Exception:
-                    logger.debug("为表格设置快速筛选回调失败（非致命）", exc_info=True)
-
-            # 应用筛选（委托给 helper）
-            return _apply_quick_filter_to_special_table_impl(
-                self, table, file_path_str, source_part
-            )
-        except Exception as e:
-            logger.debug(f"应用特殊格式表格快速筛选失败: {e}", exc_info=True)
-            return None
+        """对特殊格式表格应用快速筛选 - 委托给 batch_preview"""
+        return self._preview_renderer.apply_quick_filter_to_special_table(
+            table, file_path_str, source_part
+        )
 
     def _apply_quick_filter_special_iter(self, table, df, operator: str) -> None:
         """针对特殊格式表的筛选迭代与颜色更新逻辑。"""

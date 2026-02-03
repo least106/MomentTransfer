@@ -3,9 +3,9 @@
 
 import json
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
-from src.data_loader import ProjectData, load_data, try_load_project_data
+from src.data_loader import ProjectData, try_load_project_data
 from src.execution import create_execution_context
 from src.physics import AeroCalculator
 

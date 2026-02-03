@@ -1,11 +1,9 @@
 """测试批处理多选文件和目录修复"""
 
-from pathlib import Path
 
 import pytest
 
 from gui.batch_manager import BatchManager
-from gui.batch_manager_batch import run_batch_processing
 from gui.batch_manager_files import _collect_checked_files_from_tree
 
 

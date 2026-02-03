@@ -1,7 +1,5 @@
 """测试取消按钮可见性和特殊格式解析取消修复"""
 
-from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 

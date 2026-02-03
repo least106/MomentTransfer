@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.execution import ExecutionContext, ExecutionEngine, ExecutionResult
+from src.execution import ExecutionEngine, ExecutionResult
 
 logger = logging.getLogger(__name__)
 
