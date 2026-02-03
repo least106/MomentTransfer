@@ -1,6 +1,8 @@
 # MomentTransfer - 气动力矩坐标变换工具
 
-[![CI](https://github.com/least106/MomentTransfer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/least106/MomentTransfer/actions/workflows/ci.yml)
+[![Tests](https://github.com/least106/MomentTransfer/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/least106/MomentTransfer/actions/workflows/test.yml)
+[![Code Style](https://github.com/least106/MomentTransfer/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/least106/MomentTransfer/actions/workflows/lint.yml)
+[![Code Quality](https://github.com/least106/MomentTransfer/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/least106/MomentTransfer/actions/workflows/quality.yml)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 
 ## 项目简介

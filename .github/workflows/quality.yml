@@ -1,0 +1,39 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git line endings
+        run: git config --global core.safecrlf false
+
+      - name: Set up Python for quality check
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install quality tools
+        run: |
+          python -m pip install --upgrade pip
+          # 安装质量检查工具，优先清华镜像；若镜像不可用则回退到官方 PyPI
+          pip install -r requirements.txt -r requirements-dev.txt -i https://pypi.tuna.tsinghua.edu.cn/simple || python -m pip install -r requirements.txt -r requirements-dev.txt --index-url https://pypi.org/simple --no-cache-dir
+
+      - name: Run pylint (report + gate)
+        run: |
+          python -m pip show pylint || python -m pip install pylint -i https://pypi.tuna.tsinghua.edu.cn/simple
+          # 输出完整结果用于日志/排查
+          python -m pylint src/ --output-format=text > pylint_full.txt || true
+          cat pylint_full.txt
+          # 解析 score（示例输出行形如 "Your code has been rated at 9.98/10"）
+          SCORE=$(grep 'Your code has been rated at' pylint_full.txt | tail -n1 | awk -F'/' '{print $1}' | awk '{print $NF}')
+          echo "Pylint score: $SCORE"
+          # 用 awk 做数值比较（避免 heredoc/缩进问题）
+          echo "$SCORE" | awk '{ if ($1+0 < 7.0) { print "Pylint score below 7.0, failing CI"; exit 1 } }'
