@@ -16,7 +16,7 @@ class ExampleCoordSystemPlugin(CoordSystemPlugin):
         return PluginMetadata(
             name="example_coord_systems",
             version="1.0.0",
-            author="MomentTransfer Team",
+            author="MomentConversion Team",
             description="提供示例和常见坐标系定义的插件",
             plugin_type="coord_system",
         )

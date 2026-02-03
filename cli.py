@@ -1,5 +1,5 @@
 """
-MomentTransfer CLI - 单帧坐标变换工具
+MomentConversion CLI - 单帧坐标变换工具
 
 使用示例：
     python -m cli run --config data/input.json --force 100 0 -50 --moment 0 500 0
@@ -14,8 +14,7 @@ from typing import Any
 
 import click
 
-from src.data_loader import load_data
-from src.physics import AeroCalculator
+from src.execution import create_execution_engine
 
 
 def _make_serializable(v: Any) -> Any:
@@ -31,7 +30,7 @@ def _make_serializable(v: Any) -> Any:
 @click.group()
 @click.option("--verbose", is_flag=True, help="增加日志详细程度")
 def cli(verbose):
-    """MomentTransfer 命令行工具"""
+    """MomentConversion 命令行工具"""
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
 
@@ -64,46 +63,54 @@ def cli(verbose):
     help="输入力矩向量，格式: Mx My Mz (例: --moment 0 500 0)",
 )
 @click.option(
-    "--target-part",
+    "--source-part",
     default=None,
-    help="目标 part 名称（可选，多 part 时指定）",
+    help="源 part 名称（可选，覆盖自动推测）",
 )
 @click.option(
-    "--target-variant", type=int, default=0, help="目标 variant 索引，默认 0"
+    "--target-part",
+    default=None,
+    help="目标 part 名称（可选，覆盖自动推测）",
 )
-def run(config_path, output_path, force, moment, target_part, target_variant):
+@click.option("--target-variant", type=int, default=0, help="目标 variant 索引，默认 0")
+def run(
+    config_path, output_path, force, moment, source_part, target_part, target_variant
+):
     """执行单帧坐标变换
 
     \b
     示例：
         python -m cli run -c config.json --force 100 0 -50 --moment 0 500 0
-        python -m cli run -c config.json --force 100 0 -50 --moment 0 500 0 -o result.json
+        python -m cli run -c config.json --force 100 0 -50 --moment 0 500 0 --target-part TestModel
+        python -m cli run -c config.json --force 100 0 -50 --moment 0 500 0 --source-part BodyAxis --target-part WindAxis
     """
     try:
-        # 加载配置
+        # 创建执行上下文和引擎
         config_path = Path(config_path)
         if not config_path.exists():
             click.echo(f"错误：配置文件不存在 {config_path}", err=True)
             sys.exit(1)
 
         click.echo(f"[1] 加载配置: {config_path}")
-        project_data = load_data(str(config_path))
-
-        # 创建计算器
-        click.echo("[2] 初始化计算器...")
-        calculator = AeroCalculator(
-            project_data,
+        ctx, engine = create_execution_engine(
+            config_path,
+            source_part=source_part,
             target_part=target_part,
             target_variant=target_variant,
         )
 
         # 执行计算
-        click.echo("[3] 执行坐标变换...")
+        click.echo("[2] 执行坐标变换...")
         forces = list(force)
         moments = list(moment)
-        result = calculator.process_frame(forces, moments)
+        exec_result = engine.execute_frame(forces, moments)
 
         # 输出结果
+        if not exec_result.success:
+            click.echo(f"错误: {exec_result.error}", err=True)
+            sys.exit(1)
+
+        result = exec_result.data
         click.echo("\n" + "=" * 60)
         click.echo(f"输入载荷: F = {forces}, M = {moments}")
 
@@ -127,12 +134,8 @@ def run(config_path, output_path, force, moment, target_part, target_variant):
             output_data = {
                 "input": {"force": forces, "moment": moments},
                 "result": {
-                    "force_transformed": _make_serializable(
-                        result.force_transformed
-                    ),
-                    "moment_transformed": _make_serializable(
-                        result.moment_transformed
-                    ),
+                    "force_transformed": _make_serializable(result.force_transformed),
+                    "moment_transformed": _make_serializable(result.moment_transformed),
                     "coeff_force": _make_serializable(result.coeff_force),
                     "coeff_moment": _make_serializable(result.coeff_moment),
                 },

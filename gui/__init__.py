@@ -1,5 +1,5 @@
 """
-MomentTransfer GUI 包
+MomentConversion GUI 包
 模块化 GUI 组件
 """
 

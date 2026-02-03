@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "momenttransfer"
+name = "momentconversion"
 version = "0.1.0rc1"
 description = "坐标系间的力/力矩变换与气动力系数计算工具"
 readme = "README.md"
@@ -18,12 +18,12 @@ classifiers = [
 ]
 
 [project.scripts]
-momenttransfer-cli = "cli:cli"
-momenttransfer-gui = "gui_main:main"
+momentconversion-cli = "cli:cli"
+momentconversion-gui = "gui_main:main"
 
 [project.urls]
-"Homepage" = "https://github.com/least106/MomentTransfer"
-"Repository" = "https://github.com/least106/MomentTransfer"
+"Homepage" = "https://github.com/least106/MomentConversion"
+"Repository" = "https://github.com/least106/MomentConversion"
 
 [tool.setuptools]
 packages = { find = {} }

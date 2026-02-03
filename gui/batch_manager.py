@@ -1228,7 +1228,7 @@ class BatchManager:
                 "Data Files (*.csv *.xlsx *.xls *.mtfmt *.mtdata *.txt *.dat)",
                 "CSV Files (*.csv)",
                 "Excel Files (*.xlsx *.xls)",
-                "MomentTransfer (*.mtfmt *.mtdata)",
+                "MomentConversion (*.mtfmt *.mtdata)",
             ]
             dlg.setNameFilter(";;".join(parts))
 

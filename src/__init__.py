@@ -1,4 +1,4 @@
-"""MomentTransfer 包的顶层导出。
+"""MomentConversion 包的顶层导出。
 
 此文件显式列出希望对外暴露的 API 名称，避免静态分析报未使用导入。
 """

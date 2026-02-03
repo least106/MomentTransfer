@@ -1,5 +1,5 @@
 """
-Project 管理器 - 处理 MomentTransfer 项目文件的保存与恢复
+Project 管理器 - 处理 MomentConversion 项目文件的保存与恢复
 """
 
 import base64
@@ -603,7 +603,7 @@ class ProjectManager:
                                     self.gui,
                                     "另存项目文件",
                                     suggested,
-                                    "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                    "MomentConversion Project (*.mtproject);;All Files (*)",
                                 )
                                 if save_path:
                                     # 将原始文本写入目标路径以保留内容
@@ -667,7 +667,7 @@ class ProjectManager:
                                 self.gui,
                                 "另存项目文件",
                                 suggested,
-                                "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                "MomentConversion Project (*.mtproject);;All Files (*)",
                             )
                             if save_path:
                                 self._atomic_write_dict(Path(save_path), project_data)
@@ -789,7 +789,7 @@ class ProjectManager:
                                 self.gui,
                                 "另存项目文件",
                                 suggested,
-                                "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                "MomentConversion Project (*.mtproject);;All Files (*)",
                             )
                             if save_path:
                                 self._atomic_write_dict(Path(save_path), project_data)

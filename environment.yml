@@ -1,4 +1,4 @@
-name: mt
+name: MomentConversion
 channels:
   - defaults
   - conda-forge

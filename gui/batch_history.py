@@ -27,7 +27,7 @@ class BatchHistoryStore:
     """管理批处理历史的简单持久化存储。"""
 
     def __init__(self, *, store_path: Optional[Path] = None) -> None:
-        base_dir = Path.home() / ".momenttransfer"
+        base_dir = Path.home() / ".momentconversion"
         base_dir.mkdir(parents=True, exist_ok=True)
         self.store_path = store_path or base_dir / "batch_history.json"
         self.records: List[Dict] = []

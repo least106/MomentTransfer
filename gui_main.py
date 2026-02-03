@@ -1,4 +1,4 @@
-﻿"""MomentTransfer GUI 应用入口
+﻿"""MomentConversion GUI 应用入口
 
 改动：为处理用户在终端按 Ctrl+C 导致的 KeyboardInterrupt，添加 SIGINT 处理
 以便优雅退出 Qt 应用并避免在控制台打印未捕获的回溯。

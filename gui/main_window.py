@@ -1,5 +1,5 @@
 """
-MomentTransfer GUI 主窗口模块
+MomentConversion GUI 主窗口模块
 向后兼容入口：从 gui 包导入模块化的组件
 
 重构说明：
@@ -67,7 +67,7 @@ class IntegratedAeroGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         # 基本属性
-        self.setWindowTitle("MomentTransfer")
+        self.setWindowTitle("MomentConversion")
         self.resize(1500, 900)
 
         # 初始化标志
@@ -860,7 +860,7 @@ class IntegratedAeroGUI(QMainWindow):
                 self,
                 "保存Project文件",
                 start_path,
-                "MomentTransfer Project (*.mtproject);;All Files (*)",
+                "MomentConversion Project (*.mtproject);;All Files (*)",
             )
 
             if file_path:
@@ -953,7 +953,7 @@ class IntegratedAeroGUI(QMainWindow):
                 self,
                 "打开Project文件",
                 "",
-                "MomentTransfer Project (*.mtproject);;All Files (*)",
+                "MomentConversion Project (*.mtproject);;All Files (*)",
             )
 
             if file_path:
@@ -1165,7 +1165,7 @@ class IntegratedAeroGUI(QMainWindow):
                                     self,
                                     "保存 Project 文件",
                                     start,
-                                    "MomentTransfer Project (*.mtproject);;All Files (*)",
+                                    "MomentConversion Project (*.mtproject);;All Files (*)",
                                 )
                                 if not save_path:
                                     # 用户取消另存为，视为未完成保存 -> 取消原操作
@@ -1448,11 +1448,11 @@ class IntegratedAeroGUI(QMainWindow):
 
                         lm = LoggingManager(self)
                         log_file = lm.get_log_file_path() or (
-                            Path.home() / ".momenttransfer" / "momenttransfer.log"
+                            Path.home() / ".momentconversion" / "momentconversion.log"
                         )
                     except Exception:
                         log_file = (
-                            Path.home() / ".momenttransfer" / "momenttransfer.log"
+                            Path.home() / ".momentconversion" / "momentconversion.log"
                         )
 
                     log_dir = log_file.parent

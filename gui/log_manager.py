@@ -279,7 +279,7 @@ class LoggingManager:
     def _ensure_fallback_handlers(self):
         """确保存在文件与控制台处理器，作为 GUI 输出的回退。
 
-        日志文件位置：`~/.momenttransfer/momenttransfer.log`。
+        日志文件位置：`~/.momentconversion/momentconversion.log`。
         该函数对已有处理器保持幂等性。
         """
         try:
@@ -287,7 +287,7 @@ class LoggingManager:
             root.setLevel(logging.DEBUG)
 
             # 准备日志目录
-            log_dir = Path.home() / ".momenttransfer"
+            log_dir = Path.home() / ".momentconversion"
             try:
                 log_dir.mkdir(parents=True, exist_ok=True)
             except Exception:
@@ -296,7 +296,7 @@ class LoggingManager:
 
             # 添加文件处理器（如果尚未存在特定文件的 FileHandler）
             if log_dir is not None:
-                log_file = str(log_dir / "momenttransfer.log")
+                log_file = str(log_dir / "momentconversion.log")
                 has_file = False
                 for h in root.handlers:
                     if (
@@ -344,8 +344,8 @@ class LoggingManager:
         返回值: `pathlib.Path` 或 `None`（发生异常时）。
         """
         try:
-            log_dir = Path.home() / ".momenttransfer"
-            return log_dir / "momenttransfer.log"
+            log_dir = Path.home() / ".momentconversion"
+            return log_dir / "momentconversion.log"
         except Exception:
             logging.getLogger(__name__).debug(
                 "获取日志路径失败（非致命）", exc_info=True
