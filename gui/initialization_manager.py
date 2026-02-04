@@ -328,6 +328,24 @@ class InitializationManager:
             self.main_window.batch_manager = BatchManager(self.main_window)
             self.main_window.layout_manager = LayoutManager(self.main_window)
 
+            # 初始化全局状态管理器并连接到 batch_manager
+            try:
+                from gui.global_state_manager import GlobalStateManager
+                
+                state_manager = GlobalStateManager.instance()
+                batch_manager = self.main_window.batch_manager
+                
+                # 连接状态改变信号到 batch_manager 的回调
+                if hasattr(batch_manager, "_on_redo_mode_changed"):
+                    state_manager.redoModeChanged.connect(
+                        batch_manager._on_redo_mode_changed
+                    )
+                    logger.info("已连接全局状态管理器到 batch_manager")
+                else:
+                    logger.warning("batch_manager 缺少 _on_redo_mode_changed 方法")
+            except Exception as e:
+                logger.debug("初始化全局状态管理器失败: %s", e, exc_info=True)
+
             # 初始化 ProjectManager
             from gui.project_manager import ProjectManager
 
@@ -1059,10 +1077,18 @@ class InitializationManager:
     def _on_banner_exit_requested(self):
         """用户点击横幅退出按钮"""
         try:
-            # 清除重做状态
+            # 通过全局状态管理器退出重做模式
+            from gui.global_state_manager import GlobalStateManager
+            
+            state_manager = GlobalStateManager.instance()
+            if state_manager and state_manager.is_redo_mode:
+                state_manager.exit_redo_mode()
+                logger.info("已通过全局状态管理器退出重做模式")
+            
+            # 后备：清除本地状态
             if hasattr(self.main_window, "batch_manager") and self.main_window.batch_manager:
                 self.main_window.batch_manager._redo_mode_parent_id = None
-                logger.info("已退出重做模式")
+            
             logger.info("用户退出状态横幅")
         except Exception:
             logger.debug("处理横幅退出请求失败", exc_info=True)

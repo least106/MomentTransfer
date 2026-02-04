@@ -211,6 +211,15 @@ class BatchManager:
         
         # 重做模式状态
         self._redo_mode_parent_id = None  # 当前重做的父记录 ID
+        
+        # 连接全局状态管理器
+        try:
+            from gui.global_state_manager import GlobalStateManager
+            self._state_manager = GlobalStateManager.instance()
+            self._state_manager.redoModeChanged.connect(self._on_redo_mode_changed)
+        except Exception as e:
+            logger.debug("连接全局状态管理器失败: %s", e, exc_info=True)
+            self._state_manager = None
         # 监听特殊格式解析完成事件以刷新预览
         try:
             from gui.signal_bus import SignalBus
@@ -1584,6 +1593,15 @@ class BatchManager:
         """批处理完成回调"""
         try:
             logger.info(f"批处理完成: {message}")
+            
+            # 退出重做模式（如果处于该模式）
+            if self._state_manager and self._state_manager.is_redo_mode:
+                self._state_manager.exit_redo_mode()
+                logger.info("批处理完成，已退出重做模式")
+            
+            # 清除本地状态（后备）
+            self._redo_mode_parent_id = None
+            
             self._record_batch_history(status="completed")
             # 恢复 GUI 状态并提示完成
             self._restore_gui_after_batch(enable_undo=True)
@@ -1678,9 +1696,14 @@ class BatchManager:
             
             # 如果处于重做模式，设置父记录 ID
             parent_record_id = None
-            if self._redo_mode_parent_id:
-                parent_record_id = self._redo_mode_parent_id
+            if self._state_manager and self._state_manager.is_redo_mode:
+                # 从全局状态管理器获取父记录 ID
+                parent_record_id = self._state_manager.redo_parent_id
                 logger.info("记录重做生成的批处理记录，父记录: %s", parent_record_id)
+            elif self._redo_mode_parent_id:
+                # 后备：使用本地存储的 ID（兼容性）
+                parent_record_id = self._redo_mode_parent_id
+                logger.info("记录重做生成的批处理记录（使用本地状态），父记录: %s", parent_record_id)
             
             rec = store.add_record(
                 input_path=input_path,
@@ -1819,6 +1842,11 @@ class BatchManager:
 
             # 设置重做模式：标记当前处于重做状态及父记录 ID
             self._redo_mode_parent_id = record_id
+            
+            # 更新全局状态管理器
+            if self._state_manager:
+                self._state_manager.set_redo_mode(record_id, target_record)
+            
             logger.info("进入重做模式，父记录: %s", record_id)
 
             # 恢复配置状态（不是恢复文件）
@@ -1845,6 +1873,7 @@ class BatchManager:
                 banner = getattr(self.gui, "state_banner", None)
                 if banner is not None:
                     banner.show_redo_state(target_record)
+                    logger.info("状态横幅已显示重做模式")
                 else:
                     logger.debug("状态横幅组件不存在")
             except Exception as e:
@@ -1873,6 +1902,24 @@ class BatchManager:
                 logger.debug("重做提示失败: %s", e, exc_info=True)
         except Exception:
             logger.debug("重做历史记录失败", exc_info=True)
+
+    def _on_redo_mode_changed(self, is_entering: bool, record_id: str) -> None:
+        """全局状态管理器通知重做模式改变"""
+        try:
+            if is_entering:
+                logger.info("重做模式已激活: %s", record_id)
+                # 状态横幅应该已由 redo_history_record 显示
+            else:
+                logger.info("重做模式已退出: %s", record_id)
+                # 清除状态横幅
+                try:
+                    banner = getattr(self.gui, "state_banner", None)
+                    if banner is not None:
+                        banner.clear()
+                except Exception:
+                    pass
+        except Exception:
+            logger.debug("处理重做模式改变失败", exc_info=True)
 
     # 文件来源标签相关实现已完全移除
 
