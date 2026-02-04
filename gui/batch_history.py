@@ -76,6 +76,7 @@ class BatchHistoryStore:
         row_selections: Optional[Dict] = None,
         part_mappings: Optional[Dict] = None,
         file_configs: Optional[Dict] = None,
+        parent_record_id: Optional[str] = None,
     ) -> Dict:
         """添加批处理记录
 
@@ -91,6 +92,7 @@ class BatchHistoryStore:
             part_mappings: Part映射配置
                 {file_path: {internal_part: {source: xx, target: yy}}}
             file_configs: 文件配置 {file_path: {source: xx, target: yy}}
+            parent_record_id: 父记录 ID（用于树状结构，表示这是某个重做操作的子记录）
         """
         ts = timestamp or datetime.now()
         record = {
@@ -110,6 +112,10 @@ class BatchHistoryStore:
             record["part_mappings"] = part_mappings
         if file_configs:
             record["file_configs"] = file_configs
+        
+        # 添加父记录 ID（树状结构）
+        if parent_record_id:
+            record["parent_record_id"] = parent_record_id
 
         self.records.insert(0, record)
         # 新增记录时清空redo栈（标准Undo/Redo行为）

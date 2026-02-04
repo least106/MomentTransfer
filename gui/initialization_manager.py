@@ -181,18 +181,6 @@ class InitializationManager:
             )
             main_layout.setSpacing(LAYOUT_SPACING)
 
-            # 创建状态横幅（默认隐藏）
-            try:
-                from gui.state_banner import StateBanner
-
-                state_banner = StateBanner(central_widget)
-                state_banner.exitRequested.connect(self._on_banner_exit_requested)
-                self.main_window.state_banner = state_banner
-                main_layout.addWidget(state_banner)
-            except Exception:
-                logger.debug("创建状态横幅失败（非致命）", exc_info=True)
-                self.main_window.state_banner = None
-
             # 创建配置/操作面板
             config_panel = self.main_window.create_config_panel()
             part_mapping_panel = self.main_window.create_part_mapping_panel()
@@ -857,6 +845,22 @@ class InitializationManager:
             # 将工具栏添加到主窗口顶部
             self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
 
+            # 在工具栏下方添加状态横幅
+            try:
+                from gui.state_banner import StateBanner
+
+                state_banner = StateBanner()
+                state_banner.exitRequested.connect(self._on_banner_exit_requested)
+                self.main_window.state_banner = state_banner
+                # 作为 widget toolbar 添加到工具栏区域
+                banner_toolbar = self.main_window.addToolBar("StateBanner")
+                banner_toolbar.addWidget(state_banner)
+                banner_toolbar.setMovable(False)
+                banner_toolbar.setIconSize(16, 16)
+            except Exception as e:
+                logger.debug("创建状态横幅工具栏失败（非致命）: %s", e, exc_info=True)
+                self.main_window.state_banner = None
+
             # 保存按钮引用以供后续使用
             self.main_window.btn_new_project = btn_new_project
             self.main_window.btn_open_project = btn_open_project
@@ -1055,8 +1059,10 @@ class InitializationManager:
     def _on_banner_exit_requested(self):
         """用户点击横幅退出按钮"""
         try:
-            # 清除重做状态等
+            # 清除重做状态
+            if hasattr(self.main_window, "batch_manager") and self.main_window.batch_manager:
+                self.main_window.batch_manager._redo_mode_parent_id = None
+                logger.info("已退出重做模式")
             logger.info("用户退出状态横幅")
-            # TODO: 清除重做配置状态
         except Exception:
             logger.debug("处理横幅退出请求失败", exc_info=True)

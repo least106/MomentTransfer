@@ -208,6 +208,9 @@ class BatchManager:
         self._quick_filter_value = None
         # 不在构造期间立即进行 UI 绑定（控件可能尚未创建），
         # 绑定将在 InitializationManager 中在 UI 就绪后进行并可重试。
+        
+        # 重做模式状态
+        self._redo_mode_parent_id = None  # 当前重做的父记录 ID
         # 监听特殊格式解析完成事件以刷新预览
         try:
             from gui.signal_bus import SignalBus
@@ -1672,12 +1675,20 @@ class BatchManager:
                 logger.debug("遍历输出目录以收集当前文件失败: %s", e, exc_info=True)
 
             new_files = [p for p in current_files if p not in existing_resolved]
+            
+            # 如果处于重做模式，设置父记录 ID
+            parent_record_id = None
+            if self._redo_mode_parent_id:
+                parent_record_id = self._redo_mode_parent_id
+                logger.info("记录重做生成的批处理记录，父记录: %s", parent_record_id)
+            
             rec = store.add_record(
                 input_path=input_path,
                 output_dir=str(output_path),
                 files=files,
                 new_files=new_files,
                 status=status,
+                parent_record_id=parent_record_id,
             )
             try:
                 self._last_history_record_id = rec.get("id")
@@ -1805,6 +1816,10 @@ class BatchManager:
             if target_record is None:
                 logger.warning("未找到重做记录: %s", record_id)
                 return
+
+            # 设置重做模式：标记当前处于重做状态及父记录 ID
+            self._redo_mode_parent_id = record_id
+            logger.info("进入重做模式，父记录: %s", record_id)
 
             # 恢复配置状态（不是恢复文件）
             try:

@@ -27,50 +27,58 @@ class StateBanner(QWidget):
     def _setup_ui(self):
         """设置 UI"""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 4, 8, 4)  # 减少边距
+        layout.setSpacing(8)
 
         # 图标标签
         self.icon_label = QLabel("ℹ️")
-        self.icon_label.setStyleSheet("font-size: 16px;")
+        self.icon_label.setStyleSheet("font-size: 14px;")  # 缩小图标
+        self.icon_label.setFixedWidth(20)
         layout.addWidget(self.icon_label)
 
         # 消息标签
         self.message_label = QLabel()
-        self.message_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.message_label.setStyleSheet("font-weight: 500; font-size: 12px;")  # 缩小字体
+        self.message_label.setMinimumHeight(24)  # 固定高度以保证工具栏高度一致
         layout.addWidget(self.message_label, 1)
 
         # 退出按钮
-        self.exit_button = QPushButton("退出")
-        self.exit_button.setFixedHeight(24)
-        self.exit_button.setFixedWidth(60)
+        self.exit_button = QPushButton("✕")  # 改用 ✕ 符号
+        self.exit_button.setFixedHeight(22)
+        self.exit_button.setFixedWidth(32)
+        self.exit_button.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+                color: #856404;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 193, 7, 0.2);
+                border-radius: 3px;
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 193, 7, 0.4);
+            }
+        """)
         self.exit_button.clicked.connect(self._on_exit_clicked)
         layout.addWidget(self.exit_button)
 
-        # 样式
+        # 样式 - 更紧凑
         self.setStyleSheet("""
             StateBanner {
                 background-color: #fff3cd;
                 border-bottom: 1px solid #ffc107;
                 border-radius: 0px;
+                padding: 0px;
+                margin: 0px;
+                min-height: 32px;
             }
             StateBanner QLabel {
                 color: #856404;
-            }
-            StateBanner QPushButton {
-                background-color: #ffc107;
-                color: #212529;
-                border: 1px solid #ffc107;
-                border-radius: 3px;
-                padding: 4px 12px;
-                font-weight: bold;
-            }
-            StateBanner QPushButton:hover {
-                background-color: #e0a800;
-                border-color: #d39e00;
-            }
-            StateBanner QPushButton:pressed {
-                background-color: #d39e00;
+                margin: 0px;
+                padding: 0px;
             }
         """)
 
@@ -87,7 +95,6 @@ class StateBanner(QWidget):
         """
         try:
             input_path = record_info.get("input_path", "未知")
-            timestamp = record_info.get("timestamp", "")
 
             # 简化路径显示
             if input_path and input_path != "未知":
@@ -99,22 +106,8 @@ class StateBanner(QWidget):
             else:
                 display_path = input_path
 
-            # 格式化时间
-            time_str = ""
-            if timestamp:
-                try:
-                    from datetime import datetime
-
-                    dt = datetime.fromisoformat(timestamp)
-                    time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    time_str = timestamp
-
-            # 设置消息
-            msg = f"🔄 重做模式：{display_path}"
-            if time_str:
-                msg += f" ({time_str})"
-            msg += " - 点击「开始处理」重新执行批处理"
+            # 简化消息
+            msg = f"🔄 重做 {display_path}"
 
             self.icon_label.setText("🔄")
             self.message_label.setText(msg)
