@@ -1,6 +1,5 @@
 """测试批处理多选文件和目录修复"""
 
-
 import pytest
 
 from gui.batch_manager import BatchManager

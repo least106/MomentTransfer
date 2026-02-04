@@ -94,19 +94,31 @@ def _process_single_part(
                         source_result.confidence,
                     )
                 else:
-                    error_msg = format_inference_error(
-                        part_name, source_result, "source", "--source-part"
-                    )
-                    logger.error(error_msg)
-                    return None, {
-                        "part": part_name,
-                        "source_part": None,
-                        "target_part": target_part,
-                        "status": "failed",
-                        "reason": "source_inference_failed",
-                        "message": error_msg,
-                        "candidates": source_result.candidates,
-                    }
+                        # 若项目中没有任何 source parts，则视为 source 缺失
+                        if not getattr(project_data, "source_parts", None):
+                            error_msg = "配置中无可用的 source part"
+                            logger.error(error_msg)
+                            return None, {
+                                "part": part_name,
+                                "source_part": None,
+                                "target_part": target_part,
+                                "status": "skipped",
+                                "reason": "source_missing",
+                                "message": error_msg,
+                            }
+                        error_msg = format_inference_error(
+                            part_name, source_result, "source", "--source-part"
+                        )
+                        logger.error(error_msg)
+                        return None, {
+                            "part": part_name,
+                            "source_part": None,
+                            "target_part": target_part,
+                            "status": "failed",
+                            "reason": "source_inference_failed",
+                            "message": error_msg,
+                            "candidates": source_result.candidates,
+                        }
 
             # 使用推测的 target（如果没有显式映射）
             if not explicit_target_mapping:
@@ -120,19 +132,31 @@ def _process_single_part(
                         target_result.confidence,
                     )
                 else:
-                    error_msg = format_inference_error(
-                        part_name, target_result, "target", "--target-part"
-                    )
-                    logger.error(error_msg)
-                    return None, {
-                        "part": part_name,
-                        "source_part": source_part,
-                        "target_part": None,
-                        "status": "failed",
-                        "reason": "target_inference_failed",
-                        "message": error_msg,
-                        "candidates": target_result.candidates,
-                    }
+                        # 若项目中没有任何 target parts，视为未映射（可跳过）
+                        if not getattr(project_data, "target_parts", None):
+                            error_msg = "配置中无可用的 target part"
+                            logger.error(error_msg)
+                            return None, {
+                                "part": part_name,
+                                "source_part": source_part,
+                                "target_part": None,
+                                "status": "skipped",
+                                "reason": "target_not_mapped",
+                                "message": error_msg,
+                            }
+                        error_msg = format_inference_error(
+                            part_name, target_result, "target", "--target-part"
+                        )
+                        logger.error(error_msg)
+                        return None, {
+                            "part": part_name,
+                            "source_part": source_part,
+                            "target_part": None,
+                            "status": "failed",
+                            "reason": "target_inference_failed",
+                            "message": error_msg,
+                            "candidates": target_result.candidates,
+                        }
 
     # 行过滤逻辑（保持不变）
     try:
@@ -209,9 +233,23 @@ def _process_single_part(
                 "reason": "no_project_data",
                 "message": msg,
             }
-        calc = AeroCalculator(
-            project_data, source_part=source_part, target_part=target_part
-        )
+        # 构建 AeroCalculator 可能在 project_data 中找不到 target 时抛出 KeyError
+        try:
+            calc = AeroCalculator(
+                project_data, source_part=source_part, target_part=target_part
+            )
+        except KeyError as e:
+            msg = f"part '{part_name}' 的 target 部件不存在: {e}，已跳过"
+            logger.warning(msg)
+            return None, {
+                "part": part_name,
+                "source_part": source_part,
+                "target_part": target_part,
+                "status": "skipped",
+                "reason": "target_missing",
+                "message": msg,
+            }
+
         results = calc.process_batch(forces, moments)
     except (ValueError, RuntimeError, TypeError) as e:
         msg = f"part '{part_name}' 处理失败: {e}"
