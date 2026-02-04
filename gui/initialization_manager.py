@@ -8,7 +8,7 @@
 
 import logging
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
@@ -874,7 +874,7 @@ class InitializationManager:
                 banner_toolbar = self.main_window.addToolBar("StateBanner")
                 banner_toolbar.addWidget(state_banner)
                 banner_toolbar.setMovable(False)
-                banner_toolbar.setIconSize(16, 16)
+                banner_toolbar.setIconSize(QSize(16, 16))
             except Exception as e:
                 logger.debug("创建状态横幅工具栏失败（非致命）: %s", e, exc_info=True)
                 self.main_window.state_banner = None
