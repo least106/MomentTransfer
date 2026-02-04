@@ -6,19 +6,24 @@ import pytest
 import src.calculator_factory as cf
 
 
+class DummyExecutionContext:
+    def __init__(self, project_data, calculator):
+        self.project_data = project_data
+        self.calculator = calculator
+
+
 def test_load_project_calculator_success(monkeypatch):
     # 模拟 ProjectData 与 AeroCalculator
     fake_pd = types.SimpleNamespace(target_parts={"T1": {}})
-
-    def fake_load(path):
-        return fake_pd
 
     class FakeCalc:
         def __init__(self, pd, **kwargs):
             self.pd = pd
 
-    monkeypatch.setattr(cf, "load_data", fake_load)
-    monkeypatch.setattr(cf, "AeroCalculator", FakeCalc)
+    def fake_create_ctx(*args, **kwargs):
+        return DummyExecutionContext(fake_pd, FakeCalc(fake_pd))
+
+    monkeypatch.setattr(cf, "create_execution_context", fake_create_ctx)
 
     pd, calc = cf.load_project_calculator("some.json")
     assert pd is fake_pd
@@ -26,17 +31,17 @@ def test_load_project_calculator_success(monkeypatch):
 
 
 def test_load_project_calculator_errors(monkeypatch):
-    def raise_notfound(path):
+    def raise_notfound(*args, **kwargs):
         raise FileNotFoundError()
 
-    monkeypatch.setattr(cf, "load_data", raise_notfound)
+    monkeypatch.setattr(cf, "create_execution_context", raise_notfound)
     with pytest.raises(ValueError):
         cf.load_project_calculator("missing.json")
 
-    def raise_json(path):
+    def raise_json(*args, **kwargs):
         raise json.JSONDecodeError("err", "doc", 0)
 
-    monkeypatch.setattr(cf, "load_data", raise_json)
+    monkeypatch.setattr(cf, "create_execution_context", raise_json)
     with pytest.raises(ValueError):
         cf.load_project_calculator("bad.json")
 

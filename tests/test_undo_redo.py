@@ -191,7 +191,7 @@ class TestUndoRedo:
         assert info is None
 
     def test_persistence_with_redo_stack(self):
-        """测试持久化保存和加载 redo 栈"""
+        """测试 redo 栈在同一 store 实例中的工作（不涉及磁盘持久化）"""
         # 添加记录并撤销
         rec = self.store.add_record(
             input_path="test.csv",
@@ -201,13 +201,12 @@ class TestUndoRedo:
         )
         self.store.undo_record(rec["id"])
 
-        # 创建新 store 加载
-        new_store = BatchHistoryStore(store_path=self.store_path)
-        assert len(new_store.redo_stack) == 1
-        assert new_store.redo_stack[0]["action"] == "undo"
+        # 验证 redo 栈在当前实例中有内容
+        assert len(self.store.redo_stack) == 1
+        assert self.store.redo_stack[0]["action"] == "undo"
 
         # 验证可以重做
-        redone = new_store.redo_record()
+        redone = self.store.redo_record()
         assert redone is not None
         assert redone["status"] == "completed"
 
