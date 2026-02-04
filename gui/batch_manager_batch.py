@@ -105,7 +105,9 @@ def run_batch_processing(manager):
 
         data_config = None
 
-        manager.batch_thread = create_batch_thread(manager, files_to_process, output_path, data_config, project_data)
+        manager.batch_thread = create_batch_thread(
+            manager, files_to_process, output_path, data_config, project_data
+        )
 
         attach_batch_thread_signals(manager)
         prepare_gui_for_batch(manager)
@@ -117,7 +119,9 @@ def run_batch_processing(manager):
         # 使用统一的错误报告函数
         from gui.managers import report_user_error
 
-        report_user_error(manager.gui, "启动批处理失败", "无法启动批处理操作", details=str(e))
+        report_user_error(
+            manager.gui, "启动批处理失败", "无法启动批处理操作", details=str(e)
+        )
 
 
 def attach_batch_thread_signals(manager):
@@ -370,9 +374,13 @@ def request_cancel_batch(manager):
         if hasattr(manager.gui, "txt_batch_log"):
             try:
                 ts = datetime.now().strftime("%H:%M:%S")
-                manager.gui.txt_batch_log.append(f"[{ts}] 用户请求取消任务，正在停止...")
+                manager.gui.txt_batch_log.append(
+                    f"[{ts}] 用户请求取消任务，正在停止..."
+                )
             except Exception:
-                logger.debug("追加取消日志到 txt_batch_log 失败（非致命）", exc_info=True)
+                logger.debug(
+                    "追加取消日志到 txt_batch_log 失败（非致命）", exc_info=True
+                )
 
         # 立即在 UI 上显示取消中状态
         try:
@@ -388,7 +396,9 @@ def request_cancel_batch(manager):
         try:
             if hasattr(manager.gui, "statusBar"):
                 try:
-                    manager.gui.statusBar().showMessage("取消请求已发送，正在停止...", 5000)
+                    manager.gui.statusBar().showMessage(
+                        "取消请求已发送，正在停止...", 5000
+                    )
                 except Exception:
                     logger.debug("显示取消状态栏消息失败（非致命）", exc_info=True)
         except Exception:
@@ -435,7 +445,9 @@ def request_cancel_batch(manager):
                                 batch_thread.wait(2000)
                                 if hasattr(manager.gui, "txt_batch_log"):
                                     ts = datetime.now().strftime("%H:%M:%S")
-                                    manager.gui.txt_batch_log.append(f"[{ts}] 已强制终止批处理线程")
+                                    manager.gui.txt_batch_log.append(
+                                        f"[{ts}] 已强制终止批处理线程"
+                                    )
                                 # 恢复按钮状态
                                 if hasattr(manager.gui, "btn_batch"):
                                     manager.gui.btn_batch.setText("开始批处理")
@@ -443,7 +455,9 @@ def request_cancel_batch(manager):
                                 if hasattr(manager.gui, "btn_cancel"):
                                     manager.gui.btn_cancel.setEnabled(False)
                             except Exception as e:
-                                logger.error("强制终止批处理线程失败: %s", e, exc_info=True)
+                                logger.error(
+                                    "强制终止批处理线程失败: %s", e, exc_info=True
+                                )
                 except Exception:
                     logger.debug("检查取消超时失败", exc_info=True)
 
@@ -483,7 +497,9 @@ def undo_batch_processing(manager):
 
         try:
             deleted_count = delete_new_output_files(manager, output_dir, existing_files)
-            QMessageBox.information(manager.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件")
+            QMessageBox.information(
+                manager.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件"
+            )
 
             # pylint: disable=protected-access
             manager.gui._batch_output_dir = None

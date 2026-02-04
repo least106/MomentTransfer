@@ -77,7 +77,9 @@ def __getattr__(name):
         parent_dir = Path(__file__).parent.parent
         gui_main_path = parent_dir / "gui_main.py"
         if gui_main_path.exists():
-            spec = importlib.util.spec_from_file_location("_gui_main_module", str(gui_main_path))
+            spec = importlib.util.spec_from_file_location(
+                "_gui_main_module", str(gui_main_path)
+            )
             if spec and spec.loader:
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)

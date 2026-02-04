@@ -196,7 +196,9 @@ class PagedTableWidget(QWidget):
             # 当前页使用的纯列名列表（便于筛选/导出使用）
             self._column_names = list(self._all_column_names[:cols])
             # 构造显示用表头（在列名前加上序号，便于用户识别列索引）
-            self._display_headers = ["选中"] + [f"{i+1}\n{str(c)}" for i, c in enumerate(self._column_names)]
+            self._display_headers = ["选中"] + [
+                f"{i+1}\n{str(c)}" for i, c in enumerate(self._column_names)
+            ]
             self.table.setHorizontalHeaderLabels(self._display_headers)
         except Exception:
             # 在异常情况下依然尝试设置一个简单的头

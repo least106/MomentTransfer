@@ -63,7 +63,9 @@ class GlobalStateManager(QObject):
         """获取重做的父记录 ID"""
         return self._redo_parent_id
 
-    def set_redo_mode(self, parent_record_id: str, record_info: Optional[Dict] = None) -> None:
+    def set_redo_mode(
+        self, parent_record_id: str, record_info: Optional[Dict] = None
+    ) -> None:
         """进入重做模式
 
         Args:
@@ -72,7 +74,10 @@ class GlobalStateManager(QObject):
         """
         try:
             # 如果已经处于重做模式且是同一个记录，则忽略
-            if self._current_state == AppState.REDO_MODE and self._redo_parent_id == parent_record_id:
+            if (
+                self._current_state == AppState.REDO_MODE
+                and self._redo_parent_id == parent_record_id
+            ):
                 logger.debug("已处于该记录的重做模式，忽略重复设置")
                 return
 

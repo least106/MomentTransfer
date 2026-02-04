@@ -150,14 +150,20 @@ class AeroCalculator:
                         if getattr(init_options, "source_part", None) is not None
                         else source_part
                     )
-                    source_variant = getattr(init_options, "source_variant", source_variant)
+                    source_variant = getattr(
+                        init_options, "source_variant", source_variant
+                    )
                     target_part = (
                         getattr(init_options, "target_part")
                         if getattr(init_options, "target_part", None) is not None
                         else target_part
                     )
-                    target_variant = getattr(init_options, "target_variant", target_variant)
-                    cache_provider = getattr(init_options, "cache_provider", cache_provider)
+                    target_variant = getattr(
+                        init_options, "target_variant", target_variant
+                    )
+                    cache_provider = getattr(
+                        init_options, "cache_provider", cache_provider
+                    )
                     cache_cfg = getattr(init_options, "cache_cfg", cache_cfg)
                 except Exception:
                     # 不应阻塞初始化，继续使用已解析的关键字参数
@@ -179,7 +185,9 @@ class AeroCalculator:
             source_frame = config
             target_frame = config
         else:
-            raise TypeError("AeroCalculator 的第一个参数必须是 ProjectData 或 FrameConfiguration")
+            raise TypeError(
+                "AeroCalculator 的第一个参数必须是 ProjectData 或 FrameConfiguration"
+            )
 
         self.source_frame = source_frame
         self.target_frame = target_frame
@@ -187,8 +195,12 @@ class AeroCalculator:
         # --- 几何初始化（带缓存支持）---
         src = self.source_frame.coord_system
         tgt = self.target_frame.coord_system
-        self.basis_source = geometry.construct_basis_matrix(src.x_axis, src.y_axis, src.z_axis)
-        self.basis_target = geometry.construct_basis_matrix(tgt.x_axis, tgt.y_axis, tgt.z_axis)
+        self.basis_source = geometry.construct_basis_matrix(
+            src.x_axis, src.y_axis, src.z_axis
+        )
+        self.basis_target = geometry.construct_basis_matrix(
+            tgt.x_axis, tgt.y_axis, tgt.z_axis
+        )
 
         # 支持依赖注入的缓存提供者（便于测试与替换）
         self._cache_provider = cache_provider
@@ -203,7 +215,9 @@ class AeroCalculator:
 
         # 计算力臂时优先使用 Source 的 MomentCenter（如果定义），否则退回到 Source 的 origin
         source_moment_ref = (
-            self.source_frame.moment_center if self.source_frame.moment_center is not None else src.origin
+            self.source_frame.moment_center
+            if self.source_frame.moment_center is not None
+            else src.origin
         )
         self.r_global = geometry.compute_moment_arm_global(
             source_origin=source_moment_ref,
@@ -225,7 +239,9 @@ class AeroCalculator:
         if self.target_frame.s_ref is None:
             raise ValueError("目标 variant 必须包含参考面积 S（数值）")
 
-    def _safe_divide(self, numerator: np.ndarray, denominator, warn_msg: str = None) -> np.ndarray:
+    def _safe_divide(
+        self, numerator: np.ndarray, denominator, warn_msg: str = None
+    ) -> np.ndarray:
         """安全除法，处理标量或按轴数组的分母。
 
         - numerator: (N, M) 或 (M,) 的数组
@@ -285,9 +301,13 @@ class AeroCalculator:
                 and "rotation" in getattr(cache_cfg, "cache_types", [])
             ):
                 if self._cache_provider is not None:
-                    rotation_cache = self._cache_provider.get_rotation_cache(getattr(cache_cfg, "max_entries", None))
+                    rotation_cache = self._cache_provider.get_rotation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
                 else:
-                    rotation_cache = get_rotation_cache(getattr(cache_cfg, "max_entries", None))
+                    rotation_cache = get_rotation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
                 try:
                     rotation_matrix = rotation_cache.get_rotation_matrix(
                         self.basis_source,
@@ -308,7 +328,9 @@ class AeroCalculator:
                     rotation_matrix = None
 
                 if rotation_matrix is None:
-                    rotation_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+                    rotation_matrix = geometry.compute_rotation_matrix(
+                        self.basis_source, self.basis_target
+                    )
                     try:
                         rotation_cache.set_rotation_matrix(
                             self.basis_source,
@@ -326,14 +348,18 @@ class AeroCalculator:
                 else:
                     logger.debug("旋转矩阵缓存命中")
             else:
-                rotation_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+                rotation_matrix = geometry.compute_rotation_matrix(
+                    self.basis_source, self.basis_target
+                )
         except (AttributeError, TypeError) as exc:
             logger.debug(
                 "获取缓存配置失败或异常，直接计算旋转矩阵: %s",
                 exc,
                 exc_info=True,
             )
-            rotation_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+            rotation_matrix = geometry.compute_rotation_matrix(
+                self.basis_source, self.basis_target
+            )
 
         return rotation_matrix
 
@@ -348,11 +374,15 @@ class AeroCalculator:
                 and "transformation" in getattr(cache_cfg, "cache_types", [])
             ):
                 if self._cache_provider is not None:
-                    transformation_cache = self._cache_provider.get_transformation_cache(
-                        getattr(cache_cfg, "max_entries", None)
+                    transformation_cache = (
+                        self._cache_provider.get_transformation_cache(
+                            getattr(cache_cfg, "max_entries", None)
+                        )
                     )
                 else:
-                    transformation_cache = get_transformation_cache(getattr(cache_cfg, "max_entries", None))
+                    transformation_cache = get_transformation_cache(
+                        getattr(cache_cfg, "max_entries", None)
+                    )
                 try:
                     r_t = transformation_cache.get_transformation(
                         self.basis_target,
@@ -373,7 +403,9 @@ class AeroCalculator:
                     r_t = None
 
                 if r_t is None:
-                    r_t = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+                    r_t = geometry.project_vector_to_frame(
+                        self.r_global, self.basis_target
+                    )
                     try:
                         transformation_cache.set_transformation(
                             self.basis_target,
@@ -407,14 +439,18 @@ class AeroCalculator:
                 or np.isnan(self.rotation_matrix).any()
             ):
                 logger.debug("检测到无效的 rotation_matrix，重新计算")
-                self.rotation_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+                self.rotation_matrix = geometry.compute_rotation_matrix(
+                    self.basis_source, self.basis_target
+                )
         except (TypeError, ValueError, AttributeError) as exc:
             logger.debug(
                 "校验 rotation_matrix 时发生异常，重新计算旋转矩阵: %s",
                 exc,
                 exc_info=True,
             )
-            self.rotation_matrix = geometry.compute_rotation_matrix(self.basis_source, self.basis_target)
+            self.rotation_matrix = geometry.compute_rotation_matrix(
+                self.basis_source, self.basis_target
+            )
 
     def _validate_and_fix_r_target(self):
         """验证并在必要时重新计算 `r_target`。"""
@@ -422,7 +458,9 @@ class AeroCalculator:
             r_arr = np.asarray(self.r_target, dtype=float)
             if r_arr.shape != (3,) or np.isnan(r_arr).any():
                 logger.debug("检测到无效的 r_target，重新计算")
-                self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+                self.r_target = geometry.project_vector_to_frame(
+                    self.r_global, self.basis_target
+                )
             else:
                 self.r_target = r_arr
         except (TypeError, ValueError, AttributeError) as exc:
@@ -431,7 +469,9 @@ class AeroCalculator:
                 exc,
                 exc_info=True,
             )
-            self.r_target = geometry.project_vector_to_frame(self.r_global, self.basis_target)
+            self.r_target = geometry.project_vector_to_frame(
+                self.r_global, self.basis_target
+            )
 
     def _rotate_vectors(self, vectors: np.ndarray) -> np.ndarray:
         """批量旋转向量到目标坐标系。
@@ -503,7 +543,9 @@ class AeroCalculator:
         C_M = self._safe_divide(
             M_final,
             denom_moment,
-            warn_msg=("动压(q) 或 参考长度 b_ref/c_ref 为零，相关轴的力矩系数已设为0。"),
+            warn_msg=(
+                "动压(q) 或 参考长度 b_ref/c_ref 为零，相关轴的力矩系数已设为0。"
+            ),
         )
 
         # 返回力和力矩的无量纲系数 (C_F, C_M)。
@@ -511,7 +553,9 @@ class AeroCalculator:
 
         return C_F, C_M
 
-    def process_frame(self, force_raw: List[float], moment_raw: List[float]) -> AeroResult:
+    def process_frame(
+        self, force_raw: List[float], moment_raw: List[float]
+    ) -> AeroResult:
         """保持原有单点方法，用于 GUI 或简单测试"""
         # 调用下面的批量方法，但传入单行数据
         f_arr = np.array([force_raw])
@@ -525,7 +569,9 @@ class AeroCalculator:
             coeff_moment=results["coeff_moment"][0].tolist(),
         )
 
-    def process_batch(self, forces: np.ndarray, moments: np.ndarray) -> Dict[str, np.ndarray]:
+    def process_batch(
+        self, forces: np.ndarray, moments: np.ndarray
+    ) -> Dict[str, np.ndarray]:
         """
         [新增] 高性能批处理方法
         输入:

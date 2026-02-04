@@ -52,7 +52,9 @@ def create_confirmation_dialog(
     return msg
 
 
-def show_warning_dialog(parent, title: str, message: str, details: Optional[str] = None) -> bool:
+def show_warning_dialog(
+    parent, title: str, message: str, details: Optional[str] = None
+) -> bool:
     """
     显示警告对话框
 
@@ -122,7 +124,9 @@ def show_error_dialog(parent, title: str, message: str, details: Optional[str] =
         logger.debug("显示错误对话框失败", exc_info=True)
 
 
-def create_save_changes_dialog(parent, title: str = "保存更改？", message: Optional[str] = None) -> QMessageBox:
+def create_save_changes_dialog(
+    parent, title: str = "保存更改？", message: Optional[str] = None
+) -> QMessageBox:
     """
     创建保存更改对话框（带保存、不保存、取消三个按钮）
 
@@ -154,7 +158,9 @@ def create_save_changes_dialog(parent, title: str = "保存更改？", message: 
     return msg
 
 
-def show_save_changes_dialog(parent, title: str = "保存更改？", message: Optional[str] = None) -> Optional[str]:
+def show_save_changes_dialog(
+    parent, title: str = "保存更改？", message: Optional[str] = None
+) -> Optional[str]:
     """
     显示保存更改对话框
 

@@ -151,11 +151,15 @@ class SlideSidebar(QWidget):
         self._toggle_btn.setGraphicsEffect(self._btn_opacity_effect)
         self._btn_opacity_effect.setOpacity(0.0)
 
-        self._button_opacity_anim = QPropertyAnimation(self._btn_opacity_effect, b"opacity", self)
+        self._button_opacity_anim = QPropertyAnimation(
+            self._btn_opacity_effect, b"opacity", self
+        )
         self._button_opacity_anim.setDuration(150)
         self._button_opacity_anim.setEasingCurve(QEasingCurve.InOutQuad)
         try:
-            self._button_opacity_anim.finished.connect(lambda: self._on_animation_finished())
+            self._button_opacity_anim.finished.connect(
+                lambda: self._on_animation_finished()
+            )
         except Exception:
             _safe_log("连接按钮透明度动画 finished 信号失败（非致命）")
 
@@ -164,7 +168,9 @@ class SlideSidebar(QWidget):
         self._button_pos_anim.setDuration(150)
         self._button_pos_anim.setEasingCurve(QEasingCurve.InOutQuad)
         try:
-            self._button_pos_anim.finished.connect(lambda: self._on_animation_finished())
+            self._button_pos_anim.finished.connect(
+                lambda: self._on_animation_finished()
+            )
         except Exception:
             _safe_log("连接按钮位置动画 finished 信号失败（非致命）")
 
@@ -267,10 +273,18 @@ class SlideSidebar(QWidget):
             is_expanded = self._sidebar_width > self._button_width
             if self._side == "left":
                 # 左侧：>> 表示隐藏（箭头指向左），<< 表示展开
-                self._toggle_btn.setText(self._button_text_expanded if is_expanded else self._button_text_collapsed)
+                self._toggle_btn.setText(
+                    self._button_text_expanded
+                    if is_expanded
+                    else self._button_text_collapsed
+                )
             else:  # right
                 # 右侧：<< 表示隐藏（箭头指向右），>> 表示展开
-                self._toggle_btn.setText(self._button_text_expanded if is_expanded else self._button_text_collapsed)
+                self._toggle_btn.setText(
+                    self._button_text_expanded
+                    if is_expanded
+                    else self._button_text_collapsed
+                )
 
             # 设置总宽度
             self.setFixedWidth(self._sidebar_width)
@@ -299,7 +313,11 @@ class SlideSidebar(QWidget):
             if self._side == "left":
                 # 左侧：容器在左，按钮在容器右侧
                 # 按钮初始在屏幕左边外，通过 _button_x_offset 从左滑入
-                btn_x = container_width - self._button_x_offset if self._button_x_offset >= 0 else container_width
+                btn_x = (
+                    container_width - self._button_x_offset
+                    if self._button_x_offset >= 0
+                    else container_width
+                )
                 self._container.setGeometry(0, 0, container_width, h)
                 self._toggle_btn.setGeometry(btn_x, button_y, self._button_width, 80)
                 try:
@@ -308,7 +326,9 @@ class SlideSidebar(QWidget):
                     self._toggle_btn.setAutoFillBackground(False)
                 except Exception:
                     try:
-                        _logger.debug("提升侧边栏按钮层级或设置属性失败（非致命）", exc_info=True)
+                        _logger.debug(
+                            "提升侧边栏按钮层级或设置属性失败（非致命）", exc_info=True
+                        )
                     except Exception:
                         _safe_log("提升侧边栏按钮层级或设置属性失败（非致命）")
             else:  # right
@@ -323,7 +343,9 @@ class SlideSidebar(QWidget):
                     self._toggle_btn.setAutoFillBackground(False)
                 except Exception:
                     try:
-                        _logger.debug("提升侧边栏按钮层级或设置属性失败（非致命）", exc_info=True)
+                        _logger.debug(
+                            "提升侧边栏按钮层级或设置属性失败（非致命）", exc_info=True
+                        )
                     except Exception:
                         _safe_log("提升侧边栏按钮层级或设置属性失败（非致命）")
         except Exception:
@@ -387,7 +409,9 @@ class SlideSidebar(QWidget):
     def _on_animation_started(self, count: int = 1) -> None:
         """在启动动画前调用：增加运行计数并临时禁用切换按钮以防止重复触发。"""
         try:
-            self._running_anim_count = getattr(self, "_running_anim_count", 0) + int(count)
+            self._running_anim_count = getattr(self, "_running_anim_count", 0) + int(
+                count
+            )
         except Exception:
             try:
                 self._running_anim_count = 1
@@ -431,7 +455,9 @@ class SlideSidebar(QWidget):
             if visible or expanded:
                 try:
                     self._toggle_btn.setEnabled(True)
-                    self._toggle_btn.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+                    self._toggle_btn.setAttribute(
+                        Qt.WA_TransparentForMouseEvents, False
+                    )
                 except Exception:
                     _safe_log("恢复按钮交互失败（非致命）")
 
@@ -514,14 +540,26 @@ class SlideSidebar(QWidget):
                 parent_geom = root.frameGeometry()
                 parent_left = parent_geom.left()
                 parent_right = parent_geom.right()
-                is_near_left = global_pos.x() <= parent_left + self._edge_detect_distance
-                is_near_right = global_pos.x() >= parent_right - self._edge_detect_distance
+                is_near_left = (
+                    global_pos.x() <= parent_left + self._edge_detect_distance
+                )
+                is_near_right = (
+                    global_pos.x() >= parent_right - self._edge_detect_distance
+                )
             except Exception:
-                is_near_left = global_pos.x() <= screen_geometry.left() + self._edge_detect_distance
-                is_near_right = global_pos.x() >= screen_geometry.right() - self._edge_detect_distance
+                is_near_left = (
+                    global_pos.x()
+                    <= screen_geometry.left() + self._edge_detect_distance
+                )
+                is_near_right = (
+                    global_pos.x()
+                    >= screen_geometry.right() - self._edge_detect_distance
+                )
 
             # 判断是否应该显示按钮
-            should_show = (self._side == "left" and is_near_left) or (self._side == "right" and is_near_right)
+            should_show = (self._side == "left" and is_near_left) or (
+                self._side == "right" and is_near_right
+            )
 
             if should_show:
                 # 仅在显示状态发生变化时记录一次调试日志，避免刷屏
@@ -540,7 +578,9 @@ class SlideSidebar(QWidget):
                         try:
                             _logger.debug("记录应显示日志失败（非致命）", exc_info=True)
                         except Exception:
-                            _logger.debug("记录应显示日志失败（记录失败）", exc_info=True)
+                            _logger.debug(
+                                "记录应显示日志失败（记录失败）", exc_info=True
+                            )
                     self._last_should_show = True
 
                 self._show_button_animated()
@@ -608,13 +648,19 @@ class SlideSidebar(QWidget):
                 except Exception:
                     _logger.debug("登记并发动画计数失败（记录失败）", exc_info=True)
             try:
-                self._button_opacity_anim.setStartValue(self._btn_opacity_effect.opacity())
+                self._button_opacity_anim.setStartValue(
+                    self._btn_opacity_effect.opacity()
+                )
                 self._button_opacity_anim.setEndValue(1.0)
             except Exception:
                 try:
-                    _logger.debug("设置按钮透明度动画起止值失败（非致命）", exc_info=True)
+                    _logger.debug(
+                        "设置按钮透明度动画起止值失败（非致命）", exc_info=True
+                    )
                 except Exception:
-                    _logger.debug("设置按钮透明度动画起止值失败（记录失败）", exc_info=True)
+                    _logger.debug(
+                        "设置按钮透明度动画起止值失败（记录失败）", exc_info=True
+                    )
 
             # 位置动画（从边缘滑入）
             try:
@@ -624,7 +670,9 @@ class SlideSidebar(QWidget):
                 try:
                     _logger.debug("设置按钮位置动画起止值失败（非致命）", exc_info=True)
                 except Exception:
-                    _logger.debug("设置按钮位置动画起止值失败（记录失败）", exc_info=True)
+                    _logger.debug(
+                        "设置按钮位置动画起止值失败（记录失败）", exc_info=True
+                    )
 
             try:
                 self._button_opacity_anim.start()
@@ -694,24 +742,34 @@ class SlideSidebar(QWidget):
 
             # 透明度动画
             try:
-                self._button_opacity_anim.setStartValue(self._btn_opacity_effect.opacity())
+                self._button_opacity_anim.setStartValue(
+                    self._btn_opacity_effect.opacity()
+                )
                 self._button_opacity_anim.setEndValue(0.0)
             except Exception:
                 try:
-                    _logger.debug("设置按钮透明度动画起止值失败（非致命）", exc_info=True)
+                    _logger.debug(
+                        "设置按钮透明度动画起止值失败（非致命）", exc_info=True
+                    )
                 except Exception:
-                    _logger.debug("设置按钮透明度动画起止值失败（记录失败）", exc_info=True)
+                    _logger.debug(
+                        "设置按钮透明度动画起止值失败（记录失败）", exc_info=True
+                    )
 
             # 位置动画（滑出屏幕边缘）
             try:
                 self._button_pos_anim.setStartValue(self._button_x_offset)
-                target_offset = -self._button_width if self._side == "left" else self._button_width
+                target_offset = (
+                    -self._button_width if self._side == "left" else self._button_width
+                )
                 self._button_pos_anim.setEndValue(target_offset)
             except Exception:
                 try:
                     _logger.debug("设置按钮位置动画起止值失败（非致命）", exc_info=True)
                 except Exception:
-                    _logger.debug("设置按钮位置动画起止值失败（记录失败）", exc_info=True)
+                    _logger.debug(
+                        "设置按钮位置动画起止值失败（记录失败）", exc_info=True
+                    )
 
             try:
                 self._button_opacity_anim.start()
@@ -752,7 +810,9 @@ class SlideSidebar(QWidget):
                     """鼠标离开按钮时启动隐藏计时器。"""
                     # 仅在侧边栏未展开时启动隐藏计时器
                     if not self.parent_sidebar.is_expanded():
-                        self.parent_sidebar._mouse_hide_timer.start(self.parent_sidebar._hide_delay_ms)
+                        self.parent_sidebar._mouse_hide_timer.start(
+                            self.parent_sidebar._hide_delay_ms
+                        )
                     return super().leaveEvent(event)
 
             # 保存原始事件处理
@@ -793,7 +853,9 @@ class SlideSidebar(QWidget):
                 try:
                     _logger.debug("为父窗口安装事件过滤器失败（非致命）", exc_info=True)
                 except Exception:
-                    _logger.debug("为父窗口安装事件过滤器失败（记录失败）", exc_info=True)
+                    _logger.debug(
+                        "为父窗口安装事件过滤器失败（记录失败）", exc_info=True
+                    )
         except Exception:
             try:
                 _logger.debug("安装父窗口鼠标跟踪失败（非致命）", exc_info=True)

@@ -55,7 +55,9 @@ class StateBanner(QWidget):
 
         # 消息标签
         self.message_label = QLabel()
-        self.message_label.setStyleSheet("font-weight: 500; font-size: 12px;")  # 缩小字体
+        self.message_label.setStyleSheet(
+            "font-weight: 500; font-size: 12px;"
+        )  # 缩小字体
         self.message_label.setMinimumHeight(24)  # 固定高度以保证工具栏高度一致
         layout.addWidget(self.message_label, 1)
 
@@ -110,7 +112,9 @@ class StateBanner(QWidget):
             self.setMinimumHeight(28)
             self.setMinimumWidth(200)
             self.setMaximumWidth(320)
-            self.message_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            self.message_label.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Preferred
+            )
             self.message_label.setMinimumWidth(0)
         except Exception:
             logger.debug("设置状态横幅工具栏模式失败", exc_info=True)
@@ -171,7 +175,9 @@ class StateBanner(QWidget):
             if timestamp:
                 # 提取时间部分（如 10:50:59）
                 try:
-                    time_part = timestamp.split(" ")[-1] if " " in timestamp else timestamp
+                    time_part = (
+                        timestamp.split(" ")[-1] if " " in timestamp else timestamp
+                    )
                     msg_parts.append(f"({time_part})")
                 except Exception:
                     pass
@@ -222,7 +228,9 @@ class StateBanner(QWidget):
         except Exception as e:
             logger.debug("显示项目加载横幅失败: %s", e, exc_info=True)
 
-    def show_custom_message(self, message: str, icon: str = "ℹ️", style: Optional[str] = None):
+    def show_custom_message(
+        self, message: str, icon: str = "ℹ️", style: Optional[str] = None
+    ):
         """显示自定义消息
 
         Args:

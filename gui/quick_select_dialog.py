@@ -238,7 +238,9 @@ class QuickSelectDialog(QDialog):
             self._add_entry(fp_str, part, kstr)
         self.info_layout.addStretch(1)
 
-    def _add_entry(self, fp_str: str, part: Optional[str], kstr: Optional[str] = None) -> None:
+    def _add_entry(
+        self, fp_str: str, part: Optional[str], kstr: Optional[str] = None
+    ) -> None:
         container = QWidget(self.info_widget)
         v = QVBoxLayout(container)
         # 减小每个 entry 的内边距与间距
@@ -372,7 +374,9 @@ class QuickSelectDialog(QDialog):
                         # 比较规范化路径
                         try:
                             entry_fp = key[0]
-                            if normalize_path_key(fp_str) == normalize_path_key(entry_fp):
+                            if normalize_path_key(fp_str) == normalize_path_key(
+                                entry_fp
+                            ):
                                 self._update_entry_preview(entry)
                         except Exception:
                             if str(key[0]) == str(fp_str):
@@ -382,7 +386,9 @@ class QuickSelectDialog(QDialog):
         except Exception:
             logger.debug("QuickSelectDialog 刷新特殊格式预览失败", exc_info=True)
 
-    def _render_rows(self, fp_str: str, part: Optional[str], rows: List[int]) -> List[str]:
+    def _render_rows(
+        self, fp_str: str, part: Optional[str], rows: List[int]
+    ) -> List[str]:
         """获取指定行的文本表示，便于在预览中展示。"""
         try:
             fp = Path(fp_str)
@@ -455,14 +461,18 @@ class QuickSelectDialog(QDialog):
                         data = self.batch._get_special_data_dict(fp)
                         df = (data or {}).get(str(part))
                         row_count = len(df) if df is not None else 0
-                        by_file = getattr(gui, "special_part_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(gui, "special_part_row_selection_by_file", {}) or {}
+                        )
                         by_part = by_file.setdefault(str(fp), {})
                         by_part[str(part)] = set(range(row_count))
                         try:
                             gui.special_part_row_selection_by_file = by_file
                         except Exception:
                             pass
-                        table = (self.batch._special_preview_tables or {}).get((str(fp), str(part)))
+                        table = (self.batch._special_preview_tables or {}).get(
+                            (str(fp), str(part))
+                        )
                         if table is not None:
                             try:
                                 table.selected_set = set(range(row_count))
@@ -478,7 +488,9 @@ class QuickSelectDialog(QDialog):
                 # 否则 rows 为具体索引列表 -> 视为跳过指定行（移除选中）
                 if part is None:
                     max_need = max(rows) + 1
-                    df = self.batch._get_table_df_preview(fp, max_rows=max(max_need, 200))
+                    df = self.batch._get_table_df_preview(
+                        fp, max_rows=max(max_need, 200)
+                    )
                     row_count = len(df) if df is not None else max_need
                     by_file = getattr(gui, "table_row_selection_by_file", {}) or {}
                     cur = by_file.get(str(fp)) or set(range(row_count))
@@ -496,7 +508,9 @@ class QuickSelectDialog(QDialog):
                     data = self.batch._get_special_data_dict(fp)
                     df = (data or {}).get(str(part))
                     row_count = len(df) if df is not None else (max(rows) + 1)
-                    by_file = getattr(gui, "special_part_row_selection_by_file", {}) or {}
+                    by_file = (
+                        getattr(gui, "special_part_row_selection_by_file", {}) or {}
+                    )
                     by_part = by_file.setdefault(str(fp), {})
                     sel = by_part.get(str(part))
                     if sel is None:
@@ -508,7 +522,9 @@ class QuickSelectDialog(QDialog):
                         gui.special_part_row_selection_by_file = by_file
                     except Exception:
                         pass
-                    table = (self.batch._special_preview_tables or {}).get((str(fp), str(part)))
+                    table = (self.batch._special_preview_tables or {}).get(
+                        (str(fp), str(part))
+                    )
                     if table is not None and hasattr(table, "uncheck_rows_if_visible"):
                         table.uncheck_rows_if_visible(rows)
 
@@ -596,7 +612,9 @@ class QuickSelectDialog(QDialog):
                     live_checked = None
                     fp_norm = normalize_path_key(fp_str) or fp_str
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
                         sel = by_file.get(fp_norm) or by_file.get(str(fp_str))
                         if sel:
                             live_checked = True
@@ -634,12 +652,16 @@ class QuickSelectDialog(QDialog):
                 try:
                     fp_norm = normalize_path_key(fp_str) or fp_str
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
                         sel = by_file.get(fp_norm) or by_file.get(str(fp_str))
                         if sel is not None:
                             it.setCheckState(0, Qt.Checked)
                             # 计算跳过行文本（全量减去选中）
-                            df = self.batch._get_table_df_preview(Path(fp_norm), max_rows=200)
+                            df = self.batch._get_table_df_preview(
+                                Path(fp_norm), max_rows=200
+                            )
                             row_count = len(df) if df is not None else 0
                             skipped = []
                             for r in range(row_count):
@@ -726,7 +748,9 @@ class QuickSelectDialog(QDialog):
                 try:
                     fp_norm = normalize_path_key(fp_str) or fp_str
                     if part is None:
-                        by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        by_file = (
+                            getattr(self.gui, "table_row_selection_by_file", {}) or {}
+                        )
                         if fp_norm in by_file or str(fp_str) in by_file:
                             it.setCheckState(0, Qt.Checked)
                     else:

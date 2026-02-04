@@ -27,7 +27,9 @@ class StatusMessageManager:
         self._status_priority: int = 0
         self._status_clear_timer: Optional[QTimer] = None
 
-    def show_message(self, message: str, timeout: int = 0, priority: int = 1) -> Optional[str]:
+    def show_message(
+        self, message: str, timeout: int = 0, priority: int = 1
+    ) -> Optional[str]:
         """
         显示状态栏消息
 
@@ -42,7 +44,10 @@ class StatusMessageManager:
         try:
             # 只有优先级更高或相等时才允许更新消息
             if priority < self._status_priority:
-                logger.debug(f"消息优先级({priority})低于当前优先级" f"({self._status_priority})，忽略")
+                logger.debug(
+                    f"消息优先级({priority})低于当前优先级"
+                    f"({self._status_priority})，忽略"
+                )
                 return None
 
             # 生成新令牌
@@ -118,7 +123,9 @@ class StatusMessageManager:
             # 创建新定时器
             self._status_clear_timer = QTimer()
             self._status_clear_timer.setSingleShot(True)
-            self._status_clear_timer.timeout.connect(lambda: self.clear_message(token, priority))
+            self._status_clear_timer.timeout.connect(
+                lambda: self.clear_message(token, priority)
+            )
             self._status_clear_timer.start(timeout)
 
         except Exception:
@@ -240,7 +247,9 @@ class NotificationManager:
             # 创建新定时器
             self._notification_timer = QTimer()
             self._notification_timer.setSingleShot(True)
-            self._notification_timer.timeout.connect(lambda: self.clear_notification(token))
+            self._notification_timer.timeout.connect(
+                lambda: self.clear_notification(token)
+            )
             self._notification_timer.start(timeout)
 
         except Exception:

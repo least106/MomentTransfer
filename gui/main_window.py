@@ -199,7 +199,9 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             sb = (
                 getattr(self, "signal_bus", None)
-                or __import__("gui.signal_bus", fromlist=["SignalBus"]).SignalBus.instance()
+                or __import__(
+                    "gui.signal_bus", fromlist=["SignalBus"]
+                ).SignalBus.instance()
             )
             try:
                 sb.statusMessage.connect(self._on_status_message)
@@ -242,7 +244,9 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
                 except Exception:
-                    logger.debug("尝试隐藏初始化遮罩时发生错误（非致命）", exc_info=True)
+                    logger.debug(
+                        "尝试隐藏初始化遮罩时发生错误（非致命）", exc_info=True
+                    )
 
                 if getattr(self, "_pending_init_notifications", None):
                     self._flush_init_notifications()
@@ -303,7 +307,9 @@ class IntegratedAeroGUI(QMainWindow):
                             # 已展示，跳过重试队列
                             continue
                         except Exception:
-                            logger.debug("显示初始化通知失败，回退为日志记录", exc_info=True)
+                            logger.debug(
+                                "显示初始化通知失败，回退为日志记录", exc_info=True
+                            )
 
                     # 若无法展示，保留到 remaining 以便稍后在 showEvent 中重试
                     remaining.append(item)
@@ -324,7 +330,9 @@ class IntegratedAeroGUI(QMainWindow):
                 self._pending_init_notifications = remaining
             except Exception:
                 # 最后兜底：若无法修改属性，记录并清空局部变量
-                logger.debug("无法更新 _pending_init_notifications 引用（非致命）", exc_info=True)
+                logger.debug(
+                    "无法更新 _pending_init_notifications 引用（非致命）", exc_info=True
+                )
         except Exception:
             logger.debug("刷新初始化通知队列失败（非致命）", exc_info=True)
 
@@ -383,7 +391,11 @@ class IntegratedAeroGUI(QMainWindow):
             # 若 incoming 优先级低于当前且已有未过期消息，则忽略
             try:
                 t_old = getattr(self, "_status_clear_timer", None)
-                if int(priority) < cur_pr and t_old is not None and getattr(t_old, "isActive", lambda: False)():
+                if (
+                    int(priority) < cur_pr
+                    and t_old is not None
+                    and getattr(t_old, "isActive", lambda: False)()
+                ):
                     return
             except Exception:
                 # 任何判定失败时不阻止显示新消息
@@ -640,7 +652,9 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     self.batch_manager.select_all_files()
                 except Exception:
-                    logger.debug("batch_manager.select_all_files 调用失败", exc_info=True)
+                    logger.debug(
+                        "batch_manager.select_all_files 调用失败", exc_info=True
+                    )
         except Exception:
             logger.debug("_select_all_files failed", exc_info=True)
 
@@ -651,7 +665,9 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     self.batch_manager.select_none_files()
                 except Exception:
-                    logger.debug("batch_manager.select_none_files 调用失败", exc_info=True)
+                    logger.debug(
+                        "batch_manager.select_none_files 调用失败", exc_info=True
+                    )
         except Exception:
             logger.debug("_select_none_files failed", exc_info=True)
 
@@ -662,7 +678,9 @@ class IntegratedAeroGUI(QMainWindow):
                 try:
                     self.batch_manager.invert_file_selection()
                 except Exception:
-                    logger.debug("batch_manager.invert_file_selection 调用失败", exc_info=True)
+                    logger.debug(
+                        "batch_manager.invert_file_selection 调用失败", exc_info=True
+                    )
         except Exception:
             logger.debug("_invert_file_selection failed", exc_info=True)
 
@@ -674,7 +692,9 @@ class IntegratedAeroGUI(QMainWindow):
                     self.batch_manager.open_quick_select_dialog()
                     return
                 except Exception:
-                    logger.debug("batch_manager.open_quick_select_dialog 调用失败", exc_info=True)
+                    logger.debug(
+                        "batch_manager.open_quick_select_dialog 调用失败", exc_info=True
+                    )
 
             # 回退：若存在 file_selection_manager，使用其快速选择逻辑
             try:
@@ -763,7 +783,9 @@ class IntegratedAeroGUI(QMainWindow):
         try:
             self.batch_manager.scan_and_populate_files(chosen_path)
         except Exception:
-            logger.debug("_scan_and_populate_files delegated call failed", exc_info=True)
+            logger.debug(
+                "_scan_and_populate_files delegated call failed", exc_info=True
+            )
 
     def _on_save_project(self):
         """保存Project（打开选择文件对话框）"""
@@ -773,7 +795,9 @@ class IntegratedAeroGUI(QMainWindow):
             from PySide6.QtWidgets import QFileDialog
 
             # 若已有当前项目文件路径则后台保存（显示等待对话）
-            if getattr(self, "project_manager", None) and getattr(self.project_manager, "current_project_file", None):
+            if getattr(self, "project_manager", None) and getattr(
+                self.project_manager, "current_project_file", None
+            ):
                 try:
                     fp = self.project_manager.current_project_file
 
@@ -797,7 +821,9 @@ class IntegratedAeroGUI(QMainWindow):
                             # UX：ProjectManager.save_project 内部已负责向用户展示失败原因。
                             # 这里避免重复弹窗，仅做轻量提示。
                             try:
-                                self.statusBar().showMessage("项目保存失败（详情请查看提示/日志）", 5000)
+                                self.statusBar().showMessage(
+                                    "项目保存失败（详情请查看提示/日志）", 5000
+                                )
                             except Exception:
                                 logger.debug(
                                     "无法在状态栏提示保存失败（非致命）",
@@ -807,12 +833,18 @@ class IntegratedAeroGUI(QMainWindow):
                     self.project_manager.save_project_async(fp, on_finished=_on_saved)
                     return
                 except Exception:
-                    logger.debug("直接保存当前项目失败，退回到另存为对话", exc_info=True)
+                    logger.debug(
+                        "直接保存当前项目失败，退回到另存为对话", exc_info=True
+                    )
 
             # 另存为：预填当前路径或建议文件名 project_YYYYMMDD.mtproject
             default_dir = ""
             pm = getattr(self, "project_manager", None)
-            ext = getattr(pm.__class__, "PROJECT_FILE_EXTENSION", ".mtproject") if pm else ".mtproject"
+            ext = (
+                getattr(pm.__class__, "PROJECT_FILE_EXTENSION", ".mtproject")
+                if pm
+                else ".mtproject"
+            )
             suggested = f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
             try:
                 pm = getattr(self, "project_manager", None)
@@ -826,7 +858,9 @@ class IntegratedAeroGUI(QMainWindow):
                 default_dir = ""
 
             # 打开保存文件对话框（预填路径+建议名）
-            start_path = str(Path(default_dir) / suggested) if default_dir else suggested
+            start_path = (
+                str(Path(default_dir) / suggested) if default_dir else suggested
+            )
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "保存Project文件",
@@ -856,14 +890,18 @@ class IntegratedAeroGUI(QMainWindow):
                             # UX：ProjectManager.save_project 内部已负责向用户展示失败原因。
                             # 这里避免重复弹窗，仅做轻量提示。
                             try:
-                                self.statusBar().showMessage("项目保存失败（详情请查看提示/日志）", 5000)
+                                self.statusBar().showMessage(
+                                    "项目保存失败（详情请查看提示/日志）", 5000
+                                )
                             except Exception:
                                 logger.debug(
                                     "无法在状态栏提示保存失败（非致命）",
                                     exc_info=True,
                                 )
 
-                    self.project_manager.save_project_async(Path(file_path), on_finished=_on_saved2)
+                    self.project_manager.save_project_async(
+                        Path(file_path), on_finished=_on_saved2
+                    )
         except Exception as e:
             logger.error("保存Project失败: %s", e)
             try:
@@ -935,14 +973,18 @@ class IntegratedAeroGUI(QMainWindow):
                             # UX：ProjectManager.load_project 内部会对解析失败/版本不匹配等情况弹窗说明。
                             # 这里避免重复弹窗，仅做轻量提示。
                             try:
-                                self.statusBar().showMessage("项目加载失败（详情请查看提示/日志）", 5000)
+                                self.statusBar().showMessage(
+                                    "项目加载失败（详情请查看提示/日志）", 5000
+                                )
                             except Exception:
                                 logger.debug(
                                     "无法在状态栏提示加载失败（非致命）",
                                     exc_info=True,
                                 )
 
-                    self.project_manager.load_project_async(Path(file_path), on_finished=_on_loaded)
+                    self.project_manager.load_project_async(
+                        Path(file_path), on_finished=_on_loaded
+                    )
         except Exception as e:
             logger.error("打开Project失败: %s", e)
 
@@ -962,13 +1004,17 @@ class IntegratedAeroGUI(QMainWindow):
                         # 若没有 last_saved_state，退回到 UI 标志
                         if hasattr(self, "ui_state_manager") and self.ui_state_manager:
                             try:
-                                return bool(self.ui_state_manager.is_operation_performed())
+                                return bool(
+                                    self.ui_state_manager.is_operation_performed()
+                                )
                             except Exception:
                                 return bool(getattr(self, "operation_performed", False))
                         return bool(getattr(self, "operation_performed", False))
                     return current != last
                 except Exception:
-                    logger.debug("比较项目状态时出错，退回到 UI 标志检测", exc_info=True)
+                    logger.debug(
+                        "比较项目状态时出错，退回到 UI 标志检测", exc_info=True
+                    )
             # 回退检测
             if hasattr(self, "ui_state_manager") and self.ui_state_manager:
                 try:
@@ -991,7 +1037,9 @@ class IntegratedAeroGUI(QMainWindow):
             msg.setText(f"检测到未保存的更改。是否在执行“{intent}”前保存更改？")
             # UX：这里的“放弃”语义应为“本次不保存仍继续”，而不是立刻把未保存标记清掉。
             # 否则若用户后续取消“打开文件”对话框，或“打开/新建”失败，会导致未保存状态被错误清除。
-            msg.setInformativeText("保存：保存更改并继续；放弃：本次不保存并继续；取消：返回。")
+            msg.setInformativeText(
+                "保存：保存更改并继续；放弃：本次不保存并继续；取消：返回。"
+            )
             btn_save = msg.addButton("保存", QMessageBox.AcceptRole)
             btn_discard = msg.addButton("放弃", QMessageBox.DestructiveRole)
             btn_cancel = msg.addButton("取消", QMessageBox.RejectRole)
@@ -1043,7 +1091,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 except Exception:
                                     pass
                                 if success:
-                                    show_info_dialog(self, "成功", f"项目已保存到: {saved_fp}")
+                                    show_info_dialog(
+                                        self, "成功", f"项目已保存到: {saved_fp}"
+                                    )
                                 else:
                                     show_error_dialog(self, "错误", "项目保存失败")
                                 try:
@@ -1052,7 +1102,9 @@ class IntegratedAeroGUI(QMainWindow):
                                     pass
 
                             try:
-                                pm.save_project_async(cur_fp, on_finished=_on_saved_async)
+                                pm.save_project_async(
+                                    cur_fp, on_finished=_on_saved_async
+                                )
                                 loop.exec()
                             except Exception:
                                 logger.exception("异步保存项目失败")
@@ -1080,7 +1132,9 @@ class IntegratedAeroGUI(QMainWindow):
                                     if pm
                                     else ".mtproject"
                                 )
-                                suggested = f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
+                                suggested = (
+                                    f"project_{datetime.now().strftime('%Y%m%d')}{ext}"
+                                )
                                 start = str(Path.cwd() / suggested)
                                 save_path, _ = QFileDialog.getSaveFileName(
                                     self,
@@ -1127,7 +1181,9 @@ class IntegratedAeroGUI(QMainWindow):
                                         pass
 
                                 try:
-                                    pm.save_project_async(Path(save_path), on_finished=_on_saved2)
+                                    pm.save_project_async(
+                                        Path(save_path), on_finished=_on_saved2
+                                    )
                                     loop.exec()
                                 except Exception:
                                     logger.exception("异步另存为保存失败")
@@ -1140,7 +1196,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 if not result.get("saved"):
                                     return False
                             except Exception:
-                                logger.debug("另存为对话或保存过程中出错", exc_info=True)
+                                logger.debug(
+                                    "另存为对话或保存过程中出错", exc_info=True
+                                )
                                 return False
                     else:
                         # 没有 ProjectManager 时回退到调用原始保存逻辑（可能弹出对话）
@@ -1164,7 +1222,9 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             try:
                 if _report_ui_exception:
-                    _report_ui_exception(self, "未保存更改对话弹出失败（已自动取消操作）")
+                    _report_ui_exception(
+                        self, "未保存更改对话弹出失败（已自动取消操作）"
+                    )
             except Exception:
                 logger.debug("报告未保存对话失败时出错", exc_info=True)
             logger.debug("弹出未保存对话失败，默认取消操作", exc_info=True)
@@ -1174,7 +1234,9 @@ class IntegratedAeroGUI(QMainWindow):
         """运行批处理 - 委托给 BatchManager"""
         try:
             # 保护性检查：确保关键管理器已初始化，避免在初始化期间触发批处理
-            if not getattr(self, "batch_manager", None) or not getattr(self, "config_manager", None):
+            if not getattr(self, "batch_manager", None) or not getattr(
+                self, "config_manager", None
+            ):
                 show_info_dialog(
                     self,
                     "功能暂不可用",
@@ -1204,7 +1266,9 @@ class IntegratedAeroGUI(QMainWindow):
                     # 用户选择不保存，继续使用当前未保存配置运行批处理
                     logger.warning("批处理将使用未保存的配置")
                     try:
-                        self.statusBar().showMessage("警告：批处理将使用当前未保存的配置", 5000)
+                        self.statusBar().showMessage(
+                            "警告：批处理将使用当前未保存的配置", 5000
+                        )
                     except Exception:
                         pass
                     self.batch_manager.run_batch_processing()
@@ -1264,7 +1328,10 @@ class IntegratedAeroGUI(QMainWindow):
             self.notify_modal(
                 title="处理失败",
                 message="批处理过程中发生错误，已记录到日志。请检查输入文件与格式定义。",
-                informative=("建议：检查输入文件的格式定义与解析规则，" "以及 Target 配置中的 MomentCenter/Q/S。"),
+                informative=(
+                    "建议：检查输入文件的格式定义与解析规则，"
+                    "以及 Target 配置中的 MomentCenter/Q/S。"
+                ),
                 detailed=str(error_msg),
                 icon=QMessageBox.Critical,
             )
@@ -1327,7 +1394,9 @@ class IntegratedAeroGUI(QMainWindow):
                             Path.home() / ".momentconversion" / "momentconversion.log"
                         )
                     except Exception:
-                        log_file = Path.home() / ".momentconversion" / "momentconversion.log"
+                        log_file = (
+                            Path.home() / ".momentconversion" / "momentconversion.log"
+                        )
 
                     log_dir = log_file.parent
                     if log_file.exists():
@@ -1487,12 +1556,18 @@ class IntegratedAeroGUI(QMainWindow):
         except Exception:
             logger.debug("清理非模态通知失败（非致命）", exc_info=True)
 
-    def _start_notification_timer(self, duration_ms: int, token: str, summary: str) -> None:
+    def _start_notification_timer(
+        self, duration_ms: int, token: str, summary: str
+    ) -> None:
         """启动非模态通知计时器。"""
         try:
             t = QTimer(self)
             t.setSingleShot(True)
-            t.timeout.connect(lambda tok=token, summ=summary: self._remove_nonmodal_notification(tok, summ))
+            t.timeout.connect(
+                lambda tok=token, summ=summary: self._remove_nonmodal_notification(
+                    tok, summ
+                )
+            )
             t.start(int(duration_ms))
             self._notification_timer = t
         except Exception:
@@ -1758,7 +1833,9 @@ def _initialize_exception_hook():
         if main_window and getattr(main_window, "_is_initializing", False):
             # 记录完整 traceback 到日志
             try:
-                tb_text = "".join(traceback.format_exception(exc_type, exc_value, traceback_obj))
+                tb_text = "".join(
+                    traceback.format_exception(exc_type, exc_value, traceback_obj)
+                )
             except Exception:
                 tb_text = f"{exc_type.__name__}: {exc_value}"
             logger.debug("初始化期间捕获异常（被抑制）: %s", tb_text)
@@ -1767,7 +1844,10 @@ def _initialize_exception_hook():
             try:
                 can_show = False
                 try:
-                    can_show = bool(main_window.isVisible() and getattr(main_window, "statusBar", None) is not None)
+                    can_show = bool(
+                        main_window.isVisible()
+                        and getattr(main_window, "statusBar", None) is not None
+                    )
                 except Exception:
                     can_show = False
 
@@ -1780,7 +1860,9 @@ def _initialize_exception_hook():
                             button_text="查看初始化错误",
                         )
                     except Exception:
-                        logger.debug("在状态栏显示初始化错误入口失败（非致命）", exc_info=True)
+                        logger.debug(
+                            "在状态栏显示初始化错误入口失败（非致命）", exc_info=True
+                        )
                 else:
                     try:
                         # 入队：待初始化结束后由主窗口刷新
@@ -1839,7 +1921,9 @@ def main():
                     return False
                 import winreg
 
-                key_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                key_path = (
+                    r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                )
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
                     # 0 表示暗色，1 表示浅色
                     val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")

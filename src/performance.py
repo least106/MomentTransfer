@@ -96,7 +96,9 @@ class PerformanceMonitor:
         if self.process:
             try:
                 metrics.memory_after_mb = self.process.memory_info().rss / 1024 / 1024
-                metrics.memory_delta_mb = metrics.memory_after_mb - metrics.memory_before_mb
+                metrics.memory_delta_mb = (
+                    metrics.memory_after_mb - metrics.memory_before_mb
+                )
                 metrics.cpu_percent = self.process.cpu_percent(interval=0.01)
             except (OSError, RuntimeError) as exc:
                 logger.debug(
@@ -177,7 +179,9 @@ class PerformanceMonitor:
             try:
                 stats["cpu_percent"] = psutil.cpu_percent(interval=0.1)
                 stats["memory_percent"] = psutil.virtual_memory().percent
-                stats["memory_available_mb"] = psutil.virtual_memory().available / 1024 / 1024
+                stats["memory_available_mb"] = (
+                    psutil.virtual_memory().available / 1024 / 1024
+                )
             except (OSError, RuntimeError) as exc:
                 logger.debug("获取系统统计信息失败: %s", exc, exc_info=True)
         return stats

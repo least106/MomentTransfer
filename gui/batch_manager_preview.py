@@ -117,7 +117,9 @@ def _make_simple_preview_table(
     try:
         # 在列名前加上序号，便于用户识别列索引（从1开始）
         col_names = list(df.columns)[:cols]
-        display_headers = ["选中"] + [f"{i+1}\n{str(c)}" for i, c in enumerate(col_names)]
+        display_headers = ["选中"] + [
+            f"{i+1}\n{str(c)}" for i, c in enumerate(col_names)
+        ]
         table._column_names = list(col_names)
         table._display_headers = list(display_headers)
         table.setHorizontalHeaderLabels(display_headers)
@@ -208,7 +210,9 @@ def _apply_quick_filter_to_table(table, df, qcol, qval, operator: str) -> None:
                 if df is None or df.empty:
                     bus.statusMessage.emit("快速筛选未生效：当前数据为空", 5000, 1)
                 else:
-                    bus.statusMessage.emit(f"快速筛选未生效：列不存在（{qcol}）", 5000, 1)
+                    bus.statusMessage.emit(
+                        f"快速筛选未生效：列不存在（{qcol}）", 5000, 1
+                    )
             except Exception:
                 logger.debug("发送快速筛选反馈失败（非致命）", exc_info=True)
             return
@@ -650,7 +654,9 @@ def _make_preview_toggle_callback(
             if is_special:
                 if not hasattr(manager.gui, "special_part_row_selection_by_file"):
                     manager.gui.special_part_row_selection_by_file = {}
-                by_file_local = getattr(manager.gui, "special_part_row_selection_by_file", {})
+                by_file_local = getattr(
+                    manager.gui, "special_part_row_selection_by_file", {}
+                )
                 by_file_local = by_file_local or {}
                 by_part_local = by_file_local.setdefault(fp_local_inner, {})
                 sel_local = by_part_local.get(sp_local_inner)
@@ -734,7 +740,9 @@ def _embed_preview_table(manager, group, df, fp_str, sel=None, **kwargs):
         source_part=source_part,
     )
 
-    table = _create_preview_table(manager, df, set(sel or set()), callback, max_rows=200, max_cols=None)
+    table = _create_preview_table(
+        manager, df, set(sel or set()), callback, max_rows=200, max_cols=None
+    )
     try:
         manager.gui.file_tree.setItemWidget(group, 0, table)
         try:

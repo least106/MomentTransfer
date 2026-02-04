@@ -66,7 +66,11 @@ class ConfigManager:
             mc = [0.0, 0.0, 0.0]
         else:
             try:
-                mc = [float(mc[0]), float(mc[1]), float(mc[2])] if hasattr(mc, "__getitem__") else [0.0, 0.0, 0.0]
+                mc = (
+                    [float(mc[0]), float(mc[1]), float(mc[2])]
+                    if hasattr(mc, "__getitem__")
+                    else [0.0, 0.0, 0.0]
+                )
             except Exception:
                 mc = [0.0, 0.0, 0.0]
 
@@ -115,7 +119,9 @@ class ConfigManager:
     def load_config(self):
         """加载配置文件"""
         try:
-            fname, _ = QFileDialog.getOpenFileName(self.gui, "打开配置", ".", "JSON Files (*.json)")
+            fname, _ = QFileDialog.getOpenFileName(
+                self.gui, "打开配置", ".", "JSON Files (*.json)"
+            )
             if not fname:
                 return
 
@@ -174,7 +180,8 @@ class ConfigManager:
             if self.gui.target_panel.part_selector.count() > 0:
                 self.gui.target_panel.part_selector.setVisible(True)
                 first = (
-                    self.gui.target_panel.part_selector.currentText() or self.gui.target_panel.part_selector.itemText(0)
+                    self.gui.target_panel.part_selector.currentText()
+                    or self.gui.target_panel.part_selector.itemText(0)
                 )
                 try:
                     self.gui.target_panel._current_part_name = first
@@ -260,7 +267,9 @@ class ConfigManager:
                 def _delayed_refresh():
                     try:
                         # 通过状态栏告知用户文件状态正在更新
-                        self.signal_bus.statusMessage.emit("正在更新文件验证状态...", 2000, 0)
+                        self.signal_bus.statusMessage.emit(
+                            "正在更新文件验证状态...", 2000, 0
+                        )
                         # 等待 SignalBus 处理完 configLoaded 信号
                         # BatchManager 会监听该信号并自动调用 refresh_file_statuses()
                     except Exception as e:
@@ -286,7 +295,8 @@ class ConfigManager:
         """填充 Target 坐标系表单"""
         try:
             sel_part = (
-                self.gui.target_panel.part_selector.currentText() or self.gui.target_panel.part_selector.itemText(0)
+                self.gui.target_panel.part_selector.currentText()
+                or self.gui.target_panel.part_selector.itemText(0)
             )
             sel_variant = 0
             frame = project.get_target_part(sel_part, sel_variant)
@@ -304,9 +314,13 @@ class ConfigManager:
     def _populate_source_form(self, project: ProjectData):
         """填充 Source 坐标系表单"""
         try:
-            if self.gui.source_panel.part_selector.count() > 0 and self.gui.source_panel.part_selector.isVisible():
+            if (
+                self.gui.source_panel.part_selector.count() > 0
+                and self.gui.source_panel.part_selector.isVisible()
+            ):
                 s_part = (
-                    self.gui.source_panel.part_selector.currentText() or self.gui.source_panel.part_selector.itemText(0)
+                    self.gui.source_panel.part_selector.currentText()
+                    or self.gui.source_panel.part_selector.itemText(0)
                 )
                 s_variant = 0
                 sframe = project.get_source_part(s_part, s_variant)
@@ -361,7 +375,9 @@ class ConfigManager:
             # 优先覆盖上次加载的文件
             try:
                 if self._last_loaded_config_path:
-                    with open(self._last_loaded_config_path, "w", encoding="utf-8") as f:
+                    with open(
+                        self._last_loaded_config_path, "w", encoding="utf-8"
+                    ) as f:
                         json.dump(data, f, indent=2)
                     QMessageBox.information(
                         self.gui,
@@ -380,7 +396,9 @@ class ConfigManager:
                     # 重置修改标志和操作状态
                     self._config_modified = False
                     try:
-                        if hasattr(self.gui, "ui_state_manager") and getattr(self.gui, "ui_state_manager"):
+                        if hasattr(self.gui, "ui_state_manager") and getattr(
+                            self.gui, "ui_state_manager"
+                        ):
                             try:
                                 self.gui.ui_state_manager.clear_user_modified()
                             except Exception:
@@ -397,7 +415,9 @@ class ConfigManager:
                 logger.debug("直接覆盖失败，使用另存为", exc_info=True)
 
             # 另存为
-            fname, _ = QFileDialog.getSaveFileName(self.gui, "保存配置", "config.json", "JSON Files (*.json)")
+            fname, _ = QFileDialog.getSaveFileName(
+                self.gui, "保存配置", "config.json", "JSON Files (*.json)"
+            )
             if not fname:
                 # 用户取消保存
                 return False
@@ -418,11 +438,15 @@ class ConfigManager:
             # 重置修改标志和操作状态
             self._config_modified = False
             try:
-                if hasattr(self.gui, "ui_state_manager") and getattr(self.gui, "ui_state_manager"):
+                if hasattr(self.gui, "ui_state_manager") and getattr(
+                    self.gui, "ui_state_manager"
+                ):
                     try:
                         self.gui.ui_state_manager.clear_user_modified()
                     except Exception:
-                        logger.debug("通过 UIStateManager 清理操作状态失败", exc_info=True)
+                        logger.debug(
+                            "通过 UIStateManager 清理操作状态失败", exc_info=True
+                        )
                 else:
                     self.gui.operation_performed = False
             except Exception:
@@ -444,7 +468,9 @@ class ConfigManager:
         返回 None 表示没有可比较的已加载配置。
         """
         try:
-            project = getattr(self.gui, "current_config", None) or getattr(self, "project_config_model", None)
+            project = getattr(self.gui, "current_config", None) or getattr(
+                self, "project_config_model", None
+            )
             if project is None:
                 return None
 
@@ -453,7 +479,11 @@ class ConfigManager:
             tgt_payload = None
             try:
                 # 若为 ProjectData，使用 get_source_part/get_target_part
-                src_names = list(project.source_parts.keys()) if hasattr(project, "source_parts") else []
+                src_names = (
+                    list(project.source_parts.keys())
+                    if hasattr(project, "source_parts")
+                    else []
+                )
                 if src_names:
                     frame = project.get_source_part(src_names[0], 0)
                 else:
@@ -464,7 +494,11 @@ class ConfigManager:
                 src_payload = None
 
             try:
-                tgt_names = list(project.target_parts.keys()) if hasattr(project, "target_parts") else []
+                tgt_names = (
+                    list(project.target_parts.keys())
+                    if hasattr(project, "target_parts")
+                    else []
+                )
                 if tgt_names:
                     frame = project.get_target_part(tgt_names[0], 0)
                 else:
@@ -533,7 +567,9 @@ class ConfigManager:
         try:
             if modified and hasattr(self, "gui") and self.gui is not None:
                 try:
-                    if hasattr(self.gui, "mark_user_modified") and callable(self.gui.mark_user_modified):
+                    if hasattr(self.gui, "mark_user_modified") and callable(
+                        self.gui.mark_user_modified
+                    ):
                         self.gui.mark_user_modified()
                 except Exception:
                     logger.debug("同步配置修改到项目修改标志失败", exc_info=True)
@@ -573,7 +609,9 @@ class ConfigManager:
                 panel = getattr(self.gui, "config_panel", None)
                 if panel is not None:
                     try:
-                        if hasattr(panel, "source_panel") and hasattr(panel.source_panel, "apply_variant_payload"):
+                        if hasattr(panel, "source_panel") and hasattr(
+                            panel.source_panel, "apply_variant_payload"
+                        ):
                             panel.source_panel.apply_variant_payload(
                                 {
                                     "PartName": "",
@@ -590,7 +628,9 @@ class ConfigManager:
                                     "Q": 1000.0,
                                 }
                             )
-                        if hasattr(panel, "target_panel") and hasattr(panel.target_panel, "apply_variant_payload"):
+                        if hasattr(panel, "target_panel") and hasattr(
+                            panel.target_panel, "apply_variant_payload"
+                        ):
                             panel.target_panel.apply_variant_payload(
                                 {
                                     "PartName": "",

@@ -113,7 +113,11 @@ class BatchProcessThread(QThread):
         # pylint: disable=import-outside-toplevel
         from src.cli_helpers import BatchConfig, resolve_file_format
 
-        base = self._global_batch_cfg if self._global_batch_cfg is not None else BatchConfig()
+        base = (
+            self._global_batch_cfg
+            if self._global_batch_cfg is not None
+            else BatchConfig()
+        )
         return resolve_file_format(str(file_path), base)
 
     def _emit_log(self, msg: str) -> None:
@@ -161,13 +165,30 @@ class BatchProcessThread(QThread):
                 status = r.get("status")
                 part = r.get("part")
                 if status == "success":
-                    msg = "part '" + str(part) + "' 处理成功，输出: " + str(r.get("out_path", ""))
+                    msg = (
+                        "part '"
+                        + str(part)
+                        + "' 处理成功，输出: "
+                        + str(r.get("out_path", ""))
+                    )
                 elif status == "skipped":
                     reason = r.get("reason")
-                    msg = "part '" + str(part) + "' 被跳过: " + str(reason) + " - " + str(r.get("message", ""))
+                    msg = (
+                        "part '"
+                        + str(part)
+                        + "' 被跳过: "
+                        + str(reason)
+                        + " - "
+                        + str(r.get("message", ""))
+                    )
                 else:
                     msg = (
-                        "part '" + str(part) + "' 处理失败: " + str(r.get("reason")) + " - " + str(r.get("message", ""))
+                        "part '"
+                        + str(part)
+                        + "' 处理失败: "
+                        + str(r.get("reason"))
+                        + " - "
+                        + str(r.get("message", ""))
                     )
                 self._emit_log(msg)
         except Exception:
@@ -204,7 +225,9 @@ class BatchProcessThread(QThread):
 
         part_mapping = None
         try:
-            part_mapping = (self.config.special_part_mapping_by_file or {}).get(str(Path(file_path)))
+            part_mapping = (self.config.special_part_mapping_by_file or {}).get(
+                str(Path(file_path))
+            )
         except Exception:
             part_mapping = None
 
@@ -229,7 +252,9 @@ class BatchProcessThread(QThread):
 
         row_selection = None
         try:
-            row_selection = (self.config.special_row_selection_by_file or {}).get(str(Path(file_path)))
+            row_selection = (self.config.special_row_selection_by_file or {}).get(
+                str(Path(file_path))
+            )
         except Exception:
             row_selection = None
 
@@ -337,17 +362,26 @@ class BatchProcessThread(QThread):
             ) = self._build_col_map(df)
 
             if not has_dimensional and not has_coeff:
-                raise ValueError("缺少必要列，需包含 Fx/Fy/Fz/Mx/My/Mz 或 " "Cx/Cy/Cz(CM)/CMx/CMy/CMz")
+                raise ValueError(
+                    "缺少必要列，需包含 Fx/Fy/Fz/Mx/My/Mz 或 "
+                    "Cx/Cy/Cz(CM)/CMx/CMy/CMz"
+                )
 
             if has_dimensional:
-                forces_df = df[[col_map["fx"], col_map["fy"], col_map["fz"]]].apply(pd.to_numeric, errors="coerce")
-                moments_df = df[[col_map["mx"], col_map["my"], col_map["mz"]]].apply(pd.to_numeric, errors="coerce")
-            else:
-                # 保持为无量纲系数，后续在计算器上下文中转换为有量纲
-                forces_df = df[[col_map["cx"], col_map["cy"], col_map[coeff_normal_key]]].apply(
+                forces_df = df[[col_map["fx"], col_map["fy"], col_map["fz"]]].apply(
                     pd.to_numeric, errors="coerce"
                 )
-                moments_df = df[[col_map["cmx"], col_map["cmy"], col_map["cmz"]]].apply(pd.to_numeric, errors="coerce")
+                moments_df = df[[col_map["mx"], col_map["my"], col_map["mz"]]].apply(
+                    pd.to_numeric, errors="coerce"
+                )
+            else:
+                # 保持为无量纲系数，后续在计算器上下文中转换为有量纲
+                forces_df = df[
+                    [col_map["cx"], col_map["cy"], col_map[coeff_normal_key]]
+                ].apply(pd.to_numeric, errors="coerce")
+                moments_df = df[[col_map["cmx"], col_map["cmy"], col_map["cmz"]]].apply(
+                    pd.to_numeric, errors="coerce"
+                )
 
             alpha_col_name = col_map.get("alpha")
             return (
@@ -370,9 +404,15 @@ class BatchProcessThread(QThread):
         """构建列小写映射并判断是否为有量纲或系数格式。"""
         col_map = {str(c).strip().lower(): c for c in df.columns}
 
-        has_dimensional = all(k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"])
-        coeff_normal_key = "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
-        has_coeff = coeff_normal_key is not None and all(k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"])
+        has_dimensional = all(
+            k in col_map for k in ["fx", "fy", "fz", "mx", "my", "mz"]
+        )
+        coeff_normal_key = (
+            "cz" if "cz" in col_map else "fn" if "fn" in col_map else None
+        )
+        has_coeff = coeff_normal_key is not None and all(
+            k in col_map for k in ["cx", "cy", "cmx", "cmy", "cmz"]
+        )
 
         return col_map, has_dimensional, coeff_normal_key, has_coeff
 
@@ -394,11 +434,15 @@ class BatchProcessThread(QThread):
 
             # 尝试唯一推断
             try:
-                source_names = list((getattr(self.config.project_data, "source_parts", {}) or {}).keys())
+                source_names = list(
+                    (getattr(self.config.project_data, "source_parts", {}) or {}).keys()
+                )
             except Exception:
                 source_names = []
             try:
-                target_names = list((getattr(self.config.project_data, "target_parts", {}) or {}).keys())
+                target_names = list(
+                    (getattr(self.config.project_data, "target_parts", {}) or {}).keys()
+                )
             except Exception:
                 target_names = []
 
@@ -457,7 +501,9 @@ class BatchProcessThread(QThread):
 
         return forces_dimensional, moments_dimensional
 
-    def _build_output_dataframe(self, results, original_df: pd.DataFrame, alpha_col_name: str) -> pd.DataFrame:
+    def _build_output_dataframe(
+        self, results, original_df: pd.DataFrame, alpha_col_name: str
+    ) -> pd.DataFrame:
         """根据计算结果构建输出的 DataFrame（含 Alpha、力/力矩和系数列）。"""
         out = pd.DataFrame()
         if alpha_col_name and alpha_col_name in original_df.columns:
@@ -495,7 +541,9 @@ class BatchProcessThread(QThread):
             return True, out_names
         return False, "未生成输出文件"
 
-    def _apply_table_row_selection(self, file_path: Path, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_table_row_selection(
+        self, file_path: Path, df: pd.DataFrame
+    ) -> pd.DataFrame:
         """如果用户为文件指定了行选择，则按选择过滤并返回新的 DataFrame。"""
         try:
             fp_str = str(Path(file_path))
@@ -506,7 +554,9 @@ class BatchProcessThread(QThread):
             return df
         except Exception as e:
             try:
-                self.log_message.emit(f"按行选择过滤失败: {Path(file_path).name} -> {e}")
+                self.log_message.emit(
+                    f"按行选择过滤失败: {Path(file_path).name} -> {e}"
+                )
             except Exception:
                 pass
             raise
@@ -526,7 +576,9 @@ class BatchProcessThread(QThread):
 
         results = calc_to_use.process_batch(forces_dimensional, moments_dimensional)
 
-        output_df = self._build_output_dataframe(results, inputs.original_df, inputs.alpha_col_name)
+        output_df = self._build_output_dataframe(
+            results, inputs.original_df, inputs.alpha_col_name
+        )
 
         # 生成更高分辨率且具唯一性的文件名，减少同名冲突
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -560,9 +612,13 @@ class BatchProcessThread(QThread):
             success_flag, success_msg = self._format_output_summary(output_file)
             try:
                 if success_flag:
-                    self.log_message.emit(f"  ✓ 完成: {success_msg} (耗时: {file_elapsed:.2f}s)")
+                    self.log_message.emit(
+                        f"  ✓ 完成: {success_msg} (耗时: {file_elapsed:.2f}s)"
+                    )
                 else:
-                    self.log_message.emit(f"  ✗ 处理结果：{success_msg} (耗时: {file_elapsed:.2f}s)")
+                    self.log_message.emit(
+                        f"  ✗ 处理结果：{success_msg} (耗时: {file_elapsed:.2f}s)"
+                    )
             except Exception:
                 logger.debug(
                     "Cannot emit success/failure message for %s",
@@ -607,7 +663,9 @@ class BatchProcessThread(QThread):
                     skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
                 )
                 logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
-                self._emit_log(f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列")
+                self._emit_log(
+                    f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列"
+                )
             else:
                 df = pd.read_excel(
                     file_path,
@@ -648,11 +706,15 @@ class BatchProcessThread(QThread):
         remaining = total - completed
         eta = int(avg * remaining)
         try:
-            self.log_message.emit(f"已完成 {completed}/{total}，平均每文件耗时 {avg:.2f}s，预计剩余 {eta}s")
+            self.log_message.emit(
+                f"已完成 {completed}/{total}，平均每文件耗时 {avg:.2f}s，预计剩余 {eta}s"
+            )
         except Exception:
             logger.debug("无法发出 ETA 消息", exc_info=True)
 
-    def _build_progress_detail(self, completed: int, total: int, elapsed_list: list) -> str:
+    def _build_progress_detail(
+        self, completed: int, total: int, elapsed_list: list
+    ) -> str:
         """构建详细的进度信息文本。
 
         Args:
@@ -682,7 +744,11 @@ class BatchProcessThread(QThread):
             minutes = (eta_seconds % 3600) // 60
             eta_str = f"{hours}小时{minutes}分"
 
-        return f"{completed}/{total} 文件 | " f"平均 {avg:.1f}s/文件 | " f"预计剩余 {eta_str}"
+        return (
+            f"{completed}/{total} 文件 | "
+            f"平均 {avg:.1f}s/文件 | "
+            f"预计剩余 {eta_str}"
+        )
 
     def _finalize_run(self, success: int, total: int, elapsed_list: list) -> None:
         """发送运行完成的汇总消息（成功/取消/无文件等）。"""

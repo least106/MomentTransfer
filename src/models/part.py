@@ -86,5 +86,7 @@ class Part:
         """从字典创建 Part 实例（反序列化）。"""
         name = data.get("PartName", "")
         variants_data = data.get("Variants") or []
-        variants = [Variant.from_dict(v) for v in variants_data] if variants_data else []
+        variants = (
+            [Variant.from_dict(v) for v in variants_data] if variants_data else []
+        )
         return cls(name=name, variants=variants)

@@ -27,7 +27,9 @@ def test_load_project_calculator_success_auto_select(monkeypatch):
     dummy_calc = DummyCalc(dummy_proj, target_part="T1")
     dummy_ctx = DummyExecutionContext(dummy_proj, dummy_calc)
 
-    monkeypatch.setattr(cf, "create_execution_context", lambda *args, **kwargs: dummy_ctx)
+    monkeypatch.setattr(
+        cf, "create_execution_context", lambda *args, **kwargs: dummy_ctx
+    )
 
     proj, calc = cf.load_project_calculator("somepath")
     assert proj is dummy_proj

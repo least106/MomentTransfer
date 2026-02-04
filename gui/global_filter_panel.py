@@ -116,7 +116,9 @@ class GlobalFilterPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.conditions: List[FilterCondition] = []
-        self.hidden_rows_by_table: Dict[int, Set[int]] = {}  # table_id -> hidden row indices
+        self.hidden_rows_by_table: Dict[int, Set[int]] = (
+            {}
+        )  # table_id -> hidden row indices
         self._columns: List[str] = []  # 当前可用列名
         self._init_ui()
 

@@ -142,27 +142,43 @@ class PartSelectorPanel(QGroupBox):
     def _connect_signals(self):
         """连接内部信号"""
         # Source 信号
-        self.source_selector.currentTextChanged.connect(lambda text: self.sourcePartSelected.emit(text))
-        self.btn_add_source.clicked.connect(lambda: self.partAddRequested.emit("Source", ""))
+        self.source_selector.currentTextChanged.connect(
+            lambda text: self.sourcePartSelected.emit(text)
+        )
+        self.btn_add_source.clicked.connect(
+            lambda: self.partAddRequested.emit("Source", "")
+        )
         self.btn_remove_source.clicked.connect(
-            lambda: self.partRemoveRequested.emit("Source", self.source_selector.currentText())
+            lambda: self.partRemoveRequested.emit(
+                "Source", self.source_selector.currentText()
+            )
         )
 
         # Target 信号
-        self.target_selector.currentTextChanged.connect(lambda text: self.targetPartSelected.emit(text))
-        self.btn_add_target.clicked.connect(lambda: self.partAddRequested.emit("Target", ""))
+        self.target_selector.currentTextChanged.connect(
+            lambda text: self.targetPartSelected.emit(text)
+        )
+        self.btn_add_target.clicked.connect(
+            lambda: self.partAddRequested.emit("Target", "")
+        )
         self.btn_remove_target.clicked.connect(
-            lambda: self.partRemoveRequested.emit("Target", self.target_selector.currentText())
+            lambda: self.partRemoveRequested.emit(
+                "Target", self.target_selector.currentText()
+            )
         )
 
         # 连接到 SignalBus（如果可用）
         try:
             if self.signal_bus:
                 self.partAddRequested.connect(self.signal_bus.partAddRequested.emit)
-                self.partRemoveRequested.connect(self.signal_bus.partRemoveRequested.emit)
+                self.partRemoveRequested.connect(
+                    self.signal_bus.partRemoveRequested.emit
+                )
                 logger.debug("Part 选择器面板已连接到 SignalBus")
         except Exception as e:
-            logger.warning("连接 Part 选择器面板到 SignalBus 失败: %s", e, exc_info=True)
+            logger.warning(
+                "连接 Part 选择器面板到 SignalBus 失败: %s", e, exc_info=True
+            )
 
     def _on_part_added(self, side: str, part_name: str):
         """响应 Part 添加事件"""

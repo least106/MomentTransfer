@@ -157,9 +157,13 @@ class BatchPanel(QWidget):
         self.btn_load_config = QPushButton("加载配置")
         try:
             self.btn_load_config.setMaximumWidth(90)
-            self.btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
+            self.btn_load_config.setToolTip(
+                "加载配置文件（JSON），用于提供 Source/Target part 定义"
+            )
         except Exception as e:
-            logger.debug("设置 btn_load_config 属性失败（非致命）: %s", e, exc_info=True)
+            logger.debug(
+                "设置 btn_load_config 属性失败（非致命）: %s", e, exc_info=True
+            )
         try:
             self.btn_load_config.clicked.connect(self._on_load_config_clicked)
         except Exception:
@@ -230,7 +234,9 @@ class BatchPanel(QWidget):
                 if label is not None:
                     label.setVisible(visible)
             except Exception:
-                logger.debug("尝试获取并设置表单标签可见性失败（非致命）", exc_info=True)
+                logger.debug(
+                    "尝试获取并设置表单标签可见性失败（非致命）", exc_info=True
+                )
             try:
                 field_widget.setVisible(visible)
             except Exception:
@@ -255,7 +261,9 @@ class BatchPanel(QWidget):
                 elif win is not None:
                     try:
                         # 优先通过 UIStateManager 设置（若存在）
-                        if hasattr(win, "ui_state_manager") and getattr(win, "ui_state_manager"):
+                        if hasattr(win, "ui_state_manager") and getattr(
+                            win, "ui_state_manager"
+                        ):
                             try:
                                 win.ui_state_manager.set_data_loaded(True)
                                 return
@@ -328,7 +336,9 @@ class BatchPanel(QWidget):
         self.chk_bulk_row_selection = QCheckBox("行选择批量作用域")
         try:
             self.chk_bulk_row_selection.setChecked(True)
-            self.chk_bulk_row_selection.setToolTip("勾选后：在数据行上点击全选/全不选/反选，会对所有选中文件生效")
+            self.chk_bulk_row_selection.setToolTip(
+                "勾选后：在数据行上点击全选/全不选/反选，会对所有选中文件生效"
+            )
         except Exception:
             pass
         btn_row.addWidget(self.chk_bulk_row_selection)
@@ -347,7 +357,9 @@ class BatchPanel(QWidget):
         self._filter_completer.setCaseSensitivity(Qt.CaseInsensitive)
         # 使用未过滤弹出模式，便于显示全部候选并使用 Tab 在候选间切换
         try:
-            self._filter_completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+            self._filter_completer.setCompletionMode(
+                QCompleter.UnfilteredPopupCompletion
+            )
         except Exception:
             pass
         self.inp_filter_column.setCompleter(self._filter_completer)
@@ -360,7 +372,9 @@ class BatchPanel(QWidget):
 
         # 运算符选择
         self.cmb_filter_operator = QComboBox()
-        self.cmb_filter_operator.addItems(["包含", "不包含", "=", "≠", "<", ">", "≤", "≥", "≈"])
+        self.cmb_filter_operator.addItems(
+            ["包含", "不包含", "=", "≠", "<", ">", "≤", "≥", "≈"]
+        )
         self.cmb_filter_operator.setMaximumWidth(60)
         self.cmb_filter_operator.setToolTip("选择筛选运算符")
         btn_row.addWidget(self.cmb_filter_operator)
@@ -375,7 +389,9 @@ class BatchPanel(QWidget):
         # 连接筛选信号
         try:
             self.inp_filter_column.textChanged.connect(self._on_quick_filter_changed)
-            self.cmb_filter_operator.currentTextChanged.connect(self._on_operator_changed)
+            self.cmb_filter_operator.currentTextChanged.connect(
+                self._on_operator_changed
+            )
             self.inp_filter_value.textChanged.connect(self._on_quick_filter_changed)
         except Exception:
             logger.debug("连接快速筛选信号失败", exc_info=True)
@@ -407,9 +423,13 @@ class BatchPanel(QWidget):
         # 未保存配置指示器（在文件列表上方明显显示）
         try:
             self.lbl_unsaved_indicator = QLabel("● 有未保存配置")
-            self.lbl_unsaved_indicator.setStyleSheet("color: #d9534f; font-weight: bold;")
+            self.lbl_unsaved_indicator.setStyleSheet(
+                "color: #d9534f; font-weight: bold;"
+            )
             self.lbl_unsaved_indicator.setVisible(False)
-            self.lbl_unsaved_indicator.setToolTip("检测到未保存的配置。开始批处理会提示保存，或在文件列表中查看详情。")
+            self.lbl_unsaved_indicator.setToolTip(
+                "检测到未保存的配置。开始批处理会提示保存，或在文件列表中查看详情。"
+            )
             layout.addWidget(self.lbl_unsaved_indicator)
         except Exception:
             logger.debug("创建未保存配置指示器失败（非致命）", exc_info=True)
@@ -480,7 +500,9 @@ class BatchPanel(QWidget):
                         fw = None
 
                     if fw is self.inp_filter_column:
-                        comp = getattr(self.inp_filter_column, "completer", lambda: None)()
+                        comp = getattr(
+                            self.inp_filter_column, "completer", lambda: None
+                        )()
                         try:
                             popup = comp.popup() if comp is not None else None
                         except Exception:
@@ -488,10 +510,15 @@ class BatchPanel(QWidget):
 
                         # 若未显示，先显示候选
                         try:
-                            if popup is None or not getattr(popup, "isVisible", lambda: False)():
+                            if (
+                                popup is None
+                                or not getattr(popup, "isVisible", lambda: False)()
+                            ):
                                 if comp is not None:
                                     comp.complete()
-                                logger.debug("BatchPanel.eventFilter: invoked completer.complete() (global filter)")
+                                logger.debug(
+                                    "BatchPanel.eventFilter: invoked completer.complete() (global filter)"
+                                )
                                 return True
 
                             # 已显示：在 popup 中循环选择（Tab 向前，Shift+Tab 向后）
@@ -613,7 +640,9 @@ class BatchPanel(QWidget):
             self.lbl_unsaved_indicator.setVisible(bool(unsaved))
             try:
                 if unsaved:
-                    self.lbl_unsaved_indicator.setToolTip("检测到未保存的配置。开始批处理会提示保存。")
+                    self.lbl_unsaved_indicator.setToolTip(
+                        "检测到未保存的配置。开始批处理会提示保存。"
+                    )
                 else:
                     self.lbl_unsaved_indicator.setToolTip("")
             except Exception:

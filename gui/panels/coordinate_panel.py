@@ -212,10 +212,14 @@ class CoordinateSystemPanel(QGroupBox):
             if self.signal_bus:
                 side = "Source" if self.prefix.lower() == "src" else "Target"
                 self.btn_add_part.clicked.connect(
-                    lambda: self.signal_bus.partAddRequested.emit(side, self.get_part_name())
+                    lambda: self.signal_bus.partAddRequested.emit(
+                        side, self.get_part_name()
+                    )
                 )
                 self.btn_remove_part.clicked.connect(
-                    lambda: self.signal_bus.partRemoveRequested.emit(side, self.get_part_name())
+                    lambda: self.signal_bus.partRemoveRequested.emit(
+                        side, self.get_part_name()
+                    )
                 )
                 logger.debug("%s 面板按钮已连接到 SignalBus", side)
         except Exception as e:
@@ -315,7 +319,9 @@ class CoordinateSystemPanel(QGroupBox):
                 return
             # 优先使用 UIStateManager API（若存在）
             try:
-                if hasattr(win, "ui_state_manager") and getattr(win, "ui_state_manager"):
+                if hasattr(win, "ui_state_manager") and getattr(
+                    win, "ui_state_manager"
+                ):
                     try:
                         win.ui_state_manager.mark_user_modified()
                         return
@@ -369,7 +375,9 @@ class CoordinateSystemPanel(QGroupBox):
                 if key in data:
                     values = data[key]
                     for col in range(min(3, len(values))):
-                        self.coord_table.setItem(row, col, QTableWidgetItem(str(values[col])))
+                        self.coord_table.setItem(
+                            row, col, QTableWidgetItem(str(values[col]))
+                        )
         finally:
             try:
                 self.end_silent_update()
@@ -450,7 +458,9 @@ class CoordinateSystemPanel(QGroupBox):
         bref = payload.get("Bref", payload.get("B_ref", 1.0))
         sref = payload.get("Sref", payload.get("S_ref", 10.0))
         q_val = payload.get("Q", 1000.0)
-        logger.debug(f"{self.prefix} apply_variant_payload: cref={cref}, bref={bref}, sref={sref}, q={q_val}")
+        logger.debug(
+            f"{self.prefix} apply_variant_payload: cref={cref}, bref={bref}, sref={sref}, q={q_val}"
+        )
 
         # 在批量填充时使用静默更新，避免触发 valuesChanged
         try:
@@ -528,7 +538,10 @@ class CoordinateSystemPanel(QGroupBox):
         if side_norm != prefix_norm:
             return
         try:
-            current_items = [self.part_selector.itemText(i) for i in range(self.part_selector.count())]
+            current_items = [
+                self.part_selector.itemText(i)
+                for i in range(self.part_selector.count())
+            ]
             if part_name not in current_items:
                 self.part_selector.blockSignals(True)
                 self.part_selector.addItem(part_name)

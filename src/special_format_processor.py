@@ -106,7 +106,9 @@ def _process_single_part(
                             "reason": "source_missing",
                             "message": error_msg,
                         }
-                    error_msg = format_inference_error(part_name, source_result, "source", "--source-part")
+                    error_msg = format_inference_error(
+                        part_name, source_result, "source", "--source-part"
+                    )
                     logger.error(error_msg)
                     return None, {
                         "part": part_name,
@@ -142,7 +144,9 @@ def _process_single_part(
                             "reason": "target_not_mapped",
                             "message": error_msg,
                         }
-                    error_msg = format_inference_error(part_name, target_result, "target", "--target-part")
+                    error_msg = format_inference_error(
+                        part_name, target_result, "target", "--target-part"
+                    )
                     logger.error(error_msg)
                     return None, {
                         "part": part_name,
@@ -231,7 +235,9 @@ def _process_single_part(
             }
         # 构建 AeroCalculator 可能在 project_data 中找不到 target 时抛出 KeyError
         try:
-            calc = AeroCalculator(project_data, source_part=source_part, target_part=target_part)
+            calc = AeroCalculator(
+                project_data, source_part=source_part, target_part=target_part
+            )
         except KeyError as e:
             msg = f"part '{part_name}' 的 target 部件不存在: {e}，已跳过"
             logger.warning(msg)
@@ -277,7 +283,9 @@ def _process_single_part(
     if out_path.exists() and not overwrite:
         suffix = 1
         while True:
-            candidate = output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+            candidate = (
+                output_dir / f"{file_path.stem}_{part_name}_result_{ts}_{suffix}.csv"
+            )
             if not candidate.exists():
                 out_path = candidate
                 break

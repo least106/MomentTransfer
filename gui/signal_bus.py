@@ -27,7 +27,9 @@ class SignalBus(QObject):
     partAdded = Signal(str, str)  # side: 'Source'|'Target', part_name
     partRemoved = Signal(str, str)  # side: 'Source'|'Target', part_name
     # Part 请求（由面板发起，管理器响应）
-    partAddRequested = Signal(str, str)  # side: 'Source'|'Target'|'src'|'tgt', desired_name
+    partAddRequested = Signal(
+        str, str
+    )  # side: 'Source'|'Target'|'src'|'tgt', desired_name
     partRemoveRequested = Signal(str, str)  # side: 'Source'|'Target'|'src'|'tgt', name
 
     # 批处理相关

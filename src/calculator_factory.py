@@ -58,5 +58,7 @@ def attempt_load_project_data(path: str, *, strict: bool = True):
     if ok:
         return project_data
     if strict:
-        raise ValueError(f"加载配置失败: {info.get('message')} 建议: {info.get('suggestion')}")
+        raise ValueError(
+            f"加载配置失败: {info.get('message')} 建议: {info.get('suggestion')}"
+        )
     return None, info

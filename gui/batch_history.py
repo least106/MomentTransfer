@@ -31,7 +31,9 @@ class BatchHistoryStore:
         import os
 
         # 测试环境检测：使用临时路径避免污染真实历史记录
-        is_testing = bool(os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "1")
+        is_testing = bool(
+            os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "1"
+        )
 
         if is_testing:
             # 测试环境：使用临时目录
@@ -299,12 +301,19 @@ class BatchHistoryPanel(QWidget):
                 # 添加子记录（重做生成的记录）
                 for child_rec in child_records:
                     child_ts = child_rec.get("timestamp", "")
-                    child_time_part = child_ts.split("T")[-1][:8] if "T" in child_ts else child_ts
+                    child_time_part = (
+                        child_ts.split("T")[-1][:8] if "T" in child_ts else child_ts
+                    )
                     child_summary = self._build_summary(child_rec)
                     child_status = self._status_text(child_rec.get("status"))
 
                     child_row = QTreeWidgetItem(
-                        [f"  → {child_time_part}", child_summary, child_status, ""]  # 使用箭头表示是重做的子记录
+                        [
+                            f"  → {child_time_part}",
+                            child_summary,
+                            child_status,
+                            "",
+                        ]  # 使用箭头表示是重做的子记录
                     )
                     # 将子记录设置为浅灰色以区分
                     for col in range(4):
@@ -384,7 +393,10 @@ class BatchHistoryPanel(QWidget):
                                 if isinstance(mapping, dict):
                                     src = mapping.get("source", "?")
                                     tgt = mapping.get("target", "?")
-                                    line = f"  • {file_name} " f"[{internal_part}]: {src} → {tgt}"
+                                    line = (
+                                        f"  • {file_name} "
+                                        f"[{internal_part}]: {src} → {tgt}"
+                                    )
                                     details.append(line)
 
                 return "\n".join(details)
