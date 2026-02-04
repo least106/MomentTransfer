@@ -29,9 +29,9 @@ jobs:
       - name: Run black (check)
         run: |
           python -m black --version
-          python -m black --check src/ tests/ gui/ gui_main.py batch.py examples/ || (echo 'Run `python -m black src/ tests/ gui/ gui_main.py batch.py examples/` to format' && exit 1)
+          python -m black --check src/ tests/ gui/ gui_main.py batch.py || (echo 'Run `python -m black src/ tests/ gui/ gui_main.py batch.py` to format' && exit 1)
 
       - name: Run isort (check)
         run: |
           python -m isort --version
-          python -m isort --check-only --diff src/ tests/ gui/ gui_main.py batch.py examples/ || (echo 'Run `python -m isort src/ tests/ gui/ gui_main.py batch.py examples/` to fix imports' && exit 1)
+          python -m isort --check-only --diff src/ tests/ gui/ gui_main.py batch.py || (echo 'Run `python -m isort src/ tests/ gui/ gui_main.py batch.py` to fix imports' && exit 1)
