@@ -3,8 +3,8 @@
 验证：全局状态管理器 -> batch_manager -> 历史记录 树结构
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -31,7 +31,7 @@ class TestRedoFlowIntegration:
 
     def test_redo_state_manager_integration(self):
         """测试重做状态管理器与 batch_manager 的集成"""
-        from gui.global_state_manager import GlobalStateManager, AppState
+        from gui.global_state_manager import AppState, GlobalStateManager
 
         # 创建状态管理器
         sm = GlobalStateManager.instance()
@@ -64,10 +64,11 @@ class TestRedoFlowIntegration:
 
     def test_batch_manager_has_state_manager(self):
         """测试 batch_manager 已与全局状态管理器集成"""
-        from gui.batch_manager import BatchManager
-        from gui.global_state_manager import GlobalStateManager
-        from gui.batch_state import BatchStateManager
         from PySide6.QtWidgets import QApplication, QMainWindow
+
+        from gui.batch_manager import BatchManager
+        from gui.batch_state import BatchStateManager
+        from gui.global_state_manager import GlobalStateManager
 
         # 创建最小化的主窗口
         app = QApplication.instance()
@@ -93,10 +94,12 @@ class TestRedoFlowIntegration:
 
     def test_exit_redo_mode_on_batch_completion(self):
         """测试批处理完成时退出重做模式"""
-        from gui.batch_manager import BatchManager
-        from gui.global_state_manager import GlobalStateManager, AppState
-        from PySide6.QtWidgets import QApplication, QMainWindow
         from unittest.mock import MagicMock, patch
+
+        from PySide6.QtWidgets import QApplication, QMainWindow
+
+        from gui.batch_manager import BatchManager
+        from gui.global_state_manager import AppState, GlobalStateManager
 
         # 创建 app 和窗口
         app = QApplication.instance()
@@ -136,10 +139,12 @@ class TestRedoFlowIntegration:
 
     def test_state_banner_signal_callback(self):
         """测试状态横幅的信号回调"""
+        from unittest.mock import MagicMock
+
+        from PySide6.QtWidgets import QApplication, QMainWindow
+
         from gui.batch_manager import BatchManager
         from gui.global_state_manager import GlobalStateManager
-        from PySide6.QtWidgets import QApplication, QMainWindow
-        from unittest.mock import MagicMock
 
         # 创建 app 和窗口
         app = QApplication.instance()

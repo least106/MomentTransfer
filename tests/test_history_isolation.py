@@ -98,8 +98,9 @@ class TestHistoryIsolation:
 
     def test_batch_manager_respects_testing_flag(self):
         """验证 BatchManager 在测试环境下跳过历史记录"""
-        from gui.batch_manager import BatchManager
         from PySide6.QtWidgets import QApplication, QMainWindow
+
+        from gui.batch_manager import BatchManager
 
         # 确保 QApplication 存在
         app = QApplication.instance()

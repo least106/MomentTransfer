@@ -1,10 +1,11 @@
 """测试历史记录树状结构和重做计数功能"""
 
-import unittest
-from PySide6.QtWidgets import QApplication
 import sys
+import unittest
 
-from gui.batch_history import BatchHistoryStore, BatchHistoryPanel
+from PySide6.QtWidgets import QApplication
+
+from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
 
 
 class TestHistoryTreeStructure(unittest.TestCase):

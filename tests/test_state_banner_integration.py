@@ -4,8 +4,8 @@
 测试状态横幅集成 - 验证全局状态管理器与 batch_manager 的交互
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 
 # 配置日志以查看详细信息
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def test_state_manager_import():
     """测试全局状态管理器导入"""
     try:
-        from gui.global_state_manager import GlobalStateManager, AppState
+        from gui.global_state_manager import AppState, GlobalStateManager
 
         logger.info("✓ 全局状态管理器导入成功")
 
@@ -43,7 +43,7 @@ def test_state_manager_import():
 def test_state_transitions():
     """测试状态转换"""
     try:
-        from gui.global_state_manager import GlobalStateManager, AppState
+        from gui.global_state_manager import AppState, GlobalStateManager
 
         sm = GlobalStateManager.instance()
 
@@ -86,9 +86,10 @@ def test_state_transitions():
 def test_signal_emissions():
     """测试信号发送"""
     try:
-        from gui.global_state_manager import GlobalStateManager, AppState
-        from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import QCoreApplication
+        from PySide6.QtWidgets import QApplication
+
+        from gui.global_state_manager import AppState, GlobalStateManager
 
         # 需要 QApplication 来处理信号
         app = QApplication.instance()
@@ -141,8 +142,9 @@ def test_signal_emissions():
 def test_state_banner_import():
     """测试状态横幅导入"""
     try:
-        from gui.state_banner import StateBanner
         from PySide6.QtWidgets import QApplication
+
+        from gui.state_banner import StateBanner
 
         app = QApplication.instance()
         if app is None:
