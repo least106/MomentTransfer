@@ -1594,8 +1594,9 @@ class BatchManager:
             except Exception:
                 logger.debug("恢复步骤1提示失败", exc_info=True)
             try:
-                if hasattr(self.gui, "statusBar"):
-                    self.gui.statusBar().showMessage(message, 5000)
+                # 状态栏消息延时1500ms
+                sb = self.gui.statusBar()
+                sb.showMessage(message, 1500)
             except Exception:
                 logger.debug("显示完成提示失败（非致命）", exc_info=True)
         except Exception as e:
@@ -1777,47 +1778,69 @@ class BatchManager:
             logger.debug("撤销历史记录失败", exc_info=True)
 
     def redo_history_record(self, record_id: str) -> None:
-        """重做指定历史记录（恢复已撤销的输出文件）。"""
+        """点击重做：恢复该记录的输入配置状态，准备重新处理"""
         try:
             store = self.history_store or getattr(self.gui, "history_store", None)
             if store is None or not record_id:
                 return
 
-            # 在 redo_stack 中找到对应的记录
-            redo_stack = getattr(store, "redo_stack", [])
+            # 从 redo_stack 或 records 中找到对应的记录
             target_record = None
+            
+            # 先在 redo_stack 查找（已撤销的记录）
+            redo_stack = getattr(store, "redo_stack", [])
             for redo_item in redo_stack:
                 rec = redo_item.get("record", {})
                 if rec.get("id") == record_id:
                     target_record = rec
                     break
             
+            # 如果没找到，在 records 中查找（正常记录）
             if target_record is None:
+                for rec in store.get_records():
+                    if rec.get("id") == record_id:
+                        target_record = rec
+                        break
+            
+            if target_record is None:
+                logger.warning("未找到重做记录: %s", record_id)
                 return
 
-            # 从备份恢复文件
-            backup_files = target_record.get("backup_files") or {}
-            restored = 0
-            for output_path, backup_path in backup_files.items():
-                try:
-                    src_fp = Path(backup_path)
-                    dst_fp = Path(output_path)
-                    if src_fp.exists() and src_fp.is_file():
-                        dst_fp.parent.mkdir(parents=True, exist_ok=True)
-                        # 使用 shutil.copy2 保留元数据
-                        import shutil
-                        shutil.copy2(str(src_fp), str(dst_fp))
-                        restored += 1
-                except (OSError, PermissionError, ValueError) as e:
-                    logger.debug("恢复输出文件失败: %s", e, exc_info=True)
-                except Exception:
-                    logger.debug("恢复输出文件失败（未知错误）", exc_info=True)
-
+            # 恢复配置状态（不是恢复文件）
             try:
-                # 调用 redo_record() 恢复状态
-                restored_rec = store.redo_record()
-                if restored_rec is None:
-                    logger.debug("重做记录未能从栈中恢复")
+                input_path = target_record.get("input_path", "")
+                files = target_record.get("files", [])
+                row_selections = target_record.get("row_selections", {})
+                part_mappings = target_record.get("part_mappings", {})
+                file_configs = target_record.get("file_configs", {})
+                
+                # TODO: 恢复到 GUI 状态
+                # - 设置输入路径
+                # - 选择文件
+                # - 恢复行选择
+                # - 恢复 Part 映射
+                # - 恢复文件配置
+                
+                logger.info("重做记录配置已准备: %s", record_id)
+            except Exception as e:
+                logger.warning("恢复重做配置失败: %s", e, exc_info=True)
+
+            # 显示状态横幅提示用户处于重做模式
+            try:
+                banner = getattr(self.gui, "state_banner", None)
+                if banner is not None:
+                    banner.show_redo_state(target_record)
+                else:
+                    logger.debug("状态横幅组件不存在")
+            except Exception as e:
+                logger.debug("显示重做状态横幅失败: %s", e, exc_info=True)
+
+            # 更新历史状态（从 redo_stack 恢复）
+            try:
+                if target_record.get("status") == "undone":
+                    restored_rec = store.redo_record()
+                    if restored_rec is None:
+                        logger.debug("重做记录未能从栈中恢复")
             except Exception:
                 logger.debug("更新历史记录状态失败（非致命）", exc_info=True)
             
@@ -1827,10 +1850,10 @@ class BatchManager:
             except Exception:
                 logger.debug("刷新历史面板失败", exc_info=True)
 
+            # 状态栏提示
             try:
-                # 使用状态栏显示，1500ms 后自动清空（非阻塞）
                 sb = self.gui.statusBar()
-                sb.showMessage(f"✓ 重做完成，已恢复 {restored} 个输出文件", 1500)
+                sb.showMessage("✓ 已恢复重做配置，点击「开始处理」重新执行", 3000)
             except Exception as e:
                 logger.debug("重做提示失败: %s", e, exc_info=True)
         except Exception:

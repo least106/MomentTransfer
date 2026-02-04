@@ -181,6 +181,18 @@ class InitializationManager:
             )
             main_layout.setSpacing(LAYOUT_SPACING)
 
+            # 创建状态横幅（默认隐藏）
+            try:
+                from gui.state_banner import StateBanner
+
+                state_banner = StateBanner(central_widget)
+                state_banner.exitRequested.connect(self._on_banner_exit_requested)
+                self.main_window.state_banner = state_banner
+                main_layout.addWidget(state_banner)
+            except Exception:
+                logger.debug("创建状态横幅失败（非致命）", exc_info=True)
+                self.main_window.state_banner = None
+
             # 创建配置/操作面板
             config_panel = self.main_window.create_config_panel()
             part_mapping_panel = self.main_window.create_part_mapping_panel()
@@ -1039,3 +1051,12 @@ class InitializationManager:
 
         except Exception:
             logger.debug("创建配置警告标签失败（完整）", exc_info=True)
+
+    def _on_banner_exit_requested(self):
+        """用户点击横幅退出按钮"""
+        try:
+            # 清除重做状态等
+            logger.info("用户退出状态横幅")
+            # TODO: 清除重做配置状态
+        except Exception:
+            logger.debug("处理横幅退出请求失败", exc_info=True)
