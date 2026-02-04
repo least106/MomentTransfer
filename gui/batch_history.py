@@ -28,11 +28,30 @@ class BatchHistoryStore:
     """管理批处理历史的简单持久化存储。"""
 
     def __init__(self, *, store_path: Optional[Path] = None) -> None:
-        base_dir = Path.home() / ".momentconversion"
-        base_dir.mkdir(parents=True, exist_ok=True)
-        self.store_path = store_path or base_dir / "batch_history.json"
+        import os
+        
+        # 测试环境检测：使用临时路径避免污染真实历史记录
+        is_testing = bool(
+            os.getenv("PYTEST_CURRENT_TEST") or 
+            os.getenv("TESTING") == "1"
+        )
+        
+        if is_testing:
+            # 测试环境：使用临时目录
+            import tempfile
+            base_dir = Path(tempfile.gettempdir()) / ".momentconversion_test"
+            base_dir.mkdir(parents=True, exist_ok=True)
+            self.store_path = store_path or base_dir / "batch_history_test.json"
+            logger.debug("测试环境：使用临时历史存储路径 %s", self.store_path)
+        else:
+            # 生产环境：使用用户主目录
+            base_dir = Path.home() / ".momentconversion"
+            base_dir.mkdir(parents=True, exist_ok=True)
+            self.store_path = store_path or base_dir / "batch_history.json"
+        
         self.records: List[Dict] = []
         self.redo_stack: List[Dict] = []  # 重做栈：存储被撤销的记录
+        self._is_testing = is_testing
         self._load()
 
     def _load(self) -> None:
@@ -54,6 +73,11 @@ class BatchHistoryStore:
 
     def save(self) -> None:
         try:
+            # 测试环境下记录到内存即可，不持久化到磁盘（额外保护）
+            if getattr(self, "_is_testing", False):
+                logger.debug("测试环境：跳过历史记录持久化")
+                return
+            
             data = {
                 "records": self.records,
                 "redo_stack": self.redo_stack,
