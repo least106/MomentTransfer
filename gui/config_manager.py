@@ -295,6 +295,10 @@ class ConfigManager:
             except Exception:
                 self._loaded_snapshot = None
             self._config_modified = False
+
+            # 清除旧配置可能存留的批处理多选列表
+            # 这避免用户用新配置加载后仍使用旧配置对应的文件选择
+            self._clear_batch_file_selection()
         except Exception as e:
             QMessageBox.critical(self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}")
 
@@ -750,12 +754,32 @@ class ConfigManager:
         except Exception:
             logger.debug("Part 删除后刷新文件树状态失败（非致命）", exc_info=True)
 
+    def _clear_batch_file_selection(self) -> None:
+        """清除批处理多选文件列表。
+
+        在重做模式、加载新配置或重置配置时调用，确保用户不会
+        误用旧的批处理选择（可能与新配置不兼容）。
+        """
+        try:
+            # 清除 BatchManager 中的多选列表
+            batch_manager = getattr(self.gui, "batch_manager", None)
+            if batch_manager is not None:
+                batch_manager._selected_paths = None
+                logger.info("已清除批处理多选文件列表")
+            else:
+                logger.debug("BatchManager 不可用，无法清除多选列表")
+        except Exception:
+            logger.debug("清除批处理多选文件列表失败（非致命）", exc_info=True)
+
     def reset_config(self) -> None:
         """重置配置到初始状态（向后兼容旧接口）。
 
         清除加载的配置、项目模型，重置修改标志，并尝试清空界面面板显示。
+        同时清除批处理多选文件列表，避免使用不兼容的旧配置。
         """
         try:
+            # 清除批处理多选列表
+            self._clear_batch_file_selection()
             self._last_loaded_config_path = None
             self._raw_project_dict = None
             self.project_config_model = None

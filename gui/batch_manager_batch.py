@@ -16,7 +16,18 @@ logger = logging.getLogger(__name__)
 
 
 def run_batch_processing(manager):
-    """运行批处理（由 `BatchManager` 委托）。"""
+    """运行批处理（由 `BatchManager` 委托）。
+
+    批处理会检查：
+    1. 配置是否已加载
+    2. 多选文件列表有效性（如刚从重做模式切换回来，旧列表应被清除）
+    3. 输入路径是否存在
+    4. 每个文件的 Source/Target Part 选择是否满足优先级要求（参见 batch_thread.py）
+
+    关键流程：
+    - 优先使用多选文件路径，否则从输入框读取
+    - 收集所有选中文件，验证 Part 选择合法性
+    """
     try:
 
         def _report_error(title: str, message: str, details: str = None) -> None:

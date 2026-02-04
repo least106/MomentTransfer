@@ -68,6 +68,9 @@ class GlobalStateManager(QObject):
     ) -> None:
         """进入重做模式
 
+        进入重做模式时，会清除多选文件列表（_selected_paths），确保退出后
+        不会误用旧的批处理选择。这避免了用户修改配置后无意中使用旧的多选列表。
+
         Args:
             parent_record_id: 被重做的记录 ID
             record_info: 记录信息，用于显示在状态横幅
@@ -97,7 +100,11 @@ class GlobalStateManager(QObject):
             logger.error("设置重做模式失败: %s", e, exc_info=True)
 
     def exit_redo_mode(self) -> None:
-        """退出重做模式"""
+        """退出重做模式
+
+        当退出重做模式时，清除多选文件列表，确保用户不会误用
+        重做前的批处理选择。这强制用户在修改配置后重新选择文件。
+        """
         try:
             if self._current_state != AppState.REDO_MODE:
                 logger.debug("当前不处于重做模式，无需退出")

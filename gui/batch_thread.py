@@ -1,5 +1,29 @@
 """
 批处理线程模块
+
+Part 选择优先级规则（关键）：
+====================================
+对于普通格式文件（CSV/Excel），批处理采用以下优先级选择 Source/Target Part：
+
+1. 优先级1（最高）：文件树中的 Part 选择（file_part_selection_by_file）
+   - 用户在 GUI 文件树中为该文件的"选择 Source Part"和"选择 Target Part"下拉框选择
+   - 若该文件有此选择，则**必须使用**此选择，不可被其他配置覆盖
+   - 代表用户对该文件的**明确意图**
+
+2. 优先级2（中）：配置编辑器的全局 Part 选择（src_partname / tgt_partname）
+   - ConfigPanel 中当前激活的 Source/Target Part
+   - **仅当**该文件未在树中设置明确选择时，才使用此作为后备
+   - 不推荐依赖此方式（已过时的设计）
+
+3. 优先级3（最低）：自动唯一推断
+   - 若配置中 Source/Target Part 只有1个，自动使用该Part
+   - 若有多个则必须明确指定
+
+对于特殊格式文件（.mtfmt/.mtdata），规则类似，但优先级为：
+1. special_part_mapping_by_file（文件树中的 Part 映射）
+2. 自动推断
+
+违反此优先级的代码将被视为 bug 并修复！
 """
 
 import logging
@@ -417,7 +441,18 @@ class BatchProcessThread(QThread):
         return col_map, has_dimensional, coeff_normal_key, has_coeff
 
     def _create_calc_to_use(self, file_path: Path):
-        """为单个文件创建或选择计算器（支持 project_data 的 per-file 选择）。"""
+        """为单个文件创建或选择计算器（支持 project_data 的 per-file 选择）。
+
+        Part 选择优先级（遵循模块文档）：
+        1. 优先级1：文件树中的 Part 选择（file_part_selection_by_file）
+           - 用户在 GUI 文件树中明确为该文件设置的 Source/Target Part
+           - 此为**最优先**的选择，代表用户的明确意图
+        2. 优先级2：配置中的唯一 Part 推断
+           - 若配置中只有1个 Source/Target Part，自动使用
+           - 这种情况下无需用户手工选择
+        3. 优先级3：其他情况则报错，要求用户明确指定
+           - 配置中有多个 Part 但用户未在树中选择：不允许运行
+        """
         calc_to_use = self.calculator
         if self.config.project_data is None:
             return calc_to_use
@@ -428,6 +463,7 @@ class BatchProcessThread(QThread):
             from src.physics import AeroCalculator
 
             fp_str = str(Path(file_path))
+            # 优先级1：获取文件树中用户明确设置的 Part 选择
             sel = (self.config.file_part_selection_by_file or {}).get(fp_str) or {}
             source_sel = (sel.get("source") or "").strip()
             target_sel = (sel.get("target") or "").strip()
@@ -446,13 +482,29 @@ class BatchProcessThread(QThread):
             except Exception:
                 target_names = []
 
+            # 优先级2：如果树中无明确选择，尝试唯一推断
             if not source_sel and len(source_names) == 1:
                 source_sel = str(source_names[0])
+                logger.debug(
+                    "文件 %s 无树中选择，使用唯一推断的 Source Part: %s",
+                    Path(file_path).name,
+                    source_sel,
+                )
             if not target_sel and len(target_names) == 1:
                 target_sel = str(target_names[0])
+                logger.debug(
+                    "文件 %s 无树中选择，使用唯一推断的 Target Part: %s",
+                    Path(file_path).name,
+                    target_sel,
+                )
 
+            # 优先级3：无法推断则报错
             if not source_sel or not target_sel:
-                raise ValueError(f"文件未选择 Source/Target: {Path(file_path).name}")
+                raise ValueError(
+                    f"文件 {Path(file_path).name} 未选择 Source/Target Part。"
+                    f"请在文件树中明确指定，或确保配置中仅有1个 Source/Target Part"
+                    f"（当前 {len(source_names)} 个 Source，{len(target_names)} 个 Target）"
+                )
 
             return AeroCalculator(
                 self.config.project_data,
@@ -461,7 +513,7 @@ class BatchProcessThread(QThread):
             )
         except Exception as e:
             try:
-                msg = f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: " f"{e}"
+                msg = f"为文件 {Path(file_path).name} 创建 per-file 计算器失败: {e}"
                 self._emit_log(msg)
             except Exception:
                 logger.debug("无法发送 per-file 计算器失败日志", exc_info=True)
