@@ -1276,9 +1276,9 @@ class BatchManager:
             if not source_sel or not target_sel:
                 return "⚠ 未选择 Source/Target"
             if source_names and source_sel not in source_names:
-                return f"⚠ Source缺失: {source_sel}"
+                return f"❌ Source缺失: {source_sel}（需在配置中添加）"
             if target_names and target_sel not in target_names:
-                return f"⚠ Target缺失: {target_sel}"
+                return f"❌ Target缺失: {target_sel}（需在配置中添加）"
             return "✓ 可处理"
         except Exception:
             logger.debug("确定 part 选择状态失败", exc_info=True)

@@ -736,9 +736,12 @@ def _validate_special_format(manager, file_path: Path) -> Optional[str]:
             if not source_parts and not target_parts:
                 status = "✓ 特殊格式(待配置)"
             else:
+                # 检查 Source Part 可用性
                 missing_source = [pn for pn in part_names if pn not in source_parts]
                 if missing_source:
-                    status = f"⚠ Source缺失: {', '.join(missing_source)}"
+                    # 提供更清晰的错误信息，说明哪个 Part 不可用
+                    unavailable = ", ".join(missing_source)
+                    status = f"❌ Source缺失: {unavailable}（需在配置中添加）"
                 else:
                     mapping = mapping or {}
                     # reuse manager-side analyze if exists
@@ -751,9 +754,11 @@ def _validate_special_format(manager, file_path: Path) -> Optional[str]:
                         unmapped, missing_target = ([], [])
 
                     if unmapped:
-                        status = f"⚠ 未映射: {', '.join(unmapped)}"
+                        status = f"⚠ 未映射: {', '.join(unmapped)}（需配置映射）"
                     elif missing_target:
-                        status = f"⚠ Target缺失: {', '.join(missing_target)}"
+                        # 提供更清晰的错误信息，说明哪个 Target Part 不可用
+                        unavailable = ", ".join(missing_target)
+                        status = f"❌ Target缺失: {unavailable}（需在配置中添加）"
                     else:
                         status = "✓ 特殊格式(可处理)"
     except Exception:

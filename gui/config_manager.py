@@ -659,12 +659,96 @@ class ConfigManager:
         """Part 列表修改回调（监听 SignalBus.partAdded / partRemoved 信号）。
 
         当通过 PartManager 添加或删除 Source/Target Part 时，标记配置已修改。
+        若为删除操作，还需刷新文件树中对该 Part 的映射状态验证。
         """
         try:
             logger.debug("检测到 Part 列表修改: %s", args)
             self.set_config_modified(True)
+
+            # 如果是 Part 删除事件，刷新文件树状态以检测受影响的文件
+            if len(args) >= 1:
+                event_type = args[0] if isinstance(args[0], str) else None
+                # 检查是否为 partRemoved 信号（args[0]='Source'/'Target', args[1]=part_name）
+                if event_type in ("Source", "Target") and len(args) >= 2:
+                    removed_part_name = args[1]
+                    self._refresh_file_tree_on_part_removed(
+                        event_type, removed_part_name
+                    )
         except Exception:
             logger.debug("处理 Part 修改回调失败（非致命）", exc_info=True)
+
+    def _refresh_file_tree_on_part_removed(self, side: str, part_name: str) -> None:
+        """当 Part 被删除时，刷新文件树中该 Part 的映射验证状态。
+
+        如果文件之前因为该 Part 被映射而状态为绿色，现在需要更新状态提示
+        该 Part 已不可用。
+
+        参数：
+            side: 'Source' 或 'Target'
+            part_name: 被删除的 Part 名称
+        """
+        try:
+            # 仅在有文件树且文件已加载的情况下刷新
+            if not hasattr(self.gui, "file_tree") or not hasattr(
+                self.gui, "_file_tree_items"
+            ):
+                logger.debug("文件树不可用，跳过 Part 删除后的刷新")
+                return
+
+            # 访问文件树项映射并触发重新验证
+            items_dict = getattr(self.gui, "_file_tree_items", {})
+            if not items_dict:
+                return
+
+            logger.debug(
+                "Part 已删除（%s: %s），正在刷新文件树状态...", side, part_name
+            )
+
+            # 重新验证所有文件的配置状态
+            # 通过访问 BatchManager 的验证方法进行
+            batch_manager = getattr(self.gui, "batch_manager", None)
+            if batch_manager is None:
+                # 若无 batch_manager，尝试从其他位置获取
+                model_manager = getattr(self.gui, "model_manager", None)
+                if model_manager is not None:
+                    batch_manager = getattr(model_manager, "batch_manager", None)
+
+            if batch_manager is not None:
+                try:
+                    # 批量刷新所有已加载文件的状态
+                    for file_path_str, item in items_dict.items():
+                        try:
+                            from pathlib import Path as PathlibPath
+
+                            file_path = PathlibPath(file_path_str)
+                            # 使用 BatchManager 的验证方法重新评估文件状态
+                            status_text = batch_manager._validate_file_config(file_path)
+                            item.setText(1, status_text)
+                            logger.debug(
+                                "已刷新文件 %s 的状态: %s", file_path_str, status_text
+                            )
+                        except Exception:
+                            logger.debug(
+                                "刷新文件 %s 状态失败（非致命）",
+                                file_path_str,
+                                exc_info=True,
+                            )
+                except Exception:
+                    logger.debug("批量刷新文件状态失败（非致命）", exc_info=True)
+            else:
+                logger.debug("无法获取 BatchManager，跳过文件状态刷新")
+
+            # 发送状态提示
+            try:
+                signal_bus = getattr(self.gui, "signal_bus", SignalBus.instance())
+                signal_bus.statusMessage.emit(
+                    f"Part '{part_name}' 已删除，文件映射状态已更新", 3000, 1
+                )
+            except Exception:
+                logger.debug("发送状态提示失败（非致命）", exc_info=True)
+
+        except Exception:
+            logger.debug("Part 删除后刷新文件树状态失败（非致命）", exc_info=True)
 
     def reset_config(self) -> None:
         """重置配置到初始状态（向后兼容旧接口）。
