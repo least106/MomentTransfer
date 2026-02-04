@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +220,24 @@ class BatchHistoryPanel(QWidget):
         self._on_redo_cb = cb
 
     def refresh(self) -> None:
+        """刷新历史面板，支持树状结构（父子记录关系）"""
         self.tree.clear()
         records = self.store.get_records()
-        grouped: Dict[str, List[Dict]] = defaultdict(list)
+        
+        # 构建父子关系映射：parent_id -> [child_records]
+        parent_children: Dict[str, List[Dict]] = defaultdict(list)
+        top_level_records = []
+        
         for rec in records:
+            parent_id = rec.get("parent_record_id")
+            if parent_id:
+                parent_children[parent_id].append(rec)
+            else:
+                top_level_records.append(rec)
+        
+        # 按日期分组顶级记录
+        grouped: Dict[str, List[Dict]] = defaultdict(list)
+        for rec in top_level_records:
             ts = rec.get("timestamp") or ""
             try:
                 d = ts.split("T")[0]
@@ -230,20 +245,52 @@ class BatchHistoryPanel(QWidget):
                 d = "未知日期"
             grouped[d].append(rec)
 
+        # 显示日期分组和记录
         for day in sorted(grouped.keys(), reverse=True):
             day_item = QTreeWidgetItem([day])
             day_item.setFirstColumnSpanned(True)
             self.tree.addTopLevelItem(day_item)
+            
             for rec in grouped[day]:
+                # 添加主记录
                 ts = rec.get("timestamp", "")
                 time_part = ts.split("T")[-1][:8] if "T" in ts else ts
                 summary = self._build_summary(rec)
                 status = self._status_text(rec.get("status"))
+                record_id = rec.get("id")
+                
+                # 如果有子记录（重做的结果），显示重做计数
+                child_records = parent_children.get(record_id, [])
+                if child_records:
+                    summary += f" | 已重做 {len(child_records)} 次"
+                
                 row = QTreeWidgetItem([time_part, summary, status, ""])
                 day_item.addChild(row)
                 btn = self._make_action_button(rec)
                 if btn is not None:
                     self.tree.setItemWidget(row, 3, btn)
+                
+                # 添加子记录（重做生成的记录）
+                for child_rec in child_records:
+                    child_ts = child_rec.get("timestamp", "")
+                    child_time_part = child_ts.split("T")[-1][:8] if "T" in child_ts else child_ts
+                    child_summary = self._build_summary(child_rec)
+                    child_status = self._status_text(child_rec.get("status"))
+                    
+                    child_row = QTreeWidgetItem([
+                        f"  → {child_time_part}",  # 使用箭头表示是重做的子记录
+                        child_summary,
+                        child_status,
+                        ""
+                    ])
+                    # 将子记录设置为浅灰色以区分
+                    for col in range(4):
+                        child_row.setForeground(col, QColor(128, 128, 128))
+                    
+                    row.addChild(child_row)
+                    child_btn = self._make_action_button(child_rec)
+                    if child_btn is not None:
+                        self.tree.setItemWidget(child_row, 3, child_btn)
 
         self.tree.expandAll()
 
