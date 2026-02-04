@@ -28,12 +28,17 @@ class BatchStateManager:
     def get_special_data_dict(self, file_path: Path, manager_instance):
         """获取特殊格式解析结果（带 mtime 缓存）
 
+        改进的解析状态管理：
+        1. 添加超时机制防止长期占用
+        2. 改进错误处理，确保 flag 总是被清除
+        3. 检测并清除超时的解析任务
+
         Args:
             file_path: 文件路径
             manager_instance: BatchManager 实例（用于访问 GUI 和缓存）
 
         Returns:
-            解析后的数据字典 {part_name: DataFrame}
+            解析后的数据字典 {part_name: DataFrame}，若解析中返回 {}
         """
         from gui.background_worker import BackgroundWorker
         from gui.managers import _report_ui_exception, report_user_error
@@ -52,11 +57,34 @@ class BatchStateManager:
 
         # 异步解析以避免阻塞主线程
         try:
-            # 安全幂等：如果已有后台解析正在进行，则不重复提交
+            # 改进的幂等性检查：同时检查超时
             in_progress_key = f"_parsing:{fp_str}"
+            parsing_timeout_key = f"_parsing_timeout:{fp_str}"
+
+            # 检查是否有超时的解析任务（需要清除 flag）
+            import time
+
+            now = time.time()
+            parsing_start_time = getattr(manager_instance, parsing_timeout_key, None)
+
             if getattr(manager_instance, in_progress_key, False):
-                return {}
+                # 如果解析已经超过5分钟，强制清除 flag
+                if parsing_start_time and now - parsing_start_time > 300:
+                    logger.warning(
+                        "检测到超时的特殊格式解析任务（5分钟以上），强制清除 flag: %s",
+                        fp_str,
+                    )
+                    setattr(manager_instance, in_progress_key, False)
+                    setattr(manager_instance, parsing_timeout_key, None)
+                    # 清除超时 flag 后，继续允许重新解析（不返回空 dict）
+                    # 这样用户可以重新尝试该文件
+                else:
+                    # 解析仍在进行中（且未超时），返回空 dict 等待
+                    return {}
+
+            # 标记解析开始
             setattr(manager_instance, in_progress_key, True)
+            setattr(manager_instance, parsing_timeout_key, now)
 
             # 显示加载指示器
             try:
@@ -73,6 +101,14 @@ class BatchStateManager:
             thread = QThread()
             worker = BackgroundWorker(partial(_do_parse, file_path))
             worker.moveToThread(thread)
+
+            def _cleanup_flags():
+                """清除解析标志"""
+                try:
+                    setattr(manager_instance, in_progress_key, False)
+                    setattr(manager_instance, parsing_timeout_key, None)
+                except Exception:
+                    logger.debug("清除解析标志失败（非致命）", exc_info=True)
 
             def _on_finished(result):
                 try:
@@ -98,10 +134,7 @@ class BatchStateManager:
                             "发出 specialDataParsed 信号失败（非致命）", exc_info=True
                         )
                 finally:
-                    try:
-                        setattr(manager_instance, in_progress_key, False)
-                    except Exception:
-                        logger.debug("设置解析进行标志失败（非致命）", exc_info=True)
+                    _cleanup_flags()
                     try:
                         worker.deleteLater()
                     except Exception:
@@ -128,13 +161,18 @@ class BatchStateManager:
                     )
                 except Exception:
                     logger.debug("显示解析错误提示失败", exc_info=True)
-                try:
-                    setattr(manager_instance, in_progress_key, False)
-                    worker.deleteLater()
-                    thread.quit()
-                    thread.wait(1000)
-                except Exception:
-                    logger.debug("清理失败（错误路径）", exc_info=True)
+                finally:
+                    # 关键：在错误处理中也要清除 flag
+                    _cleanup_flags()
+                    try:
+                        worker.deleteLater()
+                    except Exception:
+                        logger.debug("清理 worker 失败（错误路径）", exc_info=True)
+                    try:
+                        thread.quit()
+                        thread.wait(1000)
+                    except Exception:
+                        logger.debug("停止后台线程失败（错误路径）", exc_info=True)
 
             worker.finished.connect(_on_finished)
             worker.error.connect(_on_error)
@@ -144,6 +182,16 @@ class BatchStateManager:
             logger.warning(
                 "无法用 QThread 启动后台解析，尝试回退：%s", e, exc_info=True
             )
+            # 在异常处理中也要清除 flag（确保状态一致）
+            in_progress_key = f"_parsing:{fp_str}"
+            parsing_timeout_key = f"_parsing_timeout:{fp_str}"
+            try:
+                setattr(manager_instance, in_progress_key, False)
+                setattr(manager_instance, parsing_timeout_key, None)
+            except Exception:
+                logger.debug("清除解析标志失败（异常处理路径，非致命）", exc_info=True)
+
+            # Python threading 回退 - 添加明确的超时机制
             try:
                 result_holder = {}
                 done_event = threading.Event()
@@ -153,12 +201,14 @@ class BatchStateManager:
                         result_holder["data"] = parse_special_format_file(file_path)
                     except Exception as ex:
                         result_holder["exc"] = ex
+                        logger.debug("Python 线程解析异常: %s", ex, exc_info=True)
                     finally:
                         done_event.set()
 
                 thr = threading.Thread(target=_worker, daemon=True)
                 thr.start()
 
+                # 显示进度对话框
                 try:
                     dlg = QProgressDialog(
                         "正在解析特殊格式…", "取消", 0, 0, manager_instance.gui
@@ -178,12 +228,30 @@ class BatchStateManager:
                     cancel_requested = [False]
 
                 user_cancelled = False
+                timeout_reached = False
+                timeout_seconds = 60  # 60 秒超时
+                import time as time_module
+
+                timeout_start = time_module.time()
+
                 try:
                     while not done_event.wait(0.1):
+                        # 检查超时
+                        if time_module.time() - timeout_start > timeout_seconds:
+                            logger.warning(
+                                "特殊格式解析线程超时（%d 秒），放弃等待",
+                                timeout_seconds,
+                            )
+                            timeout_reached = True
+                            break
+
+                        # 检查用户取消
                         if cancel_requested[0]:
                             logger.info("用户取消了特殊格式解析")
                             user_cancelled = True
                             break
+
+                        # 处理 GUI 事件
                         try:
                             QApplication.processEvents()
                         except Exception:
@@ -197,6 +265,7 @@ class BatchStateManager:
                     except Exception:
                         logger.debug("关闭解析等待对话失败（非致命）", exc_info=True)
 
+                # 处理用户取消的情况
                 if user_cancelled:
                     logger.info("等待后台解析线程结束...")
                     try:
@@ -205,8 +274,33 @@ class BatchStateManager:
                             logger.warning("后台解析线程未能及时结束，但已取消用户等待")
                     except Exception:
                         logger.debug("等待线程结束时出错", exc_info=True)
-                    return None
+                    return {}
 
+                # 处理超时的情况
+                if timeout_reached:
+                    try:
+                        thr.join(timeout=1.0)
+                        if thr.is_alive():
+                            logger.error(
+                                "后台解析线程仍在运行（后台继续执行），返回空结果"
+                            )
+                    except Exception:
+                        logger.debug("等待线程结束时出错（超时路径）", exc_info=True)
+
+                    # 显示超时警告
+                    try:
+                        report_user_error(
+                            manager_instance.gui,
+                            "解析超时",
+                            f"解析文件 {file_path.name} 超过 {timeout_seconds} 秒，已取消。\n\n"
+                            "您可以稍后重试或联系技术支持。",
+                            is_warning=True,
+                        )
+                    except Exception:
+                        logger.debug("显示超时警告失败（非致命）", exc_info=True)
+                    return {}
+
+                # 处理解析完成的情况
                 if "data" in result_holder:
                     data_dict = result_holder.get("data") or {}
                     try:
@@ -218,14 +312,17 @@ class BatchStateManager:
                         logger.debug("写入特殊格式缓存失败（非致命）", exc_info=True)
                     return data_dict
 
-                logger.warning("Python 线程解析失败或抛出异常，回退到同步解析")
+                # 没有返回结果
+                logger.warning("Python 线程解析完成但无结果，回退到同步解析")
                 _report_ui_exception(
                     manager_instance.gui,
-                    "后台解析特殊格式时发生错误，已回退到同步解析",
+                    "后台解析特殊格式时无法获得结果，已回退到同步解析",
                 )
-            except Exception:
+            except Exception as thread_ex:
                 logger.warning(
-                    "无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True
+                    "无法启动 Python 后台线程，回退到主线程同步解析: %s",
+                    thread_ex,
+                    exc_info=True,
                 )
 
             # 同步解析（在主线程执行）
@@ -551,3 +648,65 @@ class BatchStateManager:
         except Exception:
             logger.debug("确定 part 选择状态失败", exc_info=True)
             return "❓ 未验证"
+
+    def clear_parsing_flag(self, file_path: Path, manager_instance):
+        """手动清除卡住的特殊格式文件解析 flag
+
+        当文件解析超时或出现异常且 flag 未被清除时，使用此方法恢复：
+        1. 清除 in_progress 标志，允许重新解析
+        2. 清除超时计时器
+        3. 清除该文件的缓存，强制下次重新解析
+        4. 返回恢复是否成功
+
+        Args:
+            file_path: 要清除 flag 的文件路径
+            manager_instance: BatchManager 实例
+
+        Returns:
+            tuple: (success: bool, message: str) - 是否成功清除及描述信息
+        """
+        fp_str = str(file_path)
+        in_progress_key = f"_parsing:{fp_str}"
+        parsing_timeout_key = f"_parsing_timeout:{fp_str}"
+
+        try:
+            # 检查 flag 是否存在
+            was_stuck = getattr(manager_instance, in_progress_key, False)
+
+            # 清除 flag 和超时计时器
+            try:
+                setattr(manager_instance, in_progress_key, False)
+                logger.info("已清除文件 %s 的解析进行 flag", fp_str)
+            except Exception as e:
+                logger.error("清除解析进行 flag 失败: %s", e)
+                return False, f"清除解析标志失败: {e}"
+
+            try:
+                setattr(manager_instance, parsing_timeout_key, None)
+                logger.info("已清除文件 %s 的超时计时器", fp_str)
+            except Exception as e:
+                logger.error("清除超时计时器失败: %s", e)
+                return False, f"清除超时计时器失败: {e}"
+
+            # 清除缓存，强制下次重新解析
+            try:
+                if fp_str in self.special_data_cache:
+                    del self.special_data_cache[fp_str]
+                    logger.info("已清除文件 %s 的特殊格式缓存", fp_str)
+            except Exception as e:
+                logger.error("清除缓存失败: %s", e)
+                return False, f"清除缓存失败: {e}"
+
+            # 返回恢复信息
+            if was_stuck:
+                msg = f"已恢复文件 {file_path.name} 的解析状态，可以重新尝试解析"
+                logger.info(msg)
+                return True, msg
+            else:
+                msg = f"文件 {file_path.name} 未卡住，但已清除缓存以确保重新解析"
+                logger.info(msg)
+                return True, msg
+
+        except Exception as e:
+            logger.error("清除解析 flag 时发生未预期的错误: %s", e, exc_info=True)
+            return False, f"清除失败：{e}"
