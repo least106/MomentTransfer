@@ -86,19 +86,9 @@ def construct_basis_matrix(
         config = BasisMatrixConfig()
 
     # 若用户传入了旧的单独关键字参数，则覆盖 config 中对应值
-    ortho_thr = (
-        orthogonality_threshold
-        if orthogonality_threshold is not None
-        else config.orthogonality_threshold
-    )
-    sing_thr = (
-        singularity_threshold
-        if singularity_threshold is not None
-        else config.singularity_threshold
-    )
-    orthogonalize_flag = (
-        orthogonalize if orthogonalize is not None else config.orthogonalize
-    )
+    ortho_thr = orthogonality_threshold if orthogonality_threshold is not None else config.orthogonality_threshold
+    sing_thr = singularity_threshold if singularity_threshold is not None else config.singularity_threshold
+    orthogonalize_flag = orthogonalize if orthogonalize is not None else config.orthogonalize
     strict_flag = strict if strict is not None else config.strict
     vx = normalize(to_numpy_vec(x))
     vy = normalize(to_numpy_vec(y))
@@ -137,9 +127,7 @@ def construct_basis_matrix(
                 u2 = normalize(u2)
                 u3 = normalize(u3)
             except ValueError as e:
-                raise ValueError(
-                    f"正交化失败：输入向量可能线性相关或接近退化，无法构造正交基。详情: {e}"
-                ) from e
+                raise ValueError(f"正交化失败：输入向量可能线性相关或接近退化，无法构造正交基。详情: {e}") from e
 
             basis = np.array([u1, u2, u3])
         else:
@@ -153,16 +141,12 @@ def construct_basis_matrix(
     # 进一步检查基矩阵的线性相关性（行列式接近零表示基向量线性相关 -> 奇异矩阵）
     det = np.linalg.det(basis)
     if abs(det) < sing_thr:
-        raise ValueError(
-            f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。"
-        )
+        raise ValueError(f"基矩阵接近奇异（行列式={det:.3e}），基向量可能线性相关或退化。")
 
     return basis
 
 
-def compute_rotation_matrix(
-    source_basis: np.ndarray, target_basis: np.ndarray
-) -> np.ndarray:
+def compute_rotation_matrix(source_basis: np.ndarray, target_basis: np.ndarray) -> np.ndarray:
     """
     计算从源坐标系到目标坐标系的旋转矩阵 R。
 
@@ -175,9 +159,7 @@ def compute_rotation_matrix(
 
 
 # 空间位置与投影逻辑
-def compute_moment_arm_global(
-    source_origin: List[float], target_moment_center: List[float]
-) -> np.ndarray:
+def compute_moment_arm_global(source_origin: List[float], target_moment_center: List[float]) -> np.ndarray:
     """
     计算力臂矢量 r (在全局/绝对坐标系下)。
 
@@ -190,9 +172,7 @@ def compute_moment_arm_global(
     return p_src - p_tgt
 
 
-def project_vector_to_frame(
-    vec_global: np.ndarray, frame_basis: np.ndarray
-) -> np.ndarray:
+def project_vector_to_frame(vec_global: np.ndarray, frame_basis: np.ndarray) -> np.ndarray:
     """
     将全局坐标系下的向量投影到特定坐标系（如目标坐标系）。
 
@@ -216,9 +196,7 @@ def project_vector_to_frame(
     )
 
 
-def euler_angles_to_basis(
-    roll_deg: float, pitch_deg: float, yaw_deg: float
-) -> np.ndarray:
+def euler_angles_to_basis(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:
     """
     将欧拉角转换为 3x3 基向量矩阵 (X, Y, Z 轴向量)。
     旋转顺序（对列向量右乘时的实际应用顺序）为: Roll (X) -> Pitch (Y) -> Yaw (Z)，对应组合矩阵 R = Rz @ Ry @ Rx
@@ -264,9 +242,7 @@ def euler_angles_to_basis(
     # 注意：这里的基向量是列向量概念，或者是将全局坐标转到局部。
     # 我们需要的是：在全局坐标系下，局部坐标轴指向哪里。
     # 这等同于旋转矩阵的 列 (Columns)。
-    composite_rotation_matrix = (
-        rotation_matrix_z @ rotation_matrix_y @ rotation_matrix_x
-    )
+    composite_rotation_matrix = rotation_matrix_z @ rotation_matrix_y @ rotation_matrix_x
 
     # composite_rotation_matrix 的第一列是 X轴，第二列是 Y轴，第三列是 Z轴
     x_axis = composite_rotation_matrix[:, 0]

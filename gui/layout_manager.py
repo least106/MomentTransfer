@@ -119,9 +119,7 @@ class LayoutManager:
 
             # 确保按钮容器在布局更改后更新尺寸与几何，以免在窗口状态切换时被临时挤出视口
             try:
-                self.gui.btn_widget.setSizePolicy(
-                    QSizePolicy.Expanding, QSizePolicy.Minimum
-                )
+                self.gui.btn_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
                 # 尝试通过标准方式强制刷新布局：使布局失效并激活布局，更新几何信息
                 cw = self.gui.centralWidget()
                 if cw:

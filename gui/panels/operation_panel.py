@@ -84,9 +84,7 @@ class OperationPanel(QWidget):
         gui_instance._file_tree_items = bp._file_tree_items
         gui_instance.progress_bar = bp.progress_bar
         gui_instance.tab_main = bp.tab_main
-        gui_instance.config_tab_placeholder = (
-            bp.config_tab_placeholder
-        )  # 参考系管理Tab占位符
+        gui_instance.config_tab_placeholder = bp.config_tab_placeholder  # 参考系管理Tab占位符
         gui_instance.info_tab_widget = None
         gui_instance.txt_batch_log = bp.txt_batch_log
         # 配置数据格式功能已移除；保持属性为 None 以避免外部直接调用导致错误

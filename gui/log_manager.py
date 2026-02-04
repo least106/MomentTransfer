@@ -42,9 +42,7 @@ class GUILogHandler(logging.Handler):
                     # 使用 QMetaObject.invokeMethod 调度到主线程（QueuedConnection），比 QTimer 更稳健
                     if self._invoker is not None:
                         try:
-                            QMetaObject.invokeMethod(
-                                self._invoker, "do_flush", Qt.QueuedConnection
-                            )
+                            QMetaObject.invokeMethod(self._invoker, "do_flush", Qt.QueuedConnection)
                         except Exception:
                             # 回退到 QTimer 单次调度（兼容性）
                             from PySide6.QtCore import QTimer
@@ -81,13 +79,9 @@ class GUILogHandler(logging.Handler):
                         sb = self.text_widget.verticalScrollBar()
                         sb.setValue(sb.maximum())
                     except Exception:
-                        logging.getLogger(__name__).debug(
-                            "无法将日志视图滚动到末尾（非致命）", exc_info=True
-                        )
+                        logging.getLogger(__name__).debug("无法将日志视图滚动到末尾（非致命）", exc_info=True)
         except Exception:
-            logging.getLogger(__name__).debug(
-                "追加 GUI 日志失败（非致命）", exc_info=True
-            )
+            logging.getLogger(__name__).debug("追加 GUI 日志失败（非致命）", exc_info=True)
 
     def _flush_pending(self):
         """将缓冲的日志一次性刷新到 GUI（在主线程执行）。"""
@@ -104,9 +98,7 @@ class GUILogHandler(logging.Handler):
             combined = "\n".join(msgs)
             self._append_text(combined)
         except Exception:
-            logging.getLogger(__name__).debug(
-                "刷新 GUI 日志缓冲失败（非致命）", exc_info=True
-            )
+            logging.getLogger(__name__).debug("刷新 GUI 日志缓冲失败（非致命）", exc_info=True)
         return
 
 
@@ -207,16 +199,11 @@ class LoggingManager:
                     ]:
                         for h in getattr(log, "handlers", [])[:]:
                             try:
-                                if (
-                                    isinstance(h, GUILogHandler)
-                                    and getattr(h, "text_widget", None) is text_widget
-                                ):
+                                if isinstance(h, GUILogHandler) and getattr(h, "text_widget", None) is text_widget:
                                     gui_handler = h
                                     # 在本实例中注册以便后续复用
                                     try:
-                                        self._register_handler_for_widget(
-                                            text_widget, gui_handler
-                                        )
+                                        self._register_handler_for_widget(text_widget, gui_handler)
                                     except Exception:
                                         logging.getLogger(__name__).debug(
                                             "注册已有 GUILogHandler 失败（非致命）",
@@ -251,9 +238,7 @@ class LoggingManager:
             for log in loggers_to_configure:
                 # 清除之前的 StreamHandler（控制台处理器）
                 for handler in log.handlers[:]:
-                    if isinstance(handler, logging.StreamHandler) and not isinstance(
-                        handler, logging.FileHandler
-                    ):
+                    if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
                         log.removeHandler(handler)
                 # 如果已经存在相同的 GUI 处理器则跳过，保证幂等性
                 if gui_handler not in log.handlers:
@@ -299,32 +284,21 @@ class LoggingManager:
                 log_file = str(log_dir / "momentconversion.log")
                 has_file = False
                 for h in root.handlers:
-                    if (
-                        isinstance(h, logging.FileHandler)
-                        and getattr(h, "baseFilename", None) == log_file
-                    ):
+                    if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == log_file:
                         has_file = True
                         break
                 if not has_file:
                     try:
                         fh = logging.FileHandler(log_file, encoding="utf-8")
                         fh.setLevel(logging.DEBUG)
-                        fh.setFormatter(
-                            logging.Formatter(
-                                "%(asctime)s %(levelname)s %(name)s: %(message)s"
-                            )
-                        )
+                        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
                         root.addHandler(fh)
                     except Exception:
                         # 无法创建文件处理器时，记录到控制台即可
-                        logging.getLogger(__name__).debug(
-                            "无法创建文件日志处理器（非致命）", exc_info=True
-                        )
+                        logging.getLogger(__name__).debug("无法创建文件日志处理器（非致命）", exc_info=True)
 
             # 添加控制台处理器（stderr）如果不存在
-            has_stream = any(
-                isinstance(h, logging.StreamHandler) for h in root.handlers
-            )
+            has_stream = any(isinstance(h, logging.StreamHandler) for h in root.handlers)
             if not has_stream:
                 sh = logging.StreamHandler()
                 sh.setLevel(logging.INFO)
@@ -333,9 +307,7 @@ class LoggingManager:
 
         except Exception:
             # 最后保底：不要抛出异常
-            logging.getLogger(__name__).debug(
-                "设置回退日志处理器失败（非致命）", exc_info=True
-            )
+            logging.getLogger(__name__).debug("设置回退日志处理器失败（非致命）", exc_info=True)
 
     def get_log_file_path(self):
         """返回当前默认日志文件的 Path 对象（可能不存在）。
@@ -347,9 +319,7 @@ class LoggingManager:
             log_dir = Path.home() / ".momentconversion"
             return log_dir / "momentconversion.log"
         except Exception:
-            logging.getLogger(__name__).debug(
-                "获取日志路径失败（非致命）", exc_info=True
-            )
+            logging.getLogger(__name__).debug("获取日志路径失败（非致命）", exc_info=True)
             return None
 
 
@@ -372,6 +342,4 @@ class _Invoker(QObject):
         try:
             handler._flush_pending()
         except Exception:
-            logging.getLogger(__name__).debug(
-                "通过 invoker 调度刷新失败（非致命）", exc_info=True
-            )
+            logging.getLogger(__name__).debug("通过 invoker 调度刷新失败（非致命）", exc_info=True)

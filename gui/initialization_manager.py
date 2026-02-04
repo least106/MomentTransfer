@@ -8,7 +8,7 @@
 
 import logging
 
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget
 
 from gui.batch_history import BatchHistoryPanel, BatchHistoryStore
@@ -92,9 +92,7 @@ class InitializationManager:
         self._is_initializing = True
         self._init_overlay = None
 
-    def _set_splitter_bottom_ratio(
-        self, splitter: QSplitter, bottom_ratio: float
-    ) -> None:
+    def _set_splitter_bottom_ratio(self, splitter: QSplitter, bottom_ratio: float) -> None:
         """按比例设置 splitter 的上下部尺寸（bottom_ratio 为 0.0-1.0）。
 
         为了避免在布局尚未完成时设置不合理的像素值，本函数会尝试即时计算并设置；
@@ -176,9 +174,7 @@ class InitializationManager:
             central_widget = QWidget()
             self.main_window.setCentralWidget(central_widget)
             main_layout = QVBoxLayout(central_widget)
-            main_layout.setContentsMargins(
-                LAYOUT_MARGIN, LAYOUT_MARGIN, LAYOUT_MARGIN, LAYOUT_MARGIN
-            )
+            main_layout.setContentsMargins(LAYOUT_MARGIN, LAYOUT_MARGIN, LAYOUT_MARGIN, LAYOUT_MARGIN)
             main_layout.setSpacing(LAYOUT_SPACING)
 
             # 创建状态横幅（默认隐藏）
@@ -200,9 +196,7 @@ class InitializationManager:
                         logger.debug("应用状态横幅工具栏模式失败（非致命）", exc_info=True)
                     try:
                         # 将状态横幅插入到弹性间隔之前，使其显示在左侧按钮右边
-                        spacer_action = getattr(
-                            self.main_window, "_toolbar_spacer_action", None
-                        )
+                        spacer_action = getattr(self.main_window, "_toolbar_spacer_action", None)
                         if spacer_action is not None:
                             banner_action = toolbar.insertWidget(spacer_action, state_banner)
                         else:
@@ -232,9 +226,7 @@ class InitializationManager:
             try:
                 if hasattr(self.main_window, "register_panel"):
                     self.main_window.register_panel("config_panel", config_panel)
-                    self.main_window.register_panel(
-                        "part_mapping_panel", part_mapping_panel
-                    )
+                    self.main_window.register_panel("part_mapping_panel", part_mapping_panel)
                     self.main_window.register_panel("operation_panel", operation_panel)
                 else:
                     self.main_window.config_panel = config_panel
@@ -249,9 +241,7 @@ class InitializationManager:
                 try:
                     self.main_window.part_mapping_panel = part_mapping_panel
                 except Exception:
-                    logger.debug(
-                        "注册 part_mapping_panel 失败（非致命）", exc_info=True
-                    )
+                    logger.debug("注册 part_mapping_panel 失败（非致命）", exc_info=True)
                 try:
                     self.main_window.operation_panel = operation_panel
                 except Exception:
@@ -320,9 +310,7 @@ class InitializationManager:
                 try:
                     self.main_window.operation_panel = operation_panel
                 except Exception:
-                    logger.debug(
-                        "注册 operation_panel 回退失败（非致命）", exc_info=True
-                    )
+                    logger.debug("注册 operation_panel 回退失败（非致命）", exc_info=True)
             self.main_window.central_widget = central_widget
 
             # 将分割器加入主布局（包含 operation_panel 与 bottom_bar）
@@ -355,7 +343,8 @@ class InitializationManager:
         except Exception as e:
             logger.error("UI 初始化失败: %s", e, exc_info=True)
             raise
-                        # toolbar.addWidget(state_banner)  # 移除状态横幅从工具栏
+            # toolbar.addWidget(state_banner)  # 移除状态横幅从工具栏
+
     def setup_managers(self):
         """初始化所有管理器"""
         try:
@@ -364,9 +353,7 @@ class InitializationManager:
             if not config_panel:
                 raise RuntimeError("config_panel 未初始化")
 
-            self.main_window.config_manager = ConfigManager(
-                self.main_window, config_panel
-            )
+            self.main_window.config_manager = ConfigManager(self.main_window, config_panel)
             self.main_window.part_manager = PartManager(self.main_window)
             self.main_window.batch_manager = BatchManager(self.main_window)
             self.main_window.layout_manager = LayoutManager(self.main_window)
@@ -374,15 +361,13 @@ class InitializationManager:
             # 初始化全局状态管理器并连接到 batch_manager
             try:
                 from gui.global_state_manager import GlobalStateManager
-                
+
                 state_manager = GlobalStateManager.instance()
                 batch_manager = self.main_window.batch_manager
-                
+
                 # 连接状态改变信号到 batch_manager 的回调
                 if hasattr(batch_manager, "_on_redo_mode_changed"):
-                    state_manager.redoModeChanged.connect(
-                        batch_manager._on_redo_mode_changed
-                    )
+                    state_manager.redoModeChanged.connect(batch_manager._on_redo_mode_changed)
                     logger.info("已连接全局状态管理器到 batch_manager")
                 else:
                     logger.warning("batch_manager 缺少 _on_redo_mode_changed 方法")
@@ -396,14 +381,10 @@ class InitializationManager:
 
             # 将 ConfigPanel 替换到 Tab 的"参考系管理"位置
             try:
-                if hasattr(self.main_window, "tab_main") and hasattr(
-                    self.main_window, "config_tab_placeholder"
-                ):
+                if hasattr(self.main_window, "tab_main") and hasattr(self.main_window, "config_tab_placeholder"):
                     tab_main = self.main_window.tab_main
                     config_panel = self.main_window.config_panel
-                    part_mapping_panel = getattr(
-                        self.main_window, "part_mapping_panel", None
-                    )
+                    part_mapping_panel = getattr(self.main_window, "part_mapping_panel", None)
                     # 替换第0个Tab的内容（在配置编辑器右侧加入映射面板）
                     container = QWidget()
                     container_layout = QHBoxLayout(container)
@@ -480,22 +461,16 @@ class InitializationManager:
                             return
                         delay = delays[min(attempt_index + 1, len(delays) - 1)]
                         try:
-                            QTimer.singleShot(
-                                delay, lambda: _attempt_bind(attempt_index + 1)
-                            )
+                            QTimer.singleShot(delay, lambda: _attempt_bind(attempt_index + 1))
                         except Exception:
-                            logger.debug(
-                                "调度批处理 UI 绑定重试失败（非致命）", exc_info=True
-                            )
+                            logger.debug("调度批处理 UI 绑定重试失败（非致命）", exc_info=True)
                     except Exception:
                         logger.debug("批处理 UI 绑定尝试内部异常", exc_info=True)
 
                 try:
                     _attempt_bind(0)
                 except Exception:
-                    logger.debug(
-                        "启动批处理 UI 绑定重试序列失败（非致命）", exc_info=True
-                    )
+                    logger.debug("启动批处理 UI 绑定重试序列失败（非致命）", exc_info=True)
             except Exception:
                 logger.debug("调度批处理 UI 绑定流程失败（非致命）", exc_info=True)
             # 绑定：当用户在输入框直接输入路径并完成编辑时，触发扫描和控件启用状态更新
@@ -515,9 +490,7 @@ class InitializationManager:
                                 # 委托给 BatchManager 的对外方法（非阻塞）统一处理扫描与 UI 状态
                                 try:
                                     # 使用非下划线方法以便 BatchManager 可选择在后台执行
-                                    self.main_window.batch_manager.scan_and_populate_files(
-                                        p
-                                    )
+                                    self.main_window.batch_manager.scan_and_populate_files(p)
                                 except Exception:
                                     logger.debug("扫描文件失败", exc_info=True)
                         except Exception:
@@ -541,9 +514,7 @@ class InitializationManager:
             # 向用户提供轻量提示（避免静默失败）
             try:
                 if _report_ui_exception:
-                    _report_ui_exception(
-                        self.main_window, "管理器初始化失败（请查看日志以获取详细信息）"
-                    )
+                    _report_ui_exception(self.main_window, "管理器初始化失败（请查看日志以获取详细信息）")
             except Exception:
                 logger.debug("报告初始化管理器失败时出错", exc_info=True)
             # 继续运行，即使管理器初始化失败
@@ -664,9 +635,7 @@ class InitializationManager:
                                     try:
                                         btn.setEnabled(True)
                                     except Exception:
-                                        logger.debug(
-                                            "启用按钮 %s 失败", btn_name, exc_info=True
-                                        )
+                                        logger.debug("启用按钮 %s 失败", btn_name, exc_info=True)
                             # 刷新控件状态，让 managers 中的逻辑决定保存按钮是否可用（基于 is_operation_performed()）
                             try:
                                 if hasattr(self.main_window, "_refresh_controls_state"):
@@ -677,22 +646,14 @@ class InitializationManager:
                             try:
                                 self._create_config_warning_label()
                             except Exception:
-                                logger.debug(
-                                    "创建配置警告标签失败（非致命）", exc_info=True
-                                )
-                                logger.debug(
-                                    "刷新控件状态失败（非致命）", exc_info=True
-                                )
+                                logger.debug("创建配置警告标签失败（非致命）", exc_info=True)
+                                logger.debug("刷新控件状态失败（非致命）", exc_info=True)
                         except Exception:
-                            logger.debug(
-                                "初始化完成后启用 project 按钮失败", exc_info=True
-                            )
+                            logger.debug("初始化完成后启用 project 按钮失败", exc_info=True)
                         logger.debug("初始化完成 (elapsed=%.3fs)", elapsed)
                         return
                     except Exception:
-                        logger.debug(
-                            "执行 finalize 操作时失败（非致命）", exc_info=True
-                        )
+                        logger.debug("执行 finalize 操作时失败（非致命）", exc_info=True)
 
                 # 否则：还未就绪，使用指数回退的定时再次尝试（上限 800ms）
                 # initial 0ms -> 50ms -> 150ms -> 300ms -> 600ms -> 800ms ...
@@ -714,9 +675,7 @@ class InitializationManager:
                     QTimer.singleShot(delay, _attempt_finalize)
                 except Exception:
                     # 若调度失败，记录并在 150ms 后尽力完成以避免永久阻塞
-                    logger.debug(
-                        "调度后续 finalize 尝试失败，使用后备单次延迟", exc_info=True
-                    )
+                    logger.debug("调度后续 finalize 尝试失败，使用后备单次延迟", exc_info=True)
                     try:
                         QTimer.singleShot(150, _attempt_finalize)
                     except Exception:
@@ -734,9 +693,7 @@ class InitializationManager:
                 exc_info=True,
             )
             try:
-                QTimer.singleShot(
-                    150, lambda: setattr(self.main_window, "_is_initializing", False)
-                )
+                QTimer.singleShot(150, lambda: setattr(self.main_window, "_is_initializing", False))
                 QTimer.singleShot(150, lambda: setattr(self, "_is_initializing", False))
             except Exception:
                 # 如果也失败，则立即解除以避免界面永久被锁定
@@ -815,7 +772,7 @@ class InitializationManager:
             chk_bottom_bar.setChecked(False)
 
             # 将复选框添加到工具栏并添加右侧的操作按钮
-            chk_bottom_bar_action = toolbar.addWidget(chk_bottom_bar)
+            toolbar.addWidget(chk_bottom_bar)
 
             btn_browse = QPushButton("浏览文件")
             btn_browse.setMaximumWidth(80)
@@ -825,9 +782,7 @@ class InitializationManager:
 
             btn_load_config = QPushButton("加载配置")
             btn_load_config.setMaximumWidth(80)
-            btn_load_config.setToolTip(
-                "加载配置文件（JSON），用于提供 Source/Target part 定义"
-            )
+            btn_load_config.setToolTip("加载配置文件（JSON），用于提供 Source/Target part 定义")
 
             # 绑定到一个安全的回调：若 ConfigManager 已初始化则委托给它，否则弹出文件选择或提示
             def _on_load_config_clicked():
@@ -860,9 +815,7 @@ class InitializationManager:
                             cm.load_config_from_file(fp)
                         except Exception as e:
                             try:
-                                QMessageBox.critical(
-                                    self.main_window, "错误", f"加载配置失败: {e}"
-                                )
+                                QMessageBox.critical(self.main_window, "错误", f"加载配置失败: {e}")
                             except Exception:
                                 logger.debug("显示加载失败对话失败", exc_info=True)
                     else:
@@ -1031,9 +984,7 @@ class InitializationManager:
                     if lm:
                         try:
                             # 仅在确实需要调整按钮布局时才执行更新与强制刷新，避免重复昂贵操作
-                            if getattr(
-                                lm, "needs_button_layout_update", lambda: False
-                            )():
+                            if getattr(lm, "needs_button_layout_update", lambda: False)():
                                 lm.update_button_layout()
                                 try:
                                     lm.force_layout_refresh()
@@ -1115,6 +1066,7 @@ class InitializationManager:
             banner = getattr(self.main_window, "state_banner", None)
             if banner:
                 from gui.state_banner import BannerStateType
+
                 state_type = getattr(banner, "_current_state_type", BannerStateType.NONE)
                 self._on_banner_exit_state_requested(state_type)
                 return
@@ -1123,6 +1075,7 @@ class InitializationManager:
         # 回退：假设是重做模式
         try:
             from gui.state_banner import BannerStateType
+
             self._on_banner_exit_state_requested(BannerStateType.REDO_MODE)
         except Exception:
             logger.debug("处理横幅退出请求失败", exc_info=True)
@@ -1131,27 +1084,28 @@ class InitializationManager:
         """用户点击横幅退出按钮，根据状态类型执行相应清理"""
         try:
             from gui.state_banner import BannerStateType
-            
+
             if state_type == BannerStateType.REDO_MODE:
                 # 退出重做模式
                 try:
                     from gui.global_state_manager import GlobalStateManager
+
                     state_manager = GlobalStateManager.instance()
                     if state_manager and state_manager.is_redo_mode:
                         state_manager.exit_redo_mode()
                         logger.info("已通过全局状态管理器退出重做模式")
                 except Exception:
                     logger.debug("通过全局状态管理器退出重做模式失败", exc_info=True)
-                
+
                 # 清除本地重做状态
                 try:
                     if hasattr(self.main_window, "batch_manager") and self.main_window.batch_manager:
                         self.main_window.batch_manager._redo_mode_parent_id = None
                 except Exception:
                     pass
-                
+
                 logger.info("用户退出重做模式")
-                
+
             elif state_type == BannerStateType.PROJECT_LOADED:
                 # 退出项目模式：清除当前项目文件关联
                 try:
@@ -1162,10 +1116,10 @@ class InitializationManager:
                         logger.info("已清除当前项目文件关联")
                 except Exception:
                     logger.debug("清除项目文件关联失败", exc_info=True)
-                
+
                 logger.info("用户退出项目模式")
             else:
                 logger.info("用户退出状态横幅（类型: %s）", state_type)
-                
+
         except Exception:
             logger.debug("处理横幅退出请求失败", exc_info=True)

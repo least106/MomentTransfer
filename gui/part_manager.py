@@ -126,11 +126,7 @@ class PartManager:
         mm = self._get_model_manager()
         if mm and hasattr(mm, "project_model"):
             if self._ensure_project_model():
-                parts = (
-                    mm.project_model.source_parts
-                    if is_source
-                    else mm.project_model.target_parts
-                )
+                parts = mm.project_model.source_parts if is_source else mm.project_model.target_parts
                 part = parts.get(part_name)
                 if part:
                     variants = part.variants
@@ -224,18 +220,10 @@ class PartManager:
             if not new_name:
                 return None
 
-            parts = (
-                mm.project_model.source_parts
-                if is_source
-                else mm.project_model.target_parts
-            )
+            parts = mm.project_model.source_parts if is_source else mm.project_model.target_parts
             selector = None
             try:
-                selector = (
-                    self.gui.source_panel.part_selector
-                    if is_source
-                    else self.gui.target_panel.part_selector
-                )
+                selector = self.gui.source_panel.part_selector if is_source else self.gui.target_panel.part_selector
             except Exception:
                 selector = None
 

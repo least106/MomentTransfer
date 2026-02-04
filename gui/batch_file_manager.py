@@ -81,9 +81,7 @@ class BatchFileManager:
                 # QGridLayout 需要指定行列位置
                 # 添加到最后一行的第 0 列，跨越所有列
                 row = main_layout.rowCount()
-                main_layout.addLayout(
-                    checkbox_layout, row, 0, 1, main_layout.columnCount()
-                )
+                main_layout.addLayout(checkbox_layout, row, 0, 1, main_layout.columnCount())
 
             # 用户取消了对话框
             if dlg.exec() != QDialog.Accepted:
@@ -122,13 +120,9 @@ class BatchFileManager:
             # 对其他选择的路径进行增量扫描（追加数据）
             for additional_path in chosen_paths[1:]:
                 try:
-                    manager_instance._scan_and_populate_files(
-                        additional_path, clear=False
-                    )
+                    manager_instance._scan_and_populate_files(additional_path, clear=False)
                 except Exception as e:
-                    logger.debug(
-                        "扫描追加路径 %s 失败: %s", additional_path, e, exc_info=True
-                    )
+                    logger.debug("扫描追加路径 %s 失败: %s", additional_path, e, exc_info=True)
 
             # 输入路径后自动切换到文件列表页
             self._switch_to_file_list_tab(manager_instance)
@@ -145,9 +139,7 @@ class BatchFileManager:
                     # 尝试通过文件列表控件查找正确的 Tab 索引
                     idx = -1
                     try:
-                        idx = tab.indexOf(
-                            getattr(manager_instance.gui, "file_list_widget", None)
-                        )
+                        idx = tab.indexOf(getattr(manager_instance.gui, "file_list_widget", None))
                     except Exception:
                         idx = -1
 

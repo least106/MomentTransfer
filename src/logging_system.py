@@ -50,9 +50,7 @@ class LogContext:
     """
 
     # 使用 ContextVar 保持线程/协程局部的上下文状态
-    _ctx_var: contextvars.ContextVar = contextvars.ContextVar(
-        "log_context", default=None
-    )
+    _ctx_var: contextvars.ContextVar = contextvars.ContextVar("log_context", default=None)
 
     def __init__(self, context_id: str, operation: str = "", **metadata):
         """初始化上下文"""
@@ -173,9 +171,7 @@ class LoggerFactory:
             formatter = StructuredLogFormatter()
         else:
             # 使用标准格式
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)

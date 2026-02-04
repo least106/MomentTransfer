@@ -48,9 +48,7 @@ class PartMappingPanel(QGroupBox):
 
         self.mapping_tree = QTreeWidget()
         self.mapping_tree.setColumnCount(4)
-        self.mapping_tree.setHeaderLabels(
-            ["文件/部件", "Source Part", "Target Part", "状态"]
-        )
+        self.mapping_tree.setHeaderLabels(["文件/部件", "Source Part", "Target Part", "状态"])
         self.mapping_tree.setAlternatingRowColors(True)
         self.mapping_tree.setRootIsDecorated(True)
         self.mapping_tree.setUniformRowHeights(True)
@@ -148,9 +146,7 @@ class PartMappingPanel(QGroupBox):
             logger.debug("读取文件列表失败", exc_info=True)
         return sorted({f for f in files if f.exists()})
 
-    def _get_default_part(
-        self, kind: str, manager, available_names: list
-    ) -> Optional[str]:
+    def _get_default_part(self, kind: str, manager, available_names: list) -> Optional[str]:
         """获取默认的 Source/Target Part（优先级：Panel选择 > 配置中的第一个 > None）"""
         try:
             # 优先从面板中读取当前选择
@@ -209,22 +205,14 @@ class PartMappingPanel(QGroupBox):
             if not (sel.get("target") or "").strip() and default_target:
                 sel["target"] = default_target
 
-            source_combo = self._create_part_combo(
-                "(选择source)", source_names, sel.get("source")
-            )
-            target_combo = self._create_part_combo(
-                "(选择target)", target_names, sel.get("target")
-            )
+            source_combo = self._create_part_combo("(选择source)", source_names, sel.get("source"))
+            target_combo = self._create_part_combo("(选择target)", target_names, sel.get("target"))
 
             source_combo.currentTextChanged.connect(
-                lambda text, fp=str(file_path): self._on_regular_changed(
-                    manager, fp, "source", text
-                )
+                lambda text, fp=str(file_path): self._on_regular_changed(manager, fp, "source", text)
             )
             target_combo.currentTextChanged.connect(
-                lambda text, fp=str(file_path): self._on_regular_changed(
-                    manager, fp, "target", text
-                )
+                lambda text, fp=str(file_path): self._on_regular_changed(manager, fp, "target", text)
             )
 
             self.mapping_tree.setItemWidget(file_item, 1, source_combo)
@@ -232,13 +220,9 @@ class PartMappingPanel(QGroupBox):
 
             # 确保默认值已被正式保存到字典
             if sel.get("source"):
-                self._on_regular_changed(
-                    manager, str(file_path), "source", sel.get("source")
-                )
+                self._on_regular_changed(manager, str(file_path), "source", sel.get("source"))
             if sel.get("target"):
-                self._on_regular_changed(
-                    manager, str(file_path), "target", sel.get("target")
-                )
+                self._on_regular_changed(manager, str(file_path), "target", sel.get("target"))
         except Exception:
             logger.debug("填充常规文件映射失败", exc_info=True)
 
@@ -258,9 +242,7 @@ class PartMappingPanel(QGroupBox):
 
             try:
                 if source_names and target_names:
-                    manager._auto_fill_special_mappings(
-                        file_path, part_names, source_names, target_names, mapping
-                    )
+                    manager._auto_fill_special_mappings(file_path, part_names, source_names, target_names, mapping)
             except Exception:
                 logger.debug("自动补全映射失败", exc_info=True)
 
@@ -279,24 +261,16 @@ class PartMappingPanel(QGroupBox):
                 child = QTreeWidgetItem([part_name, "", "", ""])
                 file_item.addChild(child)
 
-                source_combo = self._create_part_combo(
-                    "(选择source)", source_names, part_mapping.get("source")
-                )
-                target_combo = self._create_part_combo(
-                    "(选择target)", target_names, part_mapping.get("target")
-                )
+                source_combo = self._create_part_combo("(选择source)", source_names, part_mapping.get("source"))
+                target_combo = self._create_part_combo("(选择target)", target_names, part_mapping.get("target"))
 
                 source_combo.currentTextChanged.connect(
-                    lambda text, fp=str(
-                        file_path
-                    ), internal=part_name: self._on_special_changed(
+                    lambda text, fp=str(file_path), internal=part_name: self._on_special_changed(
                         manager, fp, internal, "source", text
                     )
                 )
                 target_combo.currentTextChanged.connect(
-                    lambda text, fp=str(
-                        file_path
-                    ), internal=part_name: self._on_special_changed(
+                    lambda text, fp=str(file_path), internal=part_name: self._on_special_changed(
                         manager, fp, internal, "target", text
                     )
                 )
@@ -324,9 +298,7 @@ class PartMappingPanel(QGroupBox):
         except Exception:
             logger.debug("填充特殊文件映射失败", exc_info=True)
 
-    def _create_part_combo(
-        self, placeholder: str, names: list, current_value: Optional[str]
-    ) -> QComboBox:
+    def _create_part_combo(self, placeholder: str, names: list, current_value: Optional[str]) -> QComboBox:
         combo = QComboBox()
         combo.setEditable(False)
         combo.setMinimumWidth(150)
@@ -356,18 +328,16 @@ class PartMappingPanel(QGroupBox):
 
     def _on_regular_changed(self, manager, fp_str: str, key: str, text: str) -> None:
         try:
-            d = (
-                getattr(manager.gui, "file_part_selection_by_file", {}) or {}
-            ).setdefault(fp_str, {"source": "", "target": ""})
+            d = (getattr(manager.gui, "file_part_selection_by_file", {}) or {}).setdefault(
+                fp_str, {"source": "", "target": ""}
+            )
             d[key] = (text or "").strip()
             self._mark_modified(manager)
             self._refresh_status(manager, fp_str)
         except Exception:
             logger.debug("更新常规文件映射失败", exc_info=True)
 
-    def _on_special_changed(
-        self, manager, fp_str: str, internal: str, key: str, text: str
-    ) -> None:
+    def _on_special_changed(self, manager, fp_str: str, internal: str, key: str, text: str) -> None:
         try:
             tmp = getattr(manager.gui, "special_part_mapping_by_file", {}) or {}
             m = tmp.setdefault(fp_str, {})
@@ -381,10 +351,7 @@ class PartMappingPanel(QGroupBox):
 
     def _mark_modified(self, manager) -> None:
         try:
-            if (
-                hasattr(manager.gui, "ui_state_manager")
-                and manager.gui.ui_state_manager
-            ):
+            if hasattr(manager.gui, "ui_state_manager") and manager.gui.ui_state_manager:
                 manager.gui.ui_state_manager.mark_operation_performed()
         except Exception:
             logger.debug("标记未保存状态失败（非致命）", exc_info=True)

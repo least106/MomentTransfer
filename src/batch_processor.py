@@ -113,9 +113,7 @@ class BatchProcessor:
                 raise ValueError(f"不支持的文件格式: {file_path.suffix}")
 
             # 提取力和力矩列
-            forces, moments = self._extract_force_moment_data(
-                df, force_column, moment_column
-            )
+            forces, moments = self._extract_force_moment_data(df, force_column, moment_column)
 
             # 执行批量计算
             exec_result = self.engine.execute_batch(forces, moments)
@@ -138,9 +136,7 @@ class BatchProcessor:
             self.logger.error(error_msg, exc_info=True)
             return ExecutionResult(success=False, data=None, error=error_msg)
 
-    def process_batch(
-        self, file_list: List[Path], output_dir: Path, **kwargs
-    ) -> BatchProcessResult:
+    def process_batch(self, file_list: List[Path], output_dir: Path, **kwargs) -> BatchProcessResult:
         """处理多个文件（批处理）。
 
         参数：
@@ -155,9 +151,7 @@ class BatchProcessor:
 
         for idx, file_path in enumerate(file_list):
             try:
-                output_path = (
-                    output_dir / file_path.stem / f"{file_path.stem}_result.csv"
-                )
+                output_path = output_dir / file_path.stem / f"{file_path.stem}_result.csv"
                 exec_result = self.process_file(file_path, output_path, **kwargs)
 
                 if exec_result.success:
@@ -203,9 +197,7 @@ class BatchProcessor:
         if len(force_cols) < 3:
             raise ValueError(f"未找到足够的力列 ({force_column})，找到: {force_cols}")
         if len(moment_cols) < 3:
-            raise ValueError(
-                f"未找到足够的力矩列 ({moment_column})，找到: {moment_cols}"
-            )
+            raise ValueError(f"未找到足够的力矩列 ({moment_column})，找到: {moment_cols}")
 
         forces = df[force_cols].values.astype(float)
         moments = df[moment_cols].values.astype(float)

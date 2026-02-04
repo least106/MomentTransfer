@@ -164,9 +164,7 @@ class ErrorContext:
         return False
 
 
-def report_critical_error(
-    parent, title: str, message: str, details: Optional[str] = None
-):
+def report_critical_error(parent, title: str, message: str, details: Optional[str] = None):
     """
     报告严重错误
 

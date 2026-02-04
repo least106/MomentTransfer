@@ -29,9 +29,7 @@ def _collect_checked_files_from_tree(manager) -> list:
     """
     checked_files = []
     try:
-        if not hasattr(manager.gui, "file_tree") or not hasattr(
-            manager.gui, "_file_tree_items"
-        ):
+        if not hasattr(manager.gui, "file_tree") or not hasattr(manager.gui, "_file_tree_items"):
             return checked_files
 
         items_dict = manager.gui._file_tree_items
@@ -67,9 +65,7 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 manager.gui.output_dir = p.parent
             except Exception:
-                logger.debug(
-                    "设置 manager.gui.output_dir 失败（非致命）", exc_info=True
-                )
+                logger.debug("设置 manager.gui.output_dir 失败（非致命）", exc_info=True)
             base_path = p.parent
         elif p.is_dir():
             # 使用默认的文件匹配模式（支持所有常见格式）
@@ -119,9 +115,7 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 from gui.signal_bus import SignalBus
 
-                SignalBus.instance().statusMessage.emit(
-                    f"目录扫描完成：共 {len(files)} 个文件", 5000, 1
-                )
+                SignalBus.instance().statusMessage.emit(f"目录扫描完成：共 {len(files)} 个文件", 5000, 1)
             except Exception:
                 logger.debug("发送扫描完成提示失败（非致命）", exc_info=True)
 
@@ -164,9 +158,7 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
     logger.info(f"已扫描到 {len(files)} 个文件")
 
 
-def _safe_add_file_tree_entry(
-    manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
-) -> None:
+def _safe_add_file_tree_entry(manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool) -> None:
     """安全地调用 `_add_file_tree_entry` 并在发生异常时记录调试信息。"""
     try:
         try:
@@ -177,9 +169,7 @@ def _safe_add_file_tree_entry(
         logger.debug("_safe_add_file_tree_entry 内部错误", exc_info=True)
 
 
-def _add_file_tree_entry(
-    manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool
-) -> None:
+def _add_file_tree_entry(manager, base_path: Path, dir_items: dict, fp: Path, single_file_mode: bool) -> None:
     """将单个文件添加到文件树，包含目录节点构建与状态校验。"""
     try:
         try:
@@ -290,9 +280,7 @@ def _collect_files_to_process(manager, input_path: Path):
 
         if input_path.is_dir():
             # 优先使用 GUI 的树形选择（若存在且有勾选项）
-            if hasattr(manager.gui, "file_tree") and hasattr(
-                manager.gui, "_file_tree_items"
-            ):
+            if hasattr(manager.gui, "file_tree") and hasattr(manager.gui, "_file_tree_items"):
                 # 尝试收集树中勾选的文件
                 checked_files = _collect_checked_files_from_tree(manager)
                 if checked_files:
@@ -305,10 +293,7 @@ def _collect_files_to_process(manager, input_path: Path):
                         _, pattern_display = get_patterns()
                     else:
                         pattern_display = "*.csv"
-                    msg = (
-                        f"未选择任何文件，请在文件列表中勾选后再开始处理。"
-                        f"（当前匹配规则: {pattern_display}）"
-                    )
+                    msg = f"未选择任何文件，请在文件列表中勾选后再开始处理。" f"（当前匹配规则: {pattern_display}）"
                     return [], None, msg
                 if output_dir is None:
                     output_dir = input_path
@@ -318,9 +303,7 @@ def _collect_files_to_process(manager, input_path: Path):
                     patterns, _ = get_patterns()
                 else:
                     patterns, _ = ([], "*.csv")
-                files_to_process.extend(
-                    _scan_dir_for_patterns(manager, input_path, patterns)
-                )
+                files_to_process.extend(_scan_dir_for_patterns(manager, input_path, patterns))
                 if output_dir is None:
                     output_dir = input_path
 
@@ -409,11 +392,7 @@ def _infer_source_part(manager, part_name: str, source_names: list) -> Optional[
                         # 策略3：移除特殊字符后比较
                         def norm(s: str) -> str:
                             try:
-                                s2 = "".join(
-                                    ch
-                                    for ch in (s or "")
-                                    if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff")
-                                )
+                                s2 = "".join(ch for ch in (s or "") if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff"))
                                 return s2.lower()
                             except Exception:
                                 return (s or "").lower()
@@ -451,11 +430,7 @@ def _infer_target_part(manager, source_part: str, target_names: list) -> Optiona
 
                         def norm(s: str) -> str:
                             try:
-                                s2 = "".join(
-                                    ch
-                                    for ch in (s or "")
-                                    if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff")
-                                )
+                                s2 = "".join(ch for ch in (s or "") if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff"))
                                 return s2.lower()
                             except Exception:
                                 return (s or "").lower()
@@ -474,9 +449,9 @@ def _infer_target_part(manager, source_part: str, target_names: list) -> Optiona
 def _make_part_change_handler(manager, fp_str: str, key: str):
     def _handler(text: str):
         try:
-            d = (
-                getattr(manager.gui, "file_part_selection_by_file", {}) or {}
-            ).setdefault(fp_str, {"source": "", "target": ""})
+            d = (getattr(manager.gui, "file_part_selection_by_file", {}) or {}).setdefault(
+                fp_str, {"source": "", "target": ""}
+            )
             d[key] = (text or "").strip()
             try:
                 node = getattr(manager.gui, "_file_tree_items", {}).get(fp_str)
@@ -536,9 +511,7 @@ def _auto_fill_special_mappings(
             if not (mapping[part_name].get("target") or "").strip():
                 source_part = mapping[part_name].get("source", "").strip()
                 if source_part:
-                    inferred_target = _infer_target_part(
-                        manager, source_part, target_names
-                    )
+                    inferred_target = _infer_target_part(manager, source_part, target_names)
                     if inferred_target:
                         mapping[part_name]["target"] = inferred_target
                         changed = True
@@ -561,9 +534,7 @@ def _get_or_init_special_mapping(manager, file_path: Path) -> dict:
         return {}
 
 
-def _create_part_mapping_combo(
-    manager, file_path: Path, source_part, target_names: list, mapping: dict
-):
+def _create_part_mapping_combo(manager, file_path: Path, source_part, target_names: list, mapping: dict):
     from PySide6.QtWidgets import QComboBox
 
     combo = QComboBox(manager.gui.file_tree)
@@ -662,9 +633,7 @@ def _create_special_part_node(
         # Source/Target 选择器已移动到集中映射面板
 
         # 填充数据预览
-        manager._safe_populate_special_preview(
-            part_item, file_path, internal_part_name, data_dict
-        )
+        manager._safe_populate_special_preview(part_item, file_path, internal_part_name, data_dict)
 
     except Exception:
         logger.debug("创建 special part 节点失败（内部）", exc_info=True)
@@ -744,9 +713,7 @@ def _validate_special_format(manager, file_path: Path) -> Optional[str]:
                     # reuse manager-side analyze if exists
                     analyze_fn = getattr(manager, "_analyze_special_mapping", None)
                     if callable(analyze_fn):
-                        unmapped, missing_target = analyze_fn(
-                            part_names, mapping, list(target_parts.keys())
-                        )
+                        unmapped, missing_target = analyze_fn(part_names, mapping, list(target_parts.keys()))
                     else:
                         unmapped, missing_target = ([], [])
 

@@ -41,10 +41,7 @@ class EventManager:
     def on_resize_event(self, event):
         """处理窗口大小调整事件"""
         try:
-            if (
-                hasattr(self.main_window, "layout_manager")
-                and self.main_window.layout_manager
-            ):
+            if hasattr(self.main_window, "layout_manager") and self.main_window.layout_manager:
                 self.main_window.layout_manager.on_resize_event(event)
         except AttributeError:
             logger.debug("LayoutManager 未初始化")
@@ -108,10 +105,7 @@ class EventManager:
                     logger.debug("批处理线程停止失败", exc_info=True)
 
             # 关闭可视化窗口
-            if (
-                hasattr(self.main_window, "visualization_window")
-                and self.main_window.visualization_window
-            ):
+            if hasattr(self.main_window, "visualization_window") and self.main_window.visualization_window:
                 try:
                     self.main_window.visualization_window.close()
                 except Exception:

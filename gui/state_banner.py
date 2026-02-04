@@ -8,7 +8,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class BannerStateType(Enum):
     """状态横幅显示的状态类型"""
+
     NONE = auto()
     REDO_MODE = auto()
     PROJECT_LOADED = auto()
@@ -62,7 +63,8 @@ class StateBanner(QWidget):
         self.exit_button = QPushButton("✕")  # 改用 ✕ 符号
         self.exit_button.setFixedHeight(22)
         self.exit_button.setFixedWidth(32)
-        self.exit_button.setStyleSheet("""
+        self.exit_button.setStyleSheet(
+            """
             QPushButton {
                 border: none;
                 background-color: transparent;
@@ -77,12 +79,14 @@ class StateBanner(QWidget):
             QPushButton:pressed {
                 background-color: rgba(255, 193, 7, 0.4);
             }
-        """)
+        """
+        )
         self.exit_button.clicked.connect(self._on_exit_clicked)
         layout.addWidget(self.exit_button)
 
         # 样式 - 更紧凑
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             StateBanner {
                 background-color: #fff3cd;
                 border-bottom: 1px solid #ffc107;
@@ -96,7 +100,8 @@ class StateBanner(QWidget):
                 margin: 0px;
                 padding: 0px;
             }
-        """)
+        """
+        )
 
     def apply_toolbar_mode(self):
         """在工具栏中使用时的紧凑模式"""
@@ -105,9 +110,7 @@ class StateBanner(QWidget):
             self.setMinimumHeight(28)
             self.setMinimumWidth(200)
             self.setMaximumWidth(320)
-            self.message_label.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Preferred
-            )
+            self.message_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             self.message_label.setMinimumWidth(0)
         except Exception:
             logger.debug("设置状态横幅工具栏模式失败", exc_info=True)
@@ -174,7 +177,7 @@ class StateBanner(QWidget):
                     pass
             if redo_count > 0:
                 msg_parts.append(f"[已重做 {redo_count} 次]")
-            
+
             msg = " ".join(msg_parts)
 
             self._current_state_type = BannerStateType.REDO_MODE
@@ -187,8 +190,12 @@ class StateBanner(QWidget):
             self.adjustSize()
             if self.parent():
                 self.parent().update()
-            logger.info("状态横幅显示重做状态: visible=%s, sizeHint=%s, geometry=%s", 
-                       self.isVisible(), self.sizeHint(), self.geometry())
+            logger.info(
+                "状态横幅显示重做状态: visible=%s, sizeHint=%s, geometry=%s",
+                self.isVisible(),
+                self.sizeHint(),
+                self.geometry(),
+            )
         except Exception as e:
             logger.debug("显示重做状态横幅失败: %s", e, exc_info=True)
 
@@ -215,9 +222,7 @@ class StateBanner(QWidget):
         except Exception as e:
             logger.debug("显示项目加载横幅失败: %s", e, exc_info=True)
 
-    def show_custom_message(
-        self, message: str, icon: str = "ℹ️", style: Optional[str] = None
-    ):
+    def show_custom_message(self, message: str, icon: str = "ℹ️", style: Optional[str] = None):
         """显示自定义消息
 
         Args:

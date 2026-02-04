@@ -23,9 +23,7 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
         try:
             h.close()
         except (OSError, RuntimeError) as e:
-            batch_logger.debug(
-                "关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True
-            )
+            batch_logger.debug("关闭日志 handler 时遇到异常（忽略）: %s", e, exc_info=True)
 
     fmt = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
 

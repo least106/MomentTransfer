@@ -320,9 +320,7 @@ else:
         filepath: Path,
     ) -> Optional[BasePlugin]:
         """调用模块的 create_plugin() 并在成功时将插件注册到注册表。"""
-        if not hasattr(module, "create_plugin") or not callable(
-            getattr(module, "create_plugin")
-        ):
+        if not hasattr(module, "create_plugin") or not callable(getattr(module, "create_plugin")):
             logger.error("插件 %s 不包含可调用的 create_plugin() 函数", filepath)
             return None
 

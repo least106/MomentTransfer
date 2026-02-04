@@ -85,9 +85,7 @@ class ExecutionContext:
         """重置计算器（用于改变参数时）。"""
         self._calculator = None
 
-    def update_target(
-        self, target_part: Optional[str], target_variant: int = 0
-    ) -> None:
+    def update_target(self, target_part: Optional[str], target_variant: int = 0) -> None:
         """更新目标坐标系并重置计算器。"""
         self.target_part = target_part
         self.target_variant = target_variant
@@ -176,10 +174,7 @@ class ExecutionEngine:
         try:
             # 验证输入形状
             if forces.shape != moments.shape or forces.shape[1] != 3:
-                raise ValueError(
-                    f"输入形状不匹配：forces={forces.shape}，moments={moments.shape}，"
-                    "期望 (N, 3)"
-                )
+                raise ValueError(f"输入形状不匹配：forces={forces.shape}，moments={moments.shape}，" "期望 (N, 3)")
 
             # 执行批量计算
             calculator = self.context.calculator
@@ -200,9 +195,7 @@ class ExecutionEngine:
                 raise
             return ExecutionResult(success=False, data=None, error=error_msg)
 
-    def update_target(
-        self, target_part: Optional[str], target_variant: int = 0
-    ) -> ExecutionResult:
+    def update_target(self, target_part: Optional[str], target_variant: int = 0) -> ExecutionResult:
         """动态更新目标坐标系。
 
         参数：
@@ -214,9 +207,7 @@ class ExecutionEngine:
         """
         try:
             self.context.update_target(target_part, target_variant)
-            self.logger.info(
-                "目标坐标系已更新: %s (variant=%d)", target_part, target_variant
-            )
+            self.logger.info("目标坐标系已更新: %s (variant=%d)", target_part, target_variant)
             return ExecutionResult(
                 success=True,
                 data={"target_part": target_part, "target_variant": target_variant},
@@ -324,9 +315,7 @@ def create_execution_context(  # pylint: disable=too-many-arguments
     return context
 
 
-def create_execution_engine(
-    config_path: Union[str, Path], **options
-) -> Tuple[ExecutionContext, ExecutionEngine]:
+def create_execution_engine(config_path: Union[str, Path], **options) -> Tuple[ExecutionContext, ExecutionEngine]:
     """便捷工厂函数：一次创建上下文和引擎。
 
     参数：

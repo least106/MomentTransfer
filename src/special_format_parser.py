@@ -79,9 +79,7 @@ def _normalize_column_mapping(columns: List[str]) -> Dict[str, str]:
     return mapping
 
 
-def _finalize_part(
-    current_part, current_header, current_data, result: Dict[str, pd.DataFrame]
-):
+def _finalize_part(current_part, current_header, current_data, result: Dict[str, pd.DataFrame]):
     """将当前累积的数据转换为 DataFrame 并加入 result（若数据存在）。"""
     if not (current_part and current_header and current_data):
         return

@@ -5,7 +5,7 @@
 
 import logging
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class AppState(Enum):
     """应用状态枚举"""
+
     NORMAL = "normal"  # 正常操作
     REDO_MODE = "redo_mode"  # 重做模式
     PROJECT_LOADING = "project_loading"  # 加载项目中
@@ -22,14 +23,14 @@ class AppState(Enum):
 
 class GlobalStateManager(QObject):
     """全局状态管理器
-    
+
     管理当前应用状态，并在状态改变时触发相应的清理和通知。
     确保状态转换时不会混淆新旧状态的数据。
     """
 
     # 信号：状态改变
     stateChanged = Signal(AppState, dict)  # (新状态, 状态数据)
-    
+
     # 信号：重做状态改变
     redoModeChanged = Signal(bool, str)  # (进入/退出, 记录ID)
 
@@ -194,7 +195,7 @@ class GlobalStateManager(QObject):
         elif self._current_state == AppState.REDO_MODE:
             return f"重做模式 ({self._redo_parent_id[:8]}...)"
         elif self._current_state == AppState.PROJECT_LOADING:
-            return f"加载项目"
+            return "加载项目"
         elif self._current_state == AppState.BATCH_PROCESSING:
             return "批处理中"
         else:

@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
@@ -19,7 +20,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +29,14 @@ class BatchHistoryStore:
 
     def __init__(self, *, store_path: Optional[Path] = None) -> None:
         import os
-        
+
         # 测试环境检测：使用临时路径避免污染真实历史记录
-        is_testing = bool(
-            os.getenv("PYTEST_CURRENT_TEST") or 
-            os.getenv("TESTING") == "1"
-        )
-        
+        is_testing = bool(os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "1")
+
         if is_testing:
             # 测试环境：使用临时目录
             import tempfile
+
             base_dir = Path(tempfile.gettempdir()) / ".momentconversion_test"
             base_dir.mkdir(parents=True, exist_ok=True)
             self.store_path = store_path or base_dir / "batch_history_test.json"
@@ -48,7 +46,7 @@ class BatchHistoryStore:
             base_dir = Path.home() / ".momentconversion"
             base_dir.mkdir(parents=True, exist_ok=True)
             self.store_path = store_path or base_dir / "batch_history.json"
-        
+
         self.records: List[Dict] = []
         self.redo_stack: List[Dict] = []  # 重做栈：存储被撤销的记录
         self._is_testing = is_testing
@@ -61,9 +59,7 @@ class BatchHistoryStore:
                     data = json.loads(self.store_path.read_text(encoding="utf-8"))
                 except json.JSONDecodeError:
                     # 兼容带 BOM 的文件
-                    data = json.loads(
-                        self.store_path.read_text(encoding="utf-8-sig")
-                    )
+                    data = json.loads(self.store_path.read_text(encoding="utf-8-sig"))
                 if isinstance(data, dict):
                     # 新格式：包含records和redo_stack
                     self.records = data.get("records", [])
@@ -83,7 +79,7 @@ class BatchHistoryStore:
             if getattr(self, "_is_testing", False):
                 logger.debug("测试环境：跳过历史记录持久化")
                 return
-            
+
             data = {
                 "records": self.records,
                 "redo_stack": self.redo_stack,
@@ -143,7 +139,7 @@ class BatchHistoryStore:
             record["part_mappings"] = part_mappings
         if file_configs:
             record["file_configs"] = file_configs
-        
+
         # 添加父记录 ID（树状结构）
         if parent_record_id:
             record["parent_record_id"] = parent_record_id
@@ -253,18 +249,18 @@ class BatchHistoryPanel(QWidget):
         """刷新历史面板，支持树状结构（父子记录关系）"""
         self.tree.clear()
         records = self.store.get_records()
-        
+
         # 构建父子关系映射：parent_id -> [child_records]
         parent_children: Dict[str, List[Dict]] = defaultdict(list)
         top_level_records = []
-        
+
         for rec in records:
             parent_id = rec.get("parent_record_id")
             if parent_id:
                 parent_children[parent_id].append(rec)
             else:
                 top_level_records.append(rec)
-        
+
         # 按日期分组顶级记录
         grouped: Dict[str, List[Dict]] = defaultdict(list)
         for rec in top_level_records:
@@ -280,7 +276,7 @@ class BatchHistoryPanel(QWidget):
             day_item = QTreeWidgetItem([day])
             day_item.setFirstColumnSpanned(True)
             self.tree.addTopLevelItem(day_item)
-            
+
             for rec in grouped[day]:
                 # 添加主记录
                 ts = rec.get("timestamp", "")
@@ -288,35 +284,32 @@ class BatchHistoryPanel(QWidget):
                 summary = self._build_summary(rec)
                 status = self._status_text(rec.get("status"))
                 record_id = rec.get("id")
-                
+
                 # 如果有子记录（重做的结果），显示重做计数
                 child_records = parent_children.get(record_id, [])
                 if child_records:
                     summary += f" | 已重做 {len(child_records)} 次"
-                
+
                 row = QTreeWidgetItem([time_part, summary, status, ""])
                 day_item.addChild(row)
                 btn = self._make_action_button(rec)
                 if btn is not None:
                     self.tree.setItemWidget(row, 3, btn)
-                
+
                 # 添加子记录（重做生成的记录）
                 for child_rec in child_records:
                     child_ts = child_rec.get("timestamp", "")
                     child_time_part = child_ts.split("T")[-1][:8] if "T" in child_ts else child_ts
                     child_summary = self._build_summary(child_rec)
                     child_status = self._status_text(child_rec.get("status"))
-                    
-                    child_row = QTreeWidgetItem([
-                        f"  → {child_time_part}",  # 使用箭头表示是重做的子记录
-                        child_summary,
-                        child_status,
-                        ""
-                    ])
+
+                    child_row = QTreeWidgetItem(
+                        [f"  → {child_time_part}", child_summary, child_status, ""]  # 使用箭头表示是重做的子记录
+                    )
                     # 将子记录设置为浅灰色以区分
                     for col in range(4):
                         child_row.setForeground(col, QColor(128, 128, 128))
-                    
+
                     row.addChild(child_row)
                     child_btn = self._make_action_button(child_rec)
                     if child_btn is not None:
@@ -391,10 +384,7 @@ class BatchHistoryPanel(QWidget):
                                 if isinstance(mapping, dict):
                                     src = mapping.get("source", "?")
                                     tgt = mapping.get("target", "?")
-                                    line = (
-                                        f"  • {file_name} "
-                                        f"[{internal_part}]: {src} → {tgt}"
-                                    )
+                                    line = f"  • {file_name} " f"[{internal_part}]: {src} → {tgt}"
                                     details.append(line)
 
                 return "\n".join(details)

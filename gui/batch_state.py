@@ -9,11 +9,6 @@ from typing import Dict
 from PySide6.QtCore import Qt, QThread
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from gui.dialog_helpers import show_error_dialog
-
-# 导入新的辅助模块以改进代码质量
-from gui.error_handling import ErrorContext, try_or_log
-
 logger = logging.getLogger(__name__)
 
 
@@ -66,9 +61,7 @@ class BatchStateManager:
             # 显示加载指示器
             try:
                 if hasattr(manager_instance.gui, "statusBar"):
-                    manager_instance.gui.statusBar().showMessage(
-                        f"正在解析特殊格式文件: {file_path.name}...", 0
-                    )
+                    manager_instance.gui.statusBar().showMessage(f"正在解析特殊格式文件: {file_path.name}...", 0)
             except Exception:
                 logger.debug("显示解析状态栏消息失败（非致命）", exc_info=True)
 
@@ -99,9 +92,7 @@ class BatchStateManager:
                     try:
                         SignalBus.instance().specialDataParsed.emit(fp_str)
                     except Exception:
-                        logger.debug(
-                            "发出 specialDataParsed 信号失败（非致命）", exc_info=True
-                        )
+                        logger.debug("发出 specialDataParsed 信号失败（非致命）", exc_info=True)
                 finally:
                     try:
                         setattr(manager_instance, in_progress_key, False)
@@ -121,9 +112,7 @@ class BatchStateManager:
                 logger.error("后台解析特殊格式失败: %s", tb_str)
                 try:
                     if hasattr(manager_instance.gui, "statusBar"):
-                        manager_instance.gui.statusBar().showMessage(
-                            f"解析特殊格式文件失败: {file_path.name}", 5000
-                        )
+                        manager_instance.gui.statusBar().showMessage(f"解析特殊格式文件失败: {file_path.name}", 5000)
                     QMessageBox.warning(
                         manager_instance.gui,
                         "解析失败",
@@ -146,9 +135,7 @@ class BatchStateManager:
             thread.started.connect(worker.run)
             thread.start()
         except Exception as e:
-            logger.warning(
-                "无法用 QThread 启动后台解析，尝试回退：%s", e, exc_info=True
-            )
+            logger.warning("无法用 QThread 启动后台解析，尝试回退：%s", e, exc_info=True)
             try:
                 result_holder = {}
                 done_event = threading.Event()
@@ -165,9 +152,7 @@ class BatchStateManager:
                 thr.start()
 
                 try:
-                    dlg = QProgressDialog(
-                        "正在解析特殊格式…", "取消", 0, 0, manager_instance.gui
-                    )
+                    dlg = QProgressDialog("正在解析特殊格式…", "取消", 0, 0, manager_instance.gui)
                     dlg.setWindowModality(Qt.NonModal)
                     dlg.setMaximumWidth(400)
                     cancel_requested = [False]
@@ -192,9 +177,7 @@ class BatchStateManager:
                         try:
                             QApplication.processEvents()
                         except Exception:
-                            logger.debug(
-                                "处理 GUI 事件时出错（轮询线程）", exc_info=True
-                            )
+                            logger.debug("处理 GUI 事件时出错（轮询线程）", exc_info=True)
                 finally:
                     try:
                         if dlg is not None:
@@ -229,16 +212,12 @@ class BatchStateManager:
                     "后台解析特殊格式时发生错误，已回退到同步解析",
                 )
             except Exception:
-                logger.warning(
-                    "无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True
-                )
+                logger.warning("无法启动 Python 后台线程，回退到主线程同步解析", exc_info=True)
 
             # 同步解析（在主线程执行）
             try:
                 try:
-                    manager_instance.gui.statusBar().showMessage(
-                        f"正在解析特殊格式：{file_path.name}…", 0
-                    )
+                    manager_instance.gui.statusBar().showMessage(f"正在解析特殊格式：{file_path.name}…", 0)
                 except Exception:
                     logger.debug("显示状态栏消息失败（非致命）", exc_info=True)
 
@@ -257,9 +236,7 @@ class BatchStateManager:
                         "data": data_dict,
                     }
                 except Exception:
-                    logger.debug(
-                        "写入特殊格式缓存失败（同步回退，非致命）", exc_info=True
-                    )
+                    logger.debug("写入特殊格式缓存失败（同步回退，非致命）", exc_info=True)
                 try:
                     manager_instance.gui.statusBar().showMessage("", 0)
                 except Exception:
@@ -395,18 +372,14 @@ class BatchStateManager:
                         if not source_part:
                             unmapped_parts.append(part_name_str)
                         elif source_part not in source_parts:
-                            missing_source_parts.append(
-                                f"{part_name_str}→{source_part}"
-                            )
+                            missing_source_parts.append(f"{part_name_str}→{source_part}")
 
                         # 检查target part
                         if not target_part:
                             if source_part:  # 只有当source已选择时才检查target
                                 unmapped_parts.append(part_name_str)
                         elif target_part not in target_parts:
-                            missing_target_parts.append(
-                                f"{part_name_str}→{target_part}"
-                            )
+                            missing_target_parts.append(f"{part_name_str}→{target_part}")
 
                     if unmapped_parts:
                         status = f"⚠ 未映射: {', '.join(unmapped_parts)}"
@@ -434,9 +407,7 @@ class BatchStateManager:
 
         try:
             mapping = manager_instance._get_or_init_special_mapping(file_path)
-            mapping_by_file = getattr(
-                manager_instance.gui, "special_part_mapping_by_file", {}
-            )
+            mapping_by_file = getattr(manager_instance.gui, "special_part_mapping_by_file", {})
             mapping_by_file = mapping_by_file or {}
             part_names = get_part_names(file_path)
             source_names = manager_instance._get_source_part_names()
@@ -453,16 +424,12 @@ class BatchStateManager:
                         mapping,
                     ):
                         mapping_by_file[str(file_path)] = mapping
-                        manager_instance.gui.special_part_mapping_by_file = (
-                            mapping_by_file
-                        )
+                        manager_instance.gui.special_part_mapping_by_file = mapping_by_file
             except Exception:
                 logger.debug("自动补全映射失败", exc_info=True)
 
             # 行选择缓存：确保存在（首次默认全选）
-            manager_instance._ensure_special_row_selection_storage(
-                file_path, part_names
-            )
+            manager_instance._ensure_special_row_selection_storage(file_path, part_names)
 
             # 特殊格式解析数据：用于生成数据行预览
             data_dict = manager_instance._get_special_data_dict(file_path)
@@ -502,9 +469,7 @@ class BatchStateManager:
         except Exception:
             logger.debug("ensure_special_mapping_rows failed", exc_info=True)
 
-    def determine_part_selection_status(
-        self, manager_instance, file_path: Path, project_data
-    ):
+    def determine_part_selection_status(self, manager_instance, file_path: Path, project_data):
         """基于 project_data 与当前选择推断该文件的 source/target 状态
 
         状态符号说明：
@@ -524,19 +489,13 @@ class BatchStateManager:
             str: 状态文本
         """
         try:
-            sel = (
-                getattr(manager_instance.gui, "file_part_selection_by_file", {}) or {}
-            ).get(str(file_path)) or {}
+            sel = (getattr(manager_instance.gui, "file_part_selection_by_file", {}) or {}).get(str(file_path)) or {}
             source_sel = (sel.get("source") or "").strip()
             target_sel = (sel.get("target") or "").strip()
 
             try:
-                source_names = list(
-                    (getattr(project_data, "source_parts", {}) or {}).keys()
-                )
-                target_names = list(
-                    (getattr(project_data, "target_parts", {}) or {}).keys()
-                )
+                source_names = list((getattr(project_data, "source_parts", {}) or {}).keys())
+                target_names = list((getattr(project_data, "target_parts", {}) or {}).keys())
             except Exception:
                 source_names, target_names = [], []
 

@@ -37,9 +37,7 @@ def connect_ui_signals(manager: Any) -> bool:
                         sig.connect(handler)
                         made_connection = True
                     except Exception:
-                        logger.debug(
-                            f"连接 file_tree.{signal_name} 失败", exc_info=True
-                        )
+                        logger.debug(f"连接 file_tree.{signal_name} 失败", exc_info=True)
                 except Exception:
                     logger.debug(f"连接 file_tree {signal_name} 失败", exc_info=True)
 
@@ -108,9 +106,7 @@ def connect_quick_filter(manager: Any) -> None:
     try:
         gui = manager.gui
         made = False
-        if hasattr(gui, "batch_panel") and hasattr(
-            gui.batch_panel, "quickFilterChanged"
-        ):
+        if hasattr(gui, "batch_panel") and hasattr(gui.batch_panel, "quickFilterChanged"):
             handler = getattr(manager, "_on_quick_filter_changed", None)
             if callable(handler):
                 try:
@@ -120,13 +116,9 @@ def connect_quick_filter(manager: Any) -> None:
                 except Exception as e:
                     logger.error(f"连接快速筛选信号失败: {e}", exc_info=True)
             else:
-                logger.warning(
-                    "快速筛选信号连接失败：manager 未提供 _on_quick_filter_changed 回调"
-                )
+                logger.warning("快速筛选信号连接失败：manager 未提供 _on_quick_filter_changed 回调")
         else:
-            logger.debug(
-                "快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在"
-            )
+            logger.debug("快速筛选信号连接失败：batch_panel 或 quickFilterChanged 不存在")
         return bool(made)
     except Exception:
         logger.debug("connect_quick_filter 失败", exc_info=True)

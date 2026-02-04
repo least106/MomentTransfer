@@ -56,9 +56,6 @@ from typing import Dict, Optional
 
 from PySide6.QtWidgets import QWidget
 
-# 导入新的辅助模块以改进代码质量
-from gui.error_handling import ErrorContext, try_or_log
-
 _logger = logging.getLogger(__name__)
 
 # ==================== 文件验证状态符号常数 ====================
@@ -184,9 +181,7 @@ def report_user_error(
         try:
             # 优先级：错误=高，警告=中
             priority = 1 if not is_warning else 0
-            SignalBus.instance().statusMessage.emit(
-                f"{title}：{message}", 8000, priority
-            )
+            SignalBus.instance().statusMessage.emit(f"{title}：{message}", 8000, priority)
             return
         except Exception:
             pass
@@ -305,11 +300,7 @@ class FileSelectionManager:
         @report_exceptions("标记 skipped rows 失败")
         def _impl(file_path, rows):
             try:
-                key = (
-                    str(Path(file_path).resolve())
-                    if file_path is not None
-                    else str(file_path)
-                )
+                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
             except Exception:
                 key = str(file_path)
             existing = self.skipped_rows_by_file.get(key) or set()
@@ -319,9 +310,7 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                _report_ui_exception(
-                    self.parent, "同步 skipped_rows_by_file 到父窗口失败"
-                )
+                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败")
 
         return _impl(file_path, rows)
 
@@ -331,11 +320,7 @@ class FileSelectionManager:
         @report_exceptions("清理 skipped rows 失败")
         def _impl(file_path, rows=None):
             try:
-                key = (
-                    str(Path(file_path).resolve())
-                    if file_path is not None
-                    else str(file_path)
-                )
+                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
             except Exception:
                 key = str(file_path)
             if rows is None:
@@ -352,9 +337,7 @@ class FileSelectionManager:
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                _report_ui_exception(
-                    self.parent, "同步 skipped_rows_by_file 到父窗口失败（清理）"
-                )
+                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（清理）")
 
         return _impl(file_path, rows)
 
@@ -364,27 +347,19 @@ class FileSelectionManager:
         @report_exceptions("读取 skipped rows 失败")
         def _impl(file_path):
             try:
-                key = (
-                    str(Path(file_path).resolve())
-                    if file_path is not None
-                    else str(file_path)
-                )
+                key = str(Path(file_path).resolve()) if file_path is not None else str(file_path)
             except Exception:
                 key = str(file_path)
             s = self.skipped_rows_by_file.get(key)
             try:
                 setattr(self.parent, "skipped_rows_by_file", self.skipped_rows_by_file)
             except Exception:
-                _report_ui_exception(
-                    self.parent, "同步 skipped_rows_by_file 到父窗口失败（读取）"
-                )
+                _report_ui_exception(self.parent, "同步 skipped_rows_by_file 到父窗口失败（读取）")
             return set(s) if s is not None else None
 
         return _impl(file_path)
 
-    def ensure_special_row_selection_storage(
-        self, file_path: Path, part_names: list
-    ) -> dict:
+    def ensure_special_row_selection_storage(self, file_path: Path, part_names: list) -> dict:
         """确保行选择缓存存在，并为未初始化的 part 默认全选。
 
         返回 by_part dict（可被调用方修改）。
@@ -415,9 +390,7 @@ class FileSelectionManager:
                     self.special_part_row_selection_by_file,
                 )
             except Exception:
-                _report_ui_exception(
-                    self.parent, "同步 special_part_row_selection_by_file 到父窗口失败"
-                )
+                _report_ui_exception(self.parent, "同步 special_part_row_selection_by_file 到父窗口失败")
             return by_part
 
         return _impl(file_path, part_names)
@@ -473,9 +446,7 @@ class ModelManager:
             if not self._ensure_project_model():
                 return
             part_name = (
-                self.parent.source_panel.part_name_input.text()
-                if hasattr(self.parent, "source_panel")
-                else "Global"
+                self.parent.source_panel.part_name_input.text() if hasattr(self.parent, "source_panel") else "Global"
             )
             if hasattr(self.parent, "source_panel"):
                 # 使用面板提供的强类型模型接口
@@ -484,12 +455,8 @@ class ModelManager:
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
-                pm_variant = PMVariant(
-                    part_name=part_name, coord_system=cs_model, refs=refs_model
-                )
-                self.parent.project_model.source_parts[part_name] = PMPart(
-                    part_name=part_name, variants=[pm_variant]
-                )
+                pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
+                self.parent.project_model.source_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
                 self.project_model = self.parent.project_model
         except Exception:
             pass
@@ -500,9 +467,7 @@ class ModelManager:
             if not self._ensure_project_model():
                 return
             part_name = (
-                self.parent.target_panel.part_name_input.text()
-                if hasattr(self.parent, "target_panel")
-                else "Target"
+                self.parent.target_panel.part_name_input.text() if hasattr(self.parent, "target_panel") else "Target"
             )
             if hasattr(self.parent, "target_panel"):
                 cs_model = self.parent.target_panel.get_coordinate_system_model()
@@ -510,12 +475,8 @@ class ModelManager:
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
-                pm_variant = PMVariant(
-                    part_name=part_name, coord_system=cs_model, refs=refs_model
-                )
-                self.parent.project_model.target_parts[part_name] = PMPart(
-                    part_name=part_name, variants=[pm_variant]
-                )
+                pm_variant = PMVariant(part_name=part_name, coord_system=cs_model, refs=refs_model)
+                self.parent.project_model.target_parts[part_name] = PMPart(part_name=part_name, variants=[pm_variant])
                 self.project_model = self.parent.project_model
         except Exception:
             pass
@@ -536,11 +497,7 @@ class ModelManager:
         variants = []
         try:
             if self._ensure_project_model():
-                parts = (
-                    self.parent.project_model.source_parts
-                    if is_source
-                    else self.parent.project_model.target_parts
-                )
+                parts = self.parent.project_model.source_parts if is_source else self.parent.project_model.target_parts
                 part = parts.get(part_name)
                 if part:
                     variants = part.variants
@@ -624,25 +581,17 @@ class ModelManager:
             if not new_name:
                 return
 
-            parts = (
-                self.parent.project_model.source_parts
-                if is_source
-                else self.parent.project_model.target_parts
-            )
+            parts = self.parent.project_model.source_parts if is_source else self.parent.project_model.target_parts
             selector = None
             try:
                 selector = (
-                    self.parent.source_panel.part_selector
-                    if is_source
-                    else self.parent.target_panel.part_selector
+                    self.parent.source_panel.part_selector if is_source else self.parent.target_panel.part_selector
                 )
             except Exception:
                 selector = None
 
             try:
-                panel = (
-                    self.parent.source_panel if is_source else self.parent.target_panel
-                )
+                panel = self.parent.source_panel if is_source else self.parent.target_panel
                 current_name = getattr(panel, "_current_part_name", None)
                 if not current_name and selector:
                     current_name = selector.currentText()
@@ -716,9 +665,7 @@ class ModelManager:
             from src.models.project_model import PartVariant as PMVariant
 
             variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
-            self.parent.project_model.source_parts[name] = PMPart(
-                part_name=name, variants=[variant]
-            )
+            self.parent.project_model.source_parts[name] = PMPart(part_name=name, variants=[variant])
             if hasattr(self.parent, "source_panel"):
                 self.parent.source_panel._current_part_name = name
 
@@ -729,9 +676,7 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(
-                    self.parent, "成功", f'Source Part "{name}" 已添加'
-                )
+                QMessageBox.information(self.parent, "成功", f'Source Part "{name}" 已添加')
             except Exception:
                 pass
         except Exception as e:
@@ -774,9 +719,7 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(
-                    self.parent, "成功", f'Source Part "{name}" 已删除'
-                )
+                QMessageBox.information(self.parent, "成功", f'Source Part "{name}" 已删除')
             except Exception:
                 pass
         except Exception as e:
@@ -810,15 +753,11 @@ class ModelManager:
                 from src.models.project_model import Part as PMPart
                 from src.models.project_model import PartVariant as PMVariant
 
-                variant = PMVariant(
-                    part_name=name, coord_system=cs_model, refs=refs_model
-                )
+                variant = PMVariant(part_name=name, coord_system=cs_model, refs=refs_model)
             except Exception:
                 logger.debug("读取 Target 面板强类型数据失败", exc_info=True)
                 raise
-            self.parent.project_model.target_parts[name] = PMPart(
-                part_name=name, variants=[variant]
-            )
+            self.parent.project_model.target_parts[name] = PMPart(part_name=name, variants=[variant])
             if hasattr(self.parent, "target_panel"):
                 self.parent.target_panel._current_part_name = name
             try:
@@ -828,9 +767,7 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(
-                    self.parent, "成功", f'Target Part "{name}" 已添加'
-                )
+                QMessageBox.information(self.parent, "成功", f'Target Part "{name}" 已添加')
             except Exception:
                 pass
         except Exception as e:
@@ -876,9 +813,7 @@ class ModelManager:
             try:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.information(
-                    self.parent, "成功", f'Target Part "{name}" 已删除'
-                )
+                QMessageBox.information(self.parent, "成功", f'Target Part "{name}" 已删除')
             except Exception:
                 pass
         except Exception as e:
@@ -907,9 +842,7 @@ class ModelManager:
             if idx < 0 or idx >= len(variants):
                 idx = 0
             frame = variants[idx]
-            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = (
-                self._read_variant_fields(frame)
-            )
+            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
             if cs is None:
                 return
             try:
@@ -951,9 +884,7 @@ class ModelManager:
             if idx < 0 or idx >= len(variants):
                 idx = 0
             frame = variants[idx]
-            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = (
-                self._read_variant_fields(frame)
-            )
+            part_name, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(frame)
             if cs is None:
                 return
             try:
@@ -999,9 +930,7 @@ class ModelManager:
             logger.debug(f"找到 {len(variants) if variants else 0} 个变体")
             if variants:
                 variant = variants[0]
-                _, cs, mc, cref_val, bref_val, sref_val, q_val = (
-                    self._read_variant_fields(variant)
-                )
+                _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
                 logger.debug(
                     "读取变体字段: cs=%s, mc=%s, cref=%s, bref=%s, sref=%s, q=%s",
                     cs is not None,
@@ -1057,9 +986,7 @@ class ModelManager:
             logger.debug(f"找到 {len(variants) if variants else 0} 个变体")
             if variants:
                 variant = variants[0]
-                _, cs, mc, cref_val, bref_val, sref_val, q_val = (
-                    self._read_variant_fields(variant)
-                )
+                _, cs, mc, cref_val, bref_val, sref_val, q_val = self._read_variant_fields(variant)
                 logger.debug(
                     "读取变体字段: cs=%s, mc=%s, cref=%s, bref=%s, sref=%s, q=%s",
                     cs is not None,
@@ -1245,15 +1172,11 @@ class UIStateManager:
                     except Exception:
                         import logging
 
-                        logging.getLogger(__name__).debug(
-                            "检测配置是否修改失败（非致命）", exc_info=True
-                        )
+                        logging.getLogger(__name__).debug("检测配置是否修改失败（非致命）", exc_info=True)
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug(
-                    "访问 config_manager 失败（非致命）", exc_info=True
-                )
+                logging.getLogger(__name__).debug("访问 config_manager 失败（非致命）", exc_info=True)
 
             base_tooltip = "开始批量处理（Ctrl+R）"
             # 更新所有开始按钮（支持新旧按钮名称）
@@ -1319,9 +1242,7 @@ class UIStateManager:
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug(
-                    "访问 parent.batch_panel 失败（非致命）", exc_info=True
-                )
+                logging.getLogger(__name__).debug("访问 parent.batch_panel 失败（非致命）", exc_info=True)
 
             # 数据管理选项卡：在没有加载数据时禁用
             try:
@@ -1337,9 +1258,7 @@ class UIStateManager:
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug(
-                    "设置数据管理选项卡状态失败（非致命）", exc_info=True
-                )
+                logging.getLogger(__name__).debug("设置数据管理选项卡状态失败（非致命）", exc_info=True)
 
             # 参考系管理（配置）选项卡
             try:
@@ -1356,16 +1275,12 @@ class UIStateManager:
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug(
-                    "设置参考系管理选项卡状态失败（非致命）", exc_info=True
-                )
+                logging.getLogger(__name__).debug("设置参考系管理选项卡状态失败（非致命）", exc_info=True)
 
             # 保存按钮：在没有任何操作前禁用
             save_enabled = bool(self.is_operation_performed())
             # 如果主窗口标记为临时禁用 project 按钮，则保持禁用状态
-            project_buttons_disabled = bool(
-                getattr(parent, "_project_buttons_temporarily_disabled", False)
-            )
+            project_buttons_disabled = bool(getattr(parent, "_project_buttons_temporarily_disabled", False))
             for name in ("btn_save_project_toolbar",):
                 try:
                     btn = getattr(parent, name, None)
@@ -1377,9 +1292,7 @@ class UIStateManager:
                 except Exception:
                     import logging
 
-                    logging.getLogger(__name__).debug(
-                        "设置保存按钮状态失败（非致命）", exc_info=True
-                    )
+                    logging.getLogger(__name__).debug("设置保存按钮状态失败（非致命）", exc_info=True)
 
             try:
                 if hasattr(parent, "batch_panel"):
@@ -1388,9 +1301,7 @@ class UIStateManager:
                         if project_buttons_disabled:
                             parent.batch_panel.btn_save_project.setEnabled(False)
                         else:
-                            parent.batch_panel.btn_save_project.setEnabled(
-                                bool(save_enabled)
-                            )
+                            parent.batch_panel.btn_save_project.setEnabled(bool(save_enabled))
                     except Exception:
                         import logging
 
@@ -1401,9 +1312,7 @@ class UIStateManager:
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug(
-                    "访问 batch_panel 失败（非致命）", exc_info=True
-                )
+                logging.getLogger(__name__).debug("访问 batch_panel 失败（非致命）", exc_info=True)
 
             try:
                 if hasattr(parent, "config_panel"):
@@ -1419,17 +1328,13 @@ class UIStateManager:
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).debug(
-                    "访问 config_panel 失败（非致命）", exc_info=True
-                )
+                logging.getLogger(__name__).debug("访问 config_panel 失败（非致命）", exc_info=True)
 
         except Exception:
             # 最后兜底：记录错误但不抛出，避免在 UI 更新时中断
             import logging
 
-            logging.getLogger(__name__).debug(
-                "refresh_controls_state 失败（非致命）", exc_info=True
-            )
+            logging.getLogger(__name__).debug("refresh_controls_state 失败（非致命）", exc_info=True)
 
     # 状态设置辅助方法，鼓励通过 UIStateManager 管理窗口级状态
     def set_data_loaded(self, loaded: bool) -> None:
@@ -1563,9 +1468,7 @@ class UIStateManager:
                     by_file[key] = by_file.get(key, set())
                 # 将选择写入 parent 的表格选择结构（兼容旧代码）
                 try:
-                    fsm.table_row_selection_by_file = (
-                        getattr(fsm, "table_row_selection_by_file", {}) or {}
-                    )
+                    fsm.table_row_selection_by_file = getattr(fsm, "table_row_selection_by_file", {}) or {}
                     # 保留现有结构，不覆盖其他 keys
                     for k in by_file.keys():
                         fsm.table_row_selection_by_file.setdefault(k, None)

@@ -42,10 +42,7 @@ class PartInferenceResult:
         return self.part_name is not None
 
     def __repr__(self):
-        return (
-            f"PartInferenceResult(part={self.part_name}, "
-            f"confidence={self.confidence}, method={self.method})"
-        )
+        return f"PartInferenceResult(part={self.part_name}, " f"confidence={self.confidence}, method={self.method})"
 
 
 def _normalize_name(name: str) -> str:
@@ -284,9 +281,7 @@ def infer_parts_for_file(
     target_parts = getattr(project_data, "target_parts", {}) or {}
 
     # 推测 source part
-    source_result = infer_source_part(
-        part_name, source_parts, strategy=strategy, allow_default=allow_default
-    )
+    source_result = infer_source_part(part_name, source_parts, strategy=strategy, allow_default=allow_default)
 
     # 推测 target part
     if source_result.is_successful():
@@ -299,9 +294,7 @@ def infer_parts_for_file(
         )
     else:
         # source 推测失败，target 也无法推测
-        target_result = PartInferenceResult(
-            None, "none", "failed", list(target_parts.keys())
-        )
+        target_result = PartInferenceResult(None, "none", "failed", list(target_parts.keys()))
 
     return source_result, target_result
 

@@ -50,9 +50,7 @@ class ConfigPanel(QWidget):
         try:
             self.lbl_unsaved = QLabel("配置已被修改，需要及时保存")
             self.lbl_unsaved.setObjectName("unsavedNotice")
-            self.lbl_unsaved.setStyleSheet(
-                "background-color: #fff3cd; color: #856404; padding:6px; border-radius:4px;"
-            )
+            self.lbl_unsaved.setStyleSheet("background-color: #fff3cd; color: #856404; padding:6px; border-radius:4px;")
             self.lbl_unsaved.setVisible(False)
             main_layout.addWidget(self.lbl_unsaved)
         except Exception:
@@ -131,20 +129,14 @@ class ConfigPanel(QWidget):
 
                     # 若有 ConfigManager，尝试与加载时的快照比较，决定是否标记为已修改
                     marked = False
-                    if (
-                        win is not None
-                        and hasattr(win, "config_manager")
-                        and win.config_manager is not None
-                    ):
+                    if win is not None and hasattr(win, "config_manager") and win.config_manager is not None:
                         try:
                             # 优先使用 ConfigManager 在加载时保存的基线快照（若存在），
                             # 否则回退到即时生成的快照。这样可以避免加载后面板与
                             # 管理器内部模型之间的微小差异导致误判。
                             snap = None
                             try:
-                                snap = getattr(
-                                    win.config_manager, "_loaded_snapshot", None
-                                )
+                                snap = getattr(win.config_manager, "_loaded_snapshot", None)
                             except Exception:
                                 snap = None
                             if snap is None:
@@ -206,9 +198,7 @@ class ConfigPanel(QWidget):
                             else:
                                 # 清除用户修改标记并刷新状态（优先通过 UIStateManager）
                                 try:
-                                    if hasattr(win, "ui_state_manager") and getattr(
-                                        win, "ui_state_manager"
-                                    ):
+                                    if hasattr(win, "ui_state_manager") and getattr(win, "ui_state_manager"):
                                         try:
                                             win.ui_state_manager.clear_user_modified()
                                         except Exception:

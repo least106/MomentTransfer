@@ -33,9 +33,7 @@ class TableFilterManager:
             table: QTableWidget 实例
         """
         self.table = table
-        self.filters: List[Dict] = (
-            []
-        )  # 筛选条件列表，每项为 {'column': int, 'operator': str, 'value': str}
+        self.filters: List[Dict] = []  # 筛选条件列表，每项为 {'column': int, 'operator': str, 'value': str}
         self.hidden_rows: Set[int] = set()  # 被筛选隐藏的行索引
         self.gray_color = QColor(200, 200, 200)  # 灰显颜色
         self.normal_color = QColor(255, 255, 255)  # 正常颜色
@@ -98,9 +96,7 @@ class TableFilterManager:
 
         return True
 
-    def _matches_condition(
-        self, cell_value: str, operator: str, filter_value: str
-    ) -> bool:
+    def _matches_condition(self, cell_value: str, operator: str, filter_value: str) -> bool:
         """检查单个单元格是否符合条件。"""
         try:
             if operator == "contains":
@@ -205,9 +201,7 @@ class TableFilterWidget(QWidget):
         # 操作符选择
         lbl_op = QLabel("操作:")
         self.cmb_operator = QComboBox()
-        self.cmb_operator.addItems(
-            ["包含", "不包含", "等于", "不等于", "<", ">", "<=", ">="]
-        )
+        self.cmb_operator.addItems(["包含", "不包含", "等于", "不等于", "<", ">", "<=", ">="])
         self._operator_map = {
             "包含": "contains",
             "不包含": "not_contains",
