@@ -181,6 +181,49 @@ class InitializationManager:
             )
             main_layout.setSpacing(LAYOUT_SPACING)
 
+            # 创建状态横幅（默认隐藏）
+            try:
+                from gui.state_banner import StateBanner
+
+                state_banner = StateBanner()
+                state_banner.exitRequested.connect(self._on_banner_exit_requested)
+                # 连接带状态类型的信号
+                state_banner.exitStateRequested.connect(self._on_banner_exit_state_requested)
+                state_banner.setVisible(False)  # 默认隐藏
+                self.main_window.state_banner = state_banner
+                # 若工具栏已创建，则优先放入工具栏；否则回退到主布局
+                toolbar = getattr(self.main_window, "main_toolbar", None)
+                if toolbar is not None:
+                    try:
+                        state_banner.apply_toolbar_mode()
+                    except Exception:
+                        logger.debug("应用状态横幅工具栏模式失败（非致命）", exc_info=True)
+                    try:
+                        # 将状态横幅插入到弹性间隔之前，使其显示在左侧按钮右边
+                        spacer_action = getattr(
+                            self.main_window, "_toolbar_spacer_action", None
+                        )
+                        if spacer_action is not None:
+                            banner_action = toolbar.insertWidget(spacer_action, state_banner)
+                        else:
+                            banner_action = toolbar.addWidget(state_banner)
+                        # 保存 action 引用，便于通过 action 控制可见性
+                        self.main_window._state_banner_action = banner_action
+                        # 设置状态横幅的 action 引用
+                        state_banner.set_toolbar_action(banner_action)
+                        # 初始隐藏 action
+                        banner_action.setVisible(False)
+                        logger.debug("状态横幅已添加到工具栏")
+                    except Exception:
+                        logger.debug("状态横幅添加到工具栏失败，回退到主布局", exc_info=True)
+                        main_layout.addWidget(state_banner)
+                else:
+                    main_layout.addWidget(state_banner)
+                    logger.debug("状态横幅已添加到主布局")
+            except Exception as e:
+                logger.debug("创建状态横幅失败（非致命）: %s", e, exc_info=True)
+                self.main_window.state_banner = None
+
             # 创建配置/操作面板
             config_panel = self.main_window.create_config_panel()
             part_mapping_panel = self.main_window.create_part_mapping_panel()
@@ -312,7 +355,7 @@ class InitializationManager:
         except Exception as e:
             logger.error("UI 初始化失败: %s", e, exc_info=True)
             raise
-
+                        # toolbar.addWidget(state_banner)  # 移除状态横幅从工具栏
     def setup_managers(self):
         """初始化所有管理器"""
         try:
@@ -761,7 +804,9 @@ class InitializationManager:
             # 添加弹性间隔，使右侧按钮靠右
             spacer = QWidget()
             spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            toolbar.addWidget(spacer)
+            spacer_action = toolbar.addWidget(spacer)
+            # 保存弹性间隔动作作为状态横幅插入锚点
+            self.main_window._toolbar_spacer_action = spacer_action
 
             # 右侧：主要操作按钮（将复选框放在浏览按钮左侧）
             # 右侧：展开批处理记录复选框（放在浏览按钮左侧）
@@ -770,7 +815,7 @@ class InitializationManager:
             chk_bottom_bar.setChecked(False)
 
             # 将复选框添加到工具栏并添加右侧的操作按钮
-            toolbar.addWidget(chk_bottom_bar)
+            chk_bottom_bar_action = toolbar.addWidget(chk_bottom_bar)
 
             btn_browse = QPushButton("浏览文件")
             btn_browse.setMaximumWidth(80)
@@ -857,31 +902,16 @@ class InitializationManager:
             btn_cancel.clicked.connect(self.main_window.request_cancel_batch)
             toolbar.addWidget(btn_cancel)
 
-            # 添加伸缩空间，将后续元素推到右侧
-            from PySide6.QtWidgets import QWidget as EmptyWidget
-            spacer = EmptyWidget()
-            spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            toolbar.addWidget(spacer)
-
-            # 在主工具栏中添加状态横幕（默认隐藏）
-            try:
-                from gui.state_banner import StateBanner
-
-                state_banner = StateBanner()
-                state_banner.exitRequested.connect(self._on_banner_exit_requested)
-                state_banner.setVisible(False)  # 默认隐藏
-                toolbar.addWidget(state_banner)
-                self.main_window.state_banner = state_banner
-                logger.debug("状态横幕已添加到主工具栏")
-            except Exception as e:
-                logger.debug("创建状态横幕失败（非致命）: %s", e, exc_info=True)
-                self.main_window.state_banner = None
+            # 状态横幅将插入到右侧按钮之前（通过锚点动作定位）
 
             # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
             self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
 
             # 将工具栏添加到主窗口顶部
             self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
+
+            # 保存工具栏引用，便于后续插入状态横幅
+            self.main_window.main_toolbar = toolbar
 
             # 保存按钮引用以供后续使用
             self.main_window.btn_new_project = btn_new_project
@@ -1079,20 +1109,63 @@ class InitializationManager:
             logger.debug("创建配置警告标签失败（完整）", exc_info=True)
 
     def _on_banner_exit_requested(self):
-        """用户点击横幅退出按钮"""
+        """用户点击横幅退出按钮（兼容旧信号）"""
+        # 尝试获取状态类型并调用新方法
         try:
-            # 通过全局状态管理器退出重做模式
-            from gui.global_state_manager import GlobalStateManager
+            banner = getattr(self.main_window, "state_banner", None)
+            if banner:
+                from gui.state_banner import BannerStateType
+                state_type = getattr(banner, "_current_state_type", BannerStateType.NONE)
+                self._on_banner_exit_state_requested(state_type)
+                return
+        except Exception:
+            pass
+        # 回退：假设是重做模式
+        try:
+            from gui.state_banner import BannerStateType
+            self._on_banner_exit_state_requested(BannerStateType.REDO_MODE)
+        except Exception:
+            logger.debug("处理横幅退出请求失败", exc_info=True)
+
+    def _on_banner_exit_state_requested(self, state_type):
+        """用户点击横幅退出按钮，根据状态类型执行相应清理"""
+        try:
+            from gui.state_banner import BannerStateType
             
-            state_manager = GlobalStateManager.instance()
-            if state_manager and state_manager.is_redo_mode:
-                state_manager.exit_redo_mode()
-                logger.info("已通过全局状态管理器退出重做模式")
-            
-            # 后备：清除本地状态
-            if hasattr(self.main_window, "batch_manager") and self.main_window.batch_manager:
-                self.main_window.batch_manager._redo_mode_parent_id = None
-            
-            logger.info("用户退出状态横幅")
+            if state_type == BannerStateType.REDO_MODE:
+                # 退出重做模式
+                try:
+                    from gui.global_state_manager import GlobalStateManager
+                    state_manager = GlobalStateManager.instance()
+                    if state_manager and state_manager.is_redo_mode:
+                        state_manager.exit_redo_mode()
+                        logger.info("已通过全局状态管理器退出重做模式")
+                except Exception:
+                    logger.debug("通过全局状态管理器退出重做模式失败", exc_info=True)
+                
+                # 清除本地重做状态
+                try:
+                    if hasattr(self.main_window, "batch_manager") and self.main_window.batch_manager:
+                        self.main_window.batch_manager._redo_mode_parent_id = None
+                except Exception:
+                    pass
+                
+                logger.info("用户退出重做模式")
+                
+            elif state_type == BannerStateType.PROJECT_LOADED:
+                # 退出项目模式：清除当前项目文件关联
+                try:
+                    if hasattr(self.main_window, "project_manager") and self.main_window.project_manager:
+                        pm = self.main_window.project_manager
+                        pm.current_project_file = None
+                        pm.last_saved_state = None
+                        logger.info("已清除当前项目文件关联")
+                except Exception:
+                    logger.debug("清除项目文件关联失败", exc_info=True)
+                
+                logger.info("用户退出项目模式")
+            else:
+                logger.info("用户退出状态横幅（类型: %s）", state_type)
+                
         except Exception:
             logger.debug("处理横幅退出请求失败", exc_info=True)

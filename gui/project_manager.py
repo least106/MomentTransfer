@@ -878,6 +878,15 @@ class ProjectManager:
                 )
 
             logger.info(f"项目已加载: {file_path}")
+            
+            # 显示状态横幅
+            try:
+                banner = getattr(self.gui, "state_banner", None)
+                if banner is not None:
+                    banner.show_project_loaded(str(file_path))
+            except Exception:
+                logger.debug("显示项目加载状态横幅失败（非致命）", exc_info=True)
+            
             return True
         except Exception as e:
             tb = traceback.format_exc()

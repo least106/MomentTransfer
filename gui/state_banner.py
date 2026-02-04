@@ -4,6 +4,7 @@
 """
 
 import logging
+from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
 
@@ -13,14 +14,25 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWi
 logger = logging.getLogger(__name__)
 
 
+class BannerStateType(Enum):
+    """状态横幅显示的状态类型"""
+    NONE = auto()
+    REDO_MODE = auto()
+    PROJECT_LOADED = auto()
+    CUSTOM = auto()
+
+
 class StateBanner(QWidget):
     """状态横幅 - 显示当前持久化状态（重做模式、加载的项目等）"""
 
-    # 信号：用户点击退出
+    # 信号：用户点击退出，传递当前状态类型
     exitRequested = Signal()
+    # 信号：带状态类型的退出请求
+    exitStateRequested = Signal(object)  # BannerStateType
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._current_state_type = BannerStateType.NONE
         self._setup_ui()
         self.hide()  # 默认隐藏
 
@@ -30,10 +42,10 @@ class StateBanner(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)  # 减少边距
         layout.setSpacing(8)
 
-        # 确保横幅在工具栏中可见并占据可用宽度
+        # 默认尺寸策略（非工具栏模式）
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMinimumHeight(32)
-
+        self.setMinimumWidth(300)  # 设置最小宽度确保可见
         # 图标标签
         self.icon_label = QLabel("ℹ️")
         self.icon_label.setStyleSheet("font-size: 14px;")  # 缩小图标
@@ -86,19 +98,60 @@ class StateBanner(QWidget):
             }
         """)
 
+    def apply_toolbar_mode(self):
+        """在工具栏中使用时的紧凑模式"""
+        try:
+            self.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Fixed)
+            self.setMinimumHeight(28)
+            self.setMinimumWidth(200)
+            self.setMaximumWidth(320)
+            self.message_label.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Preferred
+            )
+            self.message_label.setMinimumWidth(0)
+        except Exception:
+            logger.debug("设置状态横幅工具栏模式失败", exc_info=True)
+
+    def set_toolbar_action(self, action):
+        """设置工具栏中对应的 QAction，用于控制可见性"""
+        self._toolbar_action = action
+
     def _on_exit_clicked(self):
         """用户点击退出按钮"""
-        self.hide()
+        state_type = self._current_state_type
+        self._current_state_type = BannerStateType.NONE
+        self._set_visible(False)
+        # 发射带状态类型的信号
+        try:
+            self.exitStateRequested.emit(state_type)
+        except Exception:
+            pass
+        # 同时发射兼容的无参信号
         self.exitRequested.emit()
+
+    def _set_visible(self, visible: bool):
+        """设置可见性（兼容工具栏模式）"""
+        try:
+            action = getattr(self, "_toolbar_action", None)
+            if action is not None:
+                # 工具栏模式：需要同时设置 action 和 widget 的可见性
+                action.setVisible(visible)
+                self.setVisible(visible)
+            else:
+                self.setVisible(visible)
+        except Exception:
+            self.setVisible(visible)
 
     def show_redo_state(self, record_info: dict):
         """显示重做状态横幅
 
         Args:
-            record_info: 历史记录信息，包含 input_path, timestamp 等
+            record_info: 历史记录信息，包含 input_path, timestamp, redo_count 等
         """
         try:
             input_path = record_info.get("input_path", "未知")
+            timestamp = record_info.get("timestamp", "")
+            redo_count = record_info.get("redo_count", 0)
 
             # 简化路径显示
             if input_path and input_path != "未知":
@@ -110,12 +163,32 @@ class StateBanner(QWidget):
             else:
                 display_path = input_path
 
-            # 简化消息
-            msg = f"🔄 重做 {display_path}"
+            # 构建更详细的消息
+            msg_parts = [f"🔄 重做: {display_path}"]
+            if timestamp:
+                # 提取时间部分（如 10:50:59）
+                try:
+                    time_part = timestamp.split(" ")[-1] if " " in timestamp else timestamp
+                    msg_parts.append(f"({time_part})")
+                except Exception:
+                    pass
+            if redo_count > 0:
+                msg_parts.append(f"[已重做 {redo_count} 次]")
+            
+            msg = " ".join(msg_parts)
 
+            self._current_state_type = BannerStateType.REDO_MODE
             self.icon_label.setText("🔄")
             self.message_label.setText(msg)
-            self.show()
+            self._set_visible(True)
+            self.raise_()
+            # 强制更新布局和几何信息
+            self.updateGeometry()
+            self.adjustSize()
+            if self.parent():
+                self.parent().update()
+            logger.info("状态横幅显示重做状态: visible=%s, sizeHint=%s, geometry=%s", 
+                       self.isVisible(), self.sizeHint(), self.geometry())
         except Exception as e:
             logger.debug("显示重做状态横幅失败: %s", e, exc_info=True)
 
@@ -135,9 +208,10 @@ class StateBanner(QWidget):
 
             msg = f"📁 已加载项目：{display_name}"
 
+            self._current_state_type = BannerStateType.PROJECT_LOADED
             self.icon_label.setText("📁")
             self.message_label.setText(msg)
-            self.show()
+            self._set_visible(True)
         except Exception as e:
             logger.debug("显示项目加载横幅失败: %s", e, exc_info=True)
 
@@ -152,15 +226,22 @@ class StateBanner(QWidget):
             style: 可选的自定义样式（覆盖默认样式）
         """
         try:
+            self._current_state_type = BannerStateType.CUSTOM
             self.icon_label.setText(icon)
             self.message_label.setText(message)
             if style:
                 self.setStyleSheet(style)
-            self.show()
+            self._set_visible(True)
         except Exception as e:
             logger.debug("显示自定义横幅失败: %s", e, exc_info=True)
 
     def clear(self):
         """清除并隐藏横幅"""
-        self.hide()
+        self._current_state_type = BannerStateType.NONE
+        self._set_visible(False)
         self.message_label.setText("")
+
+    @property
+    def current_state_type(self) -> BannerStateType:
+        """获取当前显示的状态类型"""
+        return self._current_state_type
