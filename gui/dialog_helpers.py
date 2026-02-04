@@ -216,9 +216,7 @@ def configure_message_box_safe(msg: QMessageBox) -> bool:
         return False
 
 
-def show_yes_no_cancel_dialog(
-    parent, title: str, message: str
-) -> Optional[str]:
+def show_yes_no_cancel_dialog(parent, title: str, message: str) -> Optional[str]:
     """
     显示包含是/否/取消三个按钮的对话框
 
@@ -250,9 +248,7 @@ def show_yes_no_cancel_dialog(
         return None
 
 
-def create_confirm_save_changes_dialog(
-    parent, intent: str = "操作"
-) -> QMessageBox:
+def create_confirm_save_changes_dialog(parent, intent: str = "操作") -> QMessageBox:
     """
     创建确认保存更改的对话框，用于在执行某个操作前确认是否保存
 
@@ -266,9 +262,7 @@ def create_confirm_save_changes_dialog(
     msg = QMessageBox(parent)
     msg.setWindowTitle("未保存更改")
     msg.setText(f"检测到未保存的更改。是否在执行'{intent}'前保存更改？")
-    msg.setInformativeText(
-        "保存：保存更改并继续；放弃：本次不保存并继续；取消：返回。"
-    )
+    msg.setInformativeText("保存：保存更改并继续；放弃：本次不保存并继续；取消：返回。")
 
     msg.addButton("保存", QMessageBox.AcceptRole)
     msg.addButton("放弃", QMessageBox.DestructiveRole)

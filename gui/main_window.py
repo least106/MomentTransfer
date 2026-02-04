@@ -33,6 +33,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from gui.dialog_helpers import (
+    show_confirm_save_changes_dialog,
+    show_error_dialog,
+    show_info_dialog,
+    show_yes_no_cancel_dialog,
+)
+
+# 导入新的辅助模块以改进代码质量
+from gui.error_handling import ErrorContext, safe_execute, try_or_log
 from gui.event_manager import EventManager
 from gui.initialization_manager import InitializationManager
 
@@ -46,16 +55,7 @@ from gui.panels import ConfigPanel, OperationPanel, PartMappingPanel
 
 # 导入管理器和工具
 from gui.signal_bus import SignalBus
-
-# 导入新的辅助模块以改进代码质量
-from gui.error_handling import ErrorContext, safe_execute, try_or_log
 from gui.status_manager import StatusMessageManager
-from gui.dialog_helpers import (
-    show_error_dialog,
-    show_info_dialog,
-    show_yes_no_cancel_dialog,
-    show_confirm_save_changes_dialog,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -971,9 +971,7 @@ class IntegratedAeroGUI(QMainWindow):
                         except Exception:
                             pass
                         if success:
-                            show_info_dialog(
-                                self, "成功", f"项目已加载: {loaded_fp}"
-                            )
+                            show_info_dialog(self, "成功", f"项目已加载: {loaded_fp}")
                         else:
                             # UX：ProjectManager.load_project 内部会对解析失败/版本不匹配等情况弹窗说明。
                             # 这里避免重复弹窗，仅做轻量提示。
@@ -1096,7 +1094,9 @@ class IntegratedAeroGUI(QMainWindow):
                                 except Exception:
                                     pass
                                 if success:
-                                    show_info_dialog(self, "成功", f"项目已保存到: {saved_fp}")
+                                    show_info_dialog(
+                                        self, "成功", f"项目已保存到: {saved_fp}"
+                                    )
                                 else:
                                     show_error_dialog(self, "错误", "项目保存失败")
                                 try:

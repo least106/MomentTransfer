@@ -119,16 +119,16 @@ from gui.batch_manager_ui import connect_ui_signals as _connect_ui_signals_impl
 from gui.batch_manager_ui import (
     safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
 )
+from gui.dialog_helpers import show_error_dialog, show_info_dialog
+
+# 导入新的辅助模块以改进代码质量
+from gui.error_handling import ErrorContext, safe_execute, try_or_log
 from gui.quick_select_dialog import QuickSelectDialog
 from src.cli_helpers import BatchConfig, resolve_file_format
 from src.file_cache import get_file_cache
 
 # 项目内模块（本地导入）
 from src.special_format_detector import looks_like_special_format
-
-# 导入新的辅助模块以改进代码质量
-from gui.error_handling import ErrorContext, safe_execute, try_or_log
-from gui.dialog_helpers import show_error_dialog, show_info_dialog
 
 logger = logging.getLogger(__name__)
 try:
@@ -244,8 +244,11 @@ class BatchManager:
         try:
             self.history_store = store
             self.history_panel = panel
-            if panel is not None and hasattr(panel, "set_undo_callback"):
-                panel.set_undo_callback(self.undo_history_record)
+            if panel is not None:
+                if hasattr(panel, "set_undo_callback"):
+                    panel.set_undo_callback(self.undo_history_record)
+                if hasattr(panel, "set_redo_callback"):
+                    panel.set_redo_callback(self.redo_history_record)
         except (AttributeError, TypeError) as e:
             logger.debug("绑定历史组件失败: %s", e, exc_info=True)
         except Exception:
@@ -1748,7 +1751,10 @@ class BatchManager:
                 except Exception:
                     logger.debug("删除输出文件失败（未知错误）", exc_info=True)
 
-            store.mark_status(record_id, "undone")
+            try:
+                store.undo_record(record_id)
+            except Exception:
+                logger.debug("更新历史记录状态失败（非致命）", exc_info=True)
             try:
                 if self.history_panel is not None:
                     self.history_panel.refresh()
@@ -1756,13 +1762,85 @@ class BatchManager:
                 logger.debug("刷新历史面板失败", exc_info=True)
 
             try:
-                QMessageBox.information(
-                    self.gui, "撤销完成", f"已删除 {deleted} 个输出文件"
-                )
+                # 使用状态栏显示，延时 1500ms 让用户能看清
+                sb = self.gui.statusBar() if hasattr(self.gui, "statusBar") else None
+                if sb is not None:
+                    sb.showMessage(f"✓ 撤销完成，已删除 {deleted} 个输出文件", 1500)
+                else:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.information(
+                        self.gui, "撤销完成", f"已删除 {deleted} 个输出文件"
+                    )
             except Exception as e:
                 logger.debug("撤销提示失败: %s", e, exc_info=True)
         except Exception:
             logger.debug("撤销历史记录失败", exc_info=True)
+
+    def redo_history_record(self, record_id: str) -> None:
+        """重做指定历史记录（恢复已撤销的输出文件）。"""
+        try:
+            store = self.history_store or getattr(self.gui, "history_store", None)
+            if store is None or not record_id:
+                return
+
+            # 在 redo_stack 中找到对应的记录
+            redo_stack = getattr(store, "redo_stack", [])
+            target_record = None
+            for redo_item in redo_stack:
+                rec = redo_item.get("record", {})
+                if rec.get("id") == record_id:
+                    target_record = rec
+                    break
+            
+            if target_record is None:
+                return
+
+            # 从备份恢复文件
+            backup_files = target_record.get("backup_files") or {}
+            restored = 0
+            for output_path, backup_path in backup_files.items():
+                try:
+                    src_fp = Path(backup_path)
+                    dst_fp = Path(output_path)
+                    if src_fp.exists() and src_fp.is_file():
+                        dst_fp.parent.mkdir(parents=True, exist_ok=True)
+                        # 使用 shutil.copy2 保留元数据
+                        import shutil
+                        shutil.copy2(str(src_fp), str(dst_fp))
+                        restored += 1
+                except (OSError, PermissionError, ValueError) as e:
+                    logger.debug("恢复输出文件失败: %s", e, exc_info=True)
+                except Exception:
+                    logger.debug("恢复输出文件失败（未知错误）", exc_info=True)
+
+            try:
+                # 调用 redo_record() 恢复状态
+                restored_rec = store.redo_record()
+                if restored_rec is None:
+                    logger.debug("重做记录未能从栈中恢复")
+            except Exception:
+                logger.debug("更新历史记录状态失败（非致命）", exc_info=True)
+            
+            try:
+                if self.history_panel is not None:
+                    self.history_panel.refresh()
+            except Exception:
+                logger.debug("刷新历史面板失败", exc_info=True)
+
+            try:
+                # 使用状态栏显示，延时 1500ms 让用户能看清
+                sb = self.gui.statusBar() if hasattr(self.gui, "statusBar") else None
+                if sb is not None:
+                    sb.showMessage(f"✓ 重做完成，已恢复 {restored} 个输出文件", 1500)
+                else:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.information(
+                        self.gui, "重做完成", f"已恢复 {restored} 个输出文件"
+                    )
+            except Exception as e:
+                logger.debug("重做提示失败: %s", e, exc_info=True)
+        except Exception:
+            logger.debug("重做历史记录失败", exc_info=True)
 
     # 文件来源标签相关实现已完全移除
 

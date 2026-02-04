@@ -331,7 +331,7 @@ class BatchHistoryPanel(QWidget):
 
         if status == "undone":
             # 已撤销状态 → 显示重做按钮
-            btn = QPushButton("🔄 重做")
+            btn = QPushButton("重做")
             btn.setProperty("class", "primary")  # 使用主题色突出显示
             tooltip = f"重做此批处理（{len(new_files)} 个文件）"
             if details:

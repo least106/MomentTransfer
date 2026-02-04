@@ -69,9 +69,7 @@ class StatusMessageManager:
             logger.debug("显示状态消息失败", exc_info=True)
             return None
 
-    def clear_message(
-        self, token: Optional[str] = None, min_priority: int = 0
-    ) -> bool:
+    def clear_message(self, token: Optional[str] = None, min_priority: int = 0) -> bool:
         """
         清除状态栏消息
 

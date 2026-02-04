@@ -1218,15 +1218,9 @@ class UIStateManager:
             except Exception:
                 pass
 
+            return True
+
         res = _impl(locked)
-        if res is None:
-            # 若上层发生异常，尝试回退到父窗口实现以保持尽量的兼容性
-            try:
-                func = getattr(self.parent, "_set_controls_locked", None)
-                if callable(func):
-                    func(locked)
-            except Exception:
-                pass
         return res
 
     def refresh_controls_state(self) -> None:
@@ -1474,6 +1468,13 @@ class UIStateManager:
 
     def mark_user_modified(self) -> None:
         """快捷方法：标记为用户已修改并刷新状态。"""
+        try:
+            self.set_operation_performed(True)
+        except Exception:
+            pass
+
+    def mark_operation_performed(self) -> None:
+        """兼容旧调用：标记用户已修改。"""
         try:
             self.set_operation_performed(True)
         except Exception:
