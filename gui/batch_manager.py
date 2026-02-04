@@ -1621,11 +1621,20 @@ class BatchManager:
             logger.error(f"处理完成事件失败: {e}")
 
     def on_batch_error(self, error_msg: str):
-        """批处理错误回调"""
+        """批处理错误回调
+
+        关键处理：
+        1. 不自动删除已生成的文件（让用户决定是否保留）
+        2. 标记历史记录为"失败"而非"已完成"
+        3. 不启用撤销按钮（错误状态下撤销意义不大）
+
+        这避免了竞态条件：错误处理可能与用户的撤销操作冲突
+        """
         try:
             logger.error(f"批处理错误: {error_msg}")
             self._record_batch_history(status="failed")
             # 恢复 GUI 状态并提示错误
+            # 注意：enable_undo=False，因为错误状态下的撤销可能不安全
             self._restore_gui_after_batch(enable_undo=False)
             try:
                 from gui.managers import report_user_error

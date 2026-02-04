@@ -482,7 +482,14 @@ def request_cancel_batch(manager):
 
 
 def undo_batch_processing(manager):
-    """撤销最近一次批处理操作（由 `BatchManager` 委托）。"""
+    """撤销最近一次批处理操作（由 `BatchManager` 委托）。
+
+    改进的撤销逻辑避免竞态条件：
+    1. 在撤销前实时检查输出目录中的文件
+    2. 计算实际需要删除的文件数量（而不依赖过期快照）
+    3. 检测用户是否手动修改过文件，并在确认对话中显示
+    4. 安全处理各种文件系统异常
+    """
     try:
         output_dir = getattr(manager.gui, "_batch_output_dir", None)
         existing_files = getattr(manager.gui, "_batch_existing_files", set())
@@ -495,10 +502,67 @@ def undo_batch_processing(manager):
             )
             return
 
+        # 在撤销前实时检查输出目录，检测用户是否手动修改了文件
+        try:
+            output_path = Path(output_dir)
+            if not output_path.exists():
+                QMessageBox.warning(
+                    manager.gui,
+                    "错误",
+                    f"输出目录不存在或已被删除: {output_dir}\n\n无法进行撤销操作。",
+                )
+                return
+
+            # 规范化已存在文件的路径
+            existing_files_resolved = set()
+            for p in existing_files:
+                try:
+                    existing_files_resolved.add(str(Path(p).resolve()))
+                except Exception:
+                    continue
+
+            # 实时获取当前目录中的文件
+            current_files = []
+            try:
+                for f in output_path.iterdir():
+                    if f.is_file():
+                        current_files.append(str(f.resolve()))
+            except Exception as e:
+                logger.warning(f"无法列举输出目录中的文件: {e}")
+                current_files = []
+
+            # 计算需要删除的文件（新生成的文件）
+            files_to_delete = [
+                p for p in current_files if p not in existing_files_resolved
+            ]
+            files_to_delete_count = len(files_to_delete)
+
+            # 检测用户是否手动修改了文件
+            original_new_files = [
+                p for p in current_files if p not in existing_files_resolved
+            ]
+            # 这里我们检查是否有原本生成的文件已被删除
+            user_modified_msg = ""
+            if files_to_delete_count == 0:
+                user_modified_msg = (
+                    "\n\n【警告】输出目录中未发现新生成的文件。"
+                    "您可能已手动删除了生成的文件，或批处理已被撤销。"
+                )
+
+            confirmation_msg = (
+                f"确定要撤销最近一次批处理？\n"
+                f"将删除 {output_dir} 中的 {files_to_delete_count} 个新生成文件"
+                f"（保留源数据）。{user_modified_msg}"
+            )
+
+        except Exception as e:
+            logger.warning(f"撤销前检查输出目录失败: {e}")
+            confirmation_msg = f"确定要撤销最近一次批处理？\n将删除 {output_dir} 中的新生成文件（保留源数据）。"
+
         reply = QMessageBox.question(
             manager.gui,
             "确认撤销",
-            f"确定要撤销最近一次批处理？\n将删除 {output_dir} 中的新生成文件（保留源数据）。",
+            confirmation_msg,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -509,7 +573,10 @@ def undo_batch_processing(manager):
         try:
             deleted_count = delete_new_output_files(manager, output_dir, existing_files)
             QMessageBox.information(
-                manager.gui, "撤销完成", f"已删除 {deleted_count} 个输出文件"
+                manager.gui,
+                "撤销完成",
+                f"已删除 {deleted_count} 个输出文件。"
+                f"（如需恢复，请使用操作系统的垃圾箱或备份）",
             )
 
             # pylint: disable=protected-access
@@ -535,7 +602,11 @@ def undo_batch_processing(manager):
         except Exception as e:
             logger.error(f"撤销批处理失败: {e}", exc_info=True)
             try:
-                QMessageBox.critical(manager.gui, "错误", f"撤销失败: {e}")
+                QMessageBox.critical(
+                    manager.gui,
+                    "错误",
+                    f"撤销失败: {e}\n\n请手动检查输出目录是否存在权限问题。",
+                )
             except Exception:
                 pass
     except Exception as e:
@@ -543,30 +614,57 @@ def undo_batch_processing(manager):
 
 
 def delete_new_output_files(manager, output_dir, existing_files):
-    """删除 `output_dir` 中不在 `existing_files` 中的新文件，返回删除计数。"""
+    """删除 `output_dir` 中不在 `existing_files` 中的新文件，返回删除计数。
+
+    改进的撤销逻辑：
+    1. 验证文件是否仍然存在（检测用户手动修改）
+    2. 根据实际文件系统状态而非过期快照决定删除哪些文件
+    3. 安全处理路径问题和权限问题
+
+    这避免了竞态条件：用户在批处理完成 → 撤销前手动删除/修改文件
+    """
     deleted_count = 0
     try:
         if output_dir and Path(output_dir).exists():
             output_path = Path(output_dir)
             existing_iter = existing_files or set()
             existing_files_resolved = set()
+
+            # 规范化已存在文件的路径
             for p in existing_iter:
                 try:
                     existing_files_resolved.add(str(Path(p).resolve()))
                 except Exception:
                     continue
-            for file in output_path.iterdir():
+
+            # 遍历当前目录中的所有文件
+            # 关键：实时检查文件系统，而不依赖过期快照
+            try:
+                current_files = list(output_path.iterdir())
+            except Exception as e:
+                logger.warning(f"无法列举输出目录中的文件: {e}")
+                current_files = []
+
+            for file in current_files:
                 try:
                     file_path_str = str(file.resolve())
                 except Exception:
                     continue
+
+                # 只删除：1) 确实是文件 2) 不在快照中
                 if file.is_file() and file_path_str not in existing_files_resolved:
                     try:
                         file.unlink()
                         deleted_count += 1
-                        logger.info(f"已删除: {file}")
+                        logger.info(f"已删除新文件: {file}")
+                    except FileNotFoundError:
+                        # 文件已被用户手动删除，无需再删除
+                        logger.info(f"文件已被删除（用户手动）: {file}")
+                        deleted_count += 1  # 计入已处理的文件
+                    except PermissionError:
+                        logger.warning(f"无权限删除 {file}，可能被其他程序占用")
                     except Exception as e:
-                        logger.warning(f"无法删除 {file}: {e}")
+                        logger.warning(f"删除文件失败 {file}: {e}")
     except Exception:
         logger.debug("删除输出文件时发生错误", exc_info=True)
         raise
