@@ -1628,6 +1628,12 @@ class BatchManager:
     def _record_batch_history(self, status: str = "completed") -> None:
         """记录批处理历史并刷新右侧历史面板。"""
         try:
+            # 测试环境下禁用历史记录（避免测试数据污染历史）
+            import os
+            if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "1":
+                logger.debug("测试环境下跳过历史记录")
+                return
+            
             store = self.history_store or getattr(self.gui, "history_store", None)
             if store is None:
                 return
@@ -1762,15 +1768,9 @@ class BatchManager:
                 logger.debug("刷新历史面板失败", exc_info=True)
 
             try:
-                # 使用状态栏显示，延时 1500ms 让用户能看清
-                sb = self.gui.statusBar() if hasattr(self.gui, "statusBar") else None
-                if sb is not None:
-                    sb.showMessage(f"✓ 撤销完成，已删除 {deleted} 个输出文件", 1500)
-                else:
-                    from PySide6.QtWidgets import QMessageBox
-                    QMessageBox.information(
-                        self.gui, "撤销完成", f"已删除 {deleted} 个输出文件"
-                    )
+                # 使用状态栏显示，1500ms 后自动清空（非阻塞）
+                sb = self.gui.statusBar()
+                sb.showMessage(f"✓ 撤销完成，已删除 {deleted} 个输出文件", 1500)
             except Exception as e:
                 logger.debug("撤销提示失败: %s", e, exc_info=True)
         except Exception:
@@ -1828,15 +1828,9 @@ class BatchManager:
                 logger.debug("刷新历史面板失败", exc_info=True)
 
             try:
-                # 使用状态栏显示，延时 1500ms 让用户能看清
-                sb = self.gui.statusBar() if hasattr(self.gui, "statusBar") else None
-                if sb is not None:
-                    sb.showMessage(f"✓ 重做完成，已恢复 {restored} 个输出文件", 1500)
-                else:
-                    from PySide6.QtWidgets import QMessageBox
-                    QMessageBox.information(
-                        self.gui, "重做完成", f"已恢复 {restored} 个输出文件"
-                    )
+                # 使用状态栏显示，1500ms 后自动清空（非阻塞）
+                sb = self.gui.statusBar()
+                sb.showMessage(f"✓ 重做完成，已恢复 {restored} 个输出文件", 1500)
             except Exception as e:
                 logger.debug("重做提示失败: %s", e, exc_info=True)
         except Exception:
