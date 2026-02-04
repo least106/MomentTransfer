@@ -162,10 +162,10 @@ class BatchManager:
         self._selected_paths = None  # 用户选择的多个路径
         self._last_history_record_id = None  # 最近的历史记录ID
 
-        # 初始化状态管理器
+        # 初始化批处理状态管理器
         from gui.batch_state import BatchStateManager
 
-        self._state_manager = BatchStateManager()
+        self._batch_state = BatchStateManager()
 
         # 初始化文件管理器
         from gui.batch_file_manager import BatchFileManager
@@ -186,11 +186,11 @@ class BatchManager:
 
         # 特殊格式：缓存解析结果，避免频繁全量解析
         # key: file_path_str -> {"mtime": float, "data": Dict[str, DataFrame]}
-        self._special_data_cache = self._state_manager.special_data_cache
+        self._special_data_cache = self._batch_state.special_data_cache
 
         # 常规表格（CSV/Excel）：缓存预览数据，避免频繁读取
         # key: file_path_str -> {"mtime": float, "df": DataFrame, "preview_rows": int}
-        self._table_data_cache = self._state_manager.table_data_cache
+        self._table_data_cache = self._batch_state.table_data_cache
 
         # 文件树批量更新标记，避免 itemChanged 递归触发
         self._is_updating_tree = False
@@ -215,11 +215,11 @@ class BatchManager:
         # 连接全局状态管理器
         try:
             from gui.global_state_manager import GlobalStateManager
-            self._state_manager = GlobalStateManager.instance()
-            self._state_manager.redoModeChanged.connect(self._on_redo_mode_changed)
+            self._global_state = GlobalStateManager.instance()
+            self._global_state.redoModeChanged.connect(self._on_redo_mode_changed)
         except Exception as e:
             logger.debug("连接全局状态管理器失败: %s", e, exc_info=True)
-            self._state_manager = None
+            self._global_state = None
         # 监听特殊格式解析完成事件以刷新预览
         try:
             from gui.signal_bus import SignalBus
@@ -424,7 +424,7 @@ class BatchManager:
 
     def _get_special_data_dict(self, file_path: Path):
         """获取特殊格式解析结果（带 mtime 缓存）- 委托给 batch_state"""
-        return self._state_manager.get_special_data_dict(file_path, self)
+        return self._batch_state.get_special_data_dict(file_path, self)
 
     def _format_preview_value(self, v):
         """将单元格值格式化为便于显示的字符串（处理 None/NaN 和异常）。"""
@@ -656,7 +656,7 @@ class BatchManager:
 
     def _get_table_df_preview(self, file_path: Path, *, max_rows: int = 200):
         """读取 CSV/Excel 的预览数据 - 委托给 batch_state"""
-        return self._state_manager.get_table_df_preview(file_path, self.gui, max_rows)
+        return self._batch_state.get_table_df_preview(file_path, self.gui, max_rows)
 
     def _ensure_table_row_selection_storage(
         self, file_path: Path, row_count: int
@@ -1070,7 +1070,7 @@ class BatchManager:
 
     def _validate_special_format(self, file_path: Path) -> Optional[str]:
         """对特殊格式文件进行预检 - 委托给 batch_state"""
-        return self._state_manager.validate_special_format(self, file_path)
+        return self._batch_state.validate_special_format(self, file_path)
 
     def _get_special_mapping_if_exists(self, file_path: Path):
         """安全获取 GUI 中已存在的 special mapping（不初始化）。"""
@@ -1454,7 +1454,7 @@ class BatchManager:
 
     def _ensure_special_mapping_rows(self, file_item, file_path: Path) -> None:
         """在文件节点下创建/刷新子节点 - 委托给 batch_state"""
-        return self._state_manager.ensure_special_mapping_rows(
+        return self._batch_state.ensure_special_mapping_rows(
             self, file_item, file_path
         )
 
@@ -1595,8 +1595,8 @@ class BatchManager:
             logger.info(f"批处理完成: {message}")
             
             # 退出重做模式（如果处于该模式）
-            if self._state_manager and self._state_manager.is_redo_mode:
-                self._state_manager.exit_redo_mode()
+            if self._global_state and self._global_state.is_redo_mode:
+                self._global_state.exit_redo_mode()
                 logger.info("批处理完成，已退出重做模式")
             
             # 清除本地状态（后备）
@@ -1696,9 +1696,9 @@ class BatchManager:
             
             # 如果处于重做模式，设置父记录 ID
             parent_record_id = None
-            if self._state_manager and self._state_manager.is_redo_mode:
+            if self._global_state and self._global_state.is_redo_mode:
                 # 从全局状态管理器获取父记录 ID
-                parent_record_id = self._state_manager.redo_parent_id
+                parent_record_id = self._global_state.redo_parent_id
                 logger.info("记录重做生成的批处理记录，父记录: %s", parent_record_id)
             elif self._redo_mode_parent_id:
                 # 后备：使用本地存储的 ID（兼容性）
@@ -1844,8 +1844,8 @@ class BatchManager:
             self._redo_mode_parent_id = record_id
             
             # 更新全局状态管理器
-            if self._state_manager:
-                self._state_manager.set_redo_mode(record_id, target_record)
+            if self._global_state:
+                self._global_state.set_redo_mode(record_id, target_record)
             
             logger.info("进入重做模式，父记录: %s", record_id)
 

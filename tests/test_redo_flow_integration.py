@@ -66,6 +66,7 @@ class TestRedoFlowIntegration:
         """测试 batch_manager 已与全局状态管理器集成"""
         from gui.batch_manager import BatchManager
         from gui.global_state_manager import GlobalStateManager
+        from gui.batch_state import BatchStateManager
         from PySide6.QtWidgets import QApplication, QMainWindow
         
         # 创建最小化的主窗口
@@ -79,8 +80,11 @@ class TestRedoFlowIntegration:
         # 创建 batch_manager
         batch_manager = BatchManager(main_window)
         
-        # 验证 batch_manager 有 _state_manager
-        assert batch_manager._state_manager is not None
+        # 验证 batch_manager 有分离的状态管理器
+        assert batch_manager._batch_state is not None
+        assert isinstance(batch_manager._batch_state, BatchStateManager)
+        assert batch_manager._global_state is not None
+        assert isinstance(batch_manager._global_state, GlobalStateManager)
         assert hasattr(batch_manager, "_redo_mode_parent_id")
         
         # 验证有 _on_redo_mode_changed 方法
