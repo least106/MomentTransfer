@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,10 @@ class StateBanner(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)  # 减少边距
         layout.setSpacing(8)
+
+        # 确保横幅在工具栏中可见并占据可用宽度
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumHeight(32)
 
         # 图标标签
         self.icon_label = QLabel("ℹ️")

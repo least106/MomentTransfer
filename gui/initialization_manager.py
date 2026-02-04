@@ -857,27 +857,31 @@ class InitializationManager:
             btn_cancel.clicked.connect(self.main_window.request_cancel_batch)
             toolbar.addWidget(btn_cancel)
 
-            # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
-            self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
+            # 添加伸缩空间，将后续元素推到右侧
+            from PySide6.QtWidgets import QWidget as EmptyWidget
+            spacer = EmptyWidget()
+            spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            toolbar.addWidget(spacer)
 
-            # 将工具栏添加到主窗口顶部
-            self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
-
-            # 在工具栏下方添加状态横幅
+            # 在主工具栏中添加状态横幕（默认隐藏）
             try:
                 from gui.state_banner import StateBanner
 
                 state_banner = StateBanner()
                 state_banner.exitRequested.connect(self._on_banner_exit_requested)
+                state_banner.setVisible(False)  # 默认隐藏
+                toolbar.addWidget(state_banner)
                 self.main_window.state_banner = state_banner
-                # 作为 widget toolbar 添加到工具栏区域
-                banner_toolbar = self.main_window.addToolBar("StateBanner")
-                banner_toolbar.addWidget(state_banner)
-                banner_toolbar.setMovable(False)
-                banner_toolbar.setIconSize(QSize(16, 16))
+                logger.debug("状态横幕已添加到主工具栏")
             except Exception as e:
-                logger.debug("创建状态横幅工具栏失败（非致命）: %s", e, exc_info=True)
+                logger.debug("创建状态横幕失败（非致命）: %s", e, exc_info=True)
                 self.main_window.state_banner = None
+
+            # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
+            self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
+
+            # 将工具栏添加到主窗口顶部
+            self.main_window.addToolBar(Qt.TopToolBarArea, toolbar)
 
             # 保存按钮引用以供后续使用
             self.main_window.btn_new_project = btn_new_project

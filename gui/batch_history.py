@@ -57,7 +57,13 @@ class BatchHistoryStore:
     def _load(self) -> None:
         try:
             if self.store_path.exists():
-                data = json.loads(self.store_path.read_text(encoding="utf-8"))
+                try:
+                    data = json.loads(self.store_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    # 兼容带 BOM 的文件
+                    data = json.loads(
+                        self.store_path.read_text(encoding="utf-8-sig")
+                    )
                 if isinstance(data, dict):
                     # 新格式：包含records和redo_stack
                     self.records = data.get("records", [])
