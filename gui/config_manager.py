@@ -56,6 +56,13 @@ class ConfigManager:
                 logger.debug("ConfigManager 已连接 ConfigPanel 请求信号")
             except Exception as e:
                 logger.warning("ConfigManager 连接 ConfigPanel 信号失败: %s", e)
+        # 连接 SignalBus Part 修改信号以追踪多路径配置修改
+        try:
+            self.signal_bus.partAdded.connect(self._on_part_list_changed)
+            self.signal_bus.partRemoved.connect(self._on_part_list_changed)
+            logger.debug("ConfigManager 已连接 SignalBus Part 修改信号")
+        except Exception as e:
+            logger.warning("ConfigManager 连接 Part 修改信号失败: %s", e)
 
     def _frame_to_payload(self, frame):
         """将 ProjectData 帧转换为面板可用的 payload。"""
@@ -282,9 +289,9 @@ class ConfigManager:
             # 批处理将基于每个文件选择的 source/target part 在后台按文件创建 AeroCalculator。
 
             # 重置修改标志
-            # 保存加载时的快照作为基线，供面板比较是否已被用户修改
+            # 保存加载时的完整快照（包含 Part 列表）作为基线，供追踪是否已被用户修改
             try:
-                self._loaded_snapshot = self.get_simple_payload_snapshot()
+                self._loaded_snapshot = self.get_full_config_snapshot()
             except Exception:
                 self._loaded_snapshot = None
             self._config_modified = False
@@ -536,6 +543,71 @@ class ConfigManager:
             logger.debug("生成配置快照失败", exc_info=True)
             return None
 
+    def get_full_config_snapshot(self):
+        """获取包含完整 Part 列表的配置快照，用于追踪多路径修改。
+
+        返回格式: {
+            "source_part_names": [...],  # Source Part 列表
+            "target_part_names": [...],  # Target Part 列表
+            "payload": {...}             # 坐标系等其他配置（来自 get_simple_payload_snapshot）
+        }
+        """
+        try:
+            project = getattr(self.gui, "current_config", None) or getattr(
+                self, "project_config_model", None
+            )
+            if project is None:
+                return None
+
+            # 提取 Source 和 Target 的 Part 名称列表
+            source_names = []
+            target_names = []
+            try:
+                if hasattr(project, "source_parts"):
+                    source_names = sorted(list(project.source_parts.keys()))
+            except Exception:
+                logger.debug("无法获取 Source Part 列表", exc_info=True)
+
+            try:
+                if hasattr(project, "target_parts"):
+                    target_names = sorted(list(project.target_parts.keys()))
+            except Exception:
+                logger.debug("无法获取 Target Part 列表", exc_info=True)
+
+            # 获取坐标系等其他配置
+            payload = self.get_simple_payload_snapshot()
+
+            return {
+                "source_part_names": source_names,
+                "target_part_names": target_names,
+                "payload": payload,
+            }
+        except Exception:
+            logger.debug("生成完整配置快照失败", exc_info=True)
+            return None
+
+    def _part_list_changed_since_load(self) -> bool:
+        """检查自加载后 Part 列表是否有变化。"""
+        try:
+            if not self._loaded_snapshot:
+                return False
+
+            current = self.get_full_config_snapshot()
+            if current is None:
+                return False
+
+            current_src = current.get("source_part_names", [])
+            current_tgt = current.get("target_part_names", [])
+
+            loaded_src = self._loaded_snapshot.get("source_part_names", [])
+            loaded_tgt = self._loaded_snapshot.get("target_part_names", [])
+
+            # 比较 Part 列表
+            return current_src != loaded_src or current_tgt != loaded_tgt
+        except Exception:
+            logger.debug("检查 Part 列表变化失败", exc_info=True)
+            return False
+
     def apply_config(self):
         """已移除：原用于将配置应用为全局 calculator 的逻辑。
 
@@ -582,6 +654,17 @@ class ConfigManager:
             self.set_config_modified(True)
         except Exception:
             logger.debug("处理面板修改回调失败（非致命）", exc_info=True)
+
+    def _on_part_list_changed(self, *args):
+        """Part 列表修改回调（监听 SignalBus.partAdded / partRemoved 信号）。
+
+        当通过 PartManager 添加或删除 Source/Target Part 时，标记配置已修改。
+        """
+        try:
+            logger.debug("检测到 Part 列表修改: %s", args)
+            self.set_config_modified(True)
+        except Exception:
+            logger.debug("处理 Part 修改回调失败（非致命）", exc_info=True)
 
     def reset_config(self) -> None:
         """重置配置到初始状态（向后兼容旧接口）。
