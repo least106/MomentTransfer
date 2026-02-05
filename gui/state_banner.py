@@ -228,6 +228,18 @@ class StateBanner(QWidget):
         except Exception as e:
             logger.debug("显示项目加载横幅失败: %s", e, exc_info=True)
 
+    def show_new_project(self):
+        """显示新未命名项目状态横幅"""
+        try:
+            msg = "📄 新未命名项目"
+
+            self._current_state_type = BannerStateType.PROJECT_LOADED
+            self.icon_label.setText("📄")
+            self.message_label.setText(msg)
+            self._set_visible(True)
+        except Exception as e:
+            logger.debug("显示新项目横幅失败: %s", e, exc_info=True)
+
     def show_custom_message(
         self, message: str, icon: str = "ℹ️", style: Optional[str] = None
     ):

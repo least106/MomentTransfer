@@ -49,6 +49,8 @@ class BatchPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._status_legend = None  # 状态符号说明面板（延迟初始化）
+        self.btn_status_help = None  # 状态符号帮助按钮
         self._init_ui()
 
     def _init_ui(self):
@@ -105,6 +107,9 @@ class BatchPanel(QWidget):
             self.set_workflow_step("init")
         except Exception:
             logger.debug("set_workflow_step init failed", exc_info=True)
+
+        # 延迟创建状态符号说明面板（避免在初始化时创建过多 Qt 对象）
+        self._init_status_legend_lazily()
 
     def _init_input_rows(self):
         """初始化输入路径与模式控件（兼容旧接口）。"""
@@ -222,9 +227,62 @@ class BatchPanel(QWidget):
         self._pattern_presets = []
         self.row_pattern_widget = None
 
+    def _init_status_legend_lazily(self) -> None:
+        """延迟创建状态符号说明面板
+
+        在第一次点击帮助按钮时创建，而不是在初始化时创建，以提高启动速度。
+        """
+        def _create_legend():
+            """创建说明面板并与按钮关联"""
+            try:
+                if self._status_legend is None and self.btn_status_help is not None:
+                    from gui.status_symbol_legend import StatusSymbolLegend
+
+                    # 创建说明面板（最初隐藏）
+                    self._status_legend = StatusSymbolLegend(self.window())
+                    self._status_legend.hide()
+
+                    # 关联按钮和面板
+                    self.btn_status_help.set_legend(self._status_legend)
+            except Exception as e:
+                logger.debug("延迟创建状态符号说明面板失败: %s", e, exc_info=True)
+
+        # 在首次需要时创建
+        if self.btn_status_help is not None:
+            try:
+                # 连接首次点击以创建面板
+                original_click = self.btn_status_help.clicked
+
+                def _on_first_click():
+                    _create_legend()
+                    # 取消首次点击处理，之后使用正常流程
+                    self.btn_status_help.clicked.disconnect(_on_first_click)
+                    if self._status_legend is not None:
+                        self.btn_status_help.clicked.connect(
+                            self._status_legend.toggle_legend
+                        )
+                    # 触发第一次点击的效果
+                    if self._status_legend is not None:
+                        self._status_legend.show_legend()
+
+                self.btn_status_help.clicked.connect(_on_first_click)
+            except Exception as e:
+                logger.debug("连接状态符号帮助按钮失败: %s", e, exc_info=True)
+
     def set_workflow_step(self, step: str) -> None:
-        """按流程显示/隐藏控件，减少初始化时的注意力分散。"""
+        """按流程显示/隐藏控件，并向用户显示明确的步骤提示。
+
+        此方法：
+        1. 根据步骤隐藏/显示相关控件
+        2. 向用户显示当前步骤和下一步提示（通过 SignalBus）
+        """
         step = (step or "").strip()
+
+        # 导入步骤信息
+        try:
+            from gui.workflow_progress_indicator import WORKFLOW_STEPS
+        except Exception:
+            WORKFLOW_STEPS = {}
 
         def _set_row_visible(field_widget: QWidget, visible: bool) -> None:
             if field_widget is None:
@@ -242,14 +300,47 @@ class BatchPanel(QWidget):
             except Exception:
                 logger.debug("设置字段可见性失败（非致命）", exc_info=True)
 
-        # init：只保留操作按钮
+        # init 和 step1：只保留操作按钮
         if step in ("init", "step1"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
+            
+            # 发送状态提示到用户
+            try:
+                from gui.signal_bus import SignalBus
+                from gui.status_message_queue import MessagePriority
+                
+                step_info = WORKFLOW_STEPS.get(step, {})
+                instruction = step_info.get("instruction", "")
+                if instruction:
+                    SignalBus.instance().statusMessage.emit(
+                        f"📋 {instruction}",
+                        0,  # 永久显示
+                        MessagePriority.HIGH,
+                    )
+            except Exception:
+                logger.debug("发送步骤提示失败（非致命）", exc_info=True)
             return
 
-        # step2+：保持默认显示
+        # step2+：保持默认显示，发送相应提示
         if step in ("step2", "step3"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
+            
+            # 发送状态提示到用户
+            try:
+                from gui.signal_bus import SignalBus
+                from gui.status_message_queue import MessagePriority
+                
+                step_info = WORKFLOW_STEPS.get(step, {})
+                instruction = step_info.get("instruction", "")
+                if instruction:
+                    SignalBus.instance().statusMessage.emit(
+                        f"{'⚙️' if step == 'step3' else '📂'} {instruction}",
+                        0,  # 永久显示
+                        MessagePriority.HIGH,
+                    )
+            except Exception:
+                logger.debug("发送步骤提示失败（非致命）", exc_info=True)
+            
             # 标记为已加载数据（主要用于启用 Data 管理选项卡与开始按钮）
             try:
                 win = self.window()
@@ -398,6 +489,16 @@ class BatchPanel(QWidget):
 
         btn_row.addStretch()
 
+        # 添加状态符号帮助按钮
+        try:
+            from gui.status_symbol_legend import StatusSymbolButton
+            self.btn_status_help = StatusSymbolButton(self)
+            self.btn_status_help.setToolTip("点击查看文件验证状态说明（✓ ⚠ ❓）")
+            btn_row.addWidget(self.btn_status_help)
+        except Exception as e:
+            logger.debug("创建状态符号帮助按钮失败: %s", e, exc_info=True)
+            self.btn_status_help = None
+
         # 注意："加载配置" 与 "开始处理" 按钮已移至输入行，避免在此重复创建
         layout.addLayout(btn_row)
 
@@ -420,6 +521,15 @@ class BatchPanel(QWidget):
 
         layout.addWidget(self.file_tree)
 
+        # 启用右键菜单
+        try:
+            self.file_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.file_tree.customContextMenuRequested.connect(
+                self._show_file_tree_context_menu
+            )
+        except Exception:
+            logger.debug("设置文件树右键菜单失败", exc_info=True)
+
         # 未保存配置指示器（在文件列表上方明显显示）
         try:
             self.lbl_unsaved_indicator = QLabel("● 有未保存配置")
@@ -435,24 +545,6 @@ class BatchPanel(QWidget):
             logger.debug("创建未保存配置指示器失败（非致命）", exc_info=True)
         return widget
 
-    def _on_load_config_clicked(self) -> None:
-        """从文件列表入口加载配置（替代旧的全局 Source 显示区）。"""
-        try:
-            win = self.window()
-            if win is not None and hasattr(win, "load_config"):
-                win.load_config()
-        except Exception:
-            logger.debug("load config from file list failed", exc_info=True)
-
-    def _on_quick_filter_changed(self) -> None:
-        """快速筛选条件变化"""
-        try:
-            column = self.inp_filter_column.text().strip()
-            operator = self.cmb_filter_operator.currentText()
-            value = self.inp_filter_value.text()
-            self.quickFilterChanged.emit(column, operator, value)
-        except Exception:
-            logger.debug("快速筛选变化处理失败", exc_info=True)
 
     def _on_operator_changed(self) -> None:
         """运算符变化时更新值输入框验证器"""
@@ -649,3 +741,76 @@ class BatchPanel(QWidget):
                 logger.debug("更新未保存指示器提示失败（非致命）", exc_info=True)
         except Exception:
             logger.debug("set_unsaved_indicator 失败（非致命）", exc_info=True)
+    def _show_file_tree_context_menu(self, pos):
+        """显示文件树右键菜单"""
+        try:
+            from PySide6.QtWidgets import QMenu
+
+            menu = QMenu(self.file_tree)
+
+            # 基础选择操作
+            act_select_all = menu.addAction("全选 (Ctrl+A)")
+            act_select_all.triggered.connect(self.selectAllRequested.emit)
+
+            act_select_none = menu.addAction("全不选 (Ctrl+Shift+A)")
+            act_select_none.triggered.connect(self.selectNoneRequested.emit)
+
+            act_invert = menu.addAction("反选 (Ctrl+I)")
+            act_invert.triggered.connect(self.invertSelectionRequested.emit)
+
+            menu.addSeparator()
+
+            # 智能筛选操作
+            act_select_ready = menu.addAction("✓ 选择已就绪文件")
+            act_select_ready.triggered.connect(lambda: self._select_files_by_status("✓"))
+
+            act_select_warning = menu.addAction("⚠ 选择有警告的文件")
+            act_select_warning.triggered.connect(lambda: self._select_files_by_status("⚠"))
+
+            act_select_unverified = menu.addAction("❓ 选择未验证文件")
+            act_select_unverified.triggered.connect(lambda: self._select_files_by_status("❓"))
+
+            act_select_error = menu.addAction("❌ 选择有错误的文件")
+            act_select_error.triggered.connect(lambda: self._select_files_by_status("❌"))
+
+            # 在鼠标位置显示菜单
+            global_pos = self.file_tree.viewport().mapToGlobal(pos)
+            menu.exec(global_pos)
+
+        except Exception:
+            logger.debug("显示文件树右键菜单失败", exc_info=True)
+
+    def _select_files_by_status(self, status_symbol: str):
+        """按状态符号选择文件（仅选择文件节点，忽略目录节点）"""
+        try:
+            # 遍历所有树项
+            def select_matching_items(parent_item):
+                """递归遍历并选择匹配的文件项"""
+                if parent_item is None:
+                    # 根级遍历
+                    for i in range(self.file_tree.topLevelItemCount()):
+                        item = self.file_tree.topLevelItem(i)
+                        select_matching_items(item)
+                else:
+                    # 检查是否是文件节点（通过 UserRole 数据判断）
+                    file_path = parent_item.data(0, Qt.UserRole)
+                    is_file = file_path is not None
+
+                    if is_file:
+                        # 获取状态文本
+                        status_text = parent_item.text(1)
+                        if status_text.startswith(status_symbol):
+                            try:
+                                parent_item.setCheckState(0, Qt.Checked)
+                            except Exception:
+                                pass  # 单文件模式下可能无法修改
+
+                    # 递归处理子项
+                    for i in range(parent_item.childCount()):
+                        child = parent_item.child(i)
+                        select_matching_items(child)
+
+            select_matching_items(None)
+
+        except Exception:
+            logger.debug("按状态筛选文件失败: %s", status_symbol, exc_info=True)

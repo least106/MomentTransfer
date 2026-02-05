@@ -61,6 +61,11 @@ class SignalBus(QObject):
     controlsLocked = Signal(bool)
     # 状态栏消息统一通道：message, timeout_ms, priority
     statusMessage = Signal(str, int, int)
+
+    # 错误处理
+    # 通用错误信号：title, message, severity, details, source
+    errorOccurred = Signal(str, str, str, str, str)
+
     # Project 相关
     projectSaved = Signal(object)  # 保存项目，参数为 Path 或可序列化对象
     projectLoaded = Signal(object)  # 加载项目，参数为 Path 或可序列化对象

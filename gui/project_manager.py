@@ -108,9 +108,26 @@ class ProjectManager:
         else:
             logger.error("%s: %s", title, message)
 
-    def create_new_project(self) -> bool:
-        """创建新项目（清除当前工作状态）"""
+    def create_new_project(self, skip_confirm: bool = False) -> bool:
+        """创建新项目（清除当前工作状态）
+        
+        Args:
+            skip_confirm: 是否跳过保存确认对话框（用于已经确认过的情况）
+        """
         try:
+            # 检查未保存更改并提示用户（除非明确跳过）
+            if not skip_confirm:
+                try:
+                    if hasattr(self.gui, "_has_unsaved_changes") and callable(self.gui._has_unsaved_changes):
+                        if self.gui._has_unsaved_changes():
+                            # 使用主窗口的确认对话框
+                            if hasattr(self.gui, "_confirm_save_discard_cancel") and callable(self.gui._confirm_save_discard_cancel):
+                                proceed = self.gui._confirm_save_discard_cancel("创建新项目")
+                                if not proceed:
+                                    return False
+                except Exception:
+                    logger.debug("检查未保存更改失败（非致命）", exc_info=True)
+            
             # 清除当前项目路径/状态
             self.current_project_file = None
             self.last_saved_state = None
@@ -241,6 +258,26 @@ class ProjectManager:
                         )
                 except Exception:
                     logger.debug("访问/清理 file_tree 失败（非致命）", exc_info=True)
+
+            # 重置 UI 状态到初始化状态（禁用按钮、清空选项卡等）
+            try:
+                if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                    try:
+                        self.gui.ui_state_manager.reset_to_initial_state()
+                    except Exception:
+                        logger.debug("重置 UI 状态失败（非致命）", exc_info=True)
+            except Exception:
+                logger.debug("访问 ui_state_manager 失败（非致命）", exc_info=True)
+            
+            # 显示新未命名项目状态横幅
+            try:
+                if hasattr(self.gui, "state_banner") and self.gui.state_banner:
+                    try:
+                        self.gui.state_banner.show_new_project()
+                    except Exception:
+                        logger.debug("显示新项目状态横幅失败（非致命）", exc_info=True)
+            except Exception:
+                logger.debug("访问 state_banner 失败（非致命）", exc_info=True)
 
             try:
                 flw = getattr(self.gui, "file_list_widget", None)

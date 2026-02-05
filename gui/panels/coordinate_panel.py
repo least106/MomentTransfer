@@ -132,6 +132,15 @@ class CoordinateSystemPanel(QGroupBox):
             self.part_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         except Exception:
             pass
+        
+        # 设置初始状态：禁用并显示占位文本
+        self.part_selector.setEnabled(False)
+        self.part_selector.addItem("请先加载配置文件")
+        self.part_selector.setToolTip(
+            f"请加载配置文件以加载 {self.prefix.upper()} Parts\n"
+            f"点击 '加载配置' 按钮导入配置文件"
+        )
+        
         self.part_selector.currentTextChanged.connect(self._on_part_selected)
 
         # Part管理按钮
@@ -521,10 +530,30 @@ class CoordinateSystemPanel(QGroupBox):
 
     def update_part_list(self, part_names: list):
         """更新Part选择器列表"""
-        self.part_selector.blockSignals(True)
-        self.part_selector.clear()
-        self.part_selector.addItems(part_names)
-        self.part_selector.blockSignals(False)
+        try:
+            self.part_selector.blockSignals(True)
+            self.part_selector.clear()
+            
+            if not part_names:
+                # 没有 Parts 时，禁用选择器并显示占位文本
+                self.part_selector.setEnabled(False)
+                self.part_selector.addItem("请先加载配置文件")
+                self.part_selector.setToolTip(
+                    f"请加载配置文件以加载 {self.prefix.upper()} Parts\n"
+                    f"点击 '加载配置' 按钮导入配置文件"
+                )
+            else:
+                # 有 Parts 时，启用选择器并填充列表
+                self.part_selector.setEnabled(True)
+                self.part_selector.addItems(part_names)
+                self.part_selector.setToolTip(
+                    f"选择要编辑的 {self.prefix.upper()} Part\n"
+                    f"当前有 {len(part_names)} 个可用 Parts"
+                )
+                
+            self.part_selector.blockSignals(False)
+        except Exception:
+            logger.debug(f"更新 {self.prefix} Part 列表失败（非致命）", exc_info=True)
 
     def _on_part_added(self, side: str, part_name: str):
         """SignalBus 事件：Part 被添加时更新选择器列表"""

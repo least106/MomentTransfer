@@ -175,6 +175,10 @@ class BatchManager:
 
         self._file_manager = BatchFileManager()
 
+        # 初始化工作流进度指示器
+        from gui.workflow_progress_indicator import WorkflowProgressIndicator
+        self._progress_indicator = WorkflowProgressIndicator()
+
         # 特殊格式：缓存每个文件的 source->target 映射控件（已废弃，使用下面两个）
         # key: (file_path_str, source_part)
         self._special_part_combo = {}
@@ -306,8 +310,9 @@ class BatchManager:
 
         此方法负责：
         1. 记录当前步骤（用于状态恢复）
-        2. 更新 BatchPanel 的 UI 显示（隐藏/显示相关控件）
-        3. 处理异常以确保不中断流程
+        2. 更新进度指示器显示当前步骤和下一步指令
+        3. 更新 BatchPanel 的 UI 显示（隐藏/显示相关控件）
+        4. 处理异常以确保不中断流程
 
         Args:
             step: 工作流程步骤（"init", "step1", "step2", "step3"）
@@ -315,6 +320,13 @@ class BatchManager:
         try:
             # 记录当前步骤，便于后续恢复或查询
             self._current_workflow_step = (step or "init").strip()
+
+            # 更新进度指示器
+            try:
+                if hasattr(self, "_progress_indicator"):
+                    self._progress_indicator.update_step(self._current_workflow_step)
+            except Exception:
+                logger.debug("更新进度指示器失败（非致命）", exc_info=True)
 
             # 转发到 BatchPanel 以更新 UI
             bp = getattr(self.gui, "batch_panel", None)
@@ -347,6 +359,19 @@ class BatchManager:
     def _connect_quick_filter(self) -> None:
         """连接快速筛选信号"""
         return _connect_quick_filter_impl(self)
+
+    def get_workflow_progress_indicator(self):
+        """获取工作流进度指示器小部件
+
+        Returns:
+            QWidget: 进度指示器小部件，可添加到状态栏或其他位置
+        """
+        if hasattr(self, "_progress_indicator"):
+            try:
+                return self._progress_indicator.create_widget()
+            except Exception as e:
+                logger.debug("创建进度指示器小部件失败: %s", e, exc_info=True)
+        return None
 
     def _safe_refresh_file_statuses(self, *args, **kwargs):
         """容错包装：用于 SignalBus 回调，安全地调用 `refresh_file_statuses`。
@@ -700,18 +725,11 @@ class BatchManager:
     def _ensure_table_row_selection_storage(
         self, file_path: Path, row_count: int
     ) -> Optional[set]:
-        """确保常规表格的行选择缓存存在（默认全选）。"""
+        """确保常规表格的行选择缓存存在（默认全选）。使用 BatchState 的持久化存储。"""
         try:
-            if not hasattr(self.gui, "table_row_selection_by_file"):
-                self.gui.table_row_selection_by_file = {}
-            by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
             fp_str = str(file_path)
-            sel = by_file.get(fp_str)
-            if sel is None:
-                by_file[fp_str] = set(range(int(row_count)))
-                sel = by_file[fp_str]
-            self.gui.table_row_selection_by_file = by_file
-            return sel
+            # 使用 BatchState 的持久化存储
+            return self._batch_state.get_table_selection(fp_str, int(row_count))
         except Exception as e:
             logger.debug("保证表格行选择存储失败: %s", e, exc_info=True)
             return None
@@ -993,6 +1011,16 @@ class BatchManager:
         except Exception as e:
             logger.error(f"扫描并填充文件列表失败: {e}")
             traceback.print_exc()
+            try:
+                from gui.managers import report_user_error
+                report_user_error(
+                    self.gui,
+                    "文件扫描失败",
+                    "扫描文件或目录时发生错误",
+                    details=str(e)
+                )
+            except Exception:
+                logger.debug("报告扫描失败错误时出错", exc_info=True)
 
     def _prepare_file_list_ui(self) -> None:
         """准备文件列表界面 - 委托给 batch_file_manager"""
@@ -1027,7 +1055,7 @@ class BatchManager:
         is_special: bool = False,
         source_part: Optional[str] = None,
     ) -> None:  # pylint: disable=too-many-arguments
-        """同步单行复选框状态到对应的 selection 缓存（special 或 常规）。"""
+        """同步单行复选框状态到对应的 selection 缓存（special 或 常规）。使用 BatchState 的持久化存储。"""
         try:
             try:
                 idx_int = int(row_idx)
@@ -1036,34 +1064,21 @@ class BatchManager:
                 return
 
             if is_special:
-                if not hasattr(self.gui, "special_part_row_selection_by_file"):
-                    self.gui.special_part_row_selection_by_file = {}
-                by_file = (
-                    getattr(self.gui, "special_part_row_selection_by_file", {}) or {}
-                )
-                by_part = by_file.setdefault(fp_str, {})
-                sel = by_part.get(source_part)
-                if sel is None:
-                    sel = set()
-                    by_part[source_part] = sel
+                # 特殊格式：使用 BatchState 的持久化存储
+                sel = self._batch_state.get_special_selection(fp_str, source_part)
                 if checked:
                     sel.add(idx_int)
                 else:
                     sel.discard(idx_int)
-                self.gui.special_part_row_selection_by_file = by_file
+                self._batch_state.set_special_selection(fp_str, source_part, sel)
             else:
-                if not hasattr(self.gui, "table_row_selection_by_file"):
-                    self.gui.table_row_selection_by_file = {}
-                by_file = getattr(self.gui, "table_row_selection_by_file", {}) or {}
-                sel = by_file.get(fp_str)
-                if sel is None:
-                    sel = set()
-                    by_file[fp_str] = sel
+                # 常规表格：使用 BatchState 的持久化存储
+                sel = self._batch_state.get_table_selection(fp_str)
                 if checked:
                     sel.add(idx_int)
                 else:
                     sel.discard(idx_int)
-                self.gui.table_row_selection_by_file = by_file
+                self._batch_state.set_table_selection(fp_str, sel)
         except Exception:
             logger.debug("同步单行选择失败", exc_info=True)
 
@@ -1236,9 +1251,38 @@ class BatchManager:
                 logger.debug("建立常规文件选择区失败", exc_info=True)
 
             try:
-                df_preview = self._get_table_df_preview(file_path, max_rows=200)
-                if df_preview is not None:
-                    self._populate_table_data_rows(item, file_path, df_preview)
+                # 检查文件大小，决定是同步加载还是异步加载
+                # 对于大于 5MB 的文件，使用异步加载并显示进度
+                file_size_mb = 0
+                try:
+                    file_size_mb = file_path.stat().st_size / (1024 * 1024)
+                except Exception:
+                    logger.debug("获取文件大小失败", exc_info=True)
+
+                if file_size_mb > 5:
+                    # 大文件：使用异步加载
+                    logger.info(
+                        f"文件 {file_path.name} 大小为 {file_size_mb:.2f}MB，使用异步加载"
+                    )
+
+                    def _on_loaded(df_preview):
+                        """异步加载完成后填充数据"""
+                        if df_preview is not None:
+                            try:
+                                self._populate_table_data_rows(
+                                    item, file_path, df_preview
+                                )
+                            except Exception:
+                                logger.debug("填充表格数据行预览失败", exc_info=True)
+
+                    self._batch_state.get_table_df_preview_async(
+                        file_path, self.gui, _on_loaded, max_rows=200
+                    )
+                else:
+                    # 小文件：同步加载（快速且简单）
+                    df_preview = self._get_table_df_preview(file_path, max_rows=200)
+                    if df_preview is not None:
+                        self._populate_table_data_rows(item, file_path, df_preview)
             except Exception:
                 logger.debug("填充表格数据行预览失败", exc_info=True)
         except Exception:

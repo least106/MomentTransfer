@@ -981,17 +981,19 @@ class IntegratedAeroGUI(QMainWindow):
     def _new_project(self):
         """创建新Project"""
         try:
-            # 在新建前检测是否有未保存更改
-            if self._has_unsaved_changes():
-                proceed = self._confirm_save_discard_cancel("创建新项目")
-                if not proceed:
-                    return
-
+            # create_new_project 内部已经处理保存确认逻辑
             if self.project_manager:
-                if self.project_manager.create_new_project():
-                    show_info_dialog(self, "成功", "新项目已创建")
+                if self.project_manager.create_new_project(skip_confirm=False):
+                    # 不再弹出成功对话框，状态横幅已显示
+                    try:
+                        self.signal_bus.statusMessage.emit(
+                            "新项目已创建", 3000, 1  # MessagePriority.MEDIUM
+                        )
+                    except Exception:
+                        logger.debug("发送状态消息失败（非致命）", exc_info=True)
         except Exception as e:
             logger.error("创建新Project失败: %s", e)
+            show_error_dialog(self, "错误", f"创建新项目失败: {e}")
 
     def _open_project(self):
         """打开Project文件"""

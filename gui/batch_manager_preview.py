@@ -641,18 +641,35 @@ def _ensure_table_row_selection_storage(
     file_path: Path,
     row_count: int,
 ) -> Optional[set]:
+    """确保表格选择状态存储已初始化（使用 BatchState 的持久化存储）
+
+    Args:
+        manager: BatchManager 实例
+        file_path: 文件路径
+        row_count: 行数（用于初始化全选）
+
+    Returns:
+        选中的行索引集合，失败时返回 None
+    """
     try:
-        if not hasattr(manager.gui, "table_row_selection_by_file"):
-            manager.gui.table_row_selection_by_file = {}
-        by_file = getattr(manager.gui, "table_row_selection_by_file", {}) or {}
         fp_str = str(file_path)
-        sel = by_file.get(fp_str)
-        if sel is None:
-            by_file[fp_str] = set(range(int(row_count)))
-            sel = by_file[fp_str]
-        manager.gui.table_row_selection_by_file = by_file
-        return sel
+        batch_state = getattr(manager, "_batch_state", None)
+        if batch_state is None:
+            # 向后兼容：使用旧的 GUI 属性存储
+            if not hasattr(manager.gui, "table_row_selection_by_file"):
+                manager.gui.table_row_selection_by_file = {}
+            by_file = getattr(manager.gui, "table_row_selection_by_file", {}) or {}
+            sel = by_file.get(fp_str)
+            if sel is None:
+                by_file[fp_str] = set(range(int(row_count)))
+                sel = by_file[fp_str]
+            manager.gui.table_row_selection_by_file = by_file
+            return sel
+
+        # 使用 BatchState 的持久化存储
+        return batch_state.get_table_selection(fp_str, int(row_count))
     except Exception:
+        logger.debug("确保表格选择存储失败", exc_info=True)
         return None
 
 
@@ -709,36 +726,62 @@ def _make_preview_toggle_callback(
             if source_part is not None:
                 sp_local_inner = str(source_part)
             if is_special:
-                if not hasattr(manager.gui, "special_part_row_selection_by_file"):
-                    manager.gui.special_part_row_selection_by_file = {}
-                by_file_local = getattr(
-                    manager.gui, "special_part_row_selection_by_file", {}
-                )
-                by_file_local = by_file_local or {}
-                by_part_local = by_file_local.setdefault(fp_local_inner, {})
-                sel_local = by_part_local.get(sp_local_inner)
-                if sel_local is None:
-                    sel_local = set()
-                    by_part_local[sp_local_inner] = sel_local
-                if checked:
-                    sel_local.add(int(row_idx))
+                # 特殊格式：使用 BatchState 或向后兼容 GUI 属性
+                batch_state = getattr(manager, "_batch_state", None)
+                if batch_state is not None:
+                    # 使用 BatchState 的持久化存储
+                    sel_local = batch_state.get_special_selection(fp_local_inner, sp_local_inner)
+                    if checked:
+                        sel_local.add(int(row_idx))
+                    else:
+                        sel_local.discard(int(row_idx))
+                    batch_state.set_special_selection(
+                        fp_local_inner, sp_local_inner, sel_local
+                    )
                 else:
-                    sel_local.discard(int(row_idx))
-                manager.gui.special_part_row_selection_by_file = by_file_local
+                    # 向后兼容：使用旧的 GUI 属性存储
+                    if not hasattr(manager.gui, "special_part_row_selection_by_file"):
+                        manager.gui.special_part_row_selection_by_file = {}
+                    by_file_local = getattr(
+                        manager.gui, "special_part_row_selection_by_file", {}
+                    )
+                    by_file_local = by_file_local or {}
+                    by_part_local = by_file_local.setdefault(fp_local_inner, {})
+                    sel_local = by_part_local.get(sp_local_inner)
+                    if sel_local is None:
+                        sel_local = set()
+                        by_part_local[sp_local_inner] = sel_local
+                    if checked:
+                        sel_local.add(int(row_idx))
+                    else:
+                        sel_local.discard(int(row_idx))
+                    manager.gui.special_part_row_selection_by_file = by_file_local
             else:
-                if not hasattr(manager.gui, "table_row_selection_by_file"):
-                    manager.gui.table_row_selection_by_file = {}
-                by_file_local = getattr(manager.gui, "table_row_selection_by_file", {})
-                by_file_local = by_file_local or {}
-                sel_local = by_file_local.get(fp_local_inner)
-                if sel_local is None:
-                    sel_local = set()
-                    by_file_local[fp_local_inner] = sel_local
-                if checked:
-                    sel_local.add(int(row_idx))
+                # 常规表格：使用 BatchState 或向后兼容 GUI 属性
+                batch_state = getattr(manager, "_batch_state", None)
+                if batch_state is not None:
+                    # 佾用 BatchState 的持久化存储
+                    sel_local = batch_state.get_table_selection(fp_local_inner)
+                    if checked:
+                        sel_local.add(int(row_idx))
+                    else:
+                        sel_local.discard(int(row_idx))
+                    batch_state.set_table_selection(fp_local_inner, sel_local)
                 else:
-                    sel_local.discard(int(row_idx))
-                manager.gui.table_row_selection_by_file = by_file_local
+                    # 向后兼容：使用旧的 GUI 属性存储
+                    if not hasattr(manager.gui, "table_row_selection_by_file"):
+                        manager.gui.table_row_selection_by_file = {}
+                    by_file_local = getattr(manager.gui, "table_row_selection_by_file", {})
+                    by_file_local = by_file_local or {}
+                    sel_local = by_file_local.get(fp_local_inner)
+                    if sel_local is None:
+                        sel_local = set()
+                        by_file_local[fp_local_inner] = sel_local
+                    if checked:
+                        sel_local.add(int(row_idx))
+                    else:
+                        sel_local.discard(int(row_idx))
+                    manager.gui.table_row_selection_by_file = by_file_local
         except Exception:
             logger.debug("preview table toggle failed", exc_info=True)
 
@@ -835,28 +878,36 @@ def _populate_special_data_rows(
     source_part: str,
     df,
 ) -> None:
+    """填充特殊格式数据行预览（使用 BatchState 的持久化选择状态）"""
     fp_str = str(file_path)
-    try:
-        by_file = getattr(manager.gui, "special_part_row_selection_by_file", {}) or {}
-        by_part = by_file.setdefault(fp_str, {})
-        sel = by_part.get(source_part)
-    except Exception:
-        by_part = {}
-        sel = None
+    batch_state = getattr(manager, "_batch_state", None)
 
-    if sel is None:
+    if batch_state is not None:
+        # 使用 BatchState 的持久化存储
+        sel = batch_state.get_special_selection(fp_str, source_part, len(df))
+    else:
+        # 向后兼容：使用旧的 GUI 属性存储
         try:
-            sel = set(range(len(df)))
-            by_part[source_part] = sel
-            if not hasattr(manager.gui, "special_part_row_selection_by_file"):
-                manager.gui.special_part_row_selection_by_file = {}
-            tmp_map = manager.gui.special_part_row_selection_by_file.setdefault(
-                fp_str,
-                {},
-            )
-            tmp_map[source_part] = sel
+            by_file = getattr(manager.gui, "special_part_row_selection_by_file", {}) or {}
+            by_part = by_file.setdefault(fp_str, {})
+            sel = by_part.get(source_part)
         except Exception:
-            sel = set()
+            by_part = {}
+            sel = None
+
+        if sel is None:
+            try:
+                sel = set(range(len(df)))
+                by_part[source_part] = sel
+                if not hasattr(manager.gui, "special_part_row_selection_by_file"):
+                    manager.gui.special_part_row_selection_by_file = {}
+                tmp_map = manager.gui.special_part_row_selection_by_file.setdefault(
+                    fp_str,
+                    {},
+                )
+                tmp_map[source_part] = sel
+            except Exception:
+                sel = set()
 
     _clear_preview_group(
         manager,

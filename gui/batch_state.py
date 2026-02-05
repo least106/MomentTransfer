@@ -25,6 +25,100 @@ class BatchStateManager:
         # key: file_path_str -> {"mtime": float, "df": DataFrame, "preview_rows": int}
         self.table_data_cache: Dict = {}
 
+        # 常规表格的行选择状态：持久化存储（与 table_data_cache 同步）
+        # key: file_path_str -> set of selected row indices
+        self.table_row_selection: Dict[str, set] = {}
+
+        # 特殊格式的行选择状态：持久化存储（与 special_data_cache 同步）
+        # key: file_path_str -> {part_name: set of selected row indices}
+        self.special_row_selection: Dict[str, Dict[str, set]] = {}
+
+        # 常规表格的行选择状态：持久化存储（与 table_data_cache 同步）
+        # key: file_path_str -> set of selected row indices
+        self.table_row_selection: Dict[str, set] = {}
+
+        # 特殊格式的行选择状态：持久化存储（与 special_data_cache 同步）
+        # key: file_path_str -> {part_name: set of selected row indices}
+        self.special_row_selection: Dict[str, Dict[str, set]] = {}
+
+    def get_table_selection(self, file_path_str: str, row_count: int = 0) -> set:
+        """获取常规表格的选择状态（自动初始化为全选）
+
+        Args:
+            file_path_str: 文件路径字符串
+            row_count: 行数（用于初始化全选）
+
+        Returns:
+            选中的行索引集合
+        """
+        if file_path_str not in self.table_row_selection:
+            # 默认全选
+            if row_count > 0:
+                self.table_row_selection[file_path_str] = set(range(row_count))
+            else:
+                self.table_row_selection[file_path_str] = set()
+        return self.table_row_selection[file_path_str]
+
+    def set_table_selection(self, file_path_str: str, selection: set) -> None:
+        """设置常规表格的选择状态
+
+        Args:
+            file_path_str: 文件路径字符串
+            selection: 选中的行索引集合
+        """
+        self.table_row_selection[file_path_str] = selection
+
+    def get_special_selection(
+        self, file_path_str: str, part_name: str, row_count: int = 0
+    ) -> set:
+        """获取特殊格式的选择状态（自动初始化为全选）
+
+        Args:
+            file_path_str: 文件路径字符串
+            part_name: Part 名称
+            row_count: 行数（用于初始化全选）
+
+        Returns:
+            选中的行索引集合
+        """
+        if file_path_str not in self.special_row_selection:
+            self.special_row_selection[file_path_str] = {}
+        by_part = self.special_row_selection[file_path_str]
+        if part_name not in by_part:
+            # 默认全选
+            if row_count > 0:
+                by_part[part_name] = set(range(row_count))
+            else:
+                by_part[part_name] = set()
+        return by_part[part_name]
+
+    def set_special_selection(
+        self, file_path_str: str, part_name: str, selection: set
+    ) -> None:
+        """设置特殊格式的选择状态
+
+        Args:
+            file_path_str: 文件路径字符串
+            part_name: Part 名称
+            selection: 选中的行索引集合
+        """
+        if file_path_str not in self.special_row_selection:
+            self.special_row_selection[file_path_str] = {}
+        self.special_row_selection[file_path_str][part_name] = selection
+
+    def clear_selection_cache(self, file_path_str: str = None) -> None:
+        """清除选择状态缓存
+
+        Args:
+            file_path_str: 如果提供，只清除该文件的选择状态；否则清除所有
+        """
+        if file_path_str:
+            self.table_row_selection.pop(file_path_str, None)
+            self.special_row_selection.pop(file_path_str, None)
+        else:
+            self.table_row_selection.clear()
+            self.special_row_selection.clear()
+
     def get_special_data_dict(self, file_path: Path, manager_instance):
         """获取特殊格式解析结果（带 mtime 缓存）
 
@@ -439,6 +533,86 @@ class BatchStateManager:
             "preview_rows": int(max_rows),
         }
         return df
+
+    def get_table_df_preview_async(
+        self, file_path: Path, gui_instance, on_loaded, max_rows: int = 200
+    ):
+        """异步读取 CSV/Excel 的预览数据（带进度指示器）
+
+        适用于大文件加载，避免 UI 冻结。
+
+        Args:
+            file_path: 文件路径
+            gui_instance: GUI 主窗口实例
+            on_loaded: 加载完成的回调函数，签名为 func(df: DataFrame | None)
+            max_rows: 最大预览行数
+
+        Returns:
+            FileLoadingProgressDialog 实例
+        """
+        from gui.file_loading_progress import load_file_with_progress
+        from src.utils import read_table_preview
+
+        fp_str = str(file_path)
+
+        # 检查缓存
+        try:
+            mtime = file_path.stat().st_mtime
+        except Exception:
+            mtime = None
+
+        cached = self.table_data_cache.get(fp_str)
+        if (
+            cached
+            and cached.get("mtime") == mtime
+            and cached.get("df") is not None
+            and cached.get("preview_rows") == int(max_rows)
+        ):
+            # 缓存命中，直接调用回调
+            logger.debug(f"表格预览缓存命中: {file_path.name}")
+            if on_loaded:
+                on_loaded(cached.get("df"))
+            return None
+
+        # 定义成功回调
+        def _on_success(df):
+            """加载成功后更新缓存并调用用户回调"""
+            try:
+                self.table_data_cache[fp_str] = {
+                    "mtime": mtime,
+                    "df": df,
+                    "preview_rows": int(max_rows),
+                }
+            except Exception:
+                logger.debug("更新表格预览缓存失败（非致命）", exc_info=True)
+
+            if on_loaded:
+                on_loaded(df)
+
+        # 定义失败回调
+        def _on_failure(error_msg):
+            """加载失败后缓存 None 并调用用户回调"""
+            try:
+                self.table_data_cache[fp_str] = {
+                    "mtime": mtime,
+                    "df": None,
+                    "preview_rows": int(max_rows),
+                }
+            except Exception:
+                logger.debug("更新表格预览缓存失败（非致命）", exc_info=True)
+
+            if on_loaded:
+                on_loaded(None)
+
+        # 使用进度对话框加载
+        return load_file_with_progress(
+            gui_instance,
+            file_path,
+            read_table_preview,
+            _on_success,
+            _on_failure,
+            max_rows=int(max_rows),
+        )
 
     def validate_special_format(self, manager_instance, file_path: Path):
         """对特殊格式文件进行预检，返回状态文本或 None 表示非特殊格式

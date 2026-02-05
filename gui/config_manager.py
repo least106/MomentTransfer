@@ -135,8 +135,23 @@ class ConfigManager:
             if not fname:
                 return
 
-            with open(fname, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                with open(fname, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except FileNotFoundError:
+                from gui.managers import report_user_error
+                report_user_error(self.gui, "文件不存在", f"无法找到配置文件：{fname}")
+                return
+            except json.JSONDecodeError as e:
+                from gui.managers import report_user_error
+                report_user_error(self.gui, "配置文件格式错误", 
+                                f"JSON 解析失败：{str(e)}", details=str(e))
+                return
+            except Exception as e:
+                from gui.managers import report_user_error
+                report_user_error(self.gui, "读取配置失败", 
+                                f"无法读取配置文件", details=str(e))
+                return
 
             # 保存原始字典以便编辑和写回，并同步到 gui 供 PartManager/_save_current_* 使用
             self._raw_project_dict = data
@@ -148,7 +163,10 @@ class ConfigManager:
             # 解析为 ProjectData 与 ProjectConfigModel
             mm = getattr(self.gui, "model_manager", None)
             if mm is None:
-                logger.warning("ModelManager 缺失，无法加载配置")
+                from gui.managers import report_user_error
+                report_user_error(self.gui, "初始化错误", 
+                                "ModelManager 未初始化，无法加载配置")
+                logger.error("ModelManager 缺失，无法加载配置")
                 return
 
             project = ProjectData.from_dict(data)
@@ -270,12 +288,20 @@ class ConfigManager:
             except Exception:
                 logger.debug("连接坐标系面板信号失败", exc_info=True)
 
-            # UX：使用统一状态消息通道
+            # UX：使用统一状态消息通道，显示详细的加载信息
             try:
+                # 统计 Source 和 Target Parts 数量
+                source_count = len(source_part_names) if source_part_names else 0
+                target_count = len(target_part_names) if target_part_names else 0
+                
+                # 构建详细的加载消息
+                parts_info = f"{source_count} 个 Source Parts，{target_count} 个 Target Parts"
+                config_name = Path(fname).name if fname else "配置"
+                
                 self.signal_bus.statusMessage.emit(
-                    f"已加载: {fname}",
-                    5000,
-                    MessagePriority.LOW,
+                    f"✓ 已加载配置：{config_name} | {parts_info}",
+                    8000,  # 显示 8 秒，让用户有时间看到详细信息
+                    MessagePriority.MEDIUM,  # 使用中等优先级确保用户看到
                 )
             except Exception:
                 logger.debug("发送加载状态提示失败（非致命）", exc_info=True)
@@ -319,7 +345,14 @@ class ConfigManager:
             # 这避免用户用新配置加载后仍使用旧配置对应的文件选择
             self._clear_batch_file_selection()
         except Exception as e:
-            QMessageBox.critical(self.gui, "加载失败", f"无法加载配置文件:\n{str(e)}")
+            logger.error("加载配置失败", exc_info=True)
+            from gui.managers import report_user_error
+            report_user_error(
+                self.gui, 
+                "加载失败", 
+                "无法加载配置文件，请检查文件是否正确",
+                details=str(e)
+            )
 
     def _populate_target_form(self, project: ProjectData):
         """填充 Target 坐标系表单"""

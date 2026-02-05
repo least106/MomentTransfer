@@ -586,10 +586,19 @@ def _create_part_mapping_combo(
 
     if not target_names:
         combo.setEnabled(False)
-        combo.setToolTip("请先加载配置或创建 Target Part")
+        # 添加占位文本显示缺少配置
+        combo.clear()
+        combo.addItem("⚠ 请先加载配置")
+        combo.setToolTip(
+            "请加载配置文件以获取 Target Part 列表\n"
+            "点击 '加载配置' 按钮导入配置文件"
+        )
     else:
         combo.setEnabled(True)
-        combo.setToolTip("选择该 Source part 对应的 Target part")
+        combo.setToolTip(
+            f"选择该 Source part 对应的 Target part\n"
+            f"当前有 {len(target_names)} 个可用 Target Parts"
+        )
 
     current = (mapping or {}).get(source_part) or ""
     _safe_set_combo_selection(manager, combo, current, target_names)

@@ -336,9 +336,19 @@ class PartMappingPanel(QGroupBox):
 
         if not names:
             combo.setEnabled(False)
-            combo.setToolTip("请先加载配置以获得部件列表")
+            # 添加占位文本显示缺少配置
+            combo.clear()
+            combo.addItem("⚠ 请先加载配置")
+            combo.setToolTip(
+                "请加载配置文件以获得部件列表\n"
+                "点击 '加载配置' 按钮导入配置文件"
+            )
         else:
             combo.setEnabled(True)
+            combo.setToolTip(
+                f"选择要映射的部件\n"
+                f"当前有 {len(names)} 个可用部件"
+            )
 
         try:
             combo.blockSignals(True)

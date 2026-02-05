@@ -65,6 +65,19 @@ STATUS_SYMBOL_READY = "✓"  # 文件已就绪，可以处理
 STATUS_SYMBOL_WARNING = "⚠"  # 文件存在问题或配置不完整，需要用户处理
 STATUS_SYMBOL_UNVERIFIED = "❓"  # 文件状态无法验证或出现错误
 
+# 重新导出状态符号相关的类和函数供其他模块使用
+try:
+    from gui.status_symbol_legend import (
+        StatusSymbolLegend,
+        StatusSymbolButton,
+        STATUS_INFO,
+    )
+except ImportError:
+    # 如果导入失败，提供备用定义
+    StatusSymbolLegend = None
+    StatusSymbolButton = None
+    STATUS_INFO = {}
+
 
 def get_status_symbol_help() -> str:
     """返回文件验证状态符号的帮助文本。
@@ -167,6 +180,29 @@ def report_user_error(
         details: 详细信息（可选，仅记录到日志）
         is_warning: 是否为警告而非错误（决定日志级别和图标）
     """
+    # 使用全局错误处理器（如果可用）
+    try:
+        from gui.global_error_handler import GlobalErrorHandler, ErrorSeverity
+
+        severity = ErrorSeverity.WARNING if is_warning else ErrorSeverity.ERROR
+        error_handler = GlobalErrorHandler.instance()
+
+        # 临时设置父窗口
+        if parent is not None:
+            error_handler.set_default_parent(parent)
+
+        error_handler.report_error(
+            title=title,
+            message=message,
+            severity=severity,
+            details=details,
+            source="user_action",
+        )
+        return
+    except Exception as e:
+        _logger.debug(f"全局错误处理器不可用，使用备用方案: {e}")
+
+    # 备用方案：原有的错误处理逻辑
     # 记录到日志
     if is_warning:
         if details:
@@ -1568,6 +1604,28 @@ class UIStateManager:
             return bool(getattr(self, "_operation_performed", False))
         except Exception:
             return False
+
+    def reset_to_initial_state(self) -> None:
+        """重置 UI 到初始化状态（清除所有数据、禁用按钮、重置选项卡）"""
+        try:
+            # 清除所有状态标志
+            self._data_loaded = False
+            self._config_loaded = False
+            self._operation_performed = False
+            
+            # 刷新控件状态（会自动禁用相关按钮）
+            self.refresh_controls_state()
+            
+            # 重置选项卡到第一个
+            try:
+                self.set_tab_index(0)
+            except Exception:
+                pass
+        except Exception:
+            import logging
+            logging.getLogger(__name__).debug(
+                "重置 UI 到初始状态失败（非致命）", exc_info=True
+            )
 
     # ---- UI 恢复辅助 API ----
     def set_tab_index(self, index: int) -> None:

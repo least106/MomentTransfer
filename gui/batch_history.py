@@ -10,10 +10,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -106,6 +109,7 @@ class BatchHistoryStore:
         part_mappings: Optional[Dict] = None,
         file_configs: Optional[Dict] = None,
         parent_record_id: Optional[str] = None,
+        stats: Optional[Dict] = None,
     ) -> Dict:
         """添加批处理记录
 
@@ -122,6 +126,7 @@ class BatchHistoryStore:
                 {file_path: {internal_part: {source: xx, target: yy}}}
             file_configs: 文件配置 {file_path: {source: xx, target: yy}}
             parent_record_id: 父记录 ID（用于树状结构，表示这是某个重做操作的子记录）
+            stats: 统计信息 {"success": 0, "failed": 0, "skipped": 0}
         """
         ts = timestamp or datetime.now()
         record = {
@@ -145,6 +150,17 @@ class BatchHistoryStore:
         # 添加父记录 ID（树状结构）
         if parent_record_id:
             record["parent_record_id"] = parent_record_id
+
+        # 添加统计信息
+        if stats:
+            record["stats"] = stats
+        else:
+            # 默认统计：假设所有文件都成功（向后兼容）
+            record["stats"] = {
+                "success": len(new_files or []),
+                "failed": 0,
+                "skipped": 0,
+            }
 
         self.records.insert(0, record)
         # 新增记录时清空redo栈（标准Undo/Redo行为）
@@ -221,6 +237,8 @@ class BatchHistoryPanel(QWidget):
         self.store = store
         self._on_undo_cb = on_undo
         self._on_redo_cb = on_redo
+        self._search_text = ""  # 搜索文本
+        self._date_filter = ""  # 日期过滤（YYYY-MM-DD）
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -230,13 +248,42 @@ class BatchHistoryPanel(QWidget):
         self.lbl_title.setProperty("class", "sidebar-title")
         lay.addWidget(self.lbl_title)
 
+        # 添加搜索框
+        search_layout = QHBoxLayout()
+        search_layout.setSpacing(4)
+        self.inp_search = QLineEdit()
+        self.inp_search.setPlaceholderText("搜索路径、日期...")
+        self.inp_search.textChanged.connect(self._on_search_changed)
+        self.inp_search.setToolTip(
+            "搜索输入/输出路径、日期（YYYY-MM-DD）\n"
+            "示例：2026-02、output、data.csv"
+        )
+        search_layout.addWidget(self.inp_search)
+
+        # 清除按钮
+        self.btn_clear_search = QPushButton("✕")
+        self.btn_clear_search.setMaximumWidth(30)
+        self.btn_clear_search.setToolTip("清除搜索")
+        self.btn_clear_search.clicked.connect(self._clear_search)
+        self.btn_clear_search.setVisible(False)
+        search_layout.addWidget(self.btn_clear_search)
+
+        lay.addLayout(search_layout)
+
+        # 统计信息标签
+        self.lbl_stats = QLabel()
+        self.lbl_stats.setProperty("class", "hint")
+        self.lbl_stats.setVisible(False)
+        lay.addWidget(self.lbl_stats)
+
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["时间", "摘要", "状态", "操作"])
+        self.tree.setHeaderLabels(["时间", "摘要", "统计", "状态", "操作"])
         self.tree.header().setStretchLastSection(False)
         self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         lay.addWidget(self.tree)
 
         self.refresh()
@@ -247,21 +294,96 @@ class BatchHistoryPanel(QWidget):
     def set_redo_callback(self, cb: Callable[[str], None]) -> None:
         self._on_redo_cb = cb
 
+    def _on_search_changed(self, text: str) -> None:
+        """搜索文本改变时的处理"""
+        self._search_text = text.strip().lower()
+        self.btn_clear_search.setVisible(bool(self._search_text))
+        self.refresh()
+
+    def _clear_search(self) -> None:
+        """清除搜索"""
+        self.inp_search.clear()
+        self._search_text = ""
+        self.btn_clear_search.setVisible(False)
+        self.refresh()
+
+    def _matches_search(self, rec: Dict) -> bool:
+        """检查记录是否匹配搜索条件"""
+        if not self._search_text:
+            return True
+
+        # 搜索输入路径
+        input_path = (rec.get("input_path") or "").lower()
+        if self._search_text in input_path:
+            return True
+
+        # 搜索输出目录
+        output_dir = (rec.get("output_dir") or "").lower()
+        if self._search_text in output_dir:
+            return True
+
+        # 搜索时间戳（日期）
+        timestamp = (rec.get("timestamp") or "").lower()
+        if self._search_text in timestamp:
+            return True
+
+        # 搜索文件名
+        files = rec.get("files") or []
+        for file_path in files:
+            if self._search_text in file_path.lower():
+                return True
+
+        return False
+
     def refresh(self) -> None:
-        """刷新历史面板，支持树状结构（父子记录关系）"""
+        """刷新历史面板，支持树状结构（父子记录关系）和搜索过滤"""
         self.tree.clear()
         records = self.store.get_records()
+
+        # 应用搜索过滤
+        if self._search_text:
+            filtered_records = [rec for rec in records if self._matches_search(rec)]
+        else:
+            filtered_records = records
+
+        # 计算总体统计
+        total_success = 0
+        total_failed = 0
+        total_skipped = 0
+        visible_records_count = 0
 
         # 构建父子关系映射：parent_id -> [child_records]
         parent_children: Dict[str, List[Dict]] = defaultdict(list)
         top_level_records = []
 
-        for rec in records:
+        for rec in filtered_records:
+            # 累计统计
+            stats = rec.get("stats", {})
+            total_success += stats.get("success", 0)
+            total_failed += stats.get("failed", 0)
+            total_skipped += stats.get("skipped", 0)
+
             parent_id = rec.get("parent_record_id")
             if parent_id:
                 parent_children[parent_id].append(rec)
             else:
                 top_level_records.append(rec)
+                visible_records_count += 1
+
+        # 显示统计信息
+        if self._search_text:
+            stats_text = (
+                f"搜索结果：{visible_records_count} 条记录 | "
+                f"✅ {total_success} 成功 "
+            )
+            if total_failed > 0:
+                stats_text += f"❌ {total_failed} 失败 "
+            if total_skipped > 0:
+                stats_text += f"⏭ {total_skipped} 跳过"
+            self.lbl_stats.setText(stats_text)
+            self.lbl_stats.setVisible(True)
+        else:
+            self.lbl_stats.setVisible(False)
 
         # 按日期分组顶级记录
         grouped: Dict[str, List[Dict]] = defaultdict(list)
@@ -284,6 +406,7 @@ class BatchHistoryPanel(QWidget):
                 ts = rec.get("timestamp", "")
                 time_part = ts.split("T")[-1][:8] if "T" in ts else ts
                 summary = self._build_summary(rec)
+                stats_text = self._build_stats_text(rec)
                 status = self._status_text(rec.get("status"))
                 record_id = rec.get("id")
 
@@ -292,11 +415,11 @@ class BatchHistoryPanel(QWidget):
                 if child_records:
                     summary += f" | 已重做 {len(child_records)} 次"
 
-                row = QTreeWidgetItem([time_part, summary, status, ""])
+                row = QTreeWidgetItem([time_part, summary, stats_text, status, ""])
                 day_item.addChild(row)
                 btn = self._make_action_button(rec)
                 if btn is not None:
-                    self.tree.setItemWidget(row, 3, btn)
+                    self.tree.setItemWidget(row, 4, btn)
 
                 # 添加子记录（重做生成的记录）
                 for child_rec in child_records:
@@ -305,24 +428,26 @@ class BatchHistoryPanel(QWidget):
                         child_ts.split("T")[-1][:8] if "T" in child_ts else child_ts
                     )
                     child_summary = self._build_summary(child_rec)
+                    child_stats_text = self._build_stats_text(child_rec)
                     child_status = self._status_text(child_rec.get("status"))
 
                     child_row = QTreeWidgetItem(
                         [
                             f"  → {child_time_part}",
                             child_summary,
+                            child_stats_text,
                             child_status,
                             "",
                         ]  # 使用箭头表示是重做的子记录
                     )
                     # 将子记录设置为浅灰色以区分
-                    for col in range(4):
+                    for col in range(5):
                         child_row.setForeground(col, QColor(128, 128, 128))
 
                     row.addChild(child_row)
                     child_btn = self._make_action_button(child_rec)
                     if child_btn is not None:
-                        self.tree.setItemWidget(child_row, 3, child_btn)
+                        self.tree.setItemWidget(child_row, 4, child_btn)
 
         self.tree.expandAll()
 
@@ -348,6 +473,27 @@ class BatchHistoryPanel(QWidget):
 
         return summary
 
+    def _build_stats_text(self, rec: Dict) -> str:
+        """构建统计信息文本"""
+        stats = rec.get("stats", {})
+        if not stats:
+            # 向后兼容：如果没有统计信息，返回空字符串
+            return ""
+
+        success = stats.get("success", 0)
+        failed = stats.get("failed", 0)
+        skipped = stats.get("skipped", 0)
+
+        parts = []
+        if success > 0:
+            parts.append(f"✅ {success}")
+        if failed > 0:
+            parts.append(f"❌ {failed}")
+        if skipped > 0:
+            parts.append(f"⏭ {skipped}")
+
+        return " ".join(parts) if parts else ""
+
     def _status_text(self, status: Optional[str]) -> str:
         if status == "undone":
             return "已撤销"
@@ -366,6 +512,21 @@ class BatchHistoryPanel(QWidget):
                 details.append(f"💾 输出: {rec.get('output_dir', '')}")
                 details.append(f"📄 文件: {len(rec.get('files', []))} 个")
                 details.append(f"✅ 生成: {len(rec.get('new_files', []))} 个")
+
+                # 统计信息
+                stats = rec.get("stats", {})
+                if stats:
+                    details.append("")
+                    details.append("📊 处理统计:")
+                    success = stats.get("success", 0)
+                    failed = stats.get("failed", 0)
+                    skipped = stats.get("skipped", 0)
+                    if success > 0:
+                        details.append(f"  ✅ 成功: {success} 个")
+                    if failed > 0:
+                        details.append(f"  ❌ 失败: {failed} 个")
+                    if skipped > 0:
+                        details.append(f"  ⏭ 跳过: {skipped} 个")
 
                 # 数据选择信息
                 row_selections = rec.get("row_selections", {})

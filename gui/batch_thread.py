@@ -170,6 +170,18 @@ class BatchProcessThread(QThread):
         except Exception:
             logger.debug("无法发送进度消息: %s", pct, exc_info=True)
 
+    def _emit_progress_detail(self, pct: int, detail_msg: str) -> None:
+        """安全发送详细进度 signal。"""
+        try:
+            emit = getattr(self.progress_detail, "emit", None)
+            if callable(emit):
+                emit(pct, detail_msg)
+            else:
+                if callable(self.progress_detail):
+                    self.progress_detail(pct, detail_msg)
+        except Exception:
+            logger.debug("无法发送详细进度消息: %s", detail_msg, exc_info=True)
+
     def _emit_finished(self, msg: str) -> None:
         """安全发送 finished signal。"""
         try:
@@ -765,7 +777,11 @@ class BatchProcessThread(QThread):
             logger.debug("无法发出 ETA 消息", exc_info=True)
 
     def _build_progress_detail(
-        self, completed: int, total: int, elapsed_list: list
+        self,
+        completed: int,
+        total: int,
+        elapsed_list: list,
+        current_file_name: str = None,
     ) -> str:
         """构建详细的进度信息文本。
 
@@ -778,6 +794,8 @@ class BatchProcessThread(QThread):
             详细进度信息字符串，例如："15/100 文件 | 平均 2.5s/文件 | 预计剩余 3分25秒"
         """
         if not elapsed_list:
+            if current_file_name:
+                return f"{completed}/{total} 文件 | 当前: {current_file_name}"
             return f"{completed}/{total} 文件"
 
         avg = sum(elapsed_list) / len(elapsed_list)
@@ -796,8 +814,9 @@ class BatchProcessThread(QThread):
             minutes = (eta_seconds % 3600) // 60
             eta_str = f"{hours}小时{minutes}分"
 
+        file_info = f" | 当前: {current_file_name}" if current_file_name else ""
         return (
-            f"{completed}/{total} 文件 | "
+            f"{completed}/{total} 文件{file_info} | "
             f"平均 {avg:.1f}s/文件 | "
             f"预计剩余 {eta_str}"
         )
@@ -841,6 +860,13 @@ class BatchProcessThread(QThread):
                 logger.debug("无法发出开始处理消息: %s", file_path, exc_info=True)
 
             try:
+                pct_start = int((i / total) * 100) if total else 0
+                start_msg = f"正在处理 {i+1}/{total}: {file_path.name}"
+                self._emit_progress_detail(pct_start, start_msg)
+            except Exception:
+                logger.debug("无法发送开始处理进度信息", exc_info=True)
+
+            try:
                 res = self._process_single_file(i, file_path, total)
                 success_flag, output_file, file_elapsed, success_msg = res
                 elapsed_list.append(file_elapsed)
@@ -871,13 +897,15 @@ class BatchProcessThread(QThread):
 
                 # 发送详细进度信息
                 try:
-                    detail_msg = self._build_progress_detail(i + 1, total, elapsed_list)
-                    self.progress_detail.emit(pct, detail_msg)
-                except Exception:
-                    logger.debug(
-                        "无法发送详细进度信息",
-                        exc_info=True,
+                    detail_msg = self._build_progress_detail(
+                        i + 1,
+                        total,
+                        elapsed_list,
+                        current_file_name=file_path.name,
                     )
+                    self._emit_progress_detail(pct, detail_msg)
+                except Exception:
+                    logger.debug("无法发送详细进度信息", exc_info=True)
             except Exception:
                 logger.debug(
                     "Unable to emit progress value for %s",

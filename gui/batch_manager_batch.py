@@ -152,6 +152,17 @@ def attach_batch_thread_signals(manager):
                 try:
                     # 设置进度条显示格式：百分比 + 详细信息
                     manager.gui.progress_bar.setFormat(f"{pct}% - {detail_msg}")
+                    manager.gui.progress_bar.setVisible(True)
+                    # 确保批处理中取消按钮可见可用
+                    if hasattr(manager.gui, "btn_cancel"):
+                        try:
+                            manager.gui.btn_cancel.setVisible(True)
+                            manager.gui.btn_cancel.setEnabled(True)
+                        except Exception:
+                            logger.debug(
+                                "更新取消按钮状态失败（非致命）",
+                                exc_info=True,
+                            )
                 except Exception:
                     logger.debug(
                         "更新进度条格式文本失败（非致命）",
@@ -247,14 +258,24 @@ def create_batch_thread(
     data_config,
     project_data,
 ):
-    """构造并返回配置好的 `BatchProcessThread` 实例（安全容错）。"""
+    """构造并返回配置好的 `BatchProcessThread` 实例（安全容错）。使用 BatchState 的持久化选择状态。"""
     try:
         calc = getattr(manager.gui, "calculator", None)
         ts_fmt = getattr(manager.gui, "timestamp_format", "%Y%m%d_%H%M%S")
         sp_map = getattr(manager.gui, "special_part_mapping_by_file", {})
-        sp_sel = getattr(manager.gui, "special_part_row_selection_by_file", {})
+        
+        # 使用 BatchState 的持久化选择状态
+        batch_state = getattr(manager, "_batch_state", None)
+        if batch_state is not None:
+            # 从 BatchState 获取选择状态
+            sp_sel = batch_state.special_row_selection
+            tbl_sel = batch_state.table_row_selection
+        else:
+            # 向后兼容：从 GUI 对象获取
+            sp_sel = getattr(manager.gui, "special_part_row_selection_by_file", {})
+            tbl_sel = getattr(manager.gui, "table_row_selection_by_file", {})
+        
         fp_sel = getattr(manager.gui, "file_part_selection_by_file", {})
-        tbl_sel = getattr(manager.gui, "table_row_selection_by_file", {})
 
         return BatchProcessThread(
             calc,

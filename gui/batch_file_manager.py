@@ -118,24 +118,51 @@ class BatchFileManager:
             try:
                 manager_instance._scan_and_populate_files(first_path)
             except Exception as e:
-                logger.debug("扫描第一个路径失败: %s", e, exc_info=True)
+                logger.error("扫描第一个路径失败: %s", e, exc_info=True)
+                from gui.managers import report_user_error
+                report_user_error(
+                    manager_instance.gui,
+                    "文件扫描失败",
+                    f"无法扫描路径：{first_path}",
+                    details=str(e)
+                )
+                return
 
             # 对其他选择的路径进行增量扫描（追加数据）
+            failed_paths = []
             for additional_path in chosen_paths[1:]:
                 try:
                     manager_instance._scan_and_populate_files(
                         additional_path, clear=False
                     )
                 except Exception as e:
-                    logger.debug(
+                    logger.error(
                         "扫描追加路径 %s 失败: %s", additional_path, e, exc_info=True
                     )
+                    failed_paths.append(str(additional_path))
+
+            # 如果有路径扫描失败，通知用户
+            if failed_paths:
+                from gui.managers import report_user_error
+                report_user_error(
+                    manager_instance.gui,
+                    "部分路径扫描失败",
+                    f"以下路径无法扫描：\n{chr(10).join(failed_paths)}",
+                    is_warning=True
+                )
 
             # 输入路径后自动切换到文件列表页
             self._switch_to_file_list_tab(manager_instance)
 
-        except Exception:
-            logger.exception("浏览文件/目录失败")
+        except Exception as e:
+            logger.error("浏览文件/目录失败", exc_info=True)
+            from gui.managers import report_user_error
+            report_user_error(
+                manager_instance.gui,
+                "文件选择失败",
+                "浏览文件或目录时发生错误",
+                details=str(e)
+            )
 
     def _switch_to_file_list_tab(self, manager_instance):
         """切换到文件列表 Tab"""
