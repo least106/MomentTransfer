@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressDialog,
     QPushButton,
+    QWidget,
     QVBoxLayout,
 )
 
@@ -127,6 +128,18 @@ class IntegratedAeroGUI(QMainWindow):
         """
         try:
             if not name or not isinstance(name, str):
+                return
+            # 类型校验：必须是 QWidget 或其子类
+            try:
+                if widget is None or not isinstance(widget, QWidget):
+                    logger.warning(
+                        "register_panel ignored: '%s' is not QWidget (got=%r)",
+                        name,
+                        type(widget),
+                    )
+                    return
+            except Exception:
+                logger.debug("register_panel 类型检查失败（非致命）", exc_info=True)
                 return
             existing = self._panels.get(name, None)
             if existing is not None and not overwrite:
@@ -244,19 +257,14 @@ class IntegratedAeroGUI(QMainWindow):
         # 初始化完成：解除初始化保护并刷新挂起通知
         try:
             self._is_initializing = False
+            # 隐藏可能残留的初始化遮罩（某些启动路径会在 InitializationManager 中创建遮罩）
             try:
-                # 隐藏可能残留的初始化遮罩（某些启动路径会在 InitializationManager 中创建遮罩）
-                try:
-                    if getattr(self, "initialization_manager", None):
-                        try:
-                            self.initialization_manager._hide_initializing_overlay()
-                        except Exception:
-                            logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
-                except Exception:
-                    logger.debug(
-                        "尝试隐藏初始化遮罩时发生错误（非致命）", exc_info=True
-                    )
+                if getattr(self, "initialization_manager", None):
+                    self.initialization_manager._hide_initializing_overlay()
+            except Exception:
+                logger.debug("隐藏初始化遮罩失败（非致命）", exc_info=True)
 
+            try:
                 if getattr(self, "_pending_init_notifications", None):
                     self._flush_init_notifications()
             except Exception:
@@ -1086,6 +1094,65 @@ class IntegratedAeroGUI(QMainWindow):
         返回 True 表示继续执行 intent（保存或放弃后），False 表示取消操作。
         """
         try:
+            def _wait_for_async_save(start_async, dlg, timeout_ms: int = 15000) -> bool:
+                """等待异步保存完成，带超时保护。"""
+                loop = QEventLoop()
+                result = {"saved": False, "timed_out": False}
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+
+                def _on_timeout():
+                    result["timed_out"] = True
+                    try:
+                        dlg.close()
+                    except Exception:
+                        pass
+                    try:
+                        loop.quit()
+                    except Exception:
+                        pass
+
+                timer.timeout.connect(_on_timeout)
+                timer.start(int(timeout_ms))
+
+                def _on_saved(success, saved_fp):
+                    try:
+                        result["saved"] = bool(success)
+                    except Exception:
+                        result["saved"] = False
+                    try:
+                        timer.stop()
+                    except Exception:
+                        pass
+                    try:
+                        dlg.close()
+                    except Exception:
+                        pass
+                    if success:
+                        show_info_dialog(self, "成功", f"项目已保存到: {saved_fp}")
+                    else:
+                        show_error_dialog(self, "错误", "项目保存失败")
+                    try:
+                        loop.quit()
+                    except Exception:
+                        pass
+
+                try:
+                    start_async(_on_saved)
+                    loop.exec()
+                except Exception:
+                    logger.exception("异步保存项目失败")
+                    try:
+                        dlg.close()
+                    except Exception:
+                        pass
+                    return False
+
+                if result.get("timed_out"):
+                    show_error_dialog(self, "错误", "项目保存超时，请重试")
+                    return False
+                return bool(result.get("saved"))
+
             msg = QMessageBox(self)
             msg.setWindowTitle("未保存更改")
             msg.setText(f"检测到未保存的更改。是否在执行“{intent}”前保存更改？")
@@ -1131,44 +1198,11 @@ class IntegratedAeroGUI(QMainWindow):
                                 pass
                             dlg.setMinimumDuration(0)
                             dlg.show()
-
-                            loop = QEventLoop()
-                            result = {"saved": False}
-
-                            def _on_saved_async(success, saved_fp):
-                                try:
-                                    result["saved"] = bool(success)
-                                except Exception:
-                                    result["saved"] = False
-                                try:
-                                    dlg.close()
-                                except Exception:
-                                    pass
-                                if success:
-                                    show_info_dialog(
-                                        self, "成功", f"项目已保存到: {saved_fp}"
-                                    )
-                                else:
-                                    show_error_dialog(self, "错误", "项目保存失败")
-                                try:
-                                    loop.quit()
-                                except Exception:
-                                    pass
-
-                            try:
-                                pm.save_project_async(
-                                    cur_fp, on_finished=_on_saved_async
-                                )
-                                loop.exec()
-                            except Exception:
-                                logger.exception("异步保存项目失败")
-                                try:
-                                    dlg.close()
-                                except Exception:
-                                    pass
-                                return False
-
-                            if not result.get("saved"):
+                            ok = _wait_for_async_save(
+                                lambda cb: pm.save_project_async(cur_fp, on_finished=cb),
+                                dlg,
+                            )
+                            if not ok:
                                 return False
 
                         else:
@@ -1208,46 +1242,13 @@ class IntegratedAeroGUI(QMainWindow):
                                     pass
                                 dlg.setMinimumDuration(0)
                                 dlg.show()
-
-                                loop = QEventLoop()
-                                result = {"saved": False}
-
-                                def _on_saved2(success, saved_fp):
-                                    try:
-                                        result["saved"] = bool(success)
-                                    except Exception:
-                                        result["saved"] = False
-                                    try:
-                                        dlg.close()
-                                    except Exception:
-                                        pass
-                                    if success:
-                                        show_info_dialog(
-                                            self,
-                                            "成功",
-                                            f"项目已保存到: {saved_fp}",
-                                        )
-                                    else:
-                                        show_error_dialog(self, "错误", "项目保存失败")
-                                    try:
-                                        loop.quit()
-                                    except Exception:
-                                        pass
-
-                                try:
-                                    pm.save_project_async(
-                                        Path(save_path), on_finished=_on_saved2
-                                    )
-                                    loop.exec()
-                                except Exception:
-                                    logger.exception("异步另存为保存失败")
-                                    try:
-                                        dlg.close()
-                                    except Exception:
-                                        pass
-                                    return False
-
-                                if not result.get("saved"):
+                                ok = _wait_for_async_save(
+                                    lambda cb: pm.save_project_async(
+                                        Path(save_path), on_finished=cb
+                                    ),
+                                    dlg,
+                                )
+                                if not ok:
                                     return False
                             except Exception:
                                 logger.debug(
@@ -1578,25 +1579,7 @@ class IntegratedAeroGUI(QMainWindow):
                     self._notification_btn = None
             except Exception:
                 logger.debug("清除非模态通知按钮失败（非致命）", exc_info=True)
-            # 清理状态栏消息（若仍匹配）
-            try:
-                try:
-                    cur = self.statusBar().currentMessage()
-                except Exception:
-                    cur = None
-                if cur == summary:
-                    try:
-                        self.statusBar().clearMessage()
-                    except Exception:
-                        logger.debug(
-                            "clearMessage failed (non-fatal)",
-                            exc_info=True,
-                        )
-            except Exception:
-                logger.debug(
-                    "inspect/clear statusBar currentMessage failed",
-                    exc_info=True,
-                )
+            # 不直接清理状态栏，避免与队列消息互相干扰
             # 停止并清理定时器
             try:
                 self._reset_notification_timer()
@@ -1650,11 +1633,18 @@ class IntegratedAeroGUI(QMainWindow):
 
             if details is None:
                 try:
-                    self.statusBar().showMessage(summary, int(duration_ms))
+                    from gui.signal_bus import SignalBus
+                    from gui.status_message_queue import MessagePriority
+
+                    SignalBus.instance().statusMessage.emit(
+                        summary,
+                        int(duration_ms),
+                        MessagePriority.MEDIUM,
+                    )
                     return
                 except Exception:
                     logger.debug(
-                        "statusBar showMessage failed (non-fatal)",
+                        "statusMessage emit failed (non-fatal)",
                         exc_info=True,
                     )
 
@@ -1677,11 +1667,28 @@ class IntegratedAeroGUI(QMainWindow):
                     layout.addWidget(btn)
                 else:
                     # 容器未成功初始化，回退：仅显示消息
-                    self.statusBar().showMessage(summary)
+                    try:
+                        from gui.signal_bus import SignalBus
+                        from gui.status_message_queue import MessagePriority
+
+                        SignalBus.instance().statusMessage.emit(
+                            summary,
+                            int(duration_ms),
+                            MessagePriority.MEDIUM,
+                        )
+                    except Exception:
+                        self.statusBar().showMessage(summary)
             except Exception:
                 logger.debug("添加通知按钮到容器失败，回退为消息显示", exc_info=True)
                 try:
-                    self.statusBar().showMessage(summary)
+                    from gui.signal_bus import SignalBus
+                    from gui.status_message_queue import MessagePriority
+
+                    SignalBus.instance().statusMessage.emit(
+                        summary,
+                        int(duration_ms),
+                        MessagePriority.MEDIUM,
+                    )
                 except Exception:
                     pass
 
@@ -1692,12 +1699,19 @@ class IntegratedAeroGUI(QMainWindow):
             except Exception:
                 pass
 
-            # 显示主消息（与按钮移除计时保持一致）
+            # 通过统一通道显示主消息（与按钮移除计时保持一致）
             try:
-                self.statusBar().showMessage(summary, int(duration_ms))
+                from gui.signal_bus import SignalBus
+                from gui.status_message_queue import MessagePriority
+
+                SignalBus.instance().statusMessage.emit(
+                    summary,
+                    int(duration_ms),
+                    MessagePriority.MEDIUM,
+                )
             except Exception:
                 logger.debug(
-                    "statusBar showMessage failed after adding button (non-fatal)",
+                    "statusMessage emit failed after adding button (non-fatal)",
                     exc_info=True,
                 )
         except Exception:
