@@ -185,7 +185,8 @@ class StatusSymbolLegend(QWidget):
             details_text = "\n".join(info.get("details", []))
             details_label = QLabel(details_text)
             details_label.setStyleSheet(
-                "color: #555; font-size: 9px; background-color: #fff; padding: 6px; border-radius: 2px;"
+                "color: #555; font-size: 9px; background-color: #fff; "
+                "padding: 6px; border-radius: 2px;"
             )
             details_label.setWordWrap(True)
             layout.addWidget(details_label)

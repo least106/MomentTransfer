@@ -118,16 +118,28 @@ class ProjectManager:
             # 检查未保存更改并提示用户（除非明确跳过）
             if not skip_confirm:
                 try:
-                    if hasattr(self.gui, "_has_unsaved_changes") and callable(self.gui._has_unsaved_changes):
+                    has_unsaved_method = (
+                        hasattr(self.gui, "_has_unsaved_changes")
+                        and callable(self.gui._has_unsaved_changes)
+                    )
+                    if has_unsaved_method:
                         if self.gui._has_unsaved_changes():
                             # 使用主窗口的确认对话框
-                            if hasattr(self.gui, "_confirm_save_discard_cancel") and callable(self.gui._confirm_save_discard_cancel):
-                                proceed = self.gui._confirm_save_discard_cancel("创建新项目")
+                            has_confirm_method = (
+                                hasattr(self.gui, "_confirm_save_discard_cancel")
+                                and callable(
+                                    self.gui._confirm_save_discard_cancel
+                                )
+                            )
+                            if has_confirm_method:
+                                proceed = self.gui._confirm_save_discard_cancel(
+                                    "创建新项目"
+                                )
                                 if not proceed:
                                     return False
                 except Exception:
                     logger.debug("检查未保存更改失败（非致命）", exc_info=True)
-            
+
             # 清除当前项目路径/状态
             self.current_project_file = None
             self.last_saved_state = None
@@ -268,7 +280,7 @@ class ProjectManager:
                         logger.debug("重置 UI 状态失败（非致命）", exc_info=True)
             except Exception:
                 logger.debug("访问 ui_state_manager 失败（非致命）", exc_info=True)
-            
+
             # 显示新未命名项目状态横幅
             try:
                 if hasattr(self.gui, "state_banner") and self.gui.state_banner:
@@ -689,7 +701,10 @@ class ProjectManager:
                                     self.gui,
                                     "另存项目文件",
                                     suggested,
-                                    "MomentConversion Project (*.mtproject);;All Files (*)",
+                                    (
+                                        "MomentConversion Project (*.mtproject);;"
+                                        "All Files (*)"
+                                    ),
                                 )
                                 if save_path:
                                     # 将原始文本写入目标路径以保留内容
@@ -721,7 +736,11 @@ class ProjectManager:
                     msg = QMessageBox(self.gui)
                     msg.setWindowTitle("项目版本不匹配")
                     msg.setText(
-                        f"项目版本为 {version} ，与当前版本 {self.PROJECT_VERSION} 不一致。继续可能导致数据丢失或行为异常。"
+                        (
+                            f"项目版本为 {version} ，与当前版本 "
+                            f"{self.PROJECT_VERSION} 不一致。"
+                            f"继续可能导致数据丢失或行为异常。"
+                        )
                     )
                     msg.setDetailedText(
                         json.dumps(project_data, indent=2, ensure_ascii=False)
@@ -1117,8 +1136,11 @@ class ProjectManager:
                         {
                             "path": file_path,
                             "special_mappings": mapping,
-                            "row_selection": list(row_sel) if row_sel else [],
-                            "file_part_selection": file_parts,  # 保存 Source/Target Part 选择
+                            "row_selection": (
+                                list(row_sel) if row_sel else []
+                            ),
+                            # 保存 Source/Target Part 选择
+                            "file_part_selection": file_parts,
                         }
                     )
 

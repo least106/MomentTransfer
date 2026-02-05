@@ -163,7 +163,7 @@ class BatchPanel(QWidget):
         try:
             self.btn_load_config.setMaximumWidth(90)
             self.btn_load_config.setToolTip(
-                "加载配置文件（JSON），用于提供 Source/Target part 定义"
+                "加载配置文件（JSON），或在配置编辑器中新增/编辑 Part"
             )
         except Exception as e:
             logger.debug(
@@ -303,7 +303,7 @@ class BatchPanel(QWidget):
         # init 和 step1：只保留操作按钮
         if step in ("init", "step1"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
-            
+
             # 发送状态提示到用户
             try:
                 from gui.signal_bus import SignalBus
@@ -324,7 +324,7 @@ class BatchPanel(QWidget):
         # step2+：保持默认显示，发送相应提示
         if step in ("step2", "step3"):
             _set_row_visible(getattr(self, "row_format_summary_widget", None), False)
-            
+
             # 发送状态提示到用户
             try:
                 from gui.signal_bus import SignalBus
@@ -340,7 +340,7 @@ class BatchPanel(QWidget):
                     )
             except Exception:
                 logger.debug("发送步骤提示失败（非致命）", exc_info=True)
-            
+
             # 标记为已加载数据（主要用于启用 Data 管理选项卡与开始按钮）
             try:
                 win = self.window()
@@ -573,10 +573,15 @@ class BatchPanel(QWidget):
             column = self.inp_filter_column.text().strip()
             operator = self.cmb_filter_operator.currentText()
             value = self.inp_filter_value.text().strip()
-            
+
             # 发送筛选变化信号
             self.quickFilterChanged.emit(column, operator, value)
-            logger.debug("快速筛选变化: column=%s, operator=%s, value=%s", column, operator, value)
+            logger.debug(
+                "快速筛选变化: column=%s, operator=%s, value=%s",
+                column,
+                operator,
+                value,
+            )
         except Exception:
             logger.debug("快速筛选变化处理失败", exc_info=True)
 
@@ -634,7 +639,8 @@ class BatchPanel(QWidget):
                                 if comp is not None:
                                     comp.complete()
                                 logger.debug(
-                                    "BatchPanel.eventFilter: invoked completer.complete() (global filter)"
+                                    "BatchPanel.eventFilter: invoked "
+                                    "completer.complete() (global filter)"
                                 )
                                 return True
 
@@ -653,7 +659,8 @@ class BatchPanel(QWidget):
                                 new_idx = model.index(next_row, 0)
                                 popup.setCurrentIndex(new_idx)
                                 logger.debug(
-                                    "BatchPanel.eventFilter: cycled popup to row %s/%s (global filter)",
+                                    "BatchPanel.eventFilter: cycled popup to "
+                                    "row %s/%s (global filter)",
                                     next_row,
                                     row_count,
                                 )
@@ -787,12 +794,18 @@ class BatchPanel(QWidget):
 
             # 智能筛选操作
             act_select_ready = menu.addAction("✓ 选择已就绪文件")
-            act_select_ready.triggered.connect(lambda: self._select_files_by_status("✓"))
+            act_select_ready.triggered.connect(
+                lambda: self._select_files_by_status("✓")
+            )
 
             act_select_warning = menu.addAction("⚠ 选择有警告的文件")
-            act_select_warning.triggered.connect(lambda: self._select_files_by_status("⚠"))
+            act_select_warning.triggered.connect(
+                lambda: self._select_files_by_status("⚠")
+            )
 
-            act_select_unverified = menu.addAction("❓ 选择未验证文件")
+            act_select_unverified = menu.addAction(
+                "❓ 选择未验证文件"
+            )
             act_select_unverified.triggered.connect(lambda: self._select_files_by_status("❓"))
 
             act_select_error = menu.addAction("❌ 选择有错误的文件")

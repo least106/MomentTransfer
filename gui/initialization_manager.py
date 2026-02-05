@@ -1137,36 +1137,28 @@ class InitializationManager:
             from PySide6.QtWidgets import QLabel
 
             # 创建警告标签
-            warning_label = QLabel("⚠️ 配置已修改未保存")
+            warning_label = QLabel("⚠ 配置未保存")
             warning_label.setStyleSheet(
                 """
                 QLabel {
                     color: #ff6b35;
-                    background-color: rgba(255, 107, 53, 0.1);
+                    background-color: rgba(255, 107, 53, 0.08);
                     border: 1px solid #ff6b35;
-                    border-radius: 3px;
-                    padding: 4px 8px;
+                    border-radius: 8px;
+                    padding: 2px 6px;
                     font-weight: bold;
+                    font-size: 11px;
                 }
             """
             )
             warning_label.setVisible(False)
             self.main_window.config_warning_label = warning_label
 
-            # 查找批处理按钮所在布局并添加警告标签
+            # 将警告标签添加到状态栏，避免挤压页面布局
             try:
-                batch_panel = getattr(self.main_window, "batch_panel", None)
-                if batch_panel:
-                    # 尝试将警告标签添加到批处理面板顶部
-                    layout = batch_panel.layout()
-                    if layout:
-                        # 在第一个位置插入警告标签
-                        layout.insertWidget(0, warning_label)
-                else:
-                    # 回退：添加到状态栏
-                    statusbar = getattr(self.main_window, "statusBar", lambda: None)()
-                    if statusbar:
-                        statusbar.addPermanentWidget(warning_label)
+                statusbar = getattr(self.main_window, "statusBar", lambda: None)()
+                if statusbar:
+                    statusbar.addPermanentWidget(warning_label)
             except Exception:
                 logger.debug("添加配置警告标签到布局失败", exc_info=True)
 

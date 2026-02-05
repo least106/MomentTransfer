@@ -39,24 +39,38 @@ class ConfigPanel(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(8)
 
+        header = QWidget(self)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)
+
         title = QLabel("配置编辑器")
         try:
             title.setObjectName("panelTitle")
         except Exception:
             pass
-        main_layout.addWidget(title)
+        header_layout.addWidget(title)
 
-        # 未保存提示：黄色背景的显著标签，默认隐藏
+        # 未保存提示：轻量徽标，避免挤压坐标系管理页面
         try:
-            self.lbl_unsaved = QLabel("配置已被修改，需要及时保存")
+            self.lbl_unsaved = QLabel("未保存")
             self.lbl_unsaved.setObjectName("unsavedNotice")
             self.lbl_unsaved.setStyleSheet(
-                "background-color: #fff3cd; color: #856404; padding:6px; border-radius:4px;"
+                "background-color: #fff3cd; color: #856404; padding:2px 6px; "
+                "border-radius:8px; font-size:11px;"
             )
             self.lbl_unsaved.setVisible(False)
-            main_layout.addWidget(self.lbl_unsaved)
+            self.lbl_unsaved.setToolTip("配置已被修改，请记得保存（可在配置编辑器中编辑 Part）")
+            self.lbl_unsaved.setSizePolicy(
+                self.lbl_unsaved.sizePolicy().horizontalPolicy(),
+                self.lbl_unsaved.sizePolicy().verticalPolicy(),
+            )
+            header_layout.addWidget(self.lbl_unsaved)
         except Exception:
             self.lbl_unsaved = None
+
+        header_layout.addStretch()
+        main_layout.addWidget(header)
 
         # 面板组件
         self.source_panel = SourcePanel(self)

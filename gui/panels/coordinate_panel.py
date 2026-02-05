@@ -132,15 +132,15 @@ class CoordinateSystemPanel(QGroupBox):
             self.part_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         except Exception:
             pass
-        
+
         # 设置初始状态：禁用并显示占位文本
         self.part_selector.setEnabled(False)
-        self.part_selector.addItem("请先加载配置文件")
+        self.part_selector.addItem("请在配置编辑器添加 Part")
         self.part_selector.setToolTip(
-            f"请加载配置文件以加载 {self.prefix.upper()} Parts\n"
-            f"点击 '加载配置' 按钮导入配置文件"
+            f"可在配置编辑器中新增/编辑 {self.prefix.upper()} Part\n"
+            f"或加载配置文件以导入已有 Part"
         )
-        
+
         self.part_selector.currentTextChanged.connect(self._on_part_selected)
 
         # Part管理按钮
@@ -468,7 +468,8 @@ class CoordinateSystemPanel(QGroupBox):
         sref = payload.get("Sref", payload.get("S_ref", 10.0))
         q_val = payload.get("Q", 1000.0)
         logger.debug(
-            f"{self.prefix} apply_variant_payload: cref={cref}, bref={bref}, sref={sref}, q={q_val}"
+            f"{self.prefix} apply_variant_payload: "
+            f"cref={cref}, bref={bref}, sref={sref}, q={q_val}"
         )
 
         # 在批量填充时使用静默更新，避免触发 valuesChanged
@@ -533,14 +534,14 @@ class CoordinateSystemPanel(QGroupBox):
         try:
             self.part_selector.blockSignals(True)
             self.part_selector.clear()
-            
+
             if not part_names:
                 # 没有 Parts 时，禁用选择器并显示占位文本
                 self.part_selector.setEnabled(False)
-                self.part_selector.addItem("请先加载配置文件")
+                self.part_selector.addItem("请在配置编辑器添加 Part")
                 self.part_selector.setToolTip(
-                    f"请加载配置文件以加载 {self.prefix.upper()} Parts\n"
-                    f"点击 '加载配置' 按钮导入配置文件"
+                    f"可在配置编辑器中新增/编辑 {self.prefix.upper()} Part\n"
+                    f"或加载配置文件以导入已有 Part"
                 )
             else:
                 # 有 Parts 时，启用选择器并填充列表
@@ -550,7 +551,7 @@ class CoordinateSystemPanel(QGroupBox):
                     f"选择要编辑的 {self.prefix.upper()} Part\n"
                     f"当前有 {len(part_names)} 个可用 Parts"
                 )
-                
+
             self.part_selector.blockSignals(False)
         except Exception:
             logger.debug(f"更新 {self.prefix} Part 列表失败（非致命）", exc_info=True)
@@ -573,7 +574,12 @@ class CoordinateSystemPanel(QGroupBox):
             ]
             if part_name not in current_items:
                 self.part_selector.blockSignals(True)
+                # 若之前是占位文本，先清空并启用
+                if not self.part_selector.isEnabled():
+                    self.part_selector.clear()
+                    self.part_selector.setEnabled(True)
                 self.part_selector.addItem(part_name)
+                self.part_selector.setCurrentText(part_name)
                 self.part_selector.blockSignals(False)
                 logger.debug("%s Part选择器已添加项目: %s", self.prefix, part_name)
         except Exception as e:

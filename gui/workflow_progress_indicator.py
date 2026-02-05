@@ -18,13 +18,13 @@ WORKFLOW_STEPS = {
         "display": "🔧 初始化",
         "description": "系统准备就绪",
         "next_step": "step1",
-        "instruction": "请加载配置文件（JSON）",
+        "instruction": "请加载配置文件（JSON），或在配置编辑器中新增/编辑 Part",
     },
     "step1": {
         "display": "📄 步骤1：加载配置",
         "description": "配置坐标系和参数",
         "next_step": "step2",
-        "instruction": "请加载配置文件（JSON），定义Source和Target坐标系",
+        "instruction": "请加载配置文件（JSON），或在配置编辑器中定义 Source/Target 坐标系",
     },
     "step2": {
         "display": "📂 步骤2：选择文件",

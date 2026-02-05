@@ -1332,15 +1332,11 @@ class UIStateManager:
                     try:
                         config_modified = bool(cfg_mgr.is_config_modified())
                     except Exception:
-                        import logging
-
-                        logging.getLogger(__name__).debug(
+                        _logger.debug(
                             "检测配置是否修改失败（非致命）", exc_info=True
                         )
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
+                _logger.debug(
                     "访问 config_manager 失败（非致命）", exc_info=True
                 )
 
@@ -1365,9 +1361,7 @@ class UIStateManager:
                             pass
                 except Exception:
                     # 非致命，记录到日志而不是抛出
-                    import logging
-
-                    logging.getLogger(__name__).debug(
+                    _logger.debug(
                         "设置启动按钮状态或 tooltip 失败（非致命）",
                         exc_info=True,
                     )
@@ -1386,7 +1380,7 @@ class UIStateManager:
                             if not bool(self.is_data_loaded()):
                                 lbl.setText("步骤1：选择文件或目录")
                             elif not bool(self.is_config_loaded()):
-                                lbl.setText("步骤2：加载配置")
+                                lbl.setText("步骤2：加载配置或在配置编辑器编辑")
                     except Exception:
                         pass
             except Exception:
@@ -1399,16 +1393,12 @@ class UIStateManager:
                     try:
                         parent.batch_panel.set_unsaved_indicator(config_modified)
                     except Exception:
-                        import logging
-
-                        logging.getLogger(__name__).debug(
+                        _logger.debug(
                             "设置 batch_panel 未保存指示器失败（非致命）",
                             exc_info=True,
                         )
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
+                _logger.debug(
                     "访问 parent.batch_panel 失败（非致命）", exc_info=True
                 )
 
@@ -1424,9 +1414,7 @@ class UIStateManager:
                     if idx is not None and idx >= 0:
                         tab.setTabEnabled(idx, bool(self.is_data_loaded()))
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
+                _logger.debug(
                     "设置数据管理选项卡状态失败（非致命）", exc_info=True
                 )
 
@@ -1443,9 +1431,7 @@ class UIStateManager:
                         if cidx is not None and cidx >= 0:
                             tab.setTabEnabled(cidx, True)
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
+                _logger.debug(
                     "设置参考系管理选项卡状态失败（非致命）", exc_info=True
                 )
 
@@ -1464,9 +1450,7 @@ class UIStateManager:
                         else:
                             btn.setEnabled(bool(save_enabled))
                 except Exception:
-                    import logging
-
-                    logging.getLogger(__name__).debug(
+                    _logger.debug(
                         "设置保存按钮状态失败（非致命）", exc_info=True
                     )
 
@@ -1481,16 +1465,12 @@ class UIStateManager:
                                 bool(save_enabled)
                             )
                     except Exception:
-                        import logging
-
-                        logging.getLogger(__name__).debug(
+                        _logger.debug(
                             "设置 batch_panel 保存按钮状态失败（非致命）",
                             exc_info=True,
                         )
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
+                _logger.debug(
                     "访问 batch_panel 失败（非致命）", exc_info=True
                 )
 
@@ -1499,24 +1479,18 @@ class UIStateManager:
                     try:
                         parent.config_panel.btn_save.setEnabled(bool(save_enabled))
                     except Exception:
-                        import logging
-
-                        logging.getLogger(__name__).debug(
+                        _logger.debug(
                             "设置 config_panel 保存按钮失败（非致命）",
                             exc_info=True,
                         )
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
+                _logger.debug(
                     "访问 config_panel 失败（非致命）", exc_info=True
                 )
 
         except Exception:
             # 最后兜底：记录错误但不抛出，避免在 UI 更新时中断
-            import logging
-
-            logging.getLogger(__name__).debug(
+            _logger.debug(
                 "refresh_controls_state 失败（非致命）", exc_info=True
             )
 
@@ -1612,7 +1586,7 @@ class UIStateManager:
             self._data_loaded = False
             self._config_loaded = False
             self._operation_performed = False
-            
+
             # 刷新控件状态（会自动禁用相关按钮）
             self.refresh_controls_state()
             
@@ -1622,8 +1596,7 @@ class UIStateManager:
             except Exception:
                 pass
         except Exception:
-            import logging
-            logging.getLogger(__name__).debug(
+            _logger.debug(
                 "重置 UI 到初始状态失败（非致命）", exc_info=True
             )
 
@@ -1688,7 +1661,7 @@ class UIStateManager:
                         getattr(fsm, "table_row_selection_by_file", {}) or {}
                     )
                     # 保留现有结构，不覆盖其他 keys
-                    for k in by_file.keys():
+                    for k in by_file:
                         fsm.table_row_selection_by_file.setdefault(k, None)
                 except Exception:
                     pass

@@ -424,8 +424,10 @@ class QuickSelectDialog(QDialog):
 
         Semantics:
         - Input text empty (""): no change.
-        - Input text equal to "ALL" (case-insensitive): explicit request to restore/select all rows.
-        - Otherwise a comma-separated list of 1-based indices indicates rows to skip.
+        - Input text equal to "ALL" (case-insensitive):
+          explicit request to restore/select all rows.
+        - Otherwise a comma-separated list of 1-based indices
+          indicates rows to skip.
         """
         if not self._entry_widgets:
             return

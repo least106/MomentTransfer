@@ -130,7 +130,7 @@ class SlideSidebar(QWidget):
 
         # 连接动画完成回调以维护计数
         try:
-            self._anim.finished.connect(lambda: self._on_animation_finished())
+            self._anim.finished.connect(self._on_animation_finished)
         except Exception:
             _safe_log("连接动画 finished 信号失败（非致命）")
 
@@ -158,7 +158,7 @@ class SlideSidebar(QWidget):
         self._button_opacity_anim.setEasingCurve(QEasingCurve.InOutQuad)
         try:
             self._button_opacity_anim.finished.connect(
-                lambda: self._on_animation_finished()
+                self._on_animation_finished
             )
         except Exception:
             _safe_log("连接按钮透明度动画 finished 信号失败（非致命）")
@@ -169,7 +169,7 @@ class SlideSidebar(QWidget):
         self._button_pos_anim.setEasingCurve(QEasingCurve.InOutQuad)
         try:
             self._button_pos_anim.finished.connect(
-                lambda: self._on_animation_finished()
+                self._on_animation_finished
             )
         except Exception:
             _safe_log("连接按钮位置动画 finished 信号失败（非致命）")
@@ -566,7 +566,8 @@ class SlideSidebar(QWidget):
                 if not self._last_should_show:
                     try:
                         _logger.debug(
-                            "SlideSidebar: should_show=True mouse=(%s,%s) parent=(%s,%s) screen=(%s,%s)",
+                            "SlideSidebar: should_show=True "
+                            "mouse=(%s,%s) parent=(%s,%s) screen=(%s,%s)",
                             global_pos.x(),
                             global_pos.y(),
                             parent_left,

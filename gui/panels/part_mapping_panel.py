@@ -336,12 +336,12 @@ class PartMappingPanel(QGroupBox):
 
         if not names:
             combo.setEnabled(False)
-            # 添加占位文本显示缺少配置
+            # 添加占位文本显示缺少部件
             combo.clear()
-            combo.addItem("⚠ 请先加载配置")
+            combo.addItem("⚠ 请在配置编辑器添加 Part")
             combo.setToolTip(
-                "请加载配置文件以获得部件列表\n"
-                "点击 '加载配置' 按钮导入配置文件"
+                "可在配置编辑器中新增/编辑 Part 以获得部件列表\n"
+                "或加载配置文件导入已有 Part"
             )
         else:
             combo.setEnabled(True)

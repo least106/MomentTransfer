@@ -143,7 +143,7 @@ class PartSelectorPanel(QGroupBox):
         """连接内部信号"""
         # Source 信号
         self.source_selector.currentTextChanged.connect(
-            lambda text: self.sourcePartSelected.emit(text)
+            self.sourcePartSelected.emit
         )
         self.btn_add_source.clicked.connect(
             lambda: self.partAddRequested.emit("Source", "")
@@ -156,7 +156,7 @@ class PartSelectorPanel(QGroupBox):
 
         # Target 信号
         self.target_selector.currentTextChanged.connect(
-            lambda text: self.targetPartSelected.emit(text)
+            self.targetPartSelected.emit
         )
         self.btn_add_target.clicked.connect(
             lambda: self.partAddRequested.emit("Target", "")

@@ -45,7 +45,9 @@ class TableFilterManager:
 
         参数：
             column: 列索引
-            operator: 比较操作符（'==', '!=', '<', '>', '<=', '>=', 'contains', 'not_contains'）
+            operator: 比较操作符
+                ('==', '!=', '<', '>', '<=', '>=',
+                 'contains', 'not_contains')
             value: 比较值
         """
         self.filters.append({"column": column, "operator": operator, "value": value})
