@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Set
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -42,6 +42,9 @@ class PagedTableWidget(QWidget):
         self._current_page = 0
         self._match_flags: Optional[List[bool]] = None  # None 表示未筛选
         self._match_pages: Optional[List[bool]] = None  # 每页是否有匹配
+        self._hidden_rows: Set[int] = (
+            set()
+        )  # 被表格筛选隐藏的行（来自 TableFilterManager）
 
         self.table = QTableWidget(self)
         # 保留原始列名供导出/筛选等逻辑使用（不受 UI 展示标签影响）
@@ -119,19 +122,47 @@ class PagedTableWidget(QWidget):
         self._recompute_match_pages()
         self._jump_to_first_match_page()
 
+    def set_hidden_rows(self, hidden_rows: Set[int]) -> None:
+        """设置被表格筛选隐藏的行集合（来自 TableFilterManager）。
+
+        当设置隐藏行后，翻页时会跳过全是隐藏行的页面，以提升用户体验。
+        """
+        self._hidden_rows = set(hidden_rows) if hidden_rows else set()
+        # 重新计算可见页（结合隐藏行）
+        self._recompute_match_pages()
+
     def _recompute_match_pages(self) -> None:
-        if self._match_flags is None:
+        """重新计算每页是否有有效数据。
+
+        逻辑：如果启用了匹配（_match_flags 不为 None），则检查匹配标记；
+        否则如果有隐藏行，则检查该页是否有非隐藏行；否则认为所有页都有有效数据。
+        """
+        if self._match_flags is not None:
+            # 已设置匹配标记，使用匹配标记计算
+            total = len(self.df)
+            pages = (total + self.page_size - 1) // self.page_size
+            page_has = [False] * max(1, pages)
+            for idx, ok in enumerate(self._match_flags):
+                if ok:
+                    p = idx // self.page_size
+                    if 0 <= p < len(page_has):
+                        page_has[p] = True
+            self._match_pages = page_has
+        elif self._hidden_rows:
+            # 没有匹配标记，但有隐藏行，根据隐藏行计算有效页
+            total = len(self.df)
+            pages = (total + self.page_size - 1) // self.page_size
+            page_has = [False] * max(1, pages)
+            for idx in range(total):
+                if idx not in self._hidden_rows:
+                    # 这一行不被隐藏，所以所在页有有效数据
+                    p = idx // self.page_size
+                    if 0 <= p < len(page_has):
+                        page_has[p] = True
+            self._match_pages = page_has
+        else:
+            # 没有筛选也没有隐藏行，所有页都有有效数据
             self._match_pages = None
-            return
-        total = len(self.df)
-        pages = (total + self.page_size - 1) // self.page_size
-        page_has = [False] * max(1, pages)
-        for idx, ok in enumerate(self._match_flags):
-            if ok:
-                p = idx // self.page_size
-                if 0 <= p < len(page_has):
-                    page_has[p] = True
-        self._match_pages = page_has
 
     def _jump_to_first_match_page(self) -> None:
         if not self._match_pages or not any(self._match_pages):
