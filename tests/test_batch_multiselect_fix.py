@@ -6,6 +6,19 @@ from gui.batch_manager import BatchManager
 from gui.batch_manager_files import _collect_checked_files_from_tree
 
 
+class MockFileSelectionManager:
+    """模拟 FileSelectionManager"""
+    
+    def __init__(self):
+        self._selected_paths = None
+    
+    def get_selected_paths(self):
+        return self._selected_paths
+    
+    def set_selected_paths(self, value):
+        self._selected_paths = value
+
+
 class MockGUI:
     """模拟 GUI 对象"""
 
@@ -15,6 +28,7 @@ class MockGUI:
         self.file_tree = MockTree()
         self._file_tree_items = {}
         self.output_dir = None
+        self.file_selection_manager = MockFileSelectionManager()  # 添加文件选择管理器
 
 
 class MockInput:
