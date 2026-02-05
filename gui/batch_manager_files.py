@@ -18,6 +18,7 @@ from src.cli_helpers import BatchConfig, resolve_file_format
 from src.file_cache import get_file_cache
 from src.special_format_detector import looks_like_special_format
 from src.special_format_parser import get_part_names
+from gui.status_message_queue import MessagePriority
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,11 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
             try:
                 from gui.signal_bus import SignalBus
 
-                SignalBus.instance().statusMessage.emit(f"正在扫描目录：{p}", 0, 1)
+                SignalBus.instance().statusMessage.emit(
+                    f"正在扫描目录：{p}",
+                    0,
+                    MessagePriority.MEDIUM,
+                )
             except Exception:
                 logger.debug("发送扫描提示失败（非致命）", exc_info=True)
 
@@ -120,7 +125,9 @@ def _collect_files_for_scan(manager, p: Path) -> Tuple[list, Path]:
                 from gui.signal_bus import SignalBus
 
                 SignalBus.instance().statusMessage.emit(
-                    f"目录扫描完成：共 {len(files)} 个文件", 5000, 1
+                    f"目录扫描完成：共 {len(files)} 个文件",
+                    5000,
+                    MessagePriority.MEDIUM,
                 )
             except Exception:
                 logger.debug("发送扫描完成提示失败（非致命）", exc_info=True)
@@ -148,7 +155,11 @@ def _populate_file_tree_from_files(manager, files, base_path, p: Path) -> None:
             try:
                 from gui.signal_bus import SignalBus
 
-                SignalBus.instance().statusMessage.emit("文件列表已展开", 2000, 0)
+                SignalBus.instance().statusMessage.emit(
+                    "文件列表已展开",
+                    2000,
+                    MessagePriority.LOW,
+                )
             except Exception:
                 logger.debug("发送展开完成提示失败（非致命）", exc_info=True)
 
