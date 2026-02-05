@@ -567,6 +567,31 @@ class BatchPanel(QWidget):
         except Exception:
             logger.debug("运算符变化处理失败", exc_info=True)
 
+    def _on_quick_filter_changed(self) -> None:
+        """快速筛选参数变化时发送信号"""
+        try:
+            column = self.inp_filter_column.text().strip()
+            operator = self.cmb_filter_operator.currentText()
+            value = self.inp_filter_value.text().strip()
+            
+            # 发送筛选变化信号
+            self.quickFilterChanged.emit(column, operator, value)
+            logger.debug("快速筛选变化: column=%s, operator=%s, value=%s", column, operator, value)
+        except Exception:
+            logger.debug("快速筛选变化处理失败", exc_info=True)
+
+    def _on_load_config_clicked(self) -> None:
+        """加载配置按钮被点击，记录调试信息
+        
+        注：配置加载功能已迁移到 ConfigPanel，这个按钮保留仅为向后兼容。
+        实际加载配置应通过 ConfigPanel 的界面完成。
+        """
+        try:
+            logger.info("批处理面板的加载配置按钮被点击（该功能已迁移到配置面板）")
+            # 可以在这里显示提示信息告知用户使用配置面板
+        except Exception:
+            logger.debug("加载配置按钮处理失败", exc_info=True)
+
     def update_filter_columns(self, columns: list) -> None:
         """更新快速筛选的列自动补全列表"""
         try:
