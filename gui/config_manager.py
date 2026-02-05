@@ -13,7 +13,9 @@ from typing import Optional
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from gui.signal_bus import SignalBus
+from gui.signal_bus import ConfigLoadedEvent, SignalBus
+from gui.delay_scheduler import DelayScheduler
+from gui.status_message_queue import MessagePriority
 from src.data_loader import ProjectData
 from src.models import ProjectConfigModel
 
@@ -166,7 +168,13 @@ class ConfigManager:
                 except Exception:
                     logger.debug("同步 project_model 到 gui 失败", exc_info=True)
                 try:
-                    self.signal_bus.configLoaded.emit(model)
+                    self.signal_bus.configLoaded.emit(
+                        ConfigLoadedEvent(
+                            model=model,
+                            path=Path(fname) if fname else None,
+                            source="config_manager",
+                        )
+                    )
                 except Exception:
                     logger.debug("发射 configLoaded 失败", exc_info=True)
             except Exception:
@@ -262,28 +270,38 @@ class ConfigManager:
             except Exception:
                 logger.debug("连接坐标系面板信号失败", exc_info=True)
 
-            # UX：使用状态栏反馈，避免成功类操作打断流程
-            self.gui.statusBar().showMessage(f"已加载: {fname}", 5000)
+            # UX：使用统一状态消息通道
+            try:
+                self.signal_bus.statusMessage.emit(
+                    f"已加载: {fname}",
+                    5000,
+                    MessagePriority.LOW,
+                )
+            except Exception:
+                logger.debug("发送加载状态提示失败（非致命）", exc_info=True)
             # 配置加载后触发文件状态刷新，让用户看到配置生效
             try:
                 # 使用 SignalBus 通知其他模块配置已刷新
                 # BatchManager 会监听此信号并刷新文件状态显示
                 logger.info("配置加载完成，通知刷新文件状态")
-                # 添加短暂延迟确保 UI 已更新
-                from PySide6.QtCore import QTimer
-
                 def _delayed_refresh():
                     try:
                         # 通过状态栏告知用户文件状态正在更新
                         self.signal_bus.statusMessage.emit(
-                            "正在更新文件验证状态...", 2000, 0
+                            "正在更新文件验证状态...",
+                            2000,
+                            MessagePriority.LOW,
                         )
                         # 等待 SignalBus 处理完 configLoaded 信号
                         # BatchManager 会监听该信号并自动调用 refresh_file_statuses()
                     except Exception as e:
                         logger.debug(f"延迟刷新状态提示失败: {e}", exc_info=True)
-
-                QTimer.singleShot(100, _delayed_refresh)
+                DelayScheduler.instance().schedule(
+                    "config_manager.delayed_refresh",
+                    100,
+                    _delayed_refresh,
+                    replace=True,
+                )
             except Exception as e:
                 logger.debug(f"配置加载后刷新失败: {e}", exc_info=True)
             # 仅加载配置：不再自动应用为“全局计算器”。
@@ -905,7 +923,9 @@ class ConfigManager:
             try:
                 signal_bus = getattr(self.gui, "signal_bus", SignalBus.instance())
                 signal_bus.statusMessage.emit(
-                    f"Part '{part_name}' 已删除，文件映射状态已更新", 3000, 1
+                    f"Part '{part_name}' 已删除，文件映射状态已更新",
+                    3000,
+                    MessagePriority.MEDIUM,
                 )
             except Exception:
                 logger.debug("发送状态提示失败（非致命）", exc_info=True)

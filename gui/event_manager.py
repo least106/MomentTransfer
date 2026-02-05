@@ -4,7 +4,7 @@
 
 import logging
 
-from PySide6.QtCore import QTimer
+from gui.delay_scheduler import DelayScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +28,23 @@ class EventManager:
                     init_mgr.finalize_initialization()
                 else:
                     # 回退到旧方式
-                    QTimer.singleShot(50, self.main_window.update_button_layout)
-                    QTimer.singleShot(120, self.main_window._force_layout_refresh)
-                    QTimer.singleShot(
+                    DelayScheduler.instance().schedule(
+                        "event_manager.update_button_layout",
+                        50,
+                        self.main_window.update_button_layout,
+                        replace=True,
+                    )
+                    DelayScheduler.instance().schedule(
+                        "event_manager.force_layout_refresh",
+                        120,
+                        self.main_window._force_layout_refresh,
+                        replace=True,
+                    )
+                    DelayScheduler.instance().schedule(
+                        "event_manager.finish_initializing",
                         150,
                         lambda: setattr(self.main_window, "_is_initializing", False),
+                        replace=True,
                     )
             except Exception:
                 logger.debug("showEvent scheduling failed", exc_info=True)
