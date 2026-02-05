@@ -119,6 +119,7 @@ from gui.batch_manager_ui import connect_ui_signals as _connect_ui_signals_impl
 from gui.batch_manager_ui import (
     safe_refresh_file_statuses as _safe_refresh_file_statuses_impl,
 )
+from gui.status_message_queue import MessagePriority
 
 # 导入新的辅助模块以改进代码质量
 from gui.quick_select_dialog import QuickSelectDialog
@@ -157,7 +158,7 @@ class BatchManager:
         self._bus_connected = False
         self.history_store: Optional[BatchHistoryStore] = None
         self.history_panel: Optional[BatchHistoryPanel] = None
-        self._selected_paths = None  # 用户选择的多个路径
+        self._selected_paths = None  # 用户选择的多个路径（代理到 FileSelectionManager）
         self._last_history_record_id = None  # 最近的历史记录ID
 
         # 工作流程步骤追踪：用于保持 UI 状态与实际流程同步
@@ -241,22 +242,6 @@ class BatchManager:
                         )
                 except Exception:
                     logger.debug("无法显示信号连接错误提示", exc_info=True)
-
-            # 监听 Part 列表变化以刷新文件状态符号
-            try:
-                bus.partAdded.connect(self._safe_refresh_file_statuses)
-                bus.partRemoved.connect(self._safe_refresh_file_statuses)
-            except Exception as e:
-                logger.debug("连接 Part 变化信号失败（非致命）: %s", e, exc_info=True)
-
-            # 监听 Part 当前选择变化（用户更改 Source/Target Part）
-            try:
-                bus.sourcePartChanged.connect(self._safe_refresh_file_statuses)
-                bus.targetPartChanged.connect(self._safe_refresh_file_statuses)
-            except Exception as e:
-                logger.debug(
-                    "连接 Part 选择变化信号失败（非致命）: %s", e, exc_info=True
-                )
         except Exception as e:
             logger.error("获取 SignalBus 失败: %s", e, exc_info=True)
             try:
@@ -292,6 +277,28 @@ class BatchManager:
     def _connect_signal_bus_events(self) -> None:
         """将配置/Part 变更信号与文件状态刷新绑定（只注册一次）。"""
         return _connect_signal_bus_events_impl(self)
+
+    @property
+    def _selected_paths(self):
+        """批处理多选文件列表（统一走 FileSelectionManager）。"""
+        try:
+            fsm = getattr(self.gui, "file_selection_manager", None)
+            if fsm is not None and hasattr(fsm, "get_selected_paths"):
+                return fsm.get_selected_paths()
+        except Exception:
+            logger.debug("读取 file_selection_manager 选中路径失败", exc_info=True)
+        return getattr(self, "__selected_paths", None)
+
+    @_selected_paths.setter
+    def _selected_paths(self, value) -> None:
+        try:
+            fsm = getattr(self.gui, "file_selection_manager", None)
+            if fsm is not None and hasattr(fsm, "set_selected_paths"):
+                fsm.set_selected_paths(value)
+                return
+        except Exception:
+            logger.debug("写入 file_selection_manager 选中路径失败", exc_info=True)
+        self.__selected_paths = value
 
     # 向后兼容：提供旧代码可能调用的接口
     def _set_workflow_step(self, step: str) -> None:
@@ -915,7 +922,11 @@ class BatchManager:
 
                         bus = SignalBus.instance()
                         # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
-                        bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
+                        bus.statusMessage.emit(
+                            "📋 步骤1：选择文件或目录",
+                            0,
+                            MessagePriority.HIGH,
+                        )
                     except Exception:
                         try:
                             if _report_ui_exception:
@@ -1169,7 +1180,9 @@ class BatchManager:
                 bus = SignalBus.instance()
                 # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
                 bus.statusMessage.emit(
-                    "⚙️ 步骤3：编辑配置（可选） | 📝 步骤4：设置文件映射", 0, 2
+                    "⚙️ 步骤3：编辑配置（可选） | 📝 步骤4：设置文件映射",
+                    0,
+                    MessagePriority.HIGH,
                 )
             except Exception:
                 try:
@@ -1656,7 +1669,11 @@ class BatchManager:
 
                 bus = SignalBus.instance()
                 # 使用永久显示（timeout=0）和高优先级
-                bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
+                bus.statusMessage.emit(
+                    "📋 步骤1：选择文件或目录",
+                    0,
+                    MessagePriority.HIGH,
+                )
             except Exception:
                 logger.debug("恢复步骤1提示失败", exc_info=True)
             try:
@@ -1964,6 +1981,11 @@ class BatchManager:
     def _on_redo_mode_changed(self, is_entering: bool, record_id: str) -> None:
         """全局状态管理器通知重做模式改变"""
         try:
+            try:
+                # 进入/退出重做模式时都清理多选文件列表，避免误用旧配置
+                self._selected_paths = None
+            except Exception:
+                logger.debug("清理多选文件列表失败（非致命）", exc_info=True)
             if is_entering:
                 logger.info("重做模式已激活: %s", record_id)
                 # 状态横幅应该已由 redo_history_record 显示
@@ -2041,7 +2063,11 @@ class BatchManager:
 
                                 bus = SignalBus.instance()
                                 # 使用永久显示（timeout=0）和高优先级
-                                bus.statusMessage.emit("📋 步骤1：选择文件或目录", 0, 2)
+                                bus.statusMessage.emit(
+                                    "📋 步骤1：选择文件或目录",
+                                    0,
+                                    MessagePriority.HIGH,
+                                )
                             except Exception as e:
                                 logger.debug("恢复步骤1提示失败: %s", e, exc_info=True)
                         else:
