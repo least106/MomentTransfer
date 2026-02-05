@@ -4,10 +4,27 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING, Union
 
 from PySide6.QtCore import QObject, Signal
+
+if TYPE_CHECKING:
+    from src.data_loader import ProjectData
+    from src.models import ProjectConfigModel
+
+
+ConfigLoadedModel = Union["ProjectConfigModel", "ProjectData", object]
+
+
+@dataclass(frozen=True)
+class ConfigLoadedEvent:
+    """配置加载事件载体（用于统一 configLoaded 的参数类型）。"""
+
+    model: ConfigLoadedModel
+    path: Optional[Path] = None
+    source: str = "unknown"
 
 
 class SignalBus(QObject):
@@ -16,7 +33,7 @@ class SignalBus(QObject):
     """
 
     # 配置相关
-    configLoaded = Signal(object)  # 载入新模型（ProjectConfigModel 或兼容对象）
+    configLoaded = Signal(object)  # 载入新模型（ConfigLoadedEvent）
     configSaved = Signal(Path)  # 保存路径
     configApplied = Signal()  # 已应用配置
     configModified = Signal(bool)  # 配置修改状态变化 (True=已修改, False=未修改)

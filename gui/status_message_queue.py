@@ -196,5 +196,16 @@ class StatusMessageQueue:
             # 新消息优先级更低，不中断当前消息
             return (False, None)
 
+        # 相同优先级：若当前为永久提示且新消息也是永久提示，则允许替换
+        try:
+            if (
+                self._current_message is not None
+                and self._current_message.timeout_ms == 0
+                and new_msg.timeout_ms == 0
+            ):
+                return (True, self._current_message.token)
+        except Exception:
+            pass
+
         # 相同优先级，接受但不中断
         return (True, None)
