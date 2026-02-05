@@ -140,8 +140,11 @@ class BatchStateManager:
                     except Exception:
                         logger.debug("清理 worker 失败（非致命）", exc_info=True)
                     try:
+                        # 确保线程被完全清理
                         thread.quit()
-                        thread.wait(1000)
+                        if not thread.wait(2000):  # 增加等待时间到2秒
+                            logger.warning("线程未能在超时时间内停止，强制结束")
+                        thread.deleteLater()  # 确保线程对象也被删除
                     except Exception:
                         logger.debug("停止后台线程失败（非致命）", exc_info=True)
 

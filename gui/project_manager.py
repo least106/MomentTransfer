@@ -44,6 +44,41 @@ class ProjectManager:
         # 后台任务引用（防止被GC），支持同时保留多个并在完成后清理
         self._background_workers = []
 
+    def cleanup_background_workers(self) -> None:
+        """清理所有后台worker，应在应用关闭时调用。
+        
+        改进点：
+        1. 确保所有线程都被正确停止
+        2. 删除所有worker引用以允许垃圾回收
+        3. 记录清理过程以便调试
+        """
+        try:
+            workers_to_remove = []
+            for worker in list(self._background_workers):
+                try:
+                    # 尝试停止线程
+                    if hasattr(worker, 'quit') and callable(worker.quit):
+                        worker.quit()
+                    if hasattr(worker, 'wait') and callable(worker.wait):
+                        worker.wait(1000)  # 等待最多1秒
+                    # 删除worker对象
+                    if hasattr(worker, 'deleteLater') and callable(worker.deleteLater):
+                        worker.deleteLater()
+                    workers_to_remove.append(worker)
+                except Exception as e:
+                    logger.debug(f"清理后台worker失败: {e}", exc_info=True)
+            
+            # 移除已清理的worker
+            for worker in workers_to_remove:
+                try:
+                    self._background_workers.remove(worker)
+                except Exception:
+                    pass
+            
+            logger.info(f"后台worker清理完成，已清理 {len(workers_to_remove)} 个")
+        except Exception as e:
+            logger.debug(f"清理后台workers列表失败: {e}", exc_info=True)
+
     def _notify_user_error(
         self, title: str, message: str, details: Optional[str] = None
     ) -> None:
@@ -1010,14 +1045,25 @@ class ProjectManager:
                     getattr(fsm, "special_part_mapping_by_file", {}) or {}
                 )
                 table_selection = getattr(fsm, "table_row_selection_by_file", {}) or {}
+                # 收集常规文件的 Source/Target 选择
+                file_part_selection = (
+                    getattr(fsm, "file_part_selection_by_file", {}) or {}
+                )
 
-                for file_path, mapping in special_mappings.items():
+                # 同时收集所有已加载文件（包括未在mapping中的）
+                all_files = set(special_mappings.keys()) | set(table_selection.keys()) | set(file_part_selection.keys())
+                
+                for file_path in all_files:
+                    mapping = special_mappings.get(file_path, {})
                     row_sel = table_selection.get(file_path)
+                    file_parts = file_part_selection.get(file_path, {})
+                    
                     data_files.append(
                         {
                             "path": file_path,
                             "special_mappings": mapping,
                             "row_selection": list(row_sel) if row_sel else [],
+                            "file_part_selection": file_parts,  # 保存 Source/Target Part 选择
                         }
                     )
 
@@ -1145,7 +1191,14 @@ class ProjectManager:
             return False
 
     def _restore_data_files(self, project_data: Dict) -> bool:
-        """恢复数据文件选择和映射"""
+        """恢复数据文件选择和映射
+        
+        改进点：
+        1. 恢复文件列表（调用scan_dir或add_files）
+        2. 恢复每个文件的 Part 映射（Source/Target）
+        3. 恢复特殊格式文件的行选择
+        4. 通知 batch_manager 重建文件树
+        """
         try:
             data_files = project_data.get("data_files", [])
             if not data_files or not hasattr(self.gui, "file_selection_manager"):
@@ -1153,11 +1206,12 @@ class ProjectManager:
 
             fsm = self.gui.file_selection_manager
 
-            # 恢复特殊格式映射
+            # 恢复特殊格式映射和常规文件 Part 选择
             for file_info in data_files:
                 file_path = file_info.get("path")
                 mappings = file_info.get("special_mappings", {})
                 row_sel = file_info.get("row_selection", [])
+                file_parts = file_info.get("file_part_selection", {})
 
                 # 统一键格式为绝对解析路径的字符串，避免相对/Path 混用导致查找失败或重复
                 try:
@@ -1165,26 +1219,49 @@ class ProjectManager:
                 except Exception:
                     key = str(file_path) if file_path else None
 
-                if key and mappings:
-                    try:
-                        fsm.special_part_mapping_by_file[key] = mappings
-                    except Exception:
-                        # 回退：尝试直接写入原 key
+                if key:
+                    # 恢复特殊格式映射
+                    if mappings:
                         try:
-                            fsm.special_part_mapping_by_file[file_path] = mappings
+                            fsm.special_part_mapping_by_file[key] = mappings
                         except Exception:
-                            pass
+                            # 回退：尝试直接写入原 key
+                            try:
+                                fsm.special_part_mapping_by_file[file_path] = mappings
+                            except Exception:
+                                pass
 
-                if key and row_sel:
-                    try:
-                        fsm.table_row_selection_by_file[key] = set(row_sel)
-                    except Exception:
+                    # 恢复行选择
+                    if row_sel:
                         try:
-                            fsm.table_row_selection_by_file[file_path] = set(row_sel)
+                            fsm.table_row_selection_by_file[key] = set(row_sel)
                         except Exception:
-                            pass
+                            try:
+                                fsm.table_row_selection_by_file[file_path] = set(row_sel)
+                            except Exception:
+                                pass
+
+                    # 恢复常规文件的 Source/Target Part 选择
+                    if file_parts:
+                        try:
+                            fsm.file_part_selection_by_file[key] = file_parts
+                        except Exception:
+                            try:
+                                fsm.file_part_selection_by_file[file_path] = file_parts
+                            except Exception:
+                                pass
 
             logger.info(f"已恢复 {len(data_files)} 个数据文件的配置")
+            
+            # 触发文件树刷新以恢复 UI 显示
+            try:
+                if hasattr(self.gui, "batch_manager"):
+                    # 通知 batch_manager 刷新文件树和验证状态
+                    if hasattr(self.gui.batch_manager, "_safe_refresh_file_statuses"):
+                        self.gui.batch_manager._safe_refresh_file_statuses()
+            except Exception as e:
+                logger.debug(f"触发文件树刷新失败（非致命）: {e}")
+            
             return True
         except Exception as e:
             logger.debug(f"恢复数据文件失败: {e}", exc_info=True)

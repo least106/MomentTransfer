@@ -241,6 +241,20 @@ class BatchManager:
                         )
                 except Exception:
                     logger.debug("无法显示信号连接错误提示", exc_info=True)
+
+            # 监听 Part 列表变化以刷新文件状态符号
+            try:
+                bus.partAdded.connect(self._safe_refresh_file_statuses)
+                bus.partRemoved.connect(self._safe_refresh_file_statuses)
+            except Exception as e:
+                logger.debug("连接 Part 变化信号失败（非致命）: %s", e, exc_info=True)
+
+            # 监听 Part 当前选择变化（用户更改 Source/Target Part）
+            try:
+                bus.sourcePartChanged.connect(self._safe_refresh_file_statuses)
+                bus.targetPartChanged.connect(self._safe_refresh_file_statuses)
+            except Exception as e:
+                logger.debug("连接 Part 选择变化信号失败（非致命）: %s", e, exc_info=True)
         except Exception as e:
             logger.error("获取 SignalBus 失败: %s", e, exc_info=True)
             try:
@@ -1801,6 +1815,12 @@ class BatchManager:
                                 logger.debug("重建特殊预览表页面失败", exc_info=True)
                 except Exception:
                     logger.debug("迭代特殊预览表刷新时发生异常", exc_info=True)
+
+            # 刷新文件状态符号（解析完成后状态可能改变）
+            try:
+                self._safe_refresh_file_statuses()
+            except Exception:
+                logger.debug("刷新文件状态符号失败（非致命）", exc_info=True)
 
             # 若存在 QuickSelectDialog（或其他面板）会监听 SignalBus 并自行刷新
         except Exception:

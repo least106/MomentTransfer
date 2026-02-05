@@ -107,6 +107,15 @@ class EventManager:
                 except Exception:
                     logger.debug("批处理线程停止失败", exc_info=True)
 
+            # 清理后台workers（问题13修复）
+            try:
+                if hasattr(self.main_window, "project_manager"):
+                    pm = self.main_window.project_manager
+                    if hasattr(pm, "cleanup_background_workers"):
+                        pm.cleanup_background_workers()
+            except Exception:
+                logger.debug("清理后台workers失败（非致命）", exc_info=True)
+
             # 关闭可视化窗口
             if (
                 hasattr(self.main_window, "visualization_window")
