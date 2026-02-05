@@ -7,6 +7,7 @@
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -350,7 +351,29 @@ class ConfigManager:
             logger.debug("填充 Source 表单失败: %s", e, exc_info=True)
 
     def save_config(self):
-        """保存配置到 JSON 文件"""
+        """保存配置到 JSON 文件
+
+        改进的保存逻辑：
+        1. 保存前备份状态
+        2. 保存失败时明确报错，不静默进入另存为
+        3. 仅在实际写入成功后才清除 _config_modified 标志
+        4. 区分用户取消和保存失败
+
+        Returns:
+            bool: True 表示保存成功，False 表示保存失败或用户取消
+        """
+        # 保存前备份 ModelManager 状态（用于回滚）
+        original_model = None
+        try:
+            mm = getattr(self.gui, "model_manager", None)
+            if mm and hasattr(mm, "project_model"):
+                # 备份当前模型（深拷贝）
+                import copy
+
+                original_model = copy.deepcopy(mm.project_model)
+        except Exception:
+            logger.debug("无法备份 ModelManager 状态", exc_info=True)
+
         try:
             # 直接从面板读取 Variant 数据
             src_variant = self.gui.source_panel.to_variant_payload()
@@ -372,7 +395,7 @@ class ConfigManager:
                 "Target": {"Parts": [tgt_part]},
             }
 
-            # 同步新模型
+            # 同步新模型（保存前预先更新，失败时回滚）
             try:
                 mm = getattr(self.gui, "model_manager", None)
                 if mm is None:
@@ -380,98 +403,234 @@ class ConfigManager:
                 else:
                     model = ProjectConfigModel.from_dict(data)
                     mm.project_model = model
-            except Exception:
-                logger.debug("保存前 ProjectConfigModel 同步失败", exc_info=True)
-
-            # 优先覆盖上次加载的文件
-            try:
-                if self._last_loaded_config_path:
-                    with open(
-                        self._last_loaded_config_path, "w", encoding="utf-8"
-                    ) as f:
-                        json.dump(data, f, indent=2)
-                    QMessageBox.information(
-                        self.gui,
-                        "成功",
-                        f"配置已覆盖保存:\n{self._last_loaded_config_path}",
-                    )
-                    self.gui.statusBar().showMessage(
-                        f"已保存: {self._last_loaded_config_path}",
-                        5000,
-                    )
-                    try:
-                        self.signal_bus.configSaved.emit(self._last_loaded_config_path)
-                    except Exception:
-                        logger.debug("发射 configSaved 失败", exc_info=True)
-
-                    # 重置修改标志和操作状态
-                    self._config_modified = False
-                    try:
-                        if hasattr(self.gui, "ui_state_manager") and getattr(
-                            self.gui, "ui_state_manager"
-                        ):
-                            try:
-                                self.gui.ui_state_manager.clear_user_modified()
-                            except Exception:
-                                logger.debug(
-                                    "通过 UIStateManager 清理操作状态失败",
-                                    exc_info=True,
-                                )
-                        else:
-                            self.gui.operation_performed = False
-                    except Exception:
-                        logger.debug("清理操作状态失败（非致命）", exc_info=True)
-                    return True
-            except Exception:
-                logger.debug("直接覆盖失败，使用另存为", exc_info=True)
-
-            # 另存为
-            fname, _ = QFileDialog.getSaveFileName(
-                self.gui, "保存配置", "config.json", "JSON Files (*.json)"
-            )
-            if not fname:
-                # 用户取消保存
+            except Exception as model_err:
+                logger.error(
+                    "保存前 ProjectConfigModel 同步失败: %s", model_err, exc_info=True
+                )
+                # 模型构建失败，不应该继续保存
+                QMessageBox.critical(
+                    self.gui,
+                    "配置错误",
+                    f"配置数据格式错误，无法保存:\n{model_err}",
+                )
                 return False
 
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+            # 优先覆盖上次加载的文件
+            save_successful = False
+            saved_path = None
 
-            QMessageBox.information(self.gui, "成功", f"配置已保存:\n{fname}")
-            # UX：该提示属于短时反馈，避免长时间占用状态栏主消息区
-            self.gui.statusBar().showMessage(f"已保存: {fname}", 5000)
-            try:
-                from pathlib import Path
+            if self._last_loaded_config_path:
+                try:
+                    # 原子写入：先写临时文件，成功后再替换
+                    import tempfile
+                    import shutil
+                    from pathlib import Path
 
-                self.signal_bus.configSaved.emit(Path(fname))
-            except Exception:
-                logger.debug("发射 configSaved 失败", exc_info=True)
-
-            # 重置修改标志和操作状态
-            self._config_modified = False
-            try:
-                if hasattr(self.gui, "ui_state_manager") and getattr(
-                    self.gui, "ui_state_manager"
-                ):
+                    target_path = Path(self._last_loaded_config_path)
+                    temp_fd, temp_path = tempfile.mkstemp(
+                        suffix=".json",
+                        prefix="config_",
+                        dir=target_path.parent,
+                        text=True,
+                    )
                     try:
-                        self.gui.ui_state_manager.clear_user_modified()
-                    except Exception:
-                        logger.debug(
-                            "通过 UIStateManager 清理操作状态失败", exc_info=True
-                        )
-                else:
-                    self.gui.operation_performed = False
-            except Exception:
-                logger.debug("清理操作状态失败（非致命）", exc_info=True)
-            return True
+                        # 写入临时文件
+                        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2)
+
+                        # 替换原文件（原子操作）
+                        shutil.move(temp_path, target_path)
+
+                        save_successful = True
+                        saved_path = target_path
+                        logger.info("配置已成功保存到: %s", target_path)
+
+                    except Exception as write_err:
+                        # 清理临时文件
+                        try:
+                            if os.path.exists(temp_path):
+                                os.remove(temp_path)
+                        except Exception:
+                            pass
+                        raise write_err
+
+                except PermissionError as perm_err:
+                    # 权限错误：明确报错，询问用户是否另存为
+                    logger.error(
+                        "无法覆盖配置文件（权限不足）: %s", perm_err, exc_info=True
+                    )
+
+                    # 回滚模型状态
+                    if original_model and mm:
+                        try:
+                            mm.project_model = original_model
+                            logger.info("已回滚 ProjectConfigModel 到保存前状态")
+                        except Exception:
+                            logger.debug("回滚 ModelManager 失败", exc_info=True)
+
+                    reply = QMessageBox.question(
+                        self.gui,
+                        "保存失败",
+                        f"无法覆盖配置文件（权限不足）:\n{self._last_loaded_config_path}\n\n"
+                        f"是否另存为到其他位置？",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes,
+                    )
+                    if reply != QMessageBox.Yes:
+                        # 用户拒绝另存为
+                        return False
+                    # 继续执行另存为逻辑（下方）
+
+                except OSError as os_err:
+                    # 其他文件系统错误：明确报错
+                    logger.error(
+                        "配置文件保存失败（文件系统错误）: %s", os_err, exc_info=True
+                    )
+
+                    # 回滚模型状态
+                    if original_model and mm:
+                        try:
+                            mm.project_model = original_model
+                            logger.info("已回滚 ProjectConfigModel 到保存前状态")
+                        except Exception:
+                            logger.debug("回滚 ModelManager 失败", exc_info=True)
+
+                    QMessageBox.critical(
+                        self.gui,
+                        "保存失败",
+                        f"无法保存配置文件:\n{self._last_loaded_config_path}\n\n"
+                        f"错误: {os_err}",
+                    )
+                    return False
+
+                except Exception as save_err:
+                    # 其他未预期的错误
+                    logger.error(
+                        "配置保存失败（未知错误）: %s", save_err, exc_info=True
+                    )
+
+                    # 回滚模型状态
+                    if original_model and mm:
+                        try:
+                            mm.project_model = original_model
+                            logger.info("已回滚 ProjectConfigModel 到保存前状态")
+                        except Exception:
+                            logger.debug("回滚 ModelManager 失败", exc_info=True)
+
+                    QMessageBox.critical(
+                        self.gui,
+                        "保存失败",
+                        f"保存配置时发生错误:\n{save_err}",
+                    )
+                    return False
+
+            # 如果没有上次加载路径，或覆盖失败后用户选择另存为
+            if not save_successful:
+                # 另存为
+                fname, _ = QFileDialog.getSaveFileName(
+                    self.gui, "保存配置", "config.json", "JSON Files (*.json)"
+                )
+                if not fname:
+                    # 用户取消保存 - 回滚模型
+                    if original_model and mm:
+                        try:
+                            mm.project_model = original_model
+                            logger.info("用户取消保存，已回滚 ProjectConfigModel")
+                        except Exception:
+                            logger.debug("回滚 ModelManager 失败", exc_info=True)
+                    return False
+
+                try:
+                    with open(fname, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+
+                    save_successful = True
+                    saved_path = Path(fname)
+                    logger.info("配置已另存为: %s", fname)
+
+                except Exception as save_err:
+                    # 另存为失败 - 回滚并报错
+                    logger.error("另存为失败: %s", save_err, exc_info=True)
+
+                    if original_model and mm:
+                        try:
+                            mm.project_model = original_model
+                            logger.info("另存为失败，已回滚 ProjectConfigModel")
+                        except Exception:
+                            logger.debug("回滚 ModelManager 失败", exc_info=True)
+
+                    QMessageBox.critical(
+                        self.gui,
+                        "保存失败",
+                        f"无法保存配置文件到:\n{fname}\n\n错误: {save_err}",
+                    )
+                    return False
+
+            # === 保存成功：更新状态和显示提示 ===
+            if save_successful and saved_path:
+                QMessageBox.information(
+                    self.gui,
+                    "成功",
+                    f"配置已保存:\n{saved_path}",
+                )
+                self.gui.statusBar().showMessage(
+                    f"已保存: {saved_path}",
+                    5000,
+                )
+                try:
+                    self.signal_bus.configSaved.emit(saved_path)
+                except Exception:
+                    logger.debug("发射 configSaved 失败", exc_info=True)
+
+                # 仅在保存成功后才重置修改标志
+                self._config_modified = False
+                try:
+                    if hasattr(self.gui, "ui_state_manager") and getattr(
+                        self.gui, "ui_state_manager"
+                    ):
+                        try:
+                            self.gui.ui_state_manager.clear_user_modified()
+                        except Exception:
+                            logger.debug(
+                                "通过 UIStateManager 清理操作状态失败",
+                                exc_info=True,
+                            )
+                    else:
+                        self.gui.operation_performed = False
+                except Exception:
+                    logger.debug("清理操作状态失败（非致命）", exc_info=True)
+
+                return True
+            else:
+                # 未保存成功（逻辑不应到达这里）
+                logger.error("保存逻辑错误：未保存成功但未返回 False")
+                return False
 
         except ValueError as e:
+            # 数值输入错误 - 回滚
+            logger.error("配置数据验证失败: %s", e, exc_info=True)
+            if original_model and mm:
+                try:
+                    mm.project_model = original_model
+                    logger.info("验证失败，已回滚 ProjectConfigModel")
+                except Exception:
+                    logger.debug("回滚 ModelManager 失败", exc_info=True)
+
             QMessageBox.warning(self.gui, "输入错误", f"请检查数值输入:\n{str(e)}")
             return False
+
         except Exception as e:
-            QMessageBox.critical(self.gui, "保存失败", str(e))
+            # 其他未捕获的异常 - 回滚并报错
+            logger.error("配置保存失败（未预期的异常）: %s", e, exc_info=True)
+            if original_model and mm:
+                try:
+                    mm.project_model = original_model
+                    logger.info("保存失败，已回滚 ProjectConfigModel")
+                except Exception:
+                    logger.debug("回滚 ModelManager 失败", exc_info=True)
+
+            QMessageBox.critical(self.gui, "保存失败", f"保存配置时发生错误:\n{e}")
             return False
-        # 默认返回 False（若未显式返回 True 则视为未保存成功）
-        return False
 
     def get_simple_payload_snapshot(self):
         """返回当前已加载配置的简化快照，格式与 `save_config` 使用的 data 保持一致。
