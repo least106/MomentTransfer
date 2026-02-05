@@ -17,6 +17,7 @@ from gui.config_manager import ConfigManager
 from gui.layout_manager import LayoutManager
 from gui.log_manager import LoggingManager
 from gui.part_manager import PartManager
+from gui.delay_scheduler import DelayScheduler
 
 # 侧边栏改为合并到底部栏，移除浮动 SlideSidebar 的使用
 
@@ -41,6 +42,54 @@ class BottomDock:
     def __init__(self, widget, bar: QWidget):
         self._widget = widget
         self._bar = bar
+        self._is_visible = False
+        self._counter_attr = "_bottomdock_visible_count"
+        self._sync_initial_visibility()
+
+    def _sync_initial_visibility(self) -> None:
+        """初始化可见性计数，确保初始状态与真实 UI 一致。"""
+        try:
+            visible = False
+            try:
+                visible = bool(self._widget is not None and self._widget.isVisible())
+            except Exception:
+                visible = False
+            if visible:
+                self._is_visible = True
+                self._increment_visible_count()
+                try:
+                    self._bar.setVisible(True)
+                except Exception:
+                    logger.debug("设置底部栏可见失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("同步底部栏初始可见性失败（非致命）", exc_info=True)
+
+    def _get_visible_count(self) -> int:
+        try:
+            return int(getattr(self._bar, self._counter_attr, 0) or 0)
+        except Exception:
+            return 0
+
+    def _set_visible_count(self, value: int) -> None:
+        try:
+            setattr(self._bar, self._counter_attr, max(0, int(value)))
+        except Exception:
+            logger.debug("写入底部栏可见计数失败（非致命）", exc_info=True)
+
+    def _increment_visible_count(self) -> None:
+        self._set_visible_count(self._get_visible_count() + 1)
+
+    def _decrement_visible_count(self) -> None:
+        self._set_visible_count(self._get_visible_count() - 1)
+
+    def _refresh_bar_visibility(self) -> None:
+        try:
+            if self._get_visible_count() <= 0:
+                self._bar.setVisible(False)
+            else:
+                self._bar.setVisible(True)
+        except Exception:
+            logger.debug("刷新底部栏可见性失败（非致命）", exc_info=True)
 
     def toggle_panel(self) -> None:
         if self.is_expanded():
@@ -51,6 +100,9 @@ class BottomDock:
     def show_panel(self) -> None:
         try:
             self._widget.setVisible(True)
+            if not self._is_visible:
+                self._increment_visible_count()
+                self._is_visible = True
             self._bar.setVisible(True)
         except Exception:
             logger.debug("显示底部面板失败（非致命）", exc_info=True)
@@ -58,22 +110,10 @@ class BottomDock:
     def hide_panel(self) -> None:
         try:
             self._widget.setVisible(False)
-            # 如果所有子控件都不可见，则隐藏底部栏
-            any_visible = False
-            try:
-                layout = self._bar.layout()
-                if layout is not None:
-                    for i in range(layout.count()):
-                        w = layout.itemAt(i).widget()
-                        if w is not None and w.isVisible():
-                            any_visible = True
-                            break
-            except Exception:
-                # 若查询子控件失败，则保守地不隐藏 bar
-                logger.debug("检查底部栏子控件可见性失败（非致命）", exc_info=True)
-                any_visible = True
-            if not any_visible:
-                self._bar.setVisible(False)
+            if self._is_visible:
+                self._decrement_visible_count()
+                self._is_visible = False
+            self._refresh_bar_visibility()
         except Exception:
             logger.debug("隐藏底部面板失败（非致命）", exc_info=True)
 
@@ -89,8 +129,29 @@ class InitializationManager:
 
     def __init__(self, main_window):
         self.main_window = main_window
-        self._is_initializing = True
+        # 初始化标志由主窗口统一维护
+        if not hasattr(self.main_window, "_is_initializing"):
+            try:
+                self.main_window._is_initializing = True
+            except Exception:
+                pass
         self._init_overlay = None
+
+    @property
+    def _is_initializing(self) -> bool:
+        """初始化标志代理到主窗口，避免多处维护导致状态不一致。"""
+        try:
+            return bool(getattr(self.main_window, "_is_initializing", False))
+        except Exception:
+            return False
+
+    @_is_initializing.setter
+    def _is_initializing(self, value: bool) -> None:
+        """写入主窗口初始化标志，保持单一数据源。"""
+        try:
+            self.main_window._is_initializing = bool(value)
+        except Exception:
+            pass
 
     def _set_splitter_bottom_ratio(
         self, splitter: QSplitter, bottom_ratio: float
@@ -152,7 +213,9 @@ class InitializationManager:
             cur_h = splitter.size().height()
             if not cur_h or cur_h <= 0:
                 try:
-                    QTimer.singleShot(0, _apply)
+                    key = f"init.splitter_ratio.{id(splitter)}"
+                    if not DelayScheduler.instance().schedule_next_tick(key, _apply):
+                        _apply()
                 except Exception:
                     _apply()
             else:
@@ -486,6 +549,23 @@ class InitializationManager:
                         delays = [0, 50, 150, 300, 600, 800]
                         if attempt_index >= len(delays) - 1:
                             logger.debug("批处理 UI 绑定尝试达到上限，停止重试")
+                            try:
+                                if not getattr(
+                                    self.main_window,
+                                    "_batch_ui_bind_warned",
+                                    False,
+                                ):
+                                    if _report_ui_exception:
+                                        _report_ui_exception(
+                                            self.main_window,
+                                            "批处理 UI 信号绑定失败，相关交互可能不可用",
+                                        )
+                                    self.main_window._batch_ui_bind_warned = True
+                            except Exception:
+                                logger.debug(
+                                    "批处理 UI 绑定失败提示抛出异常（非致命）",
+                                    exc_info=True,
+                                )
                             return
                         delay = delays[min(attempt_index + 1, len(delays) - 1)]
                         try:
@@ -647,21 +727,8 @@ class InitializationManager:
                 max_wait = 5.0
                 if _is_ready() or elapsed >= max_wait:
                     try:
-                        # 统一管理 _is_initializing 标志：先在主窗口和 InitializationManager 中禁用
+                        # 统一管理初始化标志（主窗口为单一数据源）
                         self._is_initializing = False
-                        self.main_window._is_initializing = False
-
-                        # 同步到 UIStateManager，使其中的状态 setter 能够正常刷新 UI
-                        try:
-                            if hasattr(self.main_window, "ui_state_manager"):
-                                self.main_window.ui_state_manager._is_initializing = (
-                                    False
-                                )
-                        except Exception:
-                            logger.debug(
-                                "同步 UIStateManager._is_initializing 失败（非致命）",
-                                exc_info=True,
-                            )
 
                         try:
                             self._hide_initializing_overlay()
@@ -751,14 +818,10 @@ class InitializationManager:
                 exc_info=True,
             )
             try:
-                QTimer.singleShot(
-                    150, lambda: setattr(self.main_window, "_is_initializing", False)
-                )
                 QTimer.singleShot(150, lambda: setattr(self, "_is_initializing", False))
             except Exception:
                 # 如果也失败，则立即解除以避免界面永久被锁定
                 try:
-                    self.main_window._is_initializing = False
                     self._is_initializing = False
                 except Exception:
                     pass

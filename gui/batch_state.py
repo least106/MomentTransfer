@@ -43,6 +43,7 @@ class BatchStateManager:
         from gui.background_worker import BackgroundWorker
         from gui.managers import _report_ui_exception, report_user_error
         from gui.signal_bus import SignalBus
+        from gui.status_message_queue import MessagePriority
         from src.special_format_parser import parse_special_format_file
 
         fp_str = str(file_path)
@@ -88,12 +89,13 @@ class BatchStateManager:
 
             # 显示加载指示器
             try:
-                if hasattr(manager_instance.gui, "statusBar"):
-                    manager_instance.gui.statusBar().showMessage(
-                        f"正在解析特殊格式文件: {file_path.name}...", 0
-                    )
+                SignalBus.instance().statusMessage.emit(
+                    f"正在解析特殊格式文件: {file_path.name}...",
+                    0,
+                    MessagePriority.MEDIUM,
+                )
             except Exception:
-                logger.debug("显示解析状态栏消息失败（非致命）", exc_info=True)
+                logger.debug("发送解析提示失败（非致命）", exc_info=True)
 
             def _do_parse(path: Path):
                 return parse_special_format_file(path)
@@ -121,12 +123,13 @@ class BatchStateManager:
                     except Exception:
                         logger.debug("更新特殊格式缓存失败（非致命）", exc_info=True)
                     try:
-                        if hasattr(manager_instance.gui, "statusBar"):
-                            manager_instance.gui.statusBar().showMessage(
-                                f"特殊格式文件解析完成: {file_path.name}", 3000
-                            )
+                        SignalBus.instance().statusMessage.emit(
+                            f"特殊格式文件解析完成: {file_path.name}",
+                            3000,
+                            MessagePriority.LOW,
+                        )
                     except Exception:
-                        logger.debug("清除状态栏消息失败（非致命）", exc_info=True)
+                        logger.debug("发送解析完成提示失败（非致命）", exc_info=True)
                     try:
                         SignalBus.instance().specialDataParsed.emit(fp_str)
                     except Exception:
@@ -151,10 +154,14 @@ class BatchStateManager:
             def _on_error(tb_str):
                 logger.error("后台解析特殊格式失败: %s", tb_str)
                 try:
-                    if hasattr(manager_instance.gui, "statusBar"):
-                        manager_instance.gui.statusBar().showMessage(
-                            f"解析特殊格式文件失败: {file_path.name}", 5000
+                    try:
+                        SignalBus.instance().statusMessage.emit(
+                            f"解析特殊格式文件失败: {file_path.name}",
+                            5000,
+                            MessagePriority.HIGH,
                         )
+                    except Exception:
+                        logger.debug("发送解析失败提示失败（非致命）", exc_info=True)
                     QMessageBox.warning(
                         manager_instance.gui,
                         "解析失败",
