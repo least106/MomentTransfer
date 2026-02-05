@@ -84,6 +84,9 @@ class GlobalStateManager(QObject):
                 logger.debug("已处于该记录的重做模式，忽略重复设置")
                 return
 
+            # 进入重做模式前清理多选文件列表
+            self._clear_selected_paths()
+
             # 清除旧状态
             if self._current_state == AppState.REDO_MODE:
                 logger.info("离开旧重做模式: %s", self._redo_parent_id)
@@ -110,6 +113,9 @@ class GlobalStateManager(QObject):
                 logger.debug("当前不处于重做模式，无需退出")
                 return
 
+            # 退出重做模式时清理多选文件列表
+            self._clear_selected_paths()
+
             old_parent_id = self._redo_parent_id
             self._current_state = AppState.NORMAL
             self._redo_parent_id = None
@@ -120,6 +126,30 @@ class GlobalStateManager(QObject):
             self.redoModeChanged.emit(False, old_parent_id or "")
         except Exception as e:
             logger.error("退出重做模式失败: %s", e, exc_info=True)
+
+    def _clear_selected_paths(self) -> None:
+        """清理多选文件列表（尽力而为）。"""
+        try:
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                from gui.main_window import IntegratedAeroGUI
+
+                for obj in list(QApplication.topLevelWidgets()):
+                    if isinstance(obj, IntegratedAeroGUI):
+                        fsm = getattr(obj, "file_selection_manager", None)
+                        if fsm is not None and hasattr(fsm, "clear_selected_paths"):
+                            fsm.clear_selected_paths()
+                        else:
+                            try:
+                                setattr(obj, "_selected_paths", None)
+                            except Exception:
+                                pass
+                        break
+            except Exception:
+                logger.debug("清理多选文件列表失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("清理多选文件列表失败（非致命）", exc_info=True)
 
     def set_loading_project(self, project_path: str) -> None:
         """设置加载项目状态"""

@@ -13,12 +13,31 @@ from PySide6.QtWidgets import QMessageBox
 
 from gui.signal_bus import SignalBus
 
-# 尝试提前导入 ModelManager，避免函数内多次局部导入带来的 pylint 噪音；
-# 若因循环导入失败则保留为 None，函数内按需回退本地导入。
+# 尝试提前导入 ModelManager，避免函数内多次局部导入带来的噪音；
+# 若因循环导入失败则保留为 None，并在需要时仅尝试一次加载。
 try:
     from gui.managers import ModelManager as _model_manager_cls
 except Exception:
     _model_manager_cls = None  # pylint: disable=invalid-name
+
+_model_manager_checked = False
+
+
+def _get_model_manager_cls():
+    """惰性获取 ModelManager 类，避免重复导入。"""
+    global _model_manager_cls, _model_manager_checked
+    if _model_manager_cls is not None:
+        return _model_manager_cls
+    if _model_manager_checked:
+        return None
+    _model_manager_checked = True
+    try:
+        from gui.managers import ModelManager as mm_cls
+
+        _model_manager_cls = mm_cls
+        return _model_manager_cls
+    except Exception:
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -51,22 +70,18 @@ class PartManager:
             mm = self.model_manager or getattr(self.gui, "model_manager", None)
             if mm:
                 return mm
-            # 优先使用顶层已导入的类（若可用），避免再次局部导入
-            if _model_manager_cls is not None:
+            # 优先使用缓存的类，避免再次局部导入
+            mm_cls = _get_model_manager_cls()
+            if mm_cls is not None:
                 try:
-                    mm = _model_manager_cls(self.gui)
+                    mm = mm_cls(self.gui)
                     self.model_manager = mm
                     return mm
                 except Exception:
                     # 若构造失败，继续尝试按需局部导入
                     pass
-            # 按需局部导入并尝试创建实例以保持兼容
-            from gui.managers import ModelManager
-
-            mm = ModelManager(self.gui)
-            # 缓存以便后续使用
-            self.model_manager = mm
-            return mm
+            # 若无法获取类，直接返回 None，调用方将回退处理
+            return None
         except Exception:
             logger.warning(
                 "无法获取 ModelManager 实例，某些操作将回退或失败",
@@ -461,25 +476,47 @@ class PartManager:
             return None
 
     # ===== Part 变更事件处理（从 main_window 迁移）=====
-    def on_source_part_changed(self):
+    def on_source_part_changed(self, part_name: Optional[str] = None, *_args):
         """Source Part 选择变化时的处理"""
         try:
             mm = self._get_model_manager()
             if mm and hasattr(mm, "on_source_part_changed"):
-                return mm.on_source_part_changed()
-            self._inform_model_manager_missing("Source Part 切换")
+                mm.on_source_part_changed()
+            else:
+                self._inform_model_manager_missing("Source Part 切换")
+            # 统一从面板获取当前名称（若未传入）并广播
+            try:
+                if not part_name:
+                    panel = getattr(self.gui, "source_panel", None)
+                    if panel is not None and hasattr(panel, "part_selector"):
+                        part_name = panel.part_selector.currentText()
+                if part_name:
+                    self.signal_bus.sourcePartChanged.emit(str(part_name))
+            except Exception:
+                logger.debug("发射 sourcePartChanged 失败", exc_info=True)
             return None
         except Exception:
             logger.exception("on_source_part_changed delegation failed")
             return None
 
-    def on_target_part_changed(self):
+    def on_target_part_changed(self, part_name: Optional[str] = None, *_args):
         """Target Part 选择变化时的处理"""
         try:
             mm = self._get_model_manager()
             if mm and hasattr(mm, "on_target_part_changed"):
-                return mm.on_target_part_changed()
-            self._inform_model_manager_missing("Target Part 切换")
+                mm.on_target_part_changed()
+            else:
+                self._inform_model_manager_missing("Target Part 切换")
+            # 统一从面板获取当前名称（若未传入）并广播
+            try:
+                if not part_name:
+                    panel = getattr(self.gui, "target_panel", None)
+                    if panel is not None and hasattr(panel, "part_selector"):
+                        part_name = panel.part_selector.currentText()
+                if part_name:
+                    self.signal_bus.targetPartChanged.emit(str(part_name))
+            except Exception:
+                logger.debug("发射 targetPartChanged 失败", exc_info=True)
             return None
         except Exception:
             logger.exception("on_target_part_changed delegation failed")

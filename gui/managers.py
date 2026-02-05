@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from PySide6.QtWidgets import QWidget
+from gui.status_message_queue import MessagePriority
 
 _logger = logging.getLogger(__name__)
 
@@ -127,7 +128,11 @@ def _report_ui_exception(parent: QWidget, context: str, exc_info=True):
             from gui.signal_bus import SignalBus
 
             try:
-                SignalBus.instance().statusMessage.emit(f"提示：{context}", 5000, 0)
+                SignalBus.instance().statusMessage.emit(
+                    f"提示：{context}",
+                    5000,
+                    MessagePriority.LOW,
+                )
                 return
             except Exception:
                 pass
@@ -180,7 +185,7 @@ def report_user_error(
 
         try:
             # 优先级：错误=高，警告=中
-            priority = 1 if not is_warning else 0
+            priority = MessagePriority.CRITICAL if not is_warning else MessagePriority.HIGH
             SignalBus.instance().statusMessage.emit(
                 f"{title}：{message}", 8000, priority
             )
@@ -280,6 +285,8 @@ class FileSelectionManager:
         self._data_loaded = False
         self._config_loaded = False
         self._operation_performed = False
+        # 批处理多选文件列表（集中存储，避免多处副本不一致）
+        self._selected_paths = None
         # 内部锁计数：允许嵌套的锁请求（例如批处理启动/子流程），
         # 仅当计数为0->1时真正禁用控件，计数回退到0时恢复控件。
         self._lock_count = 0
@@ -294,6 +301,33 @@ class FileSelectionManager:
         # 被用户标记为跳过的行：{str(file): set(row_idx)}
         # 用于在处理时忽略特定行（可序列化到 Project 文件）
         self.skipped_rows_by_file: Dict[str, Optional[set]] = {}
+
+    # ---- 多选文件列表 API ----
+    def set_selected_paths(self, paths) -> None:
+        """设置批处理多选文件列表。"""
+
+        @report_exceptions("设置多选文件列表失败")
+        def _impl(paths):
+            self._selected_paths = list(paths) if paths else None
+            try:
+                setattr(self.parent, "_selected_paths", self._selected_paths)
+            except Exception:
+                _report_ui_exception(self.parent, "同步 _selected_paths 到父窗口失败")
+
+        return _impl(paths)
+
+    def get_selected_paths(self):
+        """获取批处理多选文件列表。"""
+
+        @report_exceptions("读取多选文件列表失败")
+        def _impl():
+            return self._selected_paths
+
+        return _impl()
+
+    def clear_selected_paths(self) -> None:
+        """清空批处理多选文件列表。"""
+        return self.set_selected_paths(None)
 
     # ---- skipped rows API ----
     def mark_skipped_rows(self, file_path: Path, rows) -> None:
@@ -975,7 +1009,7 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Target 变体切换失败: {e}", exc_info=True)
 
-    def on_source_part_changed(self):
+    def on_source_part_changed(self, *_args, **_kwargs):
         logger = __import__("logging").getLogger(__name__)
         try:
             logger.debug("=== on_source_part_changed 被调用 ===")
@@ -1033,7 +1067,7 @@ class ModelManager:
         except Exception as e:
             logger.error(f"on_source_part_changed 失败: {e}", exc_info=True)
 
-    def on_target_part_changed(self):
+    def on_target_part_changed(self, *_args, **_kwargs):
         logger = __import__("logging").getLogger(__name__)
         try:
             logger.debug("=== on_target_part_changed 被调用 ===")
@@ -1100,8 +1134,28 @@ class UIStateManager:
 
     def __init__(self, parent: QWidget):
         self.parent = parent
-        # 初始化标志：允许在初始化期间跳过 UI 刷新，避免多次更新导致的闪烁
-        self._is_initializing = True
+        # 初始化标志由主窗口统一管理，此处仅确保主窗口字段存在
+        if not hasattr(self.parent, "_is_initializing"):
+            try:
+                self.parent._is_initializing = True
+            except Exception:
+                pass
+
+    @property
+    def _is_initializing(self) -> bool:
+        """初始化标志代理到主窗口，避免多处维护导致状态不一致。"""
+        try:
+            return bool(getattr(self.parent, "_is_initializing", False))
+        except Exception:
+            return False
+
+    @_is_initializing.setter
+    def _is_initializing(self, value: bool) -> None:
+        """写入主窗口初始化标志，保持单一数据源。"""
+        try:
+            self.parent._is_initializing = bool(value)
+        except Exception:
+            pass
 
     def set_config_panel_visible(self, visible: bool) -> None:
         # 直接实现显示/隐藏配置编辑器的行为，避免递归委托到主窗口同名方法。

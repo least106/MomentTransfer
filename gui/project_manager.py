@@ -149,6 +149,20 @@ class ProjectManager:
                     "访问 file_selection_manager 失败（非致命）", exc_info=True
                 )
 
+            # 清理主窗口的已修改标志（避免旧状态干扰）
+            try:
+                if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                    try:
+                        self.gui.ui_state_manager.clear_user_modified()
+                    except Exception:
+                        pass
+                try:
+                    self.gui.operation_performed = False
+                except Exception:
+                    pass
+            except Exception:
+                logger.debug("清理已修改标志失败（非致命）", exc_info=True)
+
             # 清理主窗口上旧的属性与文件树、列表缓存
             try:
                 for attr in (
