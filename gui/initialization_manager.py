@@ -610,15 +610,8 @@ class InitializationManager:
         except Exception:
             logger.debug("绑定 configLoaded 失败", exc_info=True)
 
-        # 初始刷新一次控件状态（确保开始/保存/选项卡按需禁用）
-        try:
-            if hasattr(self.main_window, "_refresh_controls_state"):
-                try:
-                    self.main_window._refresh_controls_state()
-                except Exception:
-                    logger.debug("刷新控件状态失败（非致命）", exc_info=True)
-        except Exception:
-            logger.debug("调度刷新控件状态失败（非致命）", exc_info=True)
+        # 注意：不在初始化期间调用 _refresh_controls_state()
+        # 初始化完成后，finalize_initialization() 会进行统一刷新以避免多次 UI 更新导致的按钮闪烁
 
     def finalize_initialization(self):
         """完成初始化 - 在 showEvent 后调用"""
@@ -654,8 +647,22 @@ class InitializationManager:
                 max_wait = 5.0
                 if _is_ready() or elapsed >= max_wait:
                     try:
+                        # 统一管理 _is_initializing 标志：先在主窗口和 InitializationManager 中禁用
                         self._is_initializing = False
                         self.main_window._is_initializing = False
+
+                        # 同步到 UIStateManager，使其中的状态 setter 能够正常刷新 UI
+                        try:
+                            if hasattr(self.main_window, "ui_state_manager"):
+                                self.main_window.ui_state_manager._is_initializing = (
+                                    False
+                                )
+                        except Exception:
+                            logger.debug(
+                                "同步 UIStateManager._is_initializing 失败（非致命）",
+                                exc_info=True,
+                            )
+
                         try:
                             self._hide_initializing_overlay()
                         except Exception:
@@ -677,6 +684,7 @@ class InitializationManager:
                                             "启用按钮 %s 失败", btn_name, exc_info=True
                                         )
                             # 刷新控件状态，让 managers 中的逻辑决定保存按钮是否可用（基于 is_operation_performed()）
+                            # 此时 _is_initializing=False，所以 set_*_loaded() 会调用 refresh_controls_state()
                             try:
                                 if hasattr(self.main_window, "_refresh_controls_state"):
                                     self.main_window._refresh_controls_state()

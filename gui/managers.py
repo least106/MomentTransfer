@@ -1100,6 +1100,8 @@ class UIStateManager:
 
     def __init__(self, parent: QWidget):
         self.parent = parent
+        # 初始化标志：允许在初始化期间跳过 UI 刷新，避免多次更新导致的闪烁
+        self._is_initializing = True
 
     def set_config_panel_visible(self, visible: bool) -> None:
         # 直接实现显示/隐藏配置编辑器的行为，避免递归委托到主窗口同名方法。
@@ -1430,25 +1432,32 @@ class UIStateManager:
 
     # 状态设置辅助方法，鼓励通过 UIStateManager 管理窗口级状态
     def set_data_loaded(self, loaded: bool) -> None:
-        """设置数据已加载标志并刷新控件状态。
+        """设置数据已加载标志并有条件地刷新控件状态。
 
         注意：不写回 parent.data_loaded，避免属性 setter 递归调用。
         parent 的属性 getter 会读取 _data_loaded，setter 只更新 UIStateManager 内部状态。
+
+        初始化期间跳过刷新以避免多次 UI 更新导致的按钮闪烁。
         """
         try:
             self._data_loaded = bool(loaded)
-            self.refresh_controls_state()
+            # 初始化期间跳过刷新，由 InitializationManager.finalize_initialization() 统一刷新
+            if not self._is_initializing:
+                self.refresh_controls_state()
         except Exception:
             pass
 
     def set_config_loaded(self, loaded: bool) -> None:
-        """设置配置已加载标志并刷新控件状态。
+        """设置配置已加载标志并有条件地刷新控件状态。
 
         注意：不写回 parent.config_loaded，避免属性 setter 递归调用。
+        初始化期间跳过刷新以避免多次 UI 更新导致的按钮闪烁。
         """
         try:
             self._config_loaded = bool(loaded)
-            self.refresh_controls_state()
+            # 初始化期间跳过刷新，由 InitializationManager.finalize_initialization() 统一刷新
+            if not self._is_initializing:
+                self.refresh_controls_state()
         except Exception:
             pass
 
@@ -1456,10 +1465,13 @@ class UIStateManager:
         """设置用户已执行操作标志（用于启用保存按钮）。
 
         注意：不写回 parent.operation_performed，避免属性 setter 递归调用。
+        初始化期间跳过刷新以避免多次 UI 更新导致的按钮闪烁。
         """
         try:
             self._operation_performed = bool(performed)
-            self.refresh_controls_state()
+            # 初始化期间跳过刷新，由 InitializationManager.finalize_initialization() 统一刷新
+            if not self._is_initializing:
+                self.refresh_controls_state()
         except Exception:
             pass
 
