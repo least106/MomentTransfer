@@ -200,18 +200,30 @@ def process_special_format_file(
     """兼容入口：委托给 `src.special_format_processor.process_special_format_file`。"""
     # 以下延迟导入是为避免循环导入；同时该函数参数较多，暂在此处抑制 pylint 的相关复杂度/导入位置警告。
     # pylint: disable=R0913,import-outside-toplevel
-    from src.special_format_processor import process_special_format_file as _proc
+    import importlib
+
+    _proc_mod = importlib.import_module("src.special_format_processor")
+
+    _proc = _proc_mod.process_special_format_file
+    collect_kwargs = getattr(_proc_mod, "_collect_part_kwargs", None)
+    if callable(collect_kwargs):
+        part_kwargs = collect_kwargs(locals())
+    else:
+        part_kwargs = {
+            "part_target_mapping": part_target_mapping,
+            "part_source_mapping": part_source_mapping,
+            "part_row_selection": part_row_selection,
+            "timestamp_format": timestamp_format,
+            "overwrite": overwrite,
+        }
 
     return _proc(
         file_path,
         project_data,
         output_dir,
-        part_target_mapping=part_target_mapping,
-        part_source_mapping=part_source_mapping,
-        part_row_selection=part_row_selection,
-        timestamp_format=timestamp_format,
-        overwrite=overwrite,
+        **part_kwargs,
         return_report=return_report,
+        parse_func=parse_special_format_file,
     )
 
 

@@ -38,6 +38,7 @@ from src.cli_helpers import (
 )
 from src.physics import AeroCalculator
 from src.special_format_detector import looks_like_special_format
+from src.special_format_parser import parse_special_format_file
 from src.special_format_processor import process_special_format_file
 
 # 进程级缓存：worker 进程中可能会重用的全局变量（在子进程入口处按需初始化）
@@ -332,6 +333,7 @@ def _handle_special_format_file(
             output_dir,
             timestamp_format=config.timestamp_format,
             overwrite=config.overwrite,
+            parse_func=parse_special_format_file,
         )
         if not outputs:
             logger.warning(

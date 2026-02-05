@@ -7,15 +7,27 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 
 from src.part_inference import format_inference_error, infer_parts_for_file
 from src.physics import AeroCalculator
-from src.special_format_parser import parse_special_format_file
 
 logger = logging.getLogger(__name__)
+
+_PART_PROCESS_KEYS = (
+    "part_target_mapping",
+    "part_source_mapping",
+    "part_row_selection",
+    "timestamp_format",
+    "overwrite",
+)
+
+
+def _collect_part_kwargs(values: Dict[str, object]) -> Dict[str, object]:
+    """从给定字典中提取与 part 处理相关的参数。"""
+    return {key: values.get(key) for key in _PART_PROCESS_KEYS}
 
 
 # pylint: disable=R0913,R0914,R0915,R0912,R0911
@@ -317,6 +329,8 @@ def _make_handle_single_part(
 ):
     """返回一个可调用对象，用于按 (part_name, df) 处理单个 part。"""
 
+    part_kwargs = _collect_part_kwargs(locals())
+
     def _handle(part_name: str, df):
         return _process_single_part(
             part_name,
@@ -324,11 +338,7 @@ def _make_handle_single_part(
             file_path=file_path,
             project_data=project_data,
             output_dir=output_dir,
-            part_target_mapping=part_target_mapping,
-            part_source_mapping=part_source_mapping,
-            part_row_selection=part_row_selection,
-            timestamp_format=timestamp_format,
-            overwrite=overwrite,
+            **part_kwargs,
         )
 
     return _handle
@@ -371,6 +381,7 @@ def _process_special_format_file_core(
     project_data,
     output_dir: Path,
     options: ProcessOptions,
+    parse_func: Callable[[Path], Dict[str, pd.DataFrame]],
     return_report: bool = False,
 ):
     """核心实现：接收打包好的 options，减少参数个数。"""
@@ -381,14 +392,9 @@ def _process_special_format_file_core(
         file_path,
         project_data,
         output_dir,
-        part_target_mapping=options.part_target_mapping,
-        part_source_mapping=options.part_source_mapping,
-        part_row_selection=options.part_row_selection,
-        timestamp_format=options.timestamp_format,
-        overwrite=options.overwrite,
+        **_collect_part_kwargs(vars(options)),
     )
-
-    data_dict = parse_special_format_file(file_path)
+    data_dict = parse_func(file_path)
     outputs, report = _process_parts(handle, data_dict)
 
     logger.info(
@@ -414,6 +420,7 @@ def process_special_format_file(
     timestamp_format: str = "%Y%m%d_%H%M%S",
     overwrite: bool = False,
     return_report: bool = False,
+    parse_func: Optional[Callable[[Path], Dict[str, pd.DataFrame]]] = None,
 ) -> List[Path]:
     """处理特殊格式文件并输出结果文件，供 CLI/GUI 复用。
 
@@ -427,19 +434,18 @@ def process_special_format_file(
         timestamp_format: 时间戳格式
         overwrite: 是否覆盖已存在的输出文件
         return_report: 是否返回处理报告
+        parse_func: 解析函数（需传入 src.special_format_parser.parse_special_format_file）
     """
-    options = ProcessOptions(
-        part_target_mapping=part_target_mapping,
-        part_source_mapping=part_source_mapping,
-        part_row_selection=part_row_selection,
-        timestamp_format=timestamp_format,
-        overwrite=overwrite,
-    )
+    if parse_func is None:
+        raise ValueError("parse_func 不能为空，请传入 parse_special_format_file")
+
+    options = ProcessOptions(**_collect_part_kwargs(locals()))
     return _process_special_format_file_core(
         file_path,
         project_data,
         output_dir,
         options,
+        parse_func,
         return_report=return_report,
     )
 
