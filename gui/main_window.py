@@ -94,6 +94,15 @@ class IntegratedAeroGUI(QMainWindow):
         # 状态消息管理器占位符（在初始化时创建）
         self.status_message_manager = None
 
+        # 状态消息队列：处理优先级与多来源竞争
+        try:
+            from gui.status_message_queue import StatusMessageQueue
+
+            self._status_message_queue = StatusMessageQueue()
+        except Exception:
+            self._status_message_queue = None
+            logger.debug("初始化状态消息队列失败（非致命）", exc_info=True)
+
         # 管理器占位（将由 InitializationManager 初始化）
         self.config_manager = None
         self.part_manager = None
@@ -379,62 +388,90 @@ class IntegratedAeroGUI(QMainWindow):
     def _on_status_message(self, message: str, timeout_ms: int, priority: int) -> None:
         """统一处理状态消息：按优先级显示，并在超时后清理。
 
-        更高优先级的消息不会被低优先级覆盖。
+        使用队列机制确保：
+        - 高优先级消息不被低优先级覆盖
+        - 并发消息按优先级与时间戳排序
+        - 消息超时后自动清理并显示下一条
         """
         try:
-            # 获取当前优先级
-            try:
-                cur_pr = int(getattr(self, "_status_priority", 0))
-            except Exception:
-                cur_pr = 0
+            # 确保有队列
+            if self._status_message_queue is None:
+                return
 
-            # 若 incoming 优先级低于当前且已有未过期消息，则忽略
-            try:
-                t_old = getattr(self, "_status_clear_timer", None)
-                if (
-                    int(priority) < cur_pr
-                    and t_old is not None
-                    and getattr(t_old, "isActive", lambda: False)()
-                ):
-                    return
-            except Exception:
-                # 任何判定失败时不阻止显示新消息
-                pass
+            from gui.status_message_queue import StatusMessage
 
-            # 统一清理已有定时器与 token，保证原子替换
-            try:
-                self._clear_status_state()
-            except Exception:
-                pass
+            # 创建新消息对象
+            new_msg = StatusMessage(
+                text=message,
+                timeout_ms=int(timeout_ms) if timeout_ms else 0,
+                priority=int(priority) if priority is not None else 0,
+                source="signal",
+            )
 
-            # 立刻在状态栏显示消息（由我们控制何时清理）
+            # 检查是否应接受此消息
+            should_accept, interrupt_token = (
+                self._status_message_queue.should_accept_message(new_msg)
+            )
+            if not should_accept:
+                # 新消息优先级低，加入队列但不显示
+                self._status_message_queue.add_message(
+                    message, timeout_ms, priority, "signal"
+                )
+                return
+
+            # 如果需要中断当前消息，清除其定时器
+            if interrupt_token is not None:
+                try:
+                    t_old = getattr(self, "_status_clear_timer", None)
+                    if t_old is not None:
+                        try:
+                            t_old.stop()
+                        except Exception:
+                            pass
+                except Exception:
+                    logger.debug("清除旧定时器失败（非致命）", exc_info=True)
+
+            # 添加消息到队列
+            self._status_message_queue.add_message(
+                message, timeout_ms, priority, "signal"
+            )
+
+            # 显示当前应显示的消息（队列顶部）
+            msg_to_display = self._status_message_queue.get_next_message()
+            if msg_to_display is not None:
+                self._display_status_message(msg_to_display)
+        except Exception:
+            logger.debug("处理 statusMessage 信号失败", exc_info=True)
+
+    def _display_status_message(self, msg) -> None:
+        """显示指定的状态消息并设置超时。
+
+        Args:
+            msg: StatusMessage 对象
+        """
+        try:
+            # 记录当前显示的消息
+            self._status_message_queue.set_current_message(msg)
+
+            # 在状态栏显示消息
             try:
                 sb = self.statusBar()
                 if sb is not None:
-                    sb.showMessage(message)
+                    sb.showMessage(msg.text)
             except Exception:
                 logger.debug("显示状态栏消息失败", exc_info=True)
 
-            # 设置当前优先级（用于后续清理判断）
-            try:
-                self._status_priority = int(priority) if priority is not None else 0
-            except Exception:
-                self._status_priority = 0
-
-            # 若指定了超时，使用 token + 单一计时器清理
-            try:
-                if timeout_ms and int(timeout_ms) > 0:
-                    timeout_val = int(timeout_ms)
-                    token = uuid.uuid4().hex
-                    try:
-                        self._status_token = token
-                    except Exception:
-                        logger.debug("设置状态 token 失败（非致命）", exc_info=True)
-                    self._start_status_timer(timeout_val, token)
-            except Exception:
-                logger.debug("设置状态清理定时器失败（非致命）", exc_info=True)
+            # 设置超时定时器
+            if msg.timeout_ms > 0:
+                try:
+                    self._start_status_timer(msg.timeout_ms, msg.token)
+                except Exception:
+                    logger.debug("设置状态清理定时器失败（非致命）", exc_info=True)
+            else:
+                # 永久显示，不设置定时器
+                pass
         except Exception:
-            logger.debug("处理 statusMessage 信号失败", exc_info=True)
+            logger.debug("显示状态消息失败（非致命）", exc_info=True)
 
     def _clear_status_if_priority(self, priority_to_clear: int) -> None:
         try:
@@ -458,24 +495,41 @@ class IntegratedAeroGUI(QMainWindow):
             logger.debug("清理状态消息失败", exc_info=True)
 
     def _clear_status_if_token(self, token: str) -> None:
+        """按 token 清理消息，然后显示队列中的下一条消息（如果有的话）。"""
         try:
-            cur_tok = getattr(self, "_status_token", None)
-            if cur_tok != token:
+            # 检查队列是否存在
+            if self._status_message_queue is None:
+                # 回退到旧的清理逻辑
+                cur_tok = getattr(self, "_status_token", None)
+                if cur_tok != token:
+                    return
+                try:
+                    sb = self.statusBar()
+                    if sb is not None:
+                        sb.clearMessage()
+                except Exception:
+                    logger.debug("清理状态栏消息失败（非致命）", exc_info=True)
                 return
-            try:
-                sb = self.statusBar()
-                if sb is not None:
-                    sb.clearMessage()
-            except Exception:
-                logger.debug("按 token 清理状态栏消息失败（非致命）", exc_info=True)
-            try:
-                self._status_priority = 0
-            except Exception:
-                logger.debug("按 token 重置状态优先级失败（非致命）", exc_info=True)
-            try:
-                self._clear_status_state()
-            except Exception:
-                pass
+
+            # 检查是否是当前显示的消息的 token
+            if not self._status_message_queue.message_is_current(token):
+                return
+
+            # 从队列中移除此消息
+            self._status_message_queue.remove_message(token)
+
+            # 显示队列中的下一条消息
+            next_msg = self._status_message_queue.get_next_message()
+            if next_msg is not None:
+                self._display_status_message(next_msg)
+            else:
+                # 队列为空，清空状态栏
+                try:
+                    sb = self.statusBar()
+                    if sb is not None:
+                        sb.clearMessage()
+                except Exception:
+                    logger.debug("清理状态栏消息失败（非致命）", exc_info=True)
         except Exception:
             logger.debug("按 token 清理状态消息失败", exc_info=True)
 
