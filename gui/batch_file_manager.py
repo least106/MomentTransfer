@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List
 
 from PySide6.QtWidgets import QCheckBox, QDialog, QFileDialog, QHBoxLayout
+from gui.status_message_queue import MessagePriority
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,11 @@ class BatchFileManager:
 
                 bus = SignalBus.instance()
                 # 使用永久显示（timeout=0）和高优先级，确保步骤提示明显
-                bus.statusMessage.emit("📂 步骤2：在文件列表选择数据文件", 0, 2)
+                bus.statusMessage.emit(
+                    "📂 步骤2：在文件列表选择数据文件",
+                    0,
+                    MessagePriority.HIGH,
+                )
             except Exception:
                 logger.debug("更新步骤2提示失败（非致命）", exc_info=True)
         except Exception:

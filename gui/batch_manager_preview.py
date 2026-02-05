@@ -17,6 +17,8 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem, QTreeWidgetItem
 
 from gui.paged_table import PagedTableWidget
+from gui.table_filter import TableFilterWidget
+from gui.status_message_queue import MessagePriority
 
 logger = logging.getLogger(__name__)
 
@@ -74,17 +76,66 @@ def _create_preview_table(
     max_rows: int = 200,
     **kwargs,
 ):
-    """创建带勾选列的数据预览表格（分页版）。"""
+    """创建带勾选列的数据预览表格（分页版）和筛选控件。
+
+    返回值：如果成功创建分页表格，返回包含表格与筛选控件的容器；否则回退到简单表格。
+    """
     try:
-        widget = PagedTableWidget(
+        from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+        # 创建分页表格
+        paged_table = PagedTableWidget(
             df,
             set(selected_set or set()),
             on_toggle,
             page_size=max(1, int(max_rows)),
             max_cols=kwargs.get("max_cols", None),
         )
-        return widget
-    except Exception:
+
+        # 创建筛选控件
+        filter_widget = TableFilterWidget(paged_table.table)
+        filter_manager = filter_widget.get_filter_manager()
+
+        # 当筛选条件变化时，更新分页表格的隐藏行，使翻页跳过空页
+        def _on_filter_changed():
+            """筛选条件变化时的回调"""
+            try:
+                hidden = filter_manager.get_hidden_rows()
+                paged_table.set_hidden_rows(hidden)
+            except Exception as e:
+                logger.debug(f"筛选条件变化时更新分页表格失败: {e}", exc_info=True)
+
+        # 在筛选按钮被点击时更新隐藏行
+        filter_widget.btn_add_filter.clicked.connect(_on_filter_changed)
+        filter_widget.btn_clear_filters.clicked.connect(_on_filter_changed)
+
+        # 创建容器，包含筛选控件和分页表格
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.addWidget(filter_widget)
+        layout.addWidget(paged_table)
+
+        # 保持对 filter_widget 和 paged_table 的引用（供后续访问）
+        container._paged_table = paged_table
+        container._filter_widget = filter_widget
+
+        # 代理一些常用方法到 paged_table，使兼容旧代码
+        container.set_filter_with_df = paged_table.set_filter_with_df
+        container.rowCount = paged_table.rowCount
+        container.columnCount = paged_table.columnCount
+        container.cellWidget = paged_table.cellWidget
+        container.setItem = paged_table.setItem
+        container.uncheck_rows_if_visible = paged_table.uncheck_rows_if_visible
+        container.get_column_names = paged_table.get_column_names
+        container.get_display_headers = paged_table.get_display_headers
+        # 兼容旧代码中对 .table 的访问
+        container.table = paged_table.table
+
+        return container
+    except Exception as e:
+        logger.debug(f"创建分页表格和筛选控件失败: {e}", exc_info=True)
         return _make_simple_preview_table(
             df,
             selected_set,
@@ -208,10 +259,16 @@ def _apply_quick_filter_to_table(table, df, qcol, qval, operator: str) -> None:
 
                 bus = SignalBus.instance()
                 if df is None or df.empty:
-                    bus.statusMessage.emit("快速筛选未生效：当前数据为空", 5000, 1)
+                    bus.statusMessage.emit(
+                        "快速筛选未生效：当前数据为空",
+                        5000,
+                        MessagePriority.MEDIUM,
+                    )
                 else:
                     bus.statusMessage.emit(
-                        f"快速筛选未生效：列不存在（{qcol}）", 5000, 1
+                        f"快速筛选未生效：列不存在（{qcol}）",
+                        5000,
+                        MessagePriority.MEDIUM,
                     )
             except Exception:
                 logger.debug("发送快速筛选反馈失败（非致命）", exc_info=True)
