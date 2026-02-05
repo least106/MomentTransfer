@@ -168,30 +168,11 @@ class BatchFileManager:
             logger.debug("切换到文件列表 Tab 失败", exc_info=True)
 
     def prepare_file_list_ui(self, manager_instance):
-        """准备文件列表界面（设置 workflow step 与状态栏）
+        """准备文件列表界面（工作流步骤由 _scan_and_populate_files 管理）
 
         Args:
             manager_instance: BatchManager 实例
         """
-        try:
-            bp = getattr(manager_instance.gui, "batch_panel", None)
-            if bp is not None and hasattr(bp, "set_workflow_step"):
-                try:
-                    bp.set_workflow_step("step2")
-                except (IndexError, KeyError, TypeError, ValueError) as e:
-                    logger.debug("处理筛选回退行时出错: %s", e, exc_info=True)
-                except Exception:
-                    logger.debug("处理筛选回退行时发生未知错误", exc_info=True)
-        except Exception:
-            try:
-                from gui.managers import _report_ui_exception
-
-                _report_ui_exception(manager_instance.gui, "创建浏览对话失败")
-            except Exception:
-                # 保持向后兼容：若无法展示提示则记录调试信息
-                logger.debug("创建浏览对话失败", exc_info=True)
-            return None
-
         try:
             # 使用 SignalBus 统一状态消息显示步骤2
             try:

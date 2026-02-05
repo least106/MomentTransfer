@@ -160,6 +160,10 @@ class BatchManager:
         self._selected_paths = None  # 用户选择的多个路径
         self._last_history_record_id = None  # 最近的历史记录ID
 
+        # 工作流程步骤追踪：用于保持 UI 状态与实际流程同步
+        # 值为: "init"（初始化）、"step1"（选择文件）、"step2"（列表选择）、"step3"（配置选择）
+        self._current_workflow_step = "init"
+
         # 初始化批处理状态管理器
         from gui.batch_state import BatchStateManager
 
@@ -275,8 +279,21 @@ class BatchManager:
 
     # 向后兼容：提供旧代码可能调用的接口
     def _set_workflow_step(self, step: str) -> None:
-        """兼容旧接口：将 workflow step 转发到 GUI 的 BatchPanel（若存在）。"""
+        """设置工作流程步骤并同步到 UI。
+
+        此方法负责：
+        1. 记录当前步骤（用于状态恢复）
+        2. 更新 BatchPanel 的 UI 显示（隐藏/显示相关控件）
+        3. 处理异常以确保不中断流程
+
+        Args:
+            step: 工作流程步骤（"init", "step1", "step2", "step3"）
+        """
         try:
+            # 记录当前步骤，便于后续恢复或查询
+            self._current_workflow_step = (step or "init").strip()
+
+            # 转发到 BatchPanel 以更新 UI
             bp = getattr(self.gui, "batch_panel", None)
             if bp is not None and hasattr(bp, "set_workflow_step"):
                 try:
@@ -869,7 +886,14 @@ class BatchManager:
 
             if not files:
                 try:
-                    # 恢复到步骤1 提示：使用 SignalBus 统一状态消息
+                    # 恢复到步骤1：同时更新 workflow step 和状态栏提示
+                    try:
+                        self._set_workflow_step("step1")
+                    except Exception:
+                        logger.debug(
+                            "设置 workflow step 到 step1 失败（非致命）", exc_info=True
+                        )
+
                     try:
                         from gui.signal_bus import SignalBus
 
@@ -924,6 +948,14 @@ class BatchManager:
                 self._populate_file_tree_from_files(files, base_path, p)
             except Exception:
                 logger.debug("填充文件树失败", exc_info=True)
+
+            # 确保 workflow step 设置为 step2（文件列表选择阶段）
+            try:
+                self._set_workflow_step("step2")
+            except Exception:
+                logger.debug(
+                    "设置 workflow step 到 step2 失败（非致命）", exc_info=True
+                )
 
             # 刷新集中映射面板
             try:

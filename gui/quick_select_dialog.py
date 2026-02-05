@@ -546,6 +546,12 @@ class QuickSelectDialog(QDialog):
             self._save_state_to_gui()
         except Exception:
             pass
+        # 快速选择完成后，刷新 workflow step 以确保 UI 同步
+        try:
+            if hasattr(self.batch, "_set_workflow_step"):
+                self.batch._set_workflow_step("step2")
+        except Exception:
+            logger.debug("设置 workflow step 失败（非致命）", exc_info=True)
         super().accept()
 
     def reject(self) -> None:
