@@ -112,12 +112,8 @@ class TestIssue12ProjectFileTreeRestore:
         # 模拟GUI
         mock_gui = MagicMock()
         mock_fsm = MagicMock()
-        mock_fsm.special_part_mapping_by_file = {
-            "/path/file1.csv": {"row1": "WING"}
-        }
-        mock_fsm.table_row_selection_by_file = {
-            "/path/file1.csv": {0, 1, 2}
-        }
+        mock_fsm.special_part_mapping_by_file = {"/path/file1.csv": {"row1": "WING"}}
+        mock_fsm.table_row_selection_by_file = {"/path/file1.csv": {0, 1, 2}}
         mock_fsm.file_part_selection_by_file = {
             "/path/file1.csv": {"source": "Body", "target": "Wing"}
         }
@@ -200,7 +196,7 @@ class TestIssue12ProjectFileTreeRestore:
 
         # 恢复并验证刷新被调用
         pm._restore_data_files(project_data)
-        
+
         # 验证refresh方法被调用（如果batch_manager存在）
         logger.info("✓ UI刷新触发测试通过")
 
@@ -422,12 +418,8 @@ class TestIntegration:
         # 准备数据
         mock_gui = MagicMock()
         mock_fsm = MagicMock()
-        mock_fsm.special_part_mapping_by_file = {
-            "/test/file1.csv": {"row1": "WING"}
-        }
-        mock_fsm.table_row_selection_by_file = {
-            "/test/file1.csv": {0, 1, 2}
-        }
+        mock_fsm.special_part_mapping_by_file = {"/test/file1.csv": {"row1": "WING"}}
+        mock_fsm.table_row_selection_by_file = {"/test/file1.csv": {0, 1, 2}}
         mock_fsm.file_part_selection_by_file = {
             "/test/file1.csv": {"source": "Body", "target": "Wing"}
         }

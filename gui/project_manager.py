@@ -46,7 +46,7 @@ class ProjectManager:
 
     def cleanup_background_workers(self) -> None:
         """清理所有后台worker，应在应用关闭时调用。
-        
+
         改进点：
         1. 确保所有线程都被正确停止
         2. 删除所有worker引用以允许垃圾回收
@@ -57,24 +57,24 @@ class ProjectManager:
             for worker in list(self._background_workers):
                 try:
                     # 尝试停止线程
-                    if hasattr(worker, 'quit') and callable(worker.quit):
+                    if hasattr(worker, "quit") and callable(worker.quit):
                         worker.quit()
-                    if hasattr(worker, 'wait') and callable(worker.wait):
+                    if hasattr(worker, "wait") and callable(worker.wait):
                         worker.wait(1000)  # 等待最多1秒
                     # 删除worker对象
-                    if hasattr(worker, 'deleteLater') and callable(worker.deleteLater):
+                    if hasattr(worker, "deleteLater") and callable(worker.deleteLater):
                         worker.deleteLater()
                     workers_to_remove.append(worker)
                 except Exception as e:
                     logger.debug(f"清理后台worker失败: {e}", exc_info=True)
-            
+
             # 移除已清理的worker
             for worker in workers_to_remove:
                 try:
                     self._background_workers.remove(worker)
                 except Exception:
                     pass
-            
+
             logger.info(f"后台worker清理完成，已清理 {len(workers_to_remove)} 个")
         except Exception as e:
             logger.debug(f"清理后台workers列表失败: {e}", exc_info=True)
@@ -1051,13 +1051,17 @@ class ProjectManager:
                 )
 
                 # 同时收集所有已加载文件（包括未在mapping中的）
-                all_files = set(special_mappings.keys()) | set(table_selection.keys()) | set(file_part_selection.keys())
-                
+                all_files = (
+                    set(special_mappings.keys())
+                    | set(table_selection.keys())
+                    | set(file_part_selection.keys())
+                )
+
                 for file_path in all_files:
                     mapping = special_mappings.get(file_path, {})
                     row_sel = table_selection.get(file_path)
                     file_parts = file_part_selection.get(file_path, {})
-                    
+
                     data_files.append(
                         {
                             "path": file_path,
@@ -1192,7 +1196,7 @@ class ProjectManager:
 
     def _restore_data_files(self, project_data: Dict) -> bool:
         """恢复数据文件选择和映射
-        
+
         改进点：
         1. 恢复文件列表（调用scan_dir或add_files）
         2. 恢复每个文件的 Part 映射（Source/Target）
@@ -1237,7 +1241,9 @@ class ProjectManager:
                             fsm.table_row_selection_by_file[key] = set(row_sel)
                         except Exception:
                             try:
-                                fsm.table_row_selection_by_file[file_path] = set(row_sel)
+                                fsm.table_row_selection_by_file[file_path] = set(
+                                    row_sel
+                                )
                             except Exception:
                                 pass
 
@@ -1252,7 +1258,7 @@ class ProjectManager:
                                 pass
 
             logger.info(f"已恢复 {len(data_files)} 个数据文件的配置")
-            
+
             # 触发文件树刷新以恢复 UI 显示
             try:
                 if hasattr(self.gui, "batch_manager"):
@@ -1261,7 +1267,7 @@ class ProjectManager:
                         self.gui.batch_manager._safe_refresh_file_statuses()
             except Exception as e:
                 logger.debug(f"触发文件树刷新失败（非致命）: {e}")
-            
+
             return True
         except Exception as e:
             logger.debug(f"恢复数据文件失败: {e}", exc_info=True)

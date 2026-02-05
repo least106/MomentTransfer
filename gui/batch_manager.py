@@ -254,7 +254,9 @@ class BatchManager:
                 bus.sourcePartChanged.connect(self._safe_refresh_file_statuses)
                 bus.targetPartChanged.connect(self._safe_refresh_file_statuses)
             except Exception as e:
-                logger.debug("连接 Part 选择变化信号失败（非致命）: %s", e, exc_info=True)
+                logger.debug(
+                    "连接 Part 选择变化信号失败（非致命）: %s", e, exc_info=True
+                )
         except Exception as e:
             logger.error("获取 SignalBus 失败: %s", e, exc_info=True)
             try:
