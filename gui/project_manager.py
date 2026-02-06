@@ -389,8 +389,9 @@ class ProjectManager:
         """
         # 当在主线程调用时，将实际写盘放到后台线程并显示模态进度，避免阻塞 UI。
         try:
-            from PySide6.QtCore import QEventLoop, QThread
+            from PySide6.QtCore import QEventLoop, QThread, QTimer
             from PySide6.QtWidgets import QApplication, QProgressDialog
+            from gui.progress_config import PROJECT_SAVE_TIMEOUT_SECONDS
 
             in_main_thread = QThread.currentThread() == QApplication.instance().thread()
         except Exception:
@@ -401,26 +402,66 @@ class ProjectManager:
 
                 loop = QEventLoop()
                 dlg = None
+                timer = None
                 try:
                     parent = getattr(self, "gui", None)
-                    dlg = QProgressDialog("正在保存项目…", None, 0, 0, parent)
+                    dlg = QProgressDialog("正在保存项目…", "取消", 0, 0, parent)
                     dlg.setWindowModality(Qt.WindowModal)
-                    try:
-                        dlg.setCancelButton(None)
-                    except Exception:
-                        pass
                     dlg.setMinimumDuration(0)
                     dlg.show()
+                    
+                    # 使用集中配置的超时时间
+                    timeout_seconds = PROJECT_SAVE_TIMEOUT_SECONDS
+                    timer = QTimer()
+                    timer.setSingleShot(True)
                 except Exception:
                     dlg = None
+                    timer = None
 
-                result_holder = {"res": False}
+                result_holder = {"res": False, "timed_out": False, "canceled": False}
+
+                def _on_timeout():
+                    """超时处理"""
+                    try:
+                        result_holder["timed_out"] = True
+                        logger.warning(f"保存项目超时（{timeout_seconds}秒）")
+                        if dlg is not None:
+                            try:
+                                dlg.setLabelText(
+                                    f"保存操作超时（已等待{timeout_seconds}秒），可能遇到问题..."
+                                )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                def _on_canceled():
+                    """用户取消处理"""
+                    try:
+                        result_holder["canceled"] = True
+                        logger.info("用户取消保存项目")
+                        if dlg is not None:
+                            try:
+                                dlg.close()
+                            except Exception:
+                                pass
+                        try:
+                            loop.quit()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
                 def _on_done(success):
                     try:
                         result_holder["res"] = bool(success)
                     except Exception:
                         result_holder["res"] = False
+                    try:
+                        if timer is not None:
+                            timer.stop()
+                    except Exception:
+                        pass
                     try:
                         if dlg is not None:
                             dlg.close()
@@ -434,9 +475,27 @@ class ProjectManager:
                 try:
                     import threading
 
+                    # 连接取消和超时信号
+                    if dlg is not None:
+                        try:
+                            dlg.canceled.connect(_on_canceled)
+                        except Exception:
+                            logger.debug("连接取消信号失败", exc_info=True)
+                    
+                    if timer is not None:
+                        try:
+                            timer.timeout.connect(_on_timeout)
+                            timer.start(timeout_seconds * 1000)  # 转换为毫秒
+                        except Exception:
+                            logger.debug("启动超时定时器失败", exc_info=True)
+
                     def _bg():
                         try:
-                            ok = self._do_save(file_path)
+                            # 检查是否被取消
+                            if result_holder.get("canceled"):
+                                ok = False
+                            else:
+                                ok = self._do_save(file_path)
                         except Exception:
                             logger.exception("主线程回退后台保存异常")
                             ok = False
@@ -448,6 +507,16 @@ class ProjectManager:
                     thr = threading.Thread(target=_bg, daemon=True)
                     thr.start()
                     loop.exec()
+                    
+                    # 检查是否被取消或超时
+                    if result_holder.get("canceled"):
+                        logger.info("用户取消了保存项目操作")
+                        return False
+                    
+                    if result_holder.get("timed_out"):
+                        logger.warning("保存项目操作超时，但可能仍在后台继续")
+                        # 超时不一定失败，返回实际结果
+                    
                     return bool(result_holder.get("res"))
                 except Exception:
                     logger.debug(

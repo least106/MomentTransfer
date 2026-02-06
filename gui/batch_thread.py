@@ -720,6 +720,8 @@ class BatchProcessThread(QThread):
 
     def _read_input_dataframe(self, file_path: Path, cfg_to_use):
         """读取输入文件为 DataFrame（CSV 或 Excel），并发送日志。"""
+        from gui.progress_config import BATCH_LARGE_FILE_ROW_THRESHOLD
+        
         try:
             if file_path.suffix.lower() == ".csv":
                 df = pd.read_csv(
@@ -727,14 +729,28 @@ class BatchProcessThread(QThread):
                     skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
                 )
                 logger.debug("CSV 读取完成: %s 行, %s 列", df.shape[0], df.shape[1])
+                row_count = df.shape[0]
                 self._emit_log(
-                    f"已读取文件 {file_path.name}: {df.shape[0]} 行, {df.shape[1]} 列"
+                    f"已读取文件 {file_path.name}: {row_count} 行, {df.shape[1]} 列"
                 )
+                # 大文件提示：根据配置的阈值显示详细信息
+                if row_count > BATCH_LARGE_FILE_ROW_THRESHOLD:
+                    self._emit_log(
+                        f"  文件较大（{row_count} 行），处理可能需要较长时间..."
+                    )
             else:
                 df = pd.read_excel(
                     file_path,
                     skiprows=int(getattr(cfg_to_use, "skip_rows", 0)),
                 )
+                row_count = df.shape[0]
+                self._emit_log(
+                    f"已读取文件 {file_path.name}: {row_count} 行, {df.shape[1]} 列"
+                )
+                if row_count > BATCH_LARGE_FILE_ROW_THRESHOLD:
+                    self._emit_log(
+                        f"  文件较大（{row_count} 行），处理可能需要较长时间..."
+                    )
             return df
         except Exception as e:
             self._emit_log(f"读取文件失败: {file_path.name} -> {e}")

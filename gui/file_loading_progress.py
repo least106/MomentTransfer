@@ -10,7 +10,13 @@ from typing import Callable, Optional
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import QProgressDialog, QWidget
 
+# 导入集中配置
+from gui.progress_config import FILE_LOADING_SIZE_THRESHOLD_MB
+
 logger = logging.getLogger(__name__)
+
+# 向后兼容的别名
+DEFAULT_SIZE_THRESHOLD_MB = FILE_LOADING_SIZE_THRESHOLD_MB
 
 
 class FileLoadWorker(QObject):
@@ -78,6 +84,9 @@ class FileLoadingProgressDialog:  # pylint: disable=R0903,R0913
         load_func: Callable,
         on_success: Callable,
         on_failure: Optional[Callable] = None,
+        dialog_title: str = "加载文件",
+        custom_message: str = None,
+        on_cancel: Optional[Callable] = None,
         **load_kwargs,
     ):
         """初始化进度对话框管理器
@@ -88,27 +97,37 @@ class FileLoadingProgressDialog:  # pylint: disable=R0903,R0913
             load_func: 加载函数
             on_success: 加载成功的回调函数，签名为 func(result)
             on_failure: 加载失败的回调函数（可选），签名为 func(error_message)
+            dialog_title: 对话框标题，例如 "预览文件" 或 "批处理加载"
+            custom_message: 自定义消息文本，默认为 "正在加载文件: {文件名}..."
+            on_cancel: 用户取消时的回调函数（可选）
             **load_kwargs: 传递给加载函数的参数
         """
         self.parent = parent
         self.file_path = file_path
         self.on_success = on_success
         self.on_failure = on_failure
+        self.on_cancel = on_cancel
 
         # 如果 parent 不是 QWidget，设为 None（避免类型错误）
         safe_parent = parent
         if parent is not None and not isinstance(parent, QWidget):
             safe_parent = None
 
+        # 构建消息文本
+        if custom_message:
+            message_text = custom_message
+        else:
+            message_text = f"正在加载文件: {file_path.name}..."
+
         # 创建进度对话框
         self.progress_dialog = QProgressDialog(
-            f"正在加载文件: {file_path.name}...",
+            message_text,
             "取消",
             0,
             0,  # 不确定进度（indeterminate）
             safe_parent,
         )
-        self.progress_dialog.setWindowTitle("加载文件")
+        self.progress_dialog.setWindowTitle(dialog_title)
         self.progress_dialog.setMinimumDuration(500)  # 0.5秒后显示
         self.progress_dialog.setAutoClose(True)
         self.progress_dialog.setAutoReset(True)
@@ -197,6 +216,13 @@ class FileLoadingProgressDialog:  # pylint: disable=R0903,R0913
                 self.thread.wait()
 
             logger.info(f"用户取消加载文件: {self.file_path.name}")
+            
+            # 调用取消回调
+            if self.on_cancel:
+                try:
+                    self.on_cancel()
+                except Exception as e:
+                    logger.warning(f"执行取消回调失败: {e}", exc_info=True)
 
         except Exception as e:
             logger.error("处理取消事件失败", exc_info=True)
@@ -208,6 +234,9 @@ def load_file_with_progress(
     load_func: Callable,
     on_success: Callable,
     on_failure: Optional[Callable] = None,
+    dialog_title: str = "加载文件",
+    custom_message: str = None,
+    on_cancel: Optional[Callable] = None,
     **load_kwargs,
 ) -> FileLoadingProgressDialog:
     """便捷函数：带进度指示器地加载文件
@@ -218,6 +247,9 @@ def load_file_with_progress(
         load_func: 加载函数
         on_success: 成功回调
         on_failure: 失败回调（可选）
+        dialog_title: 对话框标题（默认"加载文件"）
+        custom_message: 自定义消息（可选）
+        on_cancel: 取消回调（可选）
         **load_kwargs: 加载函数参数
 
     Returns:
@@ -233,12 +265,21 @@ def load_file_with_progress(
             Path("data.csv"),
             pd.read_csv,
             on_loaded,
+            dialog_title="预览文件",
             skiprows=2
         )
         ```
     """
     dialog = FileLoadingProgressDialog(
-        parent, file_path, load_func, on_success, on_failure, **load_kwargs
+        parent,
+        file_path,
+        load_func,
+        on_success,
+        on_failure,
+        dialog_title=dialog_title,
+        custom_message=custom_message,
+        on_cancel=on_cancel,
+        **load_kwargs,
     )
     dialog.start()
     return dialog
