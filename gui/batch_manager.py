@@ -1862,6 +1862,7 @@ class BatchManager:
             try:
                 # 完成后将步骤恢复到步骤1：选择文件或目录
                 from gui.signal_bus import SignalBus
+                from gui.status_message_queue import MessagePriority
 
                 bus = SignalBus.instance()
                 # 使用永久显示（timeout=0）和高优先级
@@ -1878,6 +1879,29 @@ class BatchManager:
                 sb.showMessage(message, 1500)
             except Exception:
                 logger.debug("显示完成提示失败（非致命）", exc_info=True)
+            try:
+                from gui.signal_bus import SignalBus
+                from gui.status_message_queue import MessagePriority
+
+                SignalBus.instance().statusMessage.emit(
+                    f"✓ {message}",
+                    5000,
+                    MessagePriority.HIGH,
+                )
+            except Exception:
+                logger.debug("发送完成状态消息失败（非致命）", exc_info=True)
+            try:
+                if hasattr(self.gui, "notify_nonmodal") and callable(
+                    self.gui.notify_nonmodal
+                ):
+                    self.gui.notify_nonmodal(
+                        summary=f"批处理完成：{message}",
+                        details=str(message),
+                        duration_ms=8000,
+                        button_text="查看详情",
+                    )
+            except Exception:
+                logger.debug("发送完成通知失败（非致命）", exc_info=True)
         except Exception as e:
             logger.error(f"处理完成事件失败: {e}")
 
@@ -1908,6 +1932,29 @@ class BatchManager:
                 )
             except Exception:
                 logger.debug("报告批处理错误失败（非致命）", exc_info=True)
+            try:
+                from gui.signal_bus import SignalBus
+                from gui.status_message_queue import MessagePriority
+
+                SignalBus.instance().statusMessage.emit(
+                    f"✗ 批处理失败：{error_msg}",
+                    8000,
+                    MessagePriority.CRITICAL,
+                )
+            except Exception:
+                logger.debug("发送失败状态消息失败（非致命）", exc_info=True)
+            try:
+                if hasattr(self.gui, "notify_nonmodal") and callable(
+                    self.gui.notify_nonmodal
+                ):
+                    self.gui.notify_nonmodal(
+                        summary="批处理失败：点击查看详情",
+                        details=str(error_msg),
+                        duration_ms=120000,
+                        button_text="查看详情",
+                    )
+            except Exception:
+                logger.debug("发送失败通知失败（非致命）", exc_info=True)
             # 返回 True 表示该 manager 已展示用户可见的错误提示，调用方无需重复展示
             return True
         except Exception as e:

@@ -196,6 +196,17 @@ class StatusMessageQueue:
             # 新消息优先级更高，应中断当前消息
             return (True, self._current_message.token)
 
+        # 若当前为永久提示，而新消息是短时提示且优先级不低，则允许短时打断
+        try:
+            if (
+                self._current_message.timeout_ms == 0
+                and new_msg.timeout_ms > 0
+                and new_msg.priority >= self._current_message.priority
+            ):
+                return (True, self._current_message.token)
+        except Exception:
+            pass
+
         if new_msg.priority < self._current_message.priority:
             # 新消息优先级更低，不中断当前消息
             return (False, None)
