@@ -203,8 +203,7 @@ def process_special_format_file(
     import importlib
 
     _proc_mod = importlib.import_module("src.special_format_processor")
-
-    _proc = _proc_mod.process_special_format_file
+    _proc = getattr(_proc_mod, "process_special_format_file")
     collect_kwargs = getattr(_proc_mod, "_collect_part_kwargs", None)
     if callable(collect_kwargs):
         part_kwargs = collect_kwargs(locals())
