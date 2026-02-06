@@ -270,10 +270,29 @@ class PartMappingPanel(QGroupBox):
                     mapping[part_name] = {"source": "", "target": ""}
                 part_mapping = mapping.get(part_name, {})
 
-                # 如果没有显式映射，则使用传入的默认值
-                if not (part_mapping.get("source") or "").strip() and default_source:
+                # 若旧映射不在当前配置中，先清空再走推测/默认流程
+                try:
+                    src_val = (part_mapping.get("source") or "").strip()
+                    tgt_val = (part_mapping.get("target") or "").strip()
+                    if src_val and src_val not in (source_names or []):
+                        part_mapping["source"] = ""
+                    if tgt_val and tgt_val not in (target_names or []):
+                        part_mapping["target"] = ""
+                except Exception:
+                    logger.debug("清理无效映射失败", exc_info=True)
+
+                # 如果没有显式映射，仅在唯一候选时使用默认值
+                if (
+                    not (part_mapping.get("source") or "").strip()
+                    and default_source
+                    and len(source_names or []) == 1
+                ):
                     part_mapping["source"] = default_source
-                if not (part_mapping.get("target") or "").strip() and default_target:
+                if (
+                    not (part_mapping.get("target") or "").strip()
+                    and default_target
+                    and len(target_names or []) == 1
+                ):
                     part_mapping["target"] = default_target
 
                 child = QTreeWidgetItem([part_name, "", "", ""])

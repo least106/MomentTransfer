@@ -408,7 +408,7 @@ def _infer_source_part(manager, part_name: str, source_names: list) -> Optional[
     策略：
     1. 在source_names中查找同名的
     2. 不区分大小写查找
-    3. 若找不到，默认返回"Global"（如果存在的话）
+    3. 若找不到，不默认选择，避免误选
     """
     result = None
     try:
@@ -443,9 +443,7 @@ def _infer_source_part(manager, part_name: str, source_names: list) -> Optional[
                             nm = [s for s in sns if norm(s) == pn_norm]
                             if len(nm) == 1:
                                 result = nm[0]
-                # 策略4：未找到则默认选择"Global"
-                if result is None and "Global" in sns:
-                    result = "Global"
+                # 不再默认选择 Global，避免误映射
     except Exception:
         logger.debug("推测 source part 失败", exc_info=True)
         result = None
