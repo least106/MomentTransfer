@@ -36,7 +36,7 @@ def configure_logging(log_file: Optional[str], verbose: bool) -> logging.Logger:
 
     if log_file:
         file_h = logging.FileHandler(log_file, encoding="utf-8")
-        file_h.setLevel(logging.DEBUG)
+        file_h.setLevel(log_level)
         file_h.setFormatter(fmt)
         batch_logger.addHandler(file_h)
 

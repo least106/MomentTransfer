@@ -12,7 +12,7 @@ from PySide6 import QtWidgets
 
 from gui.main_window import main as run_main
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def main():

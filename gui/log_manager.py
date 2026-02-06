@@ -20,7 +20,7 @@ class GUILogHandler(logging.Handler):
     def __init__(self, text_widget: QTextEdit):
         super().__init__()
         self.text_widget = text_widget
-        self.setLevel(logging.DEBUG)
+        self.setLevel(logging.INFO)
         # 缓冲高频日志，避免大量单独调度 QTimer.singleShot
         self._lock = threading.Lock()
         self._pending = []  # type: list[str]
@@ -267,7 +267,7 @@ class LoggingManager:
                         e,
                         exc_info=True,
                     )
-                log.setLevel(logging.DEBUG)
+                log.setLevel(logging.INFO)
 
             # 确保 root logger 有文件和控制台回退，以便在 GUI 崩溃或不可用时仍能记录日志
             self._ensure_fallback_handlers()
@@ -284,7 +284,7 @@ class LoggingManager:
         """
         try:
             root = logging.getLogger()
-            root.setLevel(logging.DEBUG)
+            root.setLevel(logging.INFO)
 
             # 准备日志目录
             log_dir = Path.home() / ".momentconversion"
@@ -308,7 +308,7 @@ class LoggingManager:
                 if not has_file:
                     try:
                         fh = logging.FileHandler(log_file, encoding="utf-8")
-                        fh.setLevel(logging.DEBUG)
+                        fh.setLevel(logging.INFO)
                         fh.setFormatter(
                             logging.Formatter(
                                 "%(asctime)s %(levelname)s %(name)s: %(message)s"
