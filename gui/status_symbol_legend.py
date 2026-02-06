@@ -76,6 +76,12 @@ class StatusSymbolLegend(QWidget):
 
     def _init_ui(self) -> None:
         """初始化 UI"""
+        try:
+            self.setWindowTitle("文件验证状态说明")
+            self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+            self.setMinimumSize(360, 260)
+        except Exception:
+            logger.debug("设置帮助面板窗口属性失败", exc_info=True)
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(8)
@@ -195,7 +201,22 @@ class StatusSymbolLegend(QWidget):
 
     def show_legend(self) -> None:
         """显示说明面板"""
+        try:
+            self.adjustSize()
+            parent = self.parentWidget()
+            if parent is not None:
+                pg = parent.geometry()
+                x = pg.x() + max((pg.width() - self.width()) // 2, 0)
+                y = pg.y() + max((pg.height() - self.height()) // 2, 0)
+                self.move(x, y)
+        except Exception:
+            logger.debug("定位帮助面板失败", exc_info=True)
         self.show()
+        try:
+            self.raise_()
+            self.activateWindow()
+        except Exception:
+            pass
 
     def hide_legend(self) -> None:
         """隐藏说明面板"""

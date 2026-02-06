@@ -261,9 +261,16 @@ class BatchPanel(QWidget):
                         self.btn_status_help.clicked.connect(
                             self._status_legend.toggle_legend
                         )
-                    # 触发第一次点击的效果
-                    if self._status_legend is not None:
+                        # 触发第一次点击的效果
                         self._status_legend.show_legend()
+                    else:
+                        # 回退：使用对话框说明
+                        try:
+                            from gui.managers import show_status_symbol_help
+
+                            show_status_symbol_help(self.window())
+                        except Exception:
+                            logger.debug("帮助按钮回退展示失败", exc_info=True)
 
                 self.btn_status_help.clicked.connect(_on_first_click)
             except Exception as e:

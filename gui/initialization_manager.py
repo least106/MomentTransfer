@@ -256,41 +256,12 @@ class InitializationManager:
                 )
                 state_banner.setVisible(False)  # 默认隐藏
                 self.main_window.state_banner = state_banner
-                # 若工具栏已创建，则优先放入工具栏；否则回退到主布局
-                toolbar = getattr(self.main_window, "main_toolbar", None)
-                if toolbar is not None:
-                    try:
-                        state_banner.apply_toolbar_mode()
-                    except Exception:
-                        logger.debug(
-                            "应用状态横幅工具栏模式失败（非致命）", exc_info=True
-                        )
-                    try:
-                        # 将状态横幅插入到弹性间隔之前，使其显示在左侧按钮右边
-                        spacer_action = getattr(
-                            self.main_window, "_toolbar_spacer_action", None
-                        )
-                        if spacer_action is not None:
-                            banner_action = toolbar.insertWidget(
-                                spacer_action, state_banner
-                            )
-                        else:
-                            banner_action = toolbar.addWidget(state_banner)
-                        # 保存 action 引用，便于通过 action 控制可见性
-                        self.main_window._state_banner_action = banner_action
-                        # 设置状态横幅的 action 引用
-                        state_banner.set_toolbar_action(banner_action)
-                        # 初始隐藏 action
-                        banner_action.setVisible(False)
-                        logger.debug("状态横幅已添加到工具栏")
-                    except Exception:
-                        logger.debug(
-                            "状态横幅添加到工具栏失败，回退到主布局", exc_info=True
-                        )
-                        main_layout.addWidget(state_banner)
-                else:
+                # 统一放入主布局，避免挤压工具栏按钮
+                try:
                     main_layout.addWidget(state_banner)
                     logger.debug("状态横幅已添加到主布局")
+                except Exception:
+                    logger.debug("状态横幅添加到主布局失败（非致命）", exc_info=True)
             except Exception as e:
                 logger.debug("创建状态横幅失败（非致命）: %s", e, exc_info=True)
                 self.main_window.state_banner = None
