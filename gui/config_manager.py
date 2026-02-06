@@ -624,10 +624,16 @@ class ConfigManager:
                     "成功",
                     f"配置已保存:\n{saved_path}",
                 )
-                self.gui.statusBar().showMessage(
-                    f"已保存: {saved_path}",
-                    5000,
-                )
+                try:
+                    from gui.status_message_queue import MessagePriority
+
+                    self.signal_bus.statusMessage.emit(
+                        f"已保存: {saved_path}",
+                        5000,
+                        MessagePriority.MEDIUM,
+                    )
+                except Exception:
+                    logger.debug("发送保存状态消息失败（非致命）", exc_info=True)
                 try:
                     self.signal_bus.configSaved.emit(saved_path)
                 except Exception:

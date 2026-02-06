@@ -9,6 +9,32 @@ from PySide6.QtWidgets import QMessageBox
 logger = logging.getLogger(__name__)
 
 
+def report_nonfatal_error(message: str, exception: Optional[Exception] = None):
+    """
+    报告非致命错误，让用户可见（通过状态栏提示）
+    
+    替代原先的 logger.debug("XX失败（非致命）")
+    
+    参数：
+        message: 错误消息
+        exception: 异常对象（可选）
+    """
+    details = str(exception) if exception else None
+    logger.debug(f"{message}: {details}", exc_info=exception is not None)
+    
+    try:
+        from gui.global_error_handler import GlobalErrorHandler, ErrorSeverity
+        GlobalErrorHandler.instance().report_error(
+            title="操作警告",
+            message=message,
+            severity=ErrorSeverity.WARNING,
+            details=details,
+            exc_info=exception is not None
+        )
+    except Exception as e:
+        logger.debug(f"报告非致命错误失败: {e}")
+
+
 def safe_execute(
     func: Callable,
     error_title: str = "操作失败",
@@ -36,16 +62,24 @@ def safe_execute(
     except Exception as e:
         logger.debug(f"{error_message}: {e}", exc_info=True)
 
-        if show_dialog and parent:
-            try:
-                from gui.managers import report_user_error
-
-                report_user_error(parent, error_title, error_message, details=str(e))
-            except Exception:
-                # 如果报告失败，使用简单的消息框
+        # 统一通过 GlobalErrorHandler 报告
+        try:
+            from gui.global_error_handler import GlobalErrorHandler, ErrorSeverity
+            
+            severity = ErrorSeverity.ERROR if show_dialog else ErrorSeverity.WARNING
+            GlobalErrorHandler.instance().report_error(
+                title=error_title,
+                message=error_message,
+                severity=severity,
+                details=str(e),
+                exc_info=True
+            )
+        except Exception:
+            # 降级处理：使用传统方式
+            if show_dialog and parent:
                 try:
-                    msg_text = f"{error_message}\n\n{str(e)}"
-                    QMessageBox.critical(parent, error_title, msg_text)
+                    from gui.managers import report_user_error
+                    report_user_error(parent, error_title, error_message, details=str(e))
                 except Exception:
                     pass
 
@@ -57,6 +91,7 @@ def try_or_log(
     error_message: str = "操作失败",
     log_level: int = logging.DEBUG,
     default_return=None,
+    notify_user: bool = True,
 ):
     """
     尝试执行函数，失败时记录日志
@@ -66,6 +101,7 @@ def try_or_log(
         error_message: 错误消息
         log_level: 日志级别
         default_return: 发生异常时的默认返回值
+        notify_user: 是否通过 GlobalErrorHandler 通知用户（默认 True）
 
     返回：
         函数执行结果或默认返回值
@@ -74,10 +110,25 @@ def try_or_log(
         return func()
     except Exception as e:
         logger.log(log_level, f"{error_message}: {e}", exc_info=True)
+        
+        # 通过 GlobalErrorHandler 让错误对用户可见
+        if notify_user:
+            try:
+                from gui.global_error_handler import GlobalErrorHandler, ErrorSeverity
+                GlobalErrorHandler.instance().report_error(
+                    title="操作异常",
+                    message=error_message,
+                    severity=ErrorSeverity.WARNING,
+                    details=str(e),
+                    exc_info=True
+                )
+            except Exception:
+                pass
+        
         return default_return
 
 
-def try_call_method(obj, method_name: str, *args, default_return=None, **kwargs):
+def try_call_method(obj, method_name: str, *args, default_return=None, notify_user: bool = True, **kwargs):
     """
     安全调用对象的方法
 
@@ -86,6 +137,7 @@ def try_call_method(obj, method_name: str, *args, default_return=None, **kwargs)
         method_name: 方法名
         *args: 位置参数
         default_return: 默认返回值
+        notify_user: 是否通过 GlobalErrorHandler 通知用户（默认 True）
         **kwargs: 关键字参数
 
     返回：
@@ -98,6 +150,20 @@ def try_call_method(obj, method_name: str, *args, default_return=None, **kwargs)
                 return method(*args, **kwargs)
     except Exception as e:
         logger.debug(f"调用 {method_name} 失败: {e}", exc_info=True)
+        
+        # 通过 GlobalErrorHandler 让错误对用户可见
+        if notify_user:
+            try:
+                from gui.global_error_handler import GlobalErrorHandler, ErrorSeverity
+                GlobalErrorHandler.instance().report_error(
+                    title="方法调用失败",
+                    message=f"调用 {method_name} 时出错",
+                    severity=ErrorSeverity.WARNING,
+                    details=str(e),
+                    exc_info=True
+                )
+            except Exception:
+                pass
 
     return default_return
 
@@ -168,7 +234,7 @@ def report_critical_error(
     parent, title: str, message: str, details: Optional[str] = None
 ):
     """
-    报告严重错误
+    报告严重错误（统一路由到 GlobalErrorHandler）
 
     参数：
         parent: 父窗口
@@ -177,17 +243,30 @@ def report_critical_error(
         details: 详细信息
     """
     try:
-        msg = QMessageBox(parent)
-        msg.setIcon(QMessageBox.Critical)
-        msg.setWindowTitle(title)
-        msg.setText(message)
+        from gui.global_error_handler import GlobalErrorHandler, ErrorSeverity
+        
+        GlobalErrorHandler.instance().report_error(
+            title=title,
+            message=message,
+            severity=ErrorSeverity.CRITICAL,
+            details=details,
+            exc_info=False
+        )
+    except Exception as e:
+        logger.debug(f"通过 GlobalErrorHandler 报告错误失败: {e}", exc_info=True)
+        # 降级到传统 QMessageBox
+        try:
+            msg = QMessageBox(parent)
+            msg.setIcon(QMessageBox.Critical)
+            msg.setWindowTitle(title)
+            msg.setText(message)
 
-        if details:
-            msg.setDetailedText(details)
+            if details:
+                msg.setDetailedText(details)
 
-        msg.exec()
-    except Exception:
-        logger.error(f"{title}: {message}", exc_info=True)
+            msg.exec()
+        except Exception:
+            logger.error(f"{title}: {message}", exc_info=True)
 
 
 def get_error_details() -> str:

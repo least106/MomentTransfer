@@ -83,6 +83,14 @@ class GlobalErrorHandler(QObject):
         # 错误历史（最多保留 1000 条）
         self._error_history: List[ErrorRecord] = []
         self._max_history = 1000
+        try:
+            import os
+
+            self._is_testing = bool(
+                os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "1"
+            )
+        except Exception:
+            self._is_testing = False
 
         # 默认的父窗口（用于显示对话框）
         self._default_parent: Optional[QWidget] = None
@@ -184,8 +192,9 @@ class GlobalErrorHandler(QObject):
             context=context or {},
         )
 
-        # 记录日志
-        self._log_error(record)
+        # 记录日志（测试环境可跳过以减少开销）
+        if not getattr(self, "_is_testing", False):
+            self._log_error(record)
 
         # 添加到历史
         self._add_to_history(record)
@@ -196,7 +205,19 @@ class GlobalErrorHandler(QObject):
         # 判断是否需要通知用户
         if self._notification_strategy(record):
             record.user_notified = True
-            self.userNotificationRequired.emit(title, message, severity)
+            should_emit = True
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                should_emit = QApplication.instance() is not None
+            except Exception:
+                should_emit = False
+            if should_emit:
+                self.userNotificationRequired.emit(title, message, severity)
+        else:
+            # 对于不弹窗的但需要提示的错误，通过状态栏显示
+            if record.severity != ErrorSeverity.DEBUG:
+                self._emit_status_message(record)
 
         return record
 
@@ -330,13 +351,31 @@ class GlobalErrorHandler(QObject):
         if len(self._error_history) > self._max_history:
             self._error_history = self._error_history[-self._max_history :]
 
+    def _emit_status_message(self, record: ErrorRecord) -> None:
+        """通过状态栏提示错误信息（避免弹窗打断）。"""
+        try:
+            from gui.signal_bus import SignalBus
+            from gui.status_message_queue import MessagePriority
+
+            priority_map = {
+                ErrorSeverity.WARNING: MessagePriority.HIGH,
+                ErrorSeverity.INFO: MessagePriority.MEDIUM,
+                ErrorSeverity.DEBUG: MessagePriority.LOW,
+            }
+            priority = priority_map.get(record.severity, MessagePriority.MEDIUM)
+
+            message_text = f"{record.title}: {record.message}"
+            SignalBus.instance().statusMessage.emit(message_text, 5000, priority)
+        except Exception as e:
+            logger.debug(f"发送状态消息失败: {e}")
+
     def _default_notification_strategy(self, record: ErrorRecord) -> bool:
         """默认的通知策略
 
         规则：
-        - ERROR 和 CRITICAL 始终通知用户
-        - WARNING 通知用户
-        - INFO 和 DEBUG 不通知用户
+        - ERROR、CRITICAL、WARNING 弹窗通知用户
+        - INFO 仅状态栏提示（避免重复弹窗）
+        - DEBUG 不通知用户
         """
         return record.severity in (
             ErrorSeverity.ERROR,
@@ -348,6 +387,13 @@ class GlobalErrorHandler(QObject):
     def _show_error_dialog(self, title: str, message: str, severity: ErrorSeverity):
         """显示错误对话框"""
         try:
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                if QApplication.instance() is None:
+                    return
+            except Exception:
+                return
             parent = self._default_parent
 
             # 根据严重程度选择图标

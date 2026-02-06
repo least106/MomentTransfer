@@ -24,6 +24,10 @@ class MessagePriority(IntEnum):
     MEDIUM = 1  # 进行中的操作（扫描目录、筛选）
     HIGH = 2  # 工作流步骤指导（步骤1、步骤2）
     CRITICAL = 3  # 错误或严重警告
+    # 兼容语义化别名（用于测试与旧调用）
+    INFO = LOW
+    WARNING = MEDIUM
+    ERROR = HIGH
 
 
 @dataclass
