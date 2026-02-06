@@ -48,7 +48,10 @@ class ExecutionContext:
 
     # 配置数据
     project_data: ProjectData
-    config_path: str
+    config_path: str = ""
+    # 兼容旧接口：允许传入 config 与 batch_config（测试与部分调用使用）
+    config: Optional[Any] = None
+    batch_config: Optional[Any] = None
 
     # 计算器参数
     source_part: Optional[str] = None
