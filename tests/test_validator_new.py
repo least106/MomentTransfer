@@ -1,4 +1,5 @@
 import math
+import os
 
 import numpy as np
 import pandas as pd
@@ -43,7 +44,7 @@ def test_validate_numeric_range_cases():
 def test_validate_file_path_traversal_and_nonexist(tmp_path):
     # 路径遍历
     with pytest.raises(ValidationError):
-        DataValidator.validate_file_path("..\\secret.txt")
+        DataValidator.validate_file_path(os.path.join("..", "secret.txt"))
 
     # 不存在的文件
     with pytest.raises(ValidationError):

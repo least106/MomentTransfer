@@ -113,13 +113,16 @@ class DataValidator:
             验证后的 Path 对象
         """
         try:
-            path = Path(filepath).resolve()
+            raw_path = Path(filepath)
+            normalized_path = Path(str(filepath).replace("\\", "/"))
 
-            # 检查路径遍历攻击
-            if ".." in path.parts:
+            # 检查路径遍历攻击（在 resolve 前检测，兼容不同分隔符）
+            if ".." in raw_path.parts or ".." in normalized_path.parts:
                 raise ValidationError(
                     f"路径包含 '..'，可能存在目录遍历攻击: {filepath}"
                 )
+
+            path = raw_path.resolve()
 
             if must_exist and not path.exists():
                 raise ValidationError(f"文件不存在: {filepath}")
