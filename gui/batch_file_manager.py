@@ -95,6 +95,45 @@ class BatchFileManager:
             chosen_paths = [Path(p) for p in selected]
             if not chosen_paths:
                 return
+            # 提前进行路径与 CSV 安全校验
+            try:
+                from src.validator import DataValidator, ValidationError
+
+                invalid_paths = []
+                validated_paths = []
+                for p in chosen_paths:
+                    try:
+                        DataValidator.validate_file_path(str(p), must_exist=True)
+                        if p.is_file() and p.suffix.lower() == ".csv":
+                            DataValidator.validate_csv_safety(str(p))
+                        validated_paths.append(p)
+                    except ValidationError as e:
+                        invalid_paths.append((p, str(e)))
+
+                if invalid_paths:
+                    try:
+                        from gui.managers import report_user_error
+
+                        details = "\n".join(
+                            [f"{f.name}: {msg}" for f, msg in invalid_paths]
+                        )
+                        report_user_error(
+                            manager_instance.gui,
+                            "部分路径未通过校验",
+                            "以下路径已被跳过：",
+                            details=details,
+                            is_warning=True,
+                        )
+                    except Exception:
+                        logger.debug("显示路径校验提示失败", exc_info=True)
+
+                chosen_paths = validated_paths
+            except Exception:
+                logger.debug("路径校验过程失败（非致命）", exc_info=True)
+
+            if not chosen_paths:
+                return
+
             first_path = chosen_paths[0]
 
             if hasattr(manager_instance.gui, "inp_batch_input"):

@@ -144,8 +144,11 @@ def _safe_report_ui_exception(parent, msg):
             _report_ui_exception(parent, msg)
         else:
             logger.debug("UI 提示（回退）: %s", msg)
-    except Exception:
-        logger.debug("调用 _report_ui_exception 失败（非致命）", exc_info=True)
+    except Exception as e:
+        logger.debug("调用 _report_ui_exception 失败", exc_info=True)
+        # 让用户知道发生了什么
+        from gui.error_handling import report_nonfatal_error
+        report_nonfatal_error("UI 异常报告失败", e)
 
 
 class BatchManager:
@@ -353,8 +356,10 @@ class BatchManager:
                     _report_ui_exception(self.gui, "设置工作流程步骤失败（非致命）")
                 else:
                     logger.debug("设置工作流程步骤失败（非致命）", exc_info=True)
-            except Exception:
-                logger.debug("设置工作流程步骤失败（非致命）", exc_info=True)
+            except Exception as e:
+                logger.debug("设置工作流程步骤失败", exc_info=True)
+                from gui.error_handling import report_nonfatal_error
+                report_nonfatal_error("设置工作流程步骤失败", e)
 
     def _connect_quick_filter(self) -> None:
         """连接快速筛选信号"""
@@ -912,6 +917,42 @@ class BatchManager:
             p = Path(chosen_path)
             files, base_path = self._collect_files_for_scan(p)
 
+            # 提前进行文件路径与 CSV 安全校验
+            try:
+                from src.validator import DataValidator, ValidationError
+
+                invalid_files = []
+                validated_files = []
+                for fp in files:
+                    try:
+                        DataValidator.validate_file_path(str(fp), must_exist=True)
+                        if fp.suffix.lower() == ".csv":
+                            DataValidator.validate_csv_safety(str(fp))
+                        validated_files.append(fp)
+                    except ValidationError as e:
+                        invalid_files.append((fp, str(e)))
+
+                if invalid_files:
+                    try:
+                        from gui.managers import report_user_error
+
+                        details = "\n".join(
+                            [f"{f.name}: {msg}" for f, msg in invalid_files]
+                        )
+                        report_user_error(
+                            self.gui,
+                            "部分文件未通过校验",
+                            "以下文件已被跳过：",
+                            details=details,
+                            is_warning=True,
+                        )
+                    except Exception:
+                        logger.debug("显示校验失败提示失败", exc_info=True)
+
+                files = validated_files
+            except Exception:
+                logger.debug("文件校验过程失败（非致命）", exc_info=True)
+
             # 检查UI组件是否存在
             if not hasattr(self.gui, "file_tree"):
                 return
@@ -1086,19 +1127,29 @@ class BatchManager:
         return _collect_files_for_scan_impl(self, p)
 
     def _validate_file_config(self, file_path: Path) -> str:
-        """验证文件的配置，返回状态文本"""
+        """验证文件的配置，返回状态文本
+        
+        状态符号说明：
+        - ✓：文件已就绪，可以处理
+        - ⚠：配置不完整（未选择Source/Target、未映射）
+        - ❌：配置错误（选择的Part不存在）
+        - ℹ️：等待配置（项目尚未配置）
+        - ❓：验证失败（验证过程出错）
+        """
         status = None
         try:
             # 特殊格式：提前检查 part 是否存在于当前配置
             try:
                 special_status = self._validate_special_format(file_path)
-            except Exception:
+            except Exception as exc:
                 special_status = None
                 logger.debug("特殊格式预检查失败", exc_info=True)
+                # 保留错误信息
+                status = f"❓ 验证失败: {type(exc).__name__}"
 
             if special_status is not None:
                 status = special_status
-            else:
+            elif status is None:  # 只有在没有错误时才继续
                 # 使用 helper 获取格式信息（含缓存)
                 fmt_info = self._get_format_info(file_path)
                 if not fmt_info:
@@ -1111,11 +1162,11 @@ class BatchManager:
                     )
 
         except Exception as exc:  # pylint: disable=broad-except
-            logger.debug(f"验证文件配置失败: {exc}")
-            status = "❓ 未验证"
+            logger.warning(f"验证文件配置失败 [{file_path.name}]: {exc}")
+            status = f"❓ 验证失败: {type(exc).__name__}"
 
-        # 确保返回字符串（若为 None 则视为未验证）
-        return status or "❓ 未验证"
+        # 确保返回字符串
+        return status or "❓ 验证失败: 未知原因"
 
     def _get_format_info(self, file_path: Path):
         """从缓存或解析器获取文件格式信息，若未知返回 None。"""
@@ -1144,6 +1195,95 @@ class BatchManager:
     def _validate_special_format(self, file_path: Path) -> Optional[str]:
         """对特殊格式文件进行预检 - 委托给 batch_state"""
         return self._batch_state.validate_special_format(self, file_path)
+
+    def _build_file_tooltip(self, file_path: Path, status: str) -> str:
+        """构建文件状态的详细tooltip信息
+        
+        Args:
+            file_path: 文件路径
+            status: 当前状态文本
+            
+        Returns:
+            详细的tooltip字符串
+        """
+        try:
+            from src.special_format_detector import looks_like_special_format
+            from src.special_format_parser import get_part_names
+            
+            tooltip_lines = [f"文件: {file_path.name}", f"状态: {status}", ""]
+            
+            # 检查是否为特殊格式
+            is_special = False
+            try:
+                is_special = looks_like_special_format(file_path)
+            except Exception:
+                pass
+            
+            if is_special:
+                # 特殊格式文件
+                tooltip_lines.append("格式类型: 特殊格式（多Part文件）")
+                try:
+                    part_names = get_part_names(file_path)
+                    tooltip_lines.append(f"内部Parts: {', '.join(part_names)}")
+                    
+                    # 获取映射信息
+                    mapping = self._get_special_mapping_if_exists(file_path) or {}
+                    if mapping:
+                        tooltip_lines.append("")
+                        tooltip_lines.append("Part映射配置:")
+                        for part_name in part_names:
+                            part_name_str = str(part_name)
+                            part_mapping = mapping.get(part_name_str)
+                            if isinstance(part_mapping, dict):
+                                source = part_mapping.get("source", "未设置")
+                                target = part_mapping.get("target", "未设置")
+                                tooltip_lines.append(f"  {part_name_str} → Source: {source}, Target: {target}")
+                            else:
+                                tooltip_lines.append(f"  {part_name_str} → 未映射")
+                    else:
+                        tooltip_lines.append("Part映射: 未配置")
+                except Exception as exc:
+                    tooltip_lines.append(f"解析失败: {exc}")
+            else:
+                # 常规格式文件
+                tooltip_lines.append("格式类型: 常规格式（单Part文件）")
+                
+                # 显示当前选择的Source/Target
+                project_data = getattr(self.gui, "current_config", None)
+                if project_data:
+                    sel = (getattr(self.gui, "file_part_selection_by_file", {}) or {}).get(
+                        str(file_path)
+                    ) or {}
+                    source_sel = (sel.get("source") or "未选择").strip() or "未选择"
+                    target_sel = (sel.get("target") or "未选择").strip() or "未选择"
+                    
+                    tooltip_lines.append("")
+                    tooltip_lines.append("选择配置:")
+                    tooltip_lines.append(f"  Source Part: {source_sel}")
+                    tooltip_lines.append(f"  Target Part: {target_sel}")
+                    
+                    # 显示可用的Parts
+                    try:
+                        source_names = list(
+                            (getattr(project_data, "source_parts", {}) or {}).keys()
+                        )
+                        target_names = list(
+                            (getattr(project_data, "target_parts", {}) or {}).keys()
+                        )
+                        if source_names:
+                            tooltip_lines.append("")
+                            tooltip_lines.append(f"可用Source Parts: {', '.join(source_names)}")
+                        if target_names:
+                            tooltip_lines.append(f"可用Target Parts: {', '.join(target_names)}")
+                    except Exception:
+                        pass
+                else:
+                    tooltip_lines.append("项目配置: 未加载")
+            
+            return "\n".join(tooltip_lines)
+        except Exception as exc:
+            logger.debug(f"构建tooltip失败: {exc}", exc_info=True)
+            return f"文件: {file_path.name}\n状态: {status}"
 
     def _get_special_mapping_if_exists(self, file_path: Path):
         """安全获取 GUI 中已存在的 special mapping（不初始化）。"""
@@ -1252,14 +1392,16 @@ class BatchManager:
 
             try:
                 # 检查文件大小，决定是同步加载还是异步加载
-                # 对于大于 5MB 的文件，使用异步加载并显示进度
+                # 使用集中配置的阈值
+                from gui.progress_config import FILE_LOADING_SIZE_THRESHOLD_MB
+                
                 file_size_mb = 0
                 try:
                     file_size_mb = file_path.stat().st_size / (1024 * 1024)
                 except Exception:
                     logger.debug("获取文件大小失败", exc_info=True)
 
-                if file_size_mb > 5:
+                if file_size_mb > FILE_LOADING_SIZE_THRESHOLD_MB:
                     # 大文件：使用异步加载
                     logger.info(
                         f"文件 {file_path.name} 大小为 {file_size_mb:.2f}MB，使用异步加载"
@@ -1349,11 +1491,11 @@ class BatchManager:
 
         状态符号说明：
         - ✓ 可处理：Source/Target 已完整选择，文件可以处理
-        - ✓ 格式正常(待配置)：文件格式正确但项目尚未配置任何 parts
         - ⚠ 未选择 Source/Target：缺少必要的 Source 或 Target 选择
-        - ⚠ Source缺失: part：选择的 Source 不在项目配置中
-        - ⚠ Target缺失: part：选择的 Target 不在项目配置中
-        - ❓ 未验证：验证过程出错，无法判断文件状态
+        - ⚠ Source/Target 相同：Source 与 Target 选择了同一 Part
+        - ❌ Source缺失: part：选择的 Source 不在项目配置中
+        - ❌ Target缺失: part：选择的 Target 不在项目配置中
+        - ❓ 验证失败：验证过程出错，无法判断文件状态
         """
         try:
             sel = (getattr(self.gui, "file_part_selection_by_file", {}) or {}).get(
@@ -1380,14 +1522,16 @@ class BatchManager:
 
             if not source_sel or not target_sel:
                 return "⚠ 未选择 Source/Target"
+            if source_sel == target_sel:
+                return "⚠ Source/Target 相同"
             if source_names and source_sel not in source_names:
                 return f"❌ Source缺失: {source_sel}（需在配置中添加）"
             if target_names and target_sel not in target_names:
                 return f"❌ Target缺失: {target_sel}（需在配置中添加）"
             return "✓ 可处理"
-        except Exception:
-            logger.debug("确定 part 选择状态失败", exc_info=True)
-            return "❓ 未验证"
+        except Exception as exc:
+            logger.debug(f"确定 part 选择状态失败: {exc}", exc_info=True)
+            return f"❓ 验证失败: {type(exc).__name__}"
 
     def _analyze_special_mapping(self, part_names, mapping, target_parts):
         """分析特殊格式的 part 映射，返回 (unmapped, missing_target)。"""
@@ -1426,11 +1570,11 @@ class BatchManager:
         """
         try:
             if project_data is None:
-                return "✓ 格式正常(待配置)"
+                return "ℹ️ 格式正常(待配置)"
             return self._determine_part_selection_status(file_path, project_data)
-        except Exception:
-            logger.debug("评估常规文件配置失败", exc_info=True)
-            return "❓ 未验证"
+        except Exception as exc:
+            logger.debug(f"评估常规文件配置失败: {exc}", exc_info=True)
+            return f"❓ 验证失败: {type(exc).__name__}"
 
     def _add_file_tree_entry(
         self,
@@ -1573,7 +1717,15 @@ class BatchManager:
             items = getattr(self.gui, "_file_tree_items", {}) or {}
             for fp_str, item in items.items():
                 try:
-                    item.setText(1, self._validate_file_config(Path(fp_str)))
+                    fp = Path(fp_str)
+                    status_text = self._validate_file_config(fp)
+                    item.setText(1, status_text)
+                    # 更新tooltip
+                    try:
+                        tooltip = self._build_file_tooltip(fp, status_text)
+                        item.setToolTip(1, tooltip)
+                    except Exception:
+                        logger.debug("更新tooltip失败", exc_info=True)
                 except Exception:
                     logger.debug("刷新文件状态文本失败", exc_info=True)
 

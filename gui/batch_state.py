@@ -619,11 +619,11 @@ class BatchStateManager:
 
         状态符号说明：
         - ✓ 特殊格式(可处理)：所有 parts 映射已完成，文件可以处理
-        - ✓ 特殊格式(待配置)：项目尚未配置 parts，但文件格式正确
+        - ℹ️ 特殊格式(待配置)：项目尚未配置 parts，但文件格式正确
         - ⚠ 未映射: part1, part2：指定的 parts 尚未配置映射关系
-        - ⚠ Source缺失: part→source：指定的 Source 不在项目配置中
-        - ⚠ Target缺失: part→target：指定的 Target 不在项目配置中
-        - ❓ 未验证：验证过程出错，无法判断文件状态
+        - ❌ Source缺失: part→source：指定的 Source 不在项目配置中
+        - ❌ Target缺失: part→target：指定的 Target 不在项目配置中
+        - ❓ 验证失败：验证过程出错，无法判断文件状态
 
         Args:
             manager_instance: BatchManager 实例
@@ -646,7 +646,7 @@ class BatchStateManager:
 
                 # 若项目中无 parts 则提示待配置
                 if not source_parts and not target_parts:
-                    status = "✓ 特殊格式(待配置)"
+                    status = "ℹ️ 特殊格式(待配置)"
                 else:
                     mapping = mapping or {}
 
@@ -687,13 +687,13 @@ class BatchStateManager:
                     if unmapped_parts:
                         status = f"⚠ 未映射: {', '.join(unmapped_parts)}"
                     elif missing_source_parts:
-                        status = f"⚠ Source缺失: {', '.join(missing_source_parts)}"
+                        status = f"❌ Source缺失: {', '.join(missing_source_parts)}"
                     elif missing_target_parts:
-                        status = f"⚠ Target缺失: {', '.join(missing_target_parts)}"
+                        status = f"❌ Target缺失: {', '.join(missing_target_parts)}"
                     else:
                         status = "✓ 特殊格式(可处理)"
-        except Exception:
-            logger.debug("特殊格式校验失败", exc_info=True)
+        except Exception as exc:
+            logger.debug(f"特殊格式校验失败: {exc}", exc_info=True)
             status = None
 
         return status

@@ -237,6 +237,15 @@ def _add_file_tree_entry(
         status_text = manager._validate_file_config(fp)
         # pylint: enable=protected-access
         file_item.setText(1, status_text)
+        
+        # 设置详细的tooltip
+        try:
+            # pylint: disable=protected-access
+            tooltip = manager._build_file_tooltip(fp, status_text)
+            # pylint: enable=protected-access
+            file_item.setToolTip(1, tooltip)
+        except Exception:
+            logger.debug("设置文件tooltip失败", exc_info=True)
 
         if parent_item is None:
             manager.gui.file_tree.addTopLevelItem(file_item)
@@ -492,7 +501,19 @@ def _make_part_change_handler(manager, fp_str: str, key: str):
             try:
                 node = getattr(manager.gui, "_file_tree_items", {}).get(fp_str)
                 if node is not None:
-                    node.setText(1, manager._validate_file_config(Path(fp_str)))
+                    fp = Path(fp_str)
+                    # pylint: disable=protected-access
+                    status_text = manager._validate_file_config(fp)
+                    # pylint: enable=protected-access
+                    node.setText(1, status_text)
+                    # 更新tooltip
+                    try:
+                        # pylint: disable=protected-access
+                        tooltip = manager._build_file_tooltip(fp, status_text)
+                        # pylint: enable=protected-access
+                        node.setToolTip(1, tooltip)
+                    except Exception:
+                        logger.debug("更新tooltip失败", exc_info=True)
             except Exception:
                 pass
         except Exception:
@@ -616,7 +637,19 @@ def _create_part_mapping_combo(
                 tmp_items = getattr(manager.gui, "_file_tree_items", {}) or {}
                 file_node = tmp_items.get(fp_str)
                 if file_node is not None:
-                    file_node.setText(1, manager._validate_file_config(Path(fp_str)))
+                    fp = Path(fp_str)
+                    # pylint: disable=protected-access
+                    status_text = manager._validate_file_config(fp)
+                    # pylint: enable=protected-access
+                    file_node.setText(1, status_text)
+                    # 更新tooltip
+                    try:
+                        # pylint: disable=protected-access
+                        tooltip = manager._build_file_tooltip(fp, status_text)
+                        # pylint: enable=protected-access
+                        file_node.setToolTip(1, tooltip)
+                    except Exception:
+                        logger.debug("更新tooltip失败", exc_info=True)
             except Exception:
                 pass
         except Exception:
