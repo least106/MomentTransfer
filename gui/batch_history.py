@@ -110,6 +110,8 @@ class BatchHistoryStore:
         file_configs: Optional[Dict] = None,
         parent_record_id: Optional[str] = None,
         stats: Optional[Dict] = None,
+        failed_files: Optional[Dict[str, str]] = None,
+        skipped_files: Optional[Dict[str, str]] = None,
     ) -> Dict:
         """添加批处理记录
 
@@ -127,6 +129,8 @@ class BatchHistoryStore:
             file_configs: 文件配置 {file_path: {source: xx, target: yy}}
             parent_record_id: 父记录 ID（用于树状结构，表示这是某个重做操作的子记录）
             stats: 统计信息 {"success": 0, "failed": 0, "skipped": 0}
+            failed_files: 失败文件详情 {file_path: error_message}
+            skipped_files: 跳过文件详情 {file_path: reason}
         """
         ts = timestamp or datetime.now()
         record = {
@@ -161,6 +165,12 @@ class BatchHistoryStore:
                 "failed": 0,
                 "skipped": 0,
             }
+
+        # 添加失败和跳过文件的详情（用于重试）
+        if failed_files:
+            record["failed_files"] = dict(failed_files)
+        if skipped_files:
+            record["skipped_files"] = dict(skipped_files)
 
         self.records.insert(0, record)
         # 新增记录时清空redo栈（标准Undo/Redo行为）
@@ -208,6 +218,37 @@ class BatchHistoryStore:
 
         return None
 
+    def get_failed_files_from_record(self, record_id: str) -> Optional[Dict]:
+        """获取指定记录中的失败文件信息，用于重试
+        
+        Args:
+            record_id: 记录 ID
+            
+        Returns:
+            失败文件信息字典，包含 failed_files 和相关配置，如果没有失败文件则返回 None
+            {
+                "failed_files": {file_path: error_message},
+                "file_configs": {file_path: {source: xx, target: yy}},
+                "part_mappings": {file_path: {internal_part: {source: xx, target: yy}}},
+                "row_selections": {file_path: {part: [row_indices]}},
+                "output_dir": str,
+            }
+        """
+        for rec in self.records:
+            if rec.get("id") == record_id:
+                failed_files = rec.get("failed_files", {})
+                if not failed_files:
+                    return None
+                    
+                return {
+                    "failed_files": failed_files,
+                    "file_configs": rec.get("file_configs", {}),
+                    "part_mappings": rec.get("part_mappings", {}),
+                    "row_selections": rec.get("row_selections", {}),
+                    "output_dir": rec.get("output_dir", ""),
+                }
+        return None
+
     def get_redo_info(self) -> Optional[Dict]:
         """获取可重做的操作信息（用于按钮提示）"""
         if not self.redo_stack:
@@ -231,12 +272,14 @@ class BatchHistoryPanel(QWidget):
         *,
         on_undo: Optional[Callable[[str], None]] = None,
         on_redo: Optional[Callable[[str], None]] = None,
+        on_retry_failed: Optional[Callable[[str], None]] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.store = store
         self._on_undo_cb = on_undo
         self._on_redo_cb = on_redo
+        self._on_retry_failed_cb = on_retry_failed
         self._search_text = ""  # 搜索文本
         self._date_filter = ""  # 日期过滤（YYYY-MM-DD）
 
@@ -293,6 +336,10 @@ class BatchHistoryPanel(QWidget):
 
     def set_redo_callback(self, cb: Callable[[str], None]) -> None:
         self._on_redo_cb = cb
+
+    def set_retry_failed_callback(self, cb: Callable[[str], None]) -> None:
+        """设置重试失败文件的回调"""
+        self._on_retry_failed_cb = cb
 
     def _on_search_changed(self, text: str) -> None:
         """搜索文本改变时的处理"""
