@@ -847,7 +847,7 @@ class InitializationManager:
             toolbar.setMovable(False)
             toolbar.setFloatable(False)
 
-            # 左侧：文件操作按钮
+            # 左侧：Project 创建/打开按钮
             btn_new_project = QPushButton("新建Project")
             btn_new_project.setMaximumWidth(90)
             btn_new_project.setToolTip("新建 Project（Ctrl+N）")
@@ -869,27 +869,15 @@ class InitializationManager:
                 pass
             toolbar.addWidget(btn_open_project)
 
-            btn_save_project = QPushButton("保存Project")
-            btn_save_project.setMaximumWidth(90)
-            btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
-            btn_save_project.clicked.connect(self.main_window._on_save_project)
-            try:
-                btn_save_project.setEnabled(False)
-            except Exception:
-                pass
-            toolbar.addWidget(btn_save_project)
-
-            toolbar.addSeparator()
-
-            # 添加弹性间隔，使右侧按钮靠右
+            # 大空隙 - 弹性间隔，分隔左侧 Project 操作和右侧批处理操作
             spacer = QWidget()
             spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             spacer_action = toolbar.addWidget(spacer)
             # 保存弹性间隔动作作为状态横幅插入锚点
             self.main_window._toolbar_spacer_action = spacer_action
 
-            # 右侧：主要操作按钮（将复选框放在浏览按钮左侧）
-            # 右侧：展开批处理记录复选框（放在浏览按钮左侧）
+            # 右侧：批处理操作按钮
+            # 展开批处理记录复选框
             chk_bottom_bar = QCheckBox("展开批处理记录")
             chk_bottom_bar.setToolTip("在底部显示批处理历史记录")
             chk_bottom_bar.setChecked(False)
@@ -981,6 +969,17 @@ class InitializationManager:
             btn_cancel.setEnabled(False)
             btn_cancel.clicked.connect(self.main_window.request_cancel_batch)
             toolbar.addWidget(btn_cancel)
+
+            # 最右侧：保存 Project 按钮
+            btn_save_project = QPushButton("保存Project")
+            btn_save_project.setMaximumWidth(90)
+            btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
+            btn_save_project.clicked.connect(self.main_window._on_save_project)
+            try:
+                btn_save_project.setEnabled(False)
+            except Exception:
+                pass
+            toolbar.addWidget(btn_save_project)
 
             # 状态横幅将插入到右侧按钮之前（通过锚点动作定位）
 

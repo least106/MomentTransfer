@@ -1975,34 +1975,43 @@ def main():
     app.setStyle("Fusion")
     # 设置统一字体与样式表（styles.qss）以实现统一主题与可维护的样式
     try:
-        from PySide6.QtGui import QFont
+        import platform
 
-        app.setFont(QFont("Segoe UI", 10))
+        from PySide6.QtGui import QFont, QFontDatabase
+
+        if platform.system().lower() == "windows":
+            if "Segoe UI" in QFontDatabase.families():
+                app.setFont(QFont("Segoe UI", 10))
     except Exception:
         logger.debug("设置应用字体失败（非致命）", exc_info=True)
     # 按系统主题自动加载明/暗样式
     try:
 
-        def _is_windows_dark_mode() -> bool:
+        def _is_dark_mode() -> bool:
             try:
                 import platform
 
-                if platform.system().lower() != "windows":
-                    return False
-                import winreg
+                if platform.system().lower() == "windows":
+                    import winreg
 
-                key_path = (
-                    r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
-                )
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                    # 0 表示暗色，1 表示浅色
-                    val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-                    return int(val) == 0
+                    key_path = (
+                        r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                    )
+                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                        # 0 表示暗色，1 表示浅色
+                        val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                        return int(val) == 0
+
+                from PySide6.QtGui import QPalette
+
+                pal = app.palette()
+                window_color = pal.color(QPalette.Window)
+                return window_color.lightness() < 128
             except Exception:
                 return False
 
         base_dir = Path(__file__).resolve().parent.parent
-        dark = _is_windows_dark_mode()
+        dark = _is_dark_mode()
         qss_file = base_dir / ("styles.dark.qss" if dark else "styles.qss")
         if qss_file.exists():
             with open(qss_file, "r", encoding="utf-8") as fh:

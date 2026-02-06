@@ -8,6 +8,7 @@
 import logging
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -240,6 +241,10 @@ class CoordinateSystemPanel(QGroupBox):
         try:
             inp.setProperty("compact", "true")
             inp.setMaximumWidth(120)
+            validator = QDoubleValidator(inp)
+            validator.setNotation(QDoubleValidator.StandardNotation)
+            inp.setValidator(validator)
+            inp.setToolTip("请输入数值")
         except Exception:
             pass
         return inp

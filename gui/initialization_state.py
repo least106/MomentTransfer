@@ -281,7 +281,7 @@ class InitializationStateManager(QObject):
             for c in self._components.values()
             if c.state == ComponentState.READY
         )
-        percentage = (ready / total * 100) if total > 0 else 0
+        percentage = (ready / total * 100) if total > 0 else 0.0
         return (ready, total, percentage)
 
     def _all_components_ready(self) -> bool:
