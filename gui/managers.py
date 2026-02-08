@@ -750,6 +750,22 @@ class ModelManager:
                     selector.setCurrentText(new_name)
                 except Exception:
                     logger.debug("更新选择器名称失败", exc_info=True)
+            # 标记配置已被修改（重命名视为配置变更）
+            try:
+                # 优先通过 ConfigManager 标记
+                if hasattr(self.parent, "config_manager") and getattr(self.parent, "config_manager", None):
+                    try:
+                        self.parent.config_manager.set_config_modified(True)
+                    except Exception:
+                        logger.debug("通过 ConfigManager 标记配置修改失败", exc_info=True)
+                # 同步到 UI 状态管理器，确保保存按钮可用
+                if hasattr(self.parent, "ui_state_manager") and getattr(self.parent, "ui_state_manager", None):
+                    try:
+                        self.parent.ui_state_manager.mark_operation_performed()
+                    except Exception:
+                        logger.debug("标记 UI 操作已执行失败", exc_info=True)
+            except Exception:
+                pass
         except Exception:
             logger.debug("重命名 Part 失败", exc_info=True)
 
