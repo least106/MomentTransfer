@@ -27,6 +27,9 @@ tools/
 patches/
 .cursor/
 Check/
+.deps/
+MC/
+scripts/
 
 # Packaging / build artifacts
 build/
