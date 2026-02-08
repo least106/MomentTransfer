@@ -89,6 +89,36 @@ class StatusMessageQueue:
         logger.debug(
             f"添加消息到队列: '{text[:50]}' (priority={priority}, source={source})"
         )
+        # 自动决定是否切换当前显示的消息：
+        # - 如果当前没有消息，则显示队列顶部。
+        # - 如果队列顶部优先级高于当前显示，则中断并显示之。
+        # - 其他情况保持当前显示（队列内按顺序等待）。
+        try:
+            next_msg = self.get_next_message()
+            if next_msg is not None and (
+                self._current_message is None
+                or next_msg.priority > self._current_message.priority
+            ):
+                logger.debug(
+                    "切换当前消息为队列顶部: token=%s priority=%s",
+                    next_msg.token,
+                    next_msg.priority,
+                )
+                self.set_current_message(next_msg)
+            else:
+                # 进一步使用 should_accept_message 处理永久/短时提示的特殊规则
+                if next_msg is not None and self._current_message is not None:
+                    accept, interrupt_token = self.should_accept_message(next_msg)
+                    if accept and interrupt_token is not None:
+                        logger.debug(
+                            "由于规则允许，中断当前消息 token=%s 切换到 token=%s",
+                            interrupt_token,
+                            next_msg.token,
+                        )
+                        self.set_current_message(next_msg)
+        except Exception:
+            logger.exception("在处理消息切换逻辑时发生错误")
+
         return msg.token
 
     def get_next_message(self) -> Optional[StatusMessage]:
