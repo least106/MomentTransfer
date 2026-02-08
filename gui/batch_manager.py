@@ -2241,6 +2241,86 @@ class BatchManager:
                         banner.clear()
                 except Exception:
                     pass
+                # 退出重做模式时清理残留状态：快速筛选、预览表、选择缓存、历史面板搜索等
+                try:
+                    # 清除快速筛选内部状态
+                    try:
+                        self._quick_filter_column = None
+                        self._quick_filter_operator = None
+                        self._quick_filter_value = None
+                    except Exception:
+                        logger.debug("重置快速筛选内部状态失败", exc_info=True)
+
+                    # 清除预览表的筛选与高亮（对所有缓存的表格执行清理）
+                    try:
+                        for fp, table in list(getattr(self, "_table_preview_tables", {}).items()):
+                            try:
+                                self._clear_quick_filter_table(table)
+                            except Exception:
+                                logger.debug("清理常规表格筛选失败: %s", fp, exc_info=True)
+                        for (fp, src), table in list(getattr(self, "_special_preview_tables", {}).items()):
+                            try:
+                                self._clear_quick_filter_table(table)
+                            except Exception:
+                                logger.debug("清理特殊格式表格筛选失败: %s/%s", fp, src, exc_info=True)
+                    except Exception:
+                        logger.debug("批量清理预览表筛选失败", exc_info=True)
+
+                    # 清除 BatchState 中的行选择缓存
+                    try:
+                        if hasattr(self, "_batch_state") and self._batch_state is not None:
+                            self._batch_state.clear_selection_cache()
+                    except Exception:
+                        logger.debug("清理选择缓存失败", exc_info=True)
+
+                    # 清空特殊格式映射与缓存引用，避免旧控件被复用
+                    try:
+                        self._special_part_combo.clear()
+                        self._special_part_source_combo.clear()
+                        self._special_part_target_combo.clear()
+                        self._special_preview_tables.clear()
+                        self._table_preview_tables.clear()
+                    except Exception:
+                        logger.debug("清理特殊格式控件缓存失败", exc_info=True)
+
+                    # 清除历史面板的搜索/选中状态（若存在）
+                    try:
+                        if self.history_panel is not None:
+                            try:
+                                # 使用公开方法清除搜索；回退到直接清理 UI 控件
+                                if hasattr(self.history_panel, "_clear_search"):
+                                    self.history_panel._clear_search()
+                                else:
+                                    try:
+                                        self.history_panel.inp_search.clear()
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                logger.debug("清理历史面板搜索失败", exc_info=True)
+                            try:
+                                self.history_panel.refresh()
+                            except Exception:
+                                logger.debug("刷新历史面板失败", exc_info=True)
+                    except Exception:
+                        logger.debug("处理历史面板退出重做清理失败", exc_info=True)
+
+                    # 强制刷新文件状态显示以反映清理结果
+                    try:
+                        _safe_refresh_file_statuses_impl(self)
+                    except Exception:
+                        try:
+                            self._safe_refresh_file_statuses()
+                        except Exception:
+                            logger.debug("触发文件状态刷新失败（退出重做）", exc_info=True)
+
+                    # 重置内部重做标识
+                    try:
+                        self._redo_mode_parent_id = None
+                        self._last_history_record_id = None
+                    except Exception:
+                        logger.debug("重置重做内部标识失败", exc_info=True)
+                except Exception:
+                    logger.debug("退出重做模式后清理残留状态失败", exc_info=True)
         except Exception:
             logger.debug("处理重做模式改变失败", exc_info=True)
 
