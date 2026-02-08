@@ -11,6 +11,8 @@ import importlib.util
 import logging
 import subprocess
 import sys
+import tempfile
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -247,9 +249,10 @@ class PluginLoader:
 
         该 helper 将子进程执行抽离，便于主函数更清晰。
         """
+        # 将验证脚本写入临时文件并在子进程中执行，避免在 -c 中嵌入文件路径导致的转义问题
         validator = """
 import importlib.util, json, sys, traceback
-p = r'%s'
+p = r"%s"
 spec = importlib.util.spec_from_file_location('plugin_validation', p)
 if spec is None or spec.loader is None:
     sys.exit(2)
@@ -276,13 +279,16 @@ if hasattr(module, 'create_plugin') and callable(getattr(module, 'create_plugin'
 else:
     print('NO_FACTORY')
     sys.exit(4)
-""" % str(
-            filepath
-        )
+""" % str(filepath)
 
+        temp_path = None
         try:
+            with tempfile.NamedTemporaryFile('w', delete=False, suffix='.py', encoding='utf-8') as fh:
+                fh.write(validator)
+                temp_path = fh.name
+
             proc = subprocess.run(
-                [sys.executable, "-c", validator],
+                [sys.executable, temp_path],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -295,6 +301,13 @@ else:
         except Exception:
             logger.exception("在验证插件 %s 时发生内部错误", filepath)
             return None
+        finally:
+            try:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                # 忽略临时文件删除错误
+                pass
 
     def _dynamic_import_module(self, filepath: Path) -> Optional[Any]:
         """动态从文件导入模块并返回 module 对象，失败时返回 None。"""
