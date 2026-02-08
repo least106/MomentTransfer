@@ -48,6 +48,10 @@ from gui.initialization_manager import InitializationManager
 # Mpl3DCanvas 延迟加载以加快启动速度（在首次调用show_visualization时加载）
 from gui.log_manager import LoggingManager
 from gui.managers import FileSelectionManager, ModelManager, UIStateManager
+import platform
+
+# 常量：是否运行在 Windows 平台（用于条件调用 Windows 专有 API）
+IS_WINDOWS = platform.system().lower() == "windows"
 
 # 导入面板组件
 from gui.panels import ConfigPanel, OperationPanel, PartMappingPanel
@@ -1975,13 +1979,14 @@ def main():
     app.setStyle("Fusion")
     # 设置统一字体与样式表（styles.qss）以实现统一主题与可维护的样式
     try:
-        import platform
-
         from PySide6.QtGui import QFont, QFontDatabase
 
-        if platform.system().lower() == "windows":
-            if "Segoe UI" in QFontDatabase.families():
-                app.setFont(QFont("Segoe UI", 10))
+        if IS_WINDOWS:
+            try:
+                if "Segoe UI" in QFontDatabase.families():
+                    app.setFont(QFont("Segoe UI", 10))
+            except Exception:
+                logger.debug("检查字体族时出错，跳过 Segoe UI 设置", exc_info=True)
     except Exception:
         logger.debug("设置应用字体失败（非致命）", exc_info=True)
     # 按系统主题自动加载明/暗样式
@@ -1989,19 +1994,25 @@ def main():
 
         def _is_dark_mode() -> bool:
             try:
-                import platform
+                # Windows: 尝试从注册表读取用户偏好
+                if IS_WINDOWS:
+                    try:
+                        import winreg
 
-                if platform.system().lower() == "windows":
-                    import winreg
+                        key_path = (
+                            r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                        )
+                        try:
+                            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                                # 0 表示暗色，1 表示浅色
+                                val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                                return int(val) == 0
+                        except (FileNotFoundError, OSError, PermissionError) as e:
+                            logger.debug("无法读取 Windows 注册表主题偏好，使用 Qt 色板回退: %s", e)
+                    except ImportError:
+                        logger.debug("winreg 模块不可用，可能非标准 Windows 解释器")
 
-                    key_path = (
-                        r"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
-                    )
-                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                        # 0 表示暗色，1 表示浅色
-                        val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-                        return int(val) == 0
-
+                # 非 Windows 或读取注册表失败：使用 Qt 调色板检测
                 from PySide6.QtGui import QPalette
 
                 pal = app.palette()
