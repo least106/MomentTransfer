@@ -186,15 +186,27 @@ class ConfigManager:
                 except Exception:
                     logger.debug("同步 project_model 到 gui 失败", exc_info=True)
                 try:
-                    self.signal_bus.configLoaded.emit(
-                        ConfigLoadedEvent(
-                            model=model,
-                            path=Path(fname) if fname else None,
-                            source="config_manager",
-                        )
+                    # 为了避免在部分接收方尚未连接时发生同步乱序，使用 DelayScheduler
+                    # 将 configLoaded 的发射延迟到事件循环下一个时机（100ms），
+                    # 以确保所有面板/管理器完成初始化并连接信号。
+                    event = ConfigLoadedEvent(
+                        model=model,
+                        path=Path(fname) if fname else None,
+                        source="config_manager",
+                    )
+
+                    def _emit_config_loaded():
+                        try:
+                            self.signal_bus.configLoaded.emit(event)
+                        except Exception:
+                            logger.debug("发射 configLoaded 失败", exc_info=True)
+
+                    # 100ms 的短延迟通常足以让 UI 完成必要的连接。
+                    DelayScheduler.instance().schedule(
+                        "config_manager.emit_config_loaded", 100, _emit_config_loaded, replace=True
                     )
                 except Exception:
-                    logger.debug("发射 configLoaded 失败", exc_info=True)
+                    logger.debug("调度 configLoaded 发射失败", exc_info=True)
             except Exception:
                 logger.debug("ProjectConfigModel 解析失败", exc_info=True)
 
