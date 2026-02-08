@@ -378,6 +378,12 @@ class BatchStateManager:
                             logger.warning("后台解析线程未能及时结束，但已取消用户等待")
                     except Exception:
                         logger.debug("等待线程结束时出错", exc_info=True)
+                    # 确保在用户取消路径也清理正在解析的标志，避免残留状态
+                    try:
+                        setattr(manager_instance, in_progress_key, False)
+                        setattr(manager_instance, parsing_timeout_key, None)
+                    except Exception:
+                        logger.debug("清理解析标志失败（取消路径，非致命）", exc_info=True)
                     return {}
 
                 # 处理超时的情况
@@ -402,6 +408,12 @@ class BatchStateManager:
                         )
                     except Exception:
                         logger.debug("显示超时警告失败（非致命）", exc_info=True)
+                    # 清理解析标志以允许后续重新解析
+                    try:
+                        setattr(manager_instance, in_progress_key, False)
+                        setattr(manager_instance, parsing_timeout_key, None)
+                    except Exception:
+                        logger.debug("清理解析标志失败（超时路径，非致命）", exc_info=True)
                     return {}
 
                 # 处理解析完成的情况
