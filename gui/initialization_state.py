@@ -80,12 +80,22 @@ class InitializationStateManager(QObject):
     def instance(cls) -> "InitializationStateManager":
         """获取单例"""
         if cls._instance is None:
-            cls._instance = cls.__new__(cls)
+            # 对于 QObject 子类，使用类的 __new__ 创建实例是安全且必需的；
+            # Pylint 可能误报 "no-value-for-parameter"，对此处禁用该检查。
+            cls._instance = cls.__new__(cls)  # pylint: disable=no-value-for-parameter
             QObject.__init__(cls._instance)
             cls._instance._initialize()
         return cls._instance
 
     def __init__(self):
+        # 在 __init__ 中初始化占位属性以减少 W0201 报告。
+        # 详细初始化由 _initialize() 完成（由 instance() 调用）。
+        self._current_stage: InitializationStage = InitializationStage.NOT_STARTED
+        self._components: Dict[str, ComponentInfo] = {}
+        self._blocked_operations: List[tuple] = []
+        self._is_completed: bool = False
+        self._main_window: Optional[QWidget] = None
+
         # 禁止直接实例化，必须使用 instance()
         if InitializationStateManager._instance is not None:
             raise RuntimeError(
