@@ -68,12 +68,23 @@ class GlobalErrorHandler(QObject):
     def instance(cls) -> "GlobalErrorHandler":
         """获取单例"""
         if cls._instance is None:
-            cls._instance = cls.__new__(cls)
+            # 使用类的 __new__ 来正确创建 QObject 子类实例；
+            # Pylint 在此处可能误报 "no-value-for-parameter"，因此显式忽略该检查。
+            cls._instance = cls.__new__(cls)  # pylint: disable=no-value-for-parameter
+            # 初始化 QObject 基类
             QObject.__init__(cls._instance)
             cls._instance._initialize()
         return cls._instance
 
     def __init__(self):
+        # 在 __init__ 中初始化常用实例属性占位，以提高可测试性并避免 pylint 的 W0201 警告。
+        # 实际的详细初始化由 _initialize() 完成（单例工厂会调用）。
+        self._error_history: List[ErrorRecord] = []
+        self._max_history: int = 1000
+        self._is_testing: bool = False
+        self._default_parent: Optional[QWidget] = None
+        self._notification_strategy: Optional[Callable[[ErrorRecord], bool]] = None
+
         # 禁止直接实例化，必须使用 instance()
         if GlobalErrorHandler._instance is not None:
             raise RuntimeError("GlobalErrorHandler 是单例，请使用 instance() 方法")
@@ -206,12 +217,16 @@ class GlobalErrorHandler(QObject):
         if self._notification_strategy(record):
             record.user_notified = True
             should_emit = True
-            try:
-                from PySide6.QtWidgets import QApplication
-
-                should_emit = QApplication.instance() is not None
-            except Exception:
+            # 在测试环境下不要尝试导入或显示 GUI 对话框（这会导致显著开销）
+            if getattr(self, "_is_testing", False):
                 should_emit = False
+            else:
+                try:
+                    from PySide6.QtWidgets import QApplication
+
+                    should_emit = QApplication.instance() is not None
+                except Exception:
+                    should_emit = False
             if should_emit:
                 self.userNotificationRequired.emit(title, message, severity)
         else:
