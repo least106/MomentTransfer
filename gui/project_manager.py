@@ -43,6 +43,8 @@ class ProjectManager:
         self.last_saved_state: Optional[Dict] = None
         # 后台任务引用（防止被GC），支持同时保留多个并在完成后清理
         self._background_workers = []
+        # 原先动态创建的原子写入缓存占位，避免 pylint E1101 与运行时 AttributeError
+        self._atomic_write_dict = {}
 
     def cleanup_background_workers(self) -> None:
         """清理所有后台worker，应在应用关闭时调用。
