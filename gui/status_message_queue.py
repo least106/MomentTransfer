@@ -95,27 +95,50 @@ class StatusMessageQueue:
         # - 其他情况保持当前显示（队列内按顺序等待）。
         try:
             next_msg = self.get_next_message()
-            if next_msg is not None and (
-                self._current_message is None
-                or next_msg.priority > self._current_message.priority
-            ):
-                logger.debug(
-                    "切换当前消息为队列顶部: token=%s priority=%s",
-                    next_msg.token,
-                    next_msg.priority,
-                )
-                self.set_current_message(next_msg)
+            if next_msg is None:
+                pass
             else:
-                # 进一步使用 should_accept_message 处理永久/短时提示的特殊规则
-                if next_msg is not None and self._current_message is not None:
-                    accept, interrupt_token = self.should_accept_message(next_msg)
-                    if accept and interrupt_token is not None:
+                # 若当前没有消息，则显示队列顶部
+                if self._current_message is None:
+                    logger.debug(
+                        "切换当前消息为队列顶部(无当前消息): token=%s priority=%s",
+                        next_msg.token,
+                        next_msg.priority,
+                    )
+                    self.set_current_message(next_msg)
+                else:
+                    # 仅当队列顶部为更高优先级且为短时提示时，立即中断当前消息
+                    # 这样避免永久（timeout_ms==0）的高优先级消息在添加时立即替换当前显示
+                    if (
+                        next_msg.priority > self._current_message.priority
+                        and next_msg.timeout_ms > 0
+                    ):
                         logger.debug(
-                            "由于规则允许，中断当前消息 token=%s 切换到 token=%s",
-                            interrupt_token,
+                            "切换当前消息为队列顶部(更高短时消息): token=%s priority=%s",
                             next_msg.token,
+                            next_msg.priority,
                         )
                         self.set_current_message(next_msg)
+                    else:
+                        # 对于永久 (timeout_ms==0) 的新消息，尽量不要在添加时自动中断当前显示，
+                        # 因为永久消息通常代表长期状态，不应打断用户正在查看的短时提示。
+                        # 仅当新消息为短时或满足 should_accept_message 的细粒度规则时，才中断。
+                        if next_msg is not None and self._current_message is not None:
+                            # 若新消息为永久且优先级更高，则此处不自动中断
+                            if next_msg.timeout_ms == 0 and next_msg.priority > self._current_message.priority:
+                                logger.debug(
+                                    "已入队永久高优先级消息，但保留当前显示，不自动中断: token=%s",
+                                    next_msg.token,
+                                )
+                            else:
+                                accept, interrupt_token = self.should_accept_message(next_msg)
+                                if accept and interrupt_token is not None:
+                                    logger.debug(
+                                        "由于规则允许，中断当前消息 token=%s 切换到 token=%s",
+                                        interrupt_token,
+                                        next_msg.token,
+                                    )
+                                    self.set_current_message(next_msg)
         except Exception:
             logger.exception("在处理消息切换逻辑时发生错误")
 
@@ -223,8 +246,12 @@ class StatusMessageQueue:
             return (True, None)
 
         if new_msg.priority > self._current_message.priority:
-            # 新消息优先级更高，应中断当前消息
-            return (True, self._current_message.token)
+            # 对于更高优先级的消息，只有当新消息为短时提示（timeout_ms>0）时才建议中断当前消息。
+            # 这与 add_message 的自动切换策略保持一致：永久消息（timeout_ms==0）不应自动中断当前正在显示的短时提示。
+            if new_msg.timeout_ms > 0:
+                return (True, self._current_message.token)
+            else:
+                return (False, None)
 
         # 若当前为永久提示，而新消息是短时提示且优先级不低，则允许短时打断
         try:
