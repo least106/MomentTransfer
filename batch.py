@@ -3,6 +3,10 @@ import json
 import logging
 import os
 import pickle
+import hmac
+import hashlib
+import base64
+import typing
 import sys
 import tempfile
 import time
@@ -59,6 +63,67 @@ def _error_exit_json(message: str, code: int = 2, hint: str = None):
         logger = logging.getLogger("batch")
         logger.error("无法写入错误到 stderr: %s", payload)
     sys.exit(code)
+
+
+def _secure_deserialize_pickle(payload: bytes) -> typing.Any:
+    """
+    安全的 pickle 反序列化入口。
+
+    接受如下两种格式：
+    1) 签名格式： b"<hex_hmac>|<base64_payload>"，其中 hex_hmac = HMAC_SHA256(secret, payload)
+       需要环境变量 `PICKLE_HMAC_KEY` 提供 secret，用于校验签名后再反序列化。
+    2) 未签名直接 pickle bytes：仅在 `ALLOW_UNTRUSTED_PICKLE=1` 环境变量被显式设置时允许（不安全，强烈不推荐）。
+
+    返回反序列化后的对象，若校验失败则抛出 ValueError 或 RuntimeError。
+    """
+    if payload is None:
+        raise ValueError("空的 payload")
+
+    # 支持传入 str（可能来自 JSON）和 bytes
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+
+    # 首先尝试签名格式： signature|base64
+    try:
+        parts = payload.split(b"|", 1)
+        if len(parts) == 2:
+            signature, b64 = parts
+            try:
+                raw = base64.b64decode(b64)
+            except Exception:
+                raise ValueError("签名格式但 base64 解码失败")
+
+            secret = os.environ.get("PICKLE_HMAC_KEY")
+            if not secret:
+                raise RuntimeError(
+                    "拒绝签名 payload：环境变量 PICKLE_HMAC_KEY 未设置"
+                )
+
+            expected = hmac.new(
+                secret.encode("utf-8"), raw, hashlib.sha256
+            ).hexdigest().encode("utf-8")
+
+            if not hmac.compare_digest(signature, expected):
+                raise ValueError("HMAC 校验失败，拒绝反序列化")
+
+            # 校验通过，安全地反序列化
+            return pickle.loads(raw)
+    except Exception:
+        # 对签名尝试的异常不立即放行，后续会检查是否允许未签名 payload
+        pass
+
+    # 未签名 payload：仅在显式允许时才处理
+    allow_untrusted = os.environ.get("ALLOW_UNTRUSTED_PICKLE", "0") == "1"
+    if allow_untrusted:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "允许未签名的 pickle 反序列化（危险）：请在生产环境中避免设置 ALLOW_UNTRUSTED_PICKLE=1"
+        )
+        return pickle.loads(payload)
+
+    raise RuntimeError(
+        "拒绝未签名的 pickle 反序列化：请使用签名格式或设置 ALLOW_UNTRUSTED_PICKLE=1（不安全）"
+    )
 
 
 # 最大文件名冲突重试次数（避免魔法数字）
@@ -1078,7 +1143,7 @@ def _worker_process(args):
         calc_pickle = args.get("calculator_pickle")
         if calc_pickle:
             try:
-                project_data, calculator = pickle.loads(calc_pickle)
+                project_data, calculator = _secure_deserialize_pickle(calc_pickle)
                 # 更新模块级缓存
                 _gw["_WORKER_CALCULATOR"] = calculator
                 _gw["_WORKER_PROJECT_PATH"] = project_config_path
@@ -1086,7 +1151,8 @@ def _worker_process(args):
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.warning(
-                    "反序列化传入的 calculator 失败，回退到按路径加载: %s", e
+                    "拒绝反序列化传入的 calculator（安全原因），回退到按路径加载: %s",
+                    e,
                 )
 
         if calculator is None:
