@@ -182,6 +182,9 @@ class BatchManager:
         from gui.workflow_progress_indicator import WorkflowProgressIndicator
         self._progress_indicator = WorkflowProgressIndicator()
 
+        # 预览渲染器占位，防止 pylint E1101 以及在某些路径未创建时触发 AttributeError
+        self._preview_renderer = None
+
         # 特殊格式：缓存每个文件的 source->target 映射控件（已废弃，使用下面两个）
         # key: (file_path_str, source_part)
         self._special_part_combo = {}
