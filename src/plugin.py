@@ -287,12 +287,31 @@ else:
                 fh.write(validator)
                 temp_path = fh.name
 
+            # 构建受控环境传递给子进程，保证验证在不同开发机/CI 上的一致性
+            project_root = Path(__file__).resolve().parent.parent
+            env = os.environ.copy()
+            # 确保项目根被加入 PYTHONPATH，保留原有 PYTHONPATH
+            prev = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = str(project_root) + (os.pathsep + prev if prev else "")
+            # 强制使用 UTF-8 输出以避免 Windows/GBK 控制台导致的编码错误
+            env["PYTHONIOENCODING"] = env.get("PYTHONIOENCODING", "utf-8")
+            env["PYTHONUTF8"] = env.get("PYTHONUTF8", "1")
+
+            # 可选：若环境变量启用，则在临时 venv 中运行验证（PoC）
+            use_venv = os.environ.get("PLUGIN_VALIDATION_USE_VENV", "0") == "1"
+            if use_venv:
+                try:
+                    return self._run_validator_in_venv(temp_path, timeout, project_root, env)
+                except Exception:
+                    logger.debug("运行 venv 验证 PoC 失败，回退到直接子进程执行", exc_info=True)
+
             proc = subprocess.run(
                 [sys.executable, temp_path],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
+                env=env,
             )
             return proc
         except subprocess.TimeoutExpired:
@@ -308,6 +327,78 @@ else:
             except Exception:
                 # 忽略临时文件删除错误
                 pass
+
+    def _run_validator_in_venv(
+        self, validator_script_path: str, timeout: int, project_root: Path, env: Dict[str, str]
+    ):
+        """
+        PoC: 在临时 virtualenv 中运行验证脚本。
+
+        该方法用于提高插件验证的隔离性：在临时 venv 中先安装当前项目（editable），
+        再用 venv 的 Python 执行验证脚本。此为 PoC，适用于 CI 或受控环境验证。
+
+        注意：创建 venv 并安装可较慢，使用此路径需显式通过
+        环境变量 `PLUGIN_VALIDATION_USE_VENV=1` 启用。
+        """
+        import venv
+        import shutil
+
+        tmp_dir = None
+        try:
+            tmp_dir = tempfile.mkdtemp(prefix="plugin_venv_")
+            venv_dir = Path(tmp_dir) / "venv"
+            builder = venv.EnvBuilder(with_pip=True)
+            builder.create(str(venv_dir))
+
+            # 平台差异：确定 venv 中的 python 可执行路径
+            if os.name == "nt":
+                pyexe = venv_dir / "Scripts" / "python.exe"
+            else:
+                pyexe = venv_dir / "bin" / "python"
+
+            if not pyexe.exists():
+                raise RuntimeError(f"venv python 未找到: {pyexe}")
+
+            # 在 venv 中安装当前项目为 editable，以确保 src 包可被导入
+            # 使用受控环境，确保输出编码一致
+            venv_env = env.copy() if isinstance(env, dict) else os.environ.copy()
+            # 将 venv 的路径优先加入 PATH，便于脚本在需要时找到 venv 工具
+            venv_bin = str(venv_dir / ("Scripts" if os.name == "nt" else "bin"))
+            prev_path = venv_env.get("PATH", "")
+            venv_env["PATH"] = venv_bin + os.pathsep + prev_path
+
+            install_proc = subprocess.run(
+                [str(pyexe), "-m", "pip", "install", "-e", str(project_root)],
+                capture_output=True,
+                text=True,
+                timeout=max(30, timeout),
+                check=False,
+                env=venv_env,
+            )
+            if install_proc.returncode != 0:
+                logger.error(
+                    "在 venv 中安装项目失败: returncode=%s stderr=%s",
+                    install_proc.returncode,
+                    install_proc.stderr,
+                )
+
+            # 使用 venv 的 python 执行验证脚本
+            proc = subprocess.run(
+                [str(pyexe), validator_script_path],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                env=venv_env,
+            )
+            return proc
+        finally:
+            # 清理临时 venv 目录（忽略删除错误）
+            try:
+                if tmp_dir and os.path.exists(tmp_dir):
+                    shutil.rmtree(tmp_dir)
+            except Exception:
+                logger.debug("清理临时 venv 目录失败（非致命）", exc_info=True)
 
     def _dynamic_import_module(self, filepath: Path) -> Optional[Any]:
         """动态从文件导入模块并返回 module 对象，失败时返回 None。"""
