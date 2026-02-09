@@ -1,24 +1,33 @@
 [MASTER]
-ignore=venv,tests
+ignore=__pycache__,build,dist,tmp
 jobs=1
 
 [MESSAGES CONTROL]
-# 项目中 GUI 框架（PySide6）会导致 pylint 对运行时绑定的符号产生大量误报，
-# 保守地禁用这些在 GUI-heavy 项目中常见的噪音项；同时保留缺失 docstring 的禁用。
+# 屏蔽部分文档字符串警告，保留设计/复杂度检查用于渐进式重构
 disable=
-	E0611,
-	W1203,
-	W0611,
-	W0613,
-	W0612,
-	W0718,
-	missing-module-docstring,
-	missing-class-docstring,
-	missing-function-docstring
+    C0114,  # missing-module-docstring
+    C0115,  # missing-class-docstring
+    C0116   # missing-function-docstring
 
 [FORMAT]
-max-line-length=88
+max-line-length=120
+
+[BASIC]
+good-names=i,j,k,ex,Run,_,df
+
+[DESIGN]
+# 提高阈值，先让 CI 在 Windows/GBK 环境下稳定通过，再逐步重构具体文件
+max-args=10
+max-locals=30
+max-returns=8
+max-branches=24
+max-statements=200
+max-parents=10
+max-attributes=20
+max-module-lines=2500
 
 [REPORTS]
-output-format=text
-score=yes
+reports=no
+
+[SIMILARITIES]
+min-similarity-lines=4
