@@ -50,7 +50,8 @@ class CoordinateSystemPanel(QGroupBox):
         # 在程序化更新面板值时抑制 valuesChanged 发射
         # 使用计数以支持嵌套的静默更新调用
         self._silent_update_count = 0
-        self._current_part_name = "TestModel"
+        # 默认不预填示例模型名称，避免在映射面板中强制使用占位 Part
+        self._current_part_name = ""
 
         # 获取 SignalBus 并连接监听
         try:
@@ -119,7 +120,8 @@ class CoordinateSystemPanel(QGroupBox):
             pass
 
         # Part Name输入
-        self.part_name_input = self._create_input("TestModel")
+        # 不在 UI 中默认填充 TestModel，避免影响自动映射/默认选择逻辑
+        self.part_name_input = self._create_input("")
         self.part_name_input.textChanged.connect(self._on_part_name_changed)
         lbl_part = QLabel("Part Name:")
         lbl_part.setFixedWidth(90)
