@@ -1164,9 +1164,15 @@ class IntegratedAeroGUI(QMainWindow):
             msg.setText(f"检测到未保存的更改。是否在执行“{intent}”前保存更改？")
             # UX：这里的“放弃”语义应为“本次不保存仍继续”，而不是立刻把未保存标记清掉。
             # 否则若用户后续取消“打开文件”对话框，或“打开/新建”失败，会导致未保存状态被错误清除。
-            msg.setInformativeText(
-                "保存：保存更改并继续；放弃：本次不保存并继续；取消：返回。"
-            )
+            # 根据意图调整文案与语义
+            if "关闭" in intent:
+                msg.setInformativeText(
+                    "保存：保存更改并关闭；放弃：不保存直接关闭；取消：返回。"
+                )
+            else:
+                msg.setInformativeText(
+                    "保存：保存更改并继续；放弃：清理当前状态并继续；取消：返回。"
+                )
             btn_save = msg.addButton("保存", QMessageBox.AcceptRole)
             btn_discard = msg.addButton("放弃", QMessageBox.DestructiveRole)
             btn_cancel = msg.addButton("取消", QMessageBox.RejectRole)
@@ -1274,9 +1280,17 @@ class IntegratedAeroGUI(QMainWindow):
                 # 保存后再次检测是否仍有未保存更改（用户可能取消了保存）
                 return not self._has_unsaved_changes()
             if clicked == btn_discard:
-                # “放弃”=本次不保存并继续：不要在这里修改 last_saved_state / UI 标志。
-                # 让后续 intent（打开/新建/退出）真正成功后再由对应流程清理状态，
-                # 避免“用户取消文件选择/加载失败但未保存状态被清掉”的 UX 逻辑漏洞。
+                # “放弃”语义取决于 intent：
+                # - 打开/加载项目：先清理当前状态，再继续后续加载
+                # - 关闭窗口：不保存直接关闭
+                # - 新建项目：由 create_new_project 内部负责清理
+                try:
+                    if ("打开" in intent) or ("加载" in intent):
+                        pm = getattr(self, "project_manager", None)
+                        if pm and hasattr(pm, "discard_current_state"):
+                            pm.discard_current_state()
+                except Exception:
+                    logger.debug("放弃时清理当前状态失败（非致命）", exc_info=True)
                 return True
             # 取消
             return False
