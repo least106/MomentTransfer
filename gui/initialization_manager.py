@@ -437,7 +437,7 @@ class InitializationManager:
 
             self.main_window.project_manager = ProjectManager(self.main_window)
 
-            # 将 ConfigPanel 替换到 Tab 的"参考系管理"位置
+            # 将 ConfigPanel 和 PartMappingPanel 分别作为独立选项卡
             try:
                 if hasattr(self.main_window, "tab_main") and hasattr(
                     self.main_window, "config_tab_placeholder"
@@ -447,16 +447,12 @@ class InitializationManager:
                     part_mapping_panel = getattr(
                         self.main_window, "part_mapping_panel", None
                     )
-                    # 替换第0个Tab的内容（在配置编辑器右侧加入映射面板）
-                    container = QWidget()
-                    container_layout = QHBoxLayout(container)
-                    container_layout.setContentsMargins(0, 0, 0, 0)
-                    container_layout.setSpacing(10)
-                    container_layout.addWidget(config_panel, 3)
-                    if part_mapping_panel is not None:
-                        container_layout.addWidget(part_mapping_panel, 2)
+                    # 移除占位符选项卡
                     tab_main.removeTab(0)
-                    tab_main.insertTab(0, container, "参考系管理")
+                    # 添加两个独立选项卡
+                    tab_main.insertTab(0, config_panel, "参考系管理")
+                    if part_mapping_panel is not None:
+                        tab_main.insertTab(1, part_mapping_panel, "映射管理")
             except Exception:
                 logger.debug("替换参考系管理Tab失败", exc_info=True)
 
@@ -818,9 +814,9 @@ class InitializationManager:
             toolbar.setMovable(False)
             toolbar.setFloatable(False)
 
-            # 左侧：Project 创建/打开按钮
+            # 左侧：按钮组（Project 相关）
             btn_new_project = QPushButton("新建Project")
-            btn_new_project.setMaximumWidth(90)
+            btn_new_project.setFixedWidth(90)
             btn_new_project.setToolTip("新建 Project（Ctrl+N）")
             btn_new_project.clicked.connect(self.main_window._new_project)
             # 临时将 Project 相关按钮禁用，避免用户在此阶段误操作
@@ -831,7 +827,7 @@ class InitializationManager:
             toolbar.addWidget(btn_new_project)
 
             btn_open_project = QPushButton("打开Project")
-            btn_open_project.setMaximumWidth(90)
+            btn_open_project.setFixedWidth(90)
             btn_open_project.setToolTip("打开 Project（Ctrl+O）")
             btn_open_project.clicked.connect(self.main_window._open_project)
             try:
@@ -839,31 +835,29 @@ class InitializationManager:
             except Exception:
                 pass
             toolbar.addWidget(btn_open_project)
+            
+            # 保存 Project 按钮（放在项目按钮一起）
+            btn_save_project = QPushButton("保存Project")
+            btn_save_project.setFixedWidth(90)
+            btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
+            btn_save_project.clicked.connect(self.main_window._on_save_project)
+            try:
+                btn_save_project.setEnabled(False)
+            except Exception:
+                pass
+            toolbar.addWidget(btn_save_project)
+            
+            toolbar.addSeparator()
 
-            # 大空隙 - 弹性间隔，分隔左侧 Project 操作和右侧批处理操作
-            spacer = QWidget()
-            spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            spacer_action = toolbar.addWidget(spacer)
-            # 保存弹性间隔动作作为状态横幅插入锚点
-            self.main_window._toolbar_spacer_action = spacer_action
-
-            # 右侧：批处理操作按钮
-            # 展开批处理记录复选框
-            chk_bottom_bar = QCheckBox("展开批处理记录")
-            chk_bottom_bar.setToolTip("在底部显示批处理历史记录")
-            chk_bottom_bar.setChecked(False)
-
-            # 将复选框添加到工具栏并添加右侧的操作按钮
-            toolbar.addWidget(chk_bottom_bar)
-
+            # 左侧：批处理操作按钮
             btn_browse = QPushButton("浏览文件")
-            btn_browse.setMaximumWidth(80)
+            btn_browse.setFixedWidth(80)
             btn_browse.setToolTip("选择输入文件或目录")
             btn_browse.clicked.connect(self.main_window.browse_batch_input)
             toolbar.addWidget(btn_browse)
 
             btn_load_config = QPushButton("加载配置")
-            btn_load_config.setMaximumWidth(80)
+            btn_load_config.setFixedWidth(80)
             btn_load_config.setToolTip(
                 "加载配置文件（JSON），用于提供 Source/Target part 定义"
             )
@@ -925,7 +919,7 @@ class InitializationManager:
             toolbar.addWidget(btn_load_config)
 
             btn_start = QPushButton("开始处理")
-            btn_start.setMaximumWidth(80)
+            btn_start.setFixedWidth(80)
             # 初始化期间默认禁用开始按钮，避免在管理器未就绪时触发批处理
             btn_start.setEnabled(False)
             btn_start.setToolTip("正在初始化，功能暂不可用 — 稍后将自动启用或刷新")
@@ -934,27 +928,27 @@ class InitializationManager:
 
             # 添加取消按钮（初始隐藏，仅在批处理期间显示）
             btn_cancel = QPushButton("取消")
-            btn_cancel.setMaximumWidth(60)
+            btn_cancel.setFixedWidth(60)
             btn_cancel.setToolTip("取消当前批处理")
             btn_cancel.setVisible(False)  # 初始隐藏
             btn_cancel.setEnabled(False)
             btn_cancel.clicked.connect(self.main_window.request_cancel_batch)
             toolbar.addWidget(btn_cancel)
+            
+            # 弹性间隔：把复选框推到右侧
+            spacer = QWidget()
+            spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            spacer_action = toolbar.addWidget(spacer)
+            # 保存弹性间隔动作作为状态横幅插入锚点（若状态横幅需要插入）
+            self.main_window._toolbar_spacer_action = spacer_action
 
-            # 最右侧：保存 Project 按钮
-            btn_save_project = QPushButton("保存Project")
-            btn_save_project.setMaximumWidth(90)
-            btn_save_project.setToolTip("保存 Project（Ctrl+Shift+S）")
-            btn_save_project.clicked.connect(self.main_window._on_save_project)
-            try:
-                btn_save_project.setEnabled(False)
-            except Exception:
-                pass
-            toolbar.addWidget(btn_save_project)
+            # 右侧：展开批处理记录复选框
+            chk_bottom_bar = QCheckBox("展开批处理记录")
+            chk_bottom_bar.setToolTip("在底部显示批处理历史记录")
+            chk_bottom_bar.setChecked(False)
+            toolbar.addWidget(chk_bottom_bar)
 
-            # 状态横幅将插入到右侧按钮之前（通过锚点动作定位）
-
-            # 保存复选框引用到主窗口 (复选框已在浏览按钮左侧创建)
+            # 保存复选框引用到主窗口
             self.main_window.chk_bottom_bar_toolbar = chk_bottom_bar
 
             # 将工具栏添加到主窗口顶部
