@@ -27,6 +27,9 @@ class CoordinateSystem:
     y_axis: np.ndarray
     z_axis: np.ndarray
     moment_center: np.ndarray
+    # 用于序列化：记录原始配置中的力矩中心定义
+    _moment_center_in_part: np.ndarray = None
+    _moment_center_in_global: np.ndarray = None
 
     def __post_init__(self) -> None:
         # 统一为 numpy 向量
@@ -35,20 +38,33 @@ class CoordinateSystem:
         self.y_axis = _vec3(self.y_axis)
         self.z_axis = _vec3(self.z_axis)
         self.moment_center = _vec3(self.moment_center)
+        # 转换私有字段为 numpy 向量
+        if self._moment_center_in_part is not None:
+            self._moment_center_in_part = _vec3(self._moment_center_in_part)
+        if self._moment_center_in_global is not None:
+            self._moment_center_in_global = _vec3(self._moment_center_in_global)
 
     def to_matrix(self) -> np.ndarray:
         """返回 3x3 旋转矩阵，列为 x/y/z 基向量。"""
         return np.column_stack([self.x_axis, self.y_axis, self.z_axis])
 
     def to_dict(self) -> Dict[str, list]:
-        """序列化为与现有 JSON 兼容的字典。"""
-        return {
+        """序列化为新的 JSON 格式（包含双力矩中心）。"""
+        result = {
             "Orig": self.origin.tolist(),
             "X": self.x_axis.tolist(),
             "Y": self.y_axis.tolist(),
             "Z": self.z_axis.tolist(),
-            "MomentCenter": self.moment_center.tolist(),
         }
+        # 优先导出原始定义的力矩中心
+        if self._moment_center_in_part is not None:
+            result["MomentCenterInPartCoordSystem"] = self._moment_center_in_part.tolist()
+        if self._moment_center_in_global is not None:
+            result["MomentCenterInGlobalCoordSystem"] = self._moment_center_in_global.tolist()
+        # 如果都没有（向后兼容），导出统一的 moment_center
+        if self._moment_center_in_part is None and self._moment_center_in_global is None:
+            result["MomentCenter"] = self.moment_center.tolist()
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict) -> "CoordinateSystem":
