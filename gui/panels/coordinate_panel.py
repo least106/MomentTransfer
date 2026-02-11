@@ -121,7 +121,7 @@ class CoordinateSystemPanel(QGroupBox):
 
         # Part Name输入
         # 不在 UI 中默认填充 TestModel，避免影响自动映射/默认选择逻辑
-        self.part_name_input = self._create_input("")
+        self.part_name_input = self._create_text_input("")
         self.part_name_input.textChanged.connect(self._on_part_name_changed)
         lbl_part = QLabel("Part Name:")
         lbl_part.setFixedWidth(90)
@@ -247,6 +247,17 @@ class CoordinateSystemPanel(QGroupBox):
             validator.setNotation(QDoubleValidator.StandardNotation)
             inp.setValidator(validator)
             inp.setToolTip("请输入数值")
+        except Exception:
+            pass
+        return inp
+
+    def _create_text_input(self, default_text: str) -> QLineEdit:
+        """创建文本输入框（用于 Part 名称）。"""
+        inp = QLineEdit(default_text)
+        try:
+            inp.setProperty("compact", "true")
+            inp.setMaximumWidth(220)
+            inp.setToolTip("请输入 Part 名称")
         except Exception:
             pass
         return inp
