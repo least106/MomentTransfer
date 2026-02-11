@@ -8,6 +8,13 @@ from typing import Dict
 
 from PySide6.QtCore import Qt, QThread
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+from gui.signal_bus import SignalBus
+from gui.status_message_queue import MessagePriority
+from src.data_validator import (
+    validate_dataframe,
+    validate_special_data_dict,
+    check_file_encoding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +256,24 @@ class BatchStateManager:
                         except Exception:
                             logger.debug("发送解析完成提示失败（非致命）", exc_info=True)
                         try:
+                            # 解析完成后校验解析结果并提示用户（若有问题）
+                            issues = []
+                            try:
+                                issues = validate_special_data_dict(data_dict, file_path)
+                            except Exception:
+                                logger.debug("解析结果校验失败（非致命）", exc_info=True)
+                            if issues:
+                                try:
+                                    SignalBus.instance().statusMessage.emit(
+                                        f"解析警告: {file_path.name} — {'; '.join(issues)}",
+                                        0,
+                                        MessagePriority.HIGH,
+                                    )
+                                except Exception:
+                                    logger.debug("发送解析警告失败", exc_info=True)
+                        except Exception:
+                            logger.debug("处理解析完成提示失败", exc_info=True)
+                        try:
                             SignalBus.instance().specialDataParsed.emit(fp_str)
                         except Exception:
                             logger.debug(
@@ -350,6 +375,20 @@ class BatchStateManager:
                             logger.debug("发送解析完成提示失败（回退线程）", exc_info=True)
 
                         try:
+                            # 回退线程：在发信号前校验解析结果
+                            try:
+                                issues = validate_special_data_dict(data_dict, file_path)
+                                if issues:
+                                    try:
+                                        SignalBus.instance().statusMessage.emit(
+                                            f"解析警告: {file_path.name} — {'; '.join(issues)}",
+                                            0,
+                                            MessagePriority.HIGH,
+                                        )
+                                    except Exception:
+                                        logger.debug("发送回退解析警告失败", exc_info=True)
+                            except Exception:
+                                logger.debug("回退线程解析结果校验失败", exc_info=True)
                             SignalBus.instance().specialDataParsed.emit(fp_str)
                         except Exception:
                             logger.debug(
@@ -433,6 +472,20 @@ class BatchStateManager:
                         logger.debug("发送解析完成提示失败（回退线程）", exc_info=True)
 
                     try:
+                        # 回退线程完成：校验解析结果并提示问题（如有）后发信号
+                        try:
+                            issues = validate_special_data_dict(data_dict, file_path)
+                            if issues:
+                                try:
+                                    SignalBus.instance().statusMessage.emit(
+                                        f"解析警告: {file_path.name} — {'; '.join(issues)}",
+                                        0,
+                                        MessagePriority.HIGH,
+                                    )
+                                except Exception:
+                                    logger.debug("发送回退解析警告失败", exc_info=True)
+                        except Exception:
+                            logger.debug("回退线程解析结果校验失败", exc_info=True)
                         SignalBus.instance().specialDataParsed.emit(fp_str)
                     except Exception:
                         logger.debug("发出 specialDataParsed 信号失败（回退线程）", exc_info=True)
@@ -550,6 +603,30 @@ class BatchStateManager:
             "df": df,
             "preview_rows": int(max_rows),
         }
+        # 校验并在发现问题时给出用户可见提示
+        try:
+            issues = validate_dataframe(df, file_path)
+            if issues:
+                try:
+                    SignalBus.instance().statusMessage.emit(
+                        f"文件预览警告: {file_path.name} — {'; '.join(issues)}",
+                        8000,
+                        MessagePriority.HIGH,
+                    )
+                except Exception:
+                    logger.debug("发送文件预览警告失败", exc_info=True)
+                try:
+                    # 严重问题弹窗提示（尽量减少打断，只有关键场景弹窗）
+                    if any("无法读取" in it or "空" in it for it in issues):
+                        QMessageBox.warning(
+                            gui_instance,
+                            "数据问题",
+                            f"文件 {file_path.name} 的预览存在问题：\n{chr(10).join(issues)}",
+                        )
+                except Exception:
+                    logger.debug("显示预览问题弹窗失败", exc_info=True)
+        except Exception:
+            logger.debug("预览数据校验失败（非致命）", exc_info=True)
         return df
 
     def get_table_df_preview_async(
@@ -606,6 +683,29 @@ class BatchStateManager:
 
             if on_loaded:
                 on_loaded(df)
+            # 异步加载后进行校验并提示
+            try:
+                issues = validate_dataframe(df, file_path)
+                if issues:
+                    try:
+                        SignalBus.instance().statusMessage.emit(
+                            f"文件预览警告: {file_path.name} — {'; '.join(issues)}",
+                            8000,
+                            MessagePriority.HIGH,
+                        )
+                    except Exception:
+                        logger.debug("发送异步预览警告失败", exc_info=True)
+                    try:
+                        if any("无法读取" in it or "空" in it for it in issues):
+                            QMessageBox.warning(
+                                gui_instance,
+                                "数据问题",
+                                f"文件 {file_path.name} 的预览存在问题：\n{chr(10).join(issues)}",
+                            )
+                    except Exception:
+                        logger.debug("显示异步预览问题弹窗失败", exc_info=True)
+            except Exception:
+                logger.debug("异步预览校验失败（非致命）", exc_info=True)
 
         # 定义失败回调
         def _on_failure(error_msg):
