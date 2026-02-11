@@ -494,8 +494,6 @@ class BatchPanel(QWidget):
         except Exception:
             logger.debug("连接快速筛选信号失败", exc_info=True)
 
-        btn_row.addStretch()
-
         # 添加状态符号帮助按钮
         try:
             from gui.status_symbol_legend import StatusSymbolButton
