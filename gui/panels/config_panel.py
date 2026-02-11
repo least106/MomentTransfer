@@ -1,5 +1,5 @@
 """
-配置编辑器面板 - 汇总 Source/Target 坐标配置与加载/保存/应用按钮。
+参考系管理面板 - 汇总 Global/Source/Target 坐标系配置与加载/保存按钮。
 """
 
 import logging
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .global_coord_panel import GlobalCoordSystemPanel
 from .source_panel import SourcePanel
 from .target_panel import TargetPanel
 
@@ -72,12 +73,14 @@ class ConfigPanel(QWidget):
         header_layout.addStretch()
         main_layout.addWidget(header)
 
-        # 面板组件
+        # 面板组件：Global + Source + Target
+        self.global_panel = GlobalCoordSystemPanel(self)
         self.source_panel = SourcePanel(self)
         self.target_panel = TargetPanel(self)
 
         # 防止在侧边栏宽度较小时被强行压缩导致控件挤压/错位。
         # 外层 QScrollArea 会自动提供水平滚动条。
+        self.global_panel.setMinimumWidth(360)
         self.source_panel.setMinimumWidth(360)
         self.target_panel.setMinimumWidth(360)
 
@@ -117,10 +120,12 @@ class ConfigPanel(QWidget):
         coord_layout = QHBoxLayout(scroll_content)
         coord_layout.setSpacing(4)
         coord_layout.setContentsMargins(0, 0, 0, 0)
+        coord_layout.addWidget(self.global_panel)
         coord_layout.addWidget(self.source_panel)
         coord_layout.addWidget(self.target_panel)
         coord_layout.setStretch(0, 1)
         coord_layout.setStretch(1, 1)
+        coord_layout.setStretch(2, 1)
 
         scroll_area.setWidget(scroll_content)
 
@@ -240,6 +245,10 @@ class ConfigPanel(QWidget):
                 except Exception:
                     logger.debug("处理面板修改回调失败", exc_info=True)
 
+            try:
+                self.global_panel.valuesChanged.connect(_on_panel_changed)
+            except Exception:
+                pass
             try:
                 self.source_panel.valuesChanged.connect(_on_panel_changed)
             except Exception:
