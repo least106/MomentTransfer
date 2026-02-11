@@ -293,63 +293,17 @@ class ProjectManager:
             except Exception:
                 logger.debug("访问 state_banner 失败（非致命）", exc_info=True)
 
+            # 新建项目仅重置文件列表状态，不移除 file_list_widget 子控件
+            # 否则会导致文件树被移出布局，后续浏览文件无法显示列表
             try:
                 flw = getattr(self.gui, "file_list_widget", None)
                 if flw is not None:
                     try:
-                        layout = flw.layout()
-                        if layout is not None:
-                            while layout.count():
-                                item = layout.takeAt(0)
-                                w = item.widget()
-                                if w is not None:
-                                    try:
-                                        w.setParent(None)
-                                    except Exception:
-                                        try:
-                                            if _report_ui_exception:
-                                                _report_ui_exception(
-                                                    self.gui,
-                                                    "移除 file_list_widget 子控件失败（非致命）",
-                                                )
-                                            else:
-                                                logger.debug(
-                                                    "移除 file_list_widget 子控件失败（非致命）",
-                                                    exc_info=True,
-                                                )
-                                        except Exception:
-                                            logger.debug(
-                                                "移除 file_list_widget 子控件失败（非致命）",
-                                                exc_info=True,
-                                            )
+                        flw.setVisible(False)
                     except Exception:
-                        try:
-                            if _report_ui_exception:
-                                _report_ui_exception(
-                                    self.gui, "清理 file_list_widget 布局失败（非致命）"
-                                )
-                            else:
-                                logger.debug(
-                                    "清理 file_list_widget 布局失败（非致命）",
-                                    exc_info=True,
-                                )
-                        except Exception:
-                            logger.debug(
-                                "清理 file_list_widget 布局失败（非致命）",
-                                exc_info=True,
-                            )
+                        logger.debug("隐藏 file_list_widget 失败（非致命）", exc_info=True)
             except Exception:
-                try:
-                    if _report_ui_exception:
-                        _report_ui_exception(
-                            self.gui, "访问 file_list_widget 失败（非致命）"
-                        )
-                    else:
-                        logger.debug(
-                            "访问 file_list_widget 失败（非致命）", exc_info=True
-                        )
-                except Exception:
-                    logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
+                logger.debug("访问 file_list_widget 失败（非致命）", exc_info=True)
 
             # 标记为用户已修改以启用保存（与 UIStateManager 协同）
             try:
@@ -379,6 +333,120 @@ class ProjectManager:
             tb = traceback.format_exc()
             self._notify_user_error("创建新项目失败", str(e), tb)
             return False
+
+    def discard_current_state(self) -> None:
+        """放弃当前工作状态（不保存，清理文件/配置/选择）。
+
+        用于“打开项目”等需要在继续前清理旧状态的场景。
+        """
+        # 清除当前项目路径/状态
+        try:
+            self.current_project_file = None
+            self.last_saved_state = None
+        except Exception:
+            logger.debug("清理当前项目状态失败（非致命）", exc_info=True)
+
+        # 清理配置与模型（优先走 ConfigManager 以保持一致）
+        try:
+            cfg_mgr = getattr(self.gui, "config_manager", None)
+            if cfg_mgr is not None and hasattr(cfg_mgr, "reset_config"):
+                cfg_mgr.reset_config()
+            else:
+                try:
+                    if hasattr(self.gui, "current_config"):
+                        self.gui.current_config = None
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self.gui, "project_model"):
+                        self.gui.project_model = None
+                except Exception:
+                    pass
+        except Exception:
+            logger.debug("清理配置失败（非致命）", exc_info=True)
+
+        # 清理 FileSelectionManager 的缓存与状态
+        try:
+            fsm = getattr(self.gui, "file_selection_manager", None)
+            if fsm is not None:
+                try:
+                    fsm.special_part_mapping_by_file = {}
+                    fsm.special_part_row_selection_by_file = {}
+                    fsm.file_part_selection_by_file = {}
+                    fsm.table_row_selection_by_file = {}
+                    fsm._data_loaded = False
+                    fsm._config_loaded = False
+                    fsm._operation_performed = False
+                except Exception:
+                    logger.debug("重置 file_selection_manager 映射失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("访问 file_selection_manager 失败（非致命）", exc_info=True)
+
+        # 清理主窗口缓存与文件树
+        try:
+            for attr in (
+                "special_part_mapping_by_file",
+                "special_part_row_selection_by_file",
+                "file_part_selection_by_file",
+                "table_row_selection_by_file",
+            ):
+                try:
+                    setattr(self.gui, attr, {})
+                except Exception:
+                    try:
+                        if _report_ui_exception:
+                            _report_ui_exception(self.gui, f"设置主窗口属性 {attr} 失败")
+                    except Exception:
+                        pass
+        except Exception:
+            logger.debug("清理主窗口映射失败（非致命）", exc_info=True)
+
+        try:
+            if hasattr(self.gui, "file_tree") and getattr(self.gui, "file_tree") is not None:
+                try:
+                    self.gui.file_tree.clear()
+                except Exception:
+                    logger.debug("清空 file_tree 失败（非致命）", exc_info=True)
+            try:
+                setattr(self.gui, "_file_tree_items", {})
+            except Exception:
+                logger.debug("重置 _file_tree_items 失败（非致命）", exc_info=True)
+            flw = getattr(self.gui, "file_list_widget", None)
+            if flw is not None:
+                try:
+                    flw.setVisible(False)
+                except Exception:
+                    logger.debug("隐藏 file_list_widget 失败（非致命）", exc_info=True)
+        except Exception:
+            logger.debug("清理文件树/列表失败（非致命）", exc_info=True)
+
+        # 清理未保存标记与 UI 状态
+        try:
+            if hasattr(self.gui, "ui_state_manager") and self.gui.ui_state_manager:
+                try:
+                    self.gui.ui_state_manager.clear_user_modified()
+                except Exception:
+                    pass
+                try:
+                    self.gui.ui_state_manager.reset_to_initial_state()
+                except Exception:
+                    pass
+            try:
+                self.gui.operation_performed = False
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("清理已修改标志失败（非致命）", exc_info=True)
+
+        # 重置工作流程到初始步骤
+        try:
+            if hasattr(self.gui, "batch_manager") and self.gui.batch_manager:
+                try:
+                    self.gui.batch_manager._set_workflow_step("init")
+                except Exception:
+                    logger.debug("batch_manager _set_workflow_step failed", exc_info=True)
+        except Exception:
+            logger.debug("检查 batch_manager 失败（非致命）", exc_info=True)
 
     def save_project(self, file_path: Optional[Path] = None) -> bool:
         """保存当前项目到文件
@@ -898,26 +966,14 @@ class ProjectManager:
                             "重置 _file_tree_items 失败（非致命）", exc_info=True
                         )
 
-                    # 清空 file_list_widget 子控件（若存在）
+                    # 仅隐藏 file_list_widget，避免移除布局导致文件树无法显示
                     flw = getattr(self.gui, "file_list_widget", None)
-                    if flw is not None and hasattr(flw, "layout"):
+                    if flw is not None:
                         try:
-                            layout = flw.layout()
-                            if layout is not None:
-                                while layout.count():
-                                    it = layout.takeAt(0)
-                                    w = it.widget()
-                                    if w is not None:
-                                        try:
-                                            w.setParent(None)
-                                        except Exception:
-                                            logger.debug(
-                                                "移除 file_list_widget 子控件失败（非致命）",
-                                                exc_info=True,
-                                            )
+                            flw.setVisible(False)
                         except Exception:
                             logger.debug(
-                                "清理 file_list_widget 布局失败（非致命）",
+                                "隐藏 file_list_widget 失败（非致命）",
                                 exc_info=True,
                             )
                 except Exception:
