@@ -69,56 +69,138 @@ class FrameConfiguration:
 
     part_name: str  # 组件名称
     coord_system: CoordSystemDefinition  # 坐标系定义
+    name: Optional[str] = None  # 参考系名称（新增）
+    coord_system_ref: Optional[str] = None  # 坐标系引用（新增）
     moment_center: Optional[List[float]] = None  # 力矩参考中心 (可选)
+    moment_center_in_part: Optional[List[float]] = None  # 力矩中心(部件坐标系，新增)
+    moment_center_in_global: Optional[List[float]] = None  # 力矩中心(全局坐标系，新增)
     c_ref: Optional[float] = None  # 参考弦长 (可选)
     b_ref: Optional[float] = None  # 参考展长 (可选)
     q: Optional[float] = None  # 动压 (可选)
     s_ref: Optional[float] = None  # 参考面积 (可选)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], frame_type: str = "Frame"):
+    def from_dict(cls, data: Dict[str, Any], frame_type: str = "Frame", global_coord_systems: Dict[str, CoordSystemDefinition] = None):
         """
-        从字典创建配置对象
+        从字典创建配置对象，支持新旧配置格式
         :param data: 配置字典
         :param frame_type: 标识符 (用于错误提示)
+        :param global_coord_systems: 全局坐标系定义字典（用于解析引用）
         """
+        if global_coord_systems is None:
+            global_coord_systems = {}
+        
         # 验证必须字段
         if "PartName" not in data:
             raise ValueError(f"{frame_type} 定义缺少必须字段: PartName")
 
-        # 坐标系定义的键名兼容
-        coord_key = None
-        for possible_key in [
-            "CoordSystem",
-            "TargetCoordSystem",
-            "SourceCoordSystem",
-        ]:
-            if possible_key in data:
-                coord_key = possible_key
-                break
+        # 提取参考系名称（新增）
+        name = data.get("Name", "")
+        
+        # 提取坐标系引用（新增）
+        coord_system_ref = data.get("CoordSystemRef")
+        
+        # 解析坐标系：优先使用引用，否则从 CoordSystem 字段加载
+        coord_system = None
+        if coord_system_ref:
+            if coord_system_ref not in global_coord_systems:
+                raise ValueError(f"坐标系引用 '{coord_system_ref}' 未定义")
+            # 创建深拷贝，避免多个 FrameConfiguration 共享同一对象
+            import copy
+            coord_system = copy.deepcopy(global_coord_systems[coord_system_ref])
+        else:
+            # 坐标系定义的键名兼容
+            coord_key = None
+            for possible_key in [
+                "CoordSystem",
+                "TargetCoordSystem",
+                "SourceCoordSystem",
+            ]:
+                if possible_key in data:
+                    coord_key = possible_key
+                    break
 
-        if coord_key is None:
-            raise ValueError(f"{frame_type} 定义缺少坐标系字段 (CoordSystem)")
+            if coord_key is None:
+                raise ValueError(f"{frame_type} 定义缺少坐标系字段 (CoordSystem)")
+            
+            coord_system = CoordSystemDefinition.from_dict(data[coord_key])
 
-        # 力矩中心（必需字段）
+        # 处理力矩中心：支持新格式（双字段）和旧格式（单字段）
+        mc_in_part = None
+        mc_in_global = None
         moment_center = None
-        for mc_key in [
-            "MomentCenter",
-            "TargetMomentCenter",
-            "SourceMomentCenter",
-        ]:
-            if mc_key in data:
-                moment_center = data[mc_key]
-                if (
-                    not isinstance(moment_center, (list, tuple))
-                    or len(moment_center) != 3
-                ):
-                    raise ValueError(f"{mc_key} 必须是长度为 3 的列表")
-                break
-        if moment_center is None:
-            raise ValueError(
-                f"{frame_type} 定义必须包含 MomentCenter 字段（长度为3的列表）"
+        
+        # 新格式：双力矩中心
+        if "MomentCenterInPartCoordSystem" in data:
+            mc_in_part = data["MomentCenterInPartCoordSystem"]
+            if not isinstance(mc_in_part, (list, tuple)) or len(mc_in_part) != 3:
+                raise ValueError(f"MomentCenterInPartCoordSystem 必须是长度为 3 的列表")
+        
+        if "MomentCenterInGlobalCoordSystem" in data:
+            mc_in_global = data["MomentCenterInGlobalCoordSystem"]
+            if not isinstance(mc_in_global, (list, tuple)) or len(mc_in_global) != 3:
+                raise ValueError(f"MomentCenterInGlobalCoordSystem 必须是长度为 3 的列表")
+        
+        # 旧格式：单一 MomentCenter
+        if mc_in_part is None and mc_in_global is None:
+            for mc_key in [
+                "MomentCenter",
+                "TargetMomentCenter",
+                "SourceMomentCenter",
+            ]:
+                if mc_key in data:
+                    moment_center = data[mc_key]
+                    if not isinstance(moment_center, (list, tuple)) or len(moment_center) != 3:
+                        raise ValueError(f"{mc_key} 必须是长度为 3 的列表")
+                    # 向后兼容：如果使用引用，视为全局坐标；否则视为 Part 坐标
+                    if coord_system_ref:
+                        mc_in_global = moment_center
+                    else:
+                        mc_in_part = moment_center
+                    break
+        
+        # 如果提供了双力矩中心，计算统一的 moment_center（全局坐标）
+        # 并进行一致性验证
+        if mc_in_part is not None or mc_in_global is not None:
+            from src.moment_center_utils import (
+                compute_missing_moment_center,
+                validate_moment_center_consistency,
             )
+            import numpy as np
+            
+            origin = np.array(coord_system.origin, dtype=float)
+            x_vec = np.array(coord_system.x_axis, dtype=float)
+            y_vec = np.array(coord_system.y_axis, dtype=float)
+            z_vec = np.array(coord_system.z_axis, dtype=float)
+            rotation_matrix = np.column_stack([x_vec, y_vec, z_vec])
+            
+            mc_part_arr = np.array(mc_in_part, dtype=float) if mc_in_part else None
+            mc_global_arr = np.array(mc_in_global, dtype=float) if mc_in_global else None
+            
+            # 如果两个都提供，验证一致性
+            if mc_part_arr is not None and mc_global_arr is not None:
+                is_consistent, error = validate_moment_center_consistency(
+                    mc_part_arr, mc_global_arr, origin, rotation_matrix, tolerance=1e-6
+                )
+                if not is_consistent:
+                    import warnings
+                    warnings.warn(
+                        f"{frame_type} '{name}': 力矩中心定义不一致（误差: {error:.6e}），"
+                        f"将使用 Part 坐标系定义"
+                    )
+            
+            # 计算缺失的力矩中心
+            if mc_part_arr is None or mc_global_arr is None:
+                mc_part_arr, mc_global_arr = compute_missing_moment_center(
+                    mc_part_arr, mc_global_arr, origin, rotation_matrix
+                )
+            
+            # 统一使用全局坐标
+            moment_center = mc_global_arr.tolist()
+            if mc_in_part is None:
+                mc_in_part = mc_part_arr.tolist()
+            if mc_in_global is None:
+                mc_in_global = mc_global_arr.tolist()
 
         # 获取数值参数 (都是可选的) - 支持多种字段名以保证兼容性
         c_ref = data.get("Cref") or data.get("C_ref")
@@ -180,8 +262,12 @@ class FrameConfiguration:
 
         return cls(
             part_name=data["PartName"],
-            coord_system=CoordSystemDefinition.from_dict(data[coord_key]),
+            coord_system=coord_system,
+            name=name,
+            coord_system_ref=coord_system_ref,
             moment_center=moment_center,
+            moment_center_in_part=mc_in_part,
+            moment_center_in_global=mc_in_global,
             c_ref=c_ref,
             b_ref=b_ref,
             q=q,
@@ -212,9 +298,12 @@ class ProjectData:
 
     @classmethod
     def _parse_parts_section(
-        cls, section: Any, section_name: str
+        cls, section: Any, section_name: str, global_coord_systems: Dict[str, CoordSystemDefinition] = None
     ) -> Dict[str, List[FrameConfiguration]]:
         """解析 Source/Target 部分，支持新格式（含 Parts 列表）和旧格式（单个对象）。"""
+        if global_coord_systems is None:
+            global_coord_systems = {}
+        
         parts: Dict[str, List[FrameConfiguration]] = {}
         # 新格式：必须包含 Parts 列表（严格模式：不再支持旧的直接对象格式）
         if not (
@@ -234,7 +323,8 @@ class ProjectData:
                 if not isinstance(p, dict):
                     raise ValueError(f"{section_name}.Parts 中的元素必须为对象")
                 part_name = p.get("PartName") or "Unnamed"
-                variants_raw = p.get("Variants")
+                # 支持新格式（ReferenceSystem）和旧格式（Variants）
+                variants_raw = p.get("ReferenceSystem") or p.get("Variants")
                 variants: List[FrameConfiguration] = []
                 if (
                     variants_raw is None
@@ -242,7 +332,7 @@ class ProjectData:
                     or len(variants_raw) == 0
                 ):
                     raise ValueError(
-                        f"{section_name} Part '{part_name}' 必须包含非空的 'Variants' 列表或至少一个变体对象"
+                        f"{section_name} Part '{part_name}' 必须包含非空的 'ReferenceSystem' 或 'Variants' 列表"
                     )
 
                 for v in variants_raw:
@@ -257,7 +347,9 @@ class ProjectData:
                     # FrameConfiguration.from_dict 已会对 CoordSystem 和必需字段进行校验
                     variants.append(
                         FrameConfiguration.from_dict(
-                            v_copy, frame_type=f"{section_name}.{part_name}"
+                            v_copy, 
+                            frame_type=f"{section_name}.{part_name}",
+                            global_coord_systems=global_coord_systems
                         )
                     )
 
@@ -271,15 +363,28 @@ class ProjectData:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
         """
-        从字典创建项目数据，兼容旧版格式与新格式（Parts 列表）。
+        从字典创建项目数据，兼容旧版格式与新格式（Parts 列表 + ReferenceSystem + 坐标系引用）。
         """
         if "Source" not in data:
             raise ValueError("配置文件缺少 Source 定义")
         if "Target" not in data:
             raise ValueError("配置文件缺少 Target 定义")
 
-        source_parts = cls._parse_parts_section(data["Source"], "Source")
-        target_parts = cls._parse_parts_section(data["Target"], "Target")
+        # 加载全局坐标系定义（新增）
+        global_coord_systems: Dict[str, CoordSystemDefinition] = {}
+        if "Global" in data and isinstance(data["Global"], dict):
+            global_def = data["Global"]
+            if "CoordSystem" in global_def:
+                try:
+                    global_coord_systems["Global"] = CoordSystemDefinition.from_dict(
+                        global_def["CoordSystem"]
+                    )
+                except Exception as e:
+                    import warnings
+                    warnings.warn(f"加载全局坐标系失败: {e}")
+
+        source_parts = cls._parse_parts_section(data["Source"], "Source", global_coord_systems)
+        target_parts = cls._parse_parts_section(data["Target"], "Target", global_coord_systems)
 
         # 对 target_parts 做额外的严格校验，确保每个 variant 包含必需字段并给出清晰错误提示
         for part_name, variants in target_parts.items():
